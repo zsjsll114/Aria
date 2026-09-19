@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aria 桌面歌词</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: var(--dtk-font, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif);
+  }
+  :root { --fs: 1; --fs-main: 30px; --dtk-font: inherit; }
+  /* 顶部 34px 净空带：工具条专用，歌词容器整体下移，二者永不重叠 */
+  #wrap { position: absolute; top: 34px; left: 0; right: 0; bottom: 0; }
+  #bar {
+    position: absolute; top: 2px; left: 50%;
+    transform: translateX(-50%);
+    min-width: 140px; max-width: none;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2px;
+    cursor: grab;
+    border-radius: 16px;
+    padding: 8px 16px 14px; /* 底部多留内边距：容纳描边/发光，避免歌词超出半透明背景 */
+    transition: background .25s ease, box-shadow .25s ease;
+    z-index: 1;
+  }
+  #bar:hover {
+    background: rgba(10, 12, 20, .38);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 6px 24px rgba(0,0,0,.35);
+  }
+  #bar.dragging { cursor: grabbing; }
+
+  /* 行容器：自适应多行行高 */
+  .row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    position: relative;
+  }
+
+  /* 当前行：逐字布局（单行显示，不换行；窗口宽度随内容自适应）
+     ★ 字号跟随主界面歌词：--fs-main 由主界面推送的实测歌词字号覆盖 */
+  .line {
+    max-width: none;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: calc(var(--fs-main, 30px) * var(--fs));
+    line-height: 1.3;
+    letter-spacing: .5px;
+    text-align: center;
+  }
+  .word {
+    position: relative;
+    padding: 0;
+    margin-right: 0; /* 非拉丁字符（中/日等）相邻不加空隙；拉丁词间距由下方 .word-latin 的 margin 提供 */
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+  .word.word-latin { margin-right: 0.25em; } /* 仅拉丁词保留词间距，等价正常英文空格宽度 */
+  .word.word-latin:last-child, .word:last-child { margin-right: 0; } /* 行末词不出间距，保证居中对齐精确 */
+  .word > span {
+    display: inline-block;
+    position: relative;
+    color: inherit;
+  }
+  .word .stroke {
+    color: rgba(255, 255, 255, .96);
+    -webkit-text-stroke: calc(4px * var(--fs)) rgba(8, 10, 16, .62);
+    paint-order: stroke fill;
+    text-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+  .word .fill {    position: absolute;
+    /* ★ 上下各放宽 0.35em：g/j/y/p/q 的下伸部（以及 j 的上点、带音符的字母）可能
+       超出 line-height 1.3 的行盒，原样 overflow:hidden 会把超出的部分裁掉，
+       露出白色描边底层 → 视觉上"高亮不全/部分变白"。
+       左右仍按进度裁剪（inset 的 left/right 不变），纵向放宽不影响逐字上色。 */
+    inset: -0.35em 0 -0.35em 0;
+    overflow: hidden;
+    width: 100%;
+    pointer-events: none;
+  }  .word .fill > * {
+    position: absolute;
+    left: 0; top: 0.35em; /* 补回上移的 0.35em：与底层描边字逐像素重合 */
+    width: 100%;
+    color: var(--dtk-hl, #7cd7ff);
+    text-shadow: 0 0 10px var(--dtk-hl-glow, rgba(124, 215, 255, .35));
+    -webkit-text-stroke: 0;
+  }
+
+  /* 翻译行：单行显示，不再被换行歌词挤没；宽度随窗口自适应；字号 = 主界面歌词 × 0.62 */
+  .trans {
+    font-weight: 700;
+    font-size: calc(var(--fs-main, 30px) * 0.62 * var(--fs));
+    line-height: 1.4;
+    color: #ffffff;
+    letter-spacing: .4px;
+    -webkit-text-stroke: calc(2px * var(--fs)) rgba(8, 10, 16, .45);
+    paint-order: stroke fill;
+    text-shadow: 0 2px 6px rgba(0,0,0,.85), 0 0 12px rgba(0,0,0,.55);
+    text-align: center;
+    max-width: none;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  body.paused .word .fill > * { opacity: .42; }
+
+  /* 空状态（无歌词时显示·歌曲标题）：
+     ★ 跟随主界面歌词字号（×0.8）；宽度由 autoResize 用量身 span 实测，不再被 220px 窗口截断 */
+  .idle {
+    width: 100%;
+    max-width: 100%;
+    text-align: center;
+    font-weight: 700;
+    color: rgba(255,255,255,.92);
+    font-size: calc(var(--fs-main, 30px) * 0.8 * var(--fs));
+    letter-spacing: 1.5px;
+    text-shadow: 0 2px 6px rgba(0,0,0,.65);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ============== 右上工具条：浮层绝对定位，不占歌词空间 ============== */
+  #tools {
+    position: absolute;
+    top: 5px;
+    right: 12px;
+    display: flex; align-items: center; gap: 3px;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: rgba(15, 17, 26, .86);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 4px 16px rgba(0,0,0,.45);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-2px) scale(.96);
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 999;
+  }
+  html:hover #tools, body:hover #tools, #tools:hover, #wrap:hover + #tools, #tools.show {
+    opacity: 1; pointer-events: auto; transform: translateY(0) scale(1);
+  }
+  html.locked-ui #tools { opacity: 0; pointer-events: none; }
+
+  #tools button {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; border-radius: 50%;
+    background: transparent;
+    color: rgba(255,255,255,.85);
+    font-size: 11px; font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, color .15s, transform .15s;
+  }
+  #tools button:hover { background: rgba(255,255,255,.18); color: #fff; transform: scale(1.05); }
+  #tools button:active { transform: scale(.94); }
+  #tLock.on { color: var(--dtk-hl, #7dd8ff); background: rgba(125,216,255,.2); }
+  #tEmc.on { color: var(--dtk-hl, #ffd05c); background: color-mix(in srgb, var(--dtk-hl, #ffd05c) 22%, transparent); }
+
+  #hint {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: rgba(255,255,255,.9);
+    background: rgba(12, 14, 22, .92);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 7px;
+    padding: 6px 14px;
+    letter-spacing: .5px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .25s;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+    z-index: 40;
+  }
+  /* 锁定后仅在鼠标碰到桌面歌词容器时才显示解锁提示，位置固定于底部居中，不与歌词重叠 */
+  html.locked-ui #wrap:hover #hint { opacity: 1; }
+
+  html.locked-ui #bar { cursor: default; }
+</style>
+</head>
+<body>
+  <div id="tools">
+    <button id="tLock" title="锁定并开启鼠标穿透（主界面点桌面歌词按钮可解锁）">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+    </button>
+    <button id="tDec" title="缩小字体">A-</button>
+    <button id="tInc" title="放大字体">A+</button>
+    <button id="tEmc" title="显示情感词颜色（七彩）" class="emc-toggle">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 0-9 9 9 9 0 0 0 9 9c1 0 1.5-.8 1.5-1.6 0-.4-.16-.8-.42-1.1A2.6 2.6 0 0 1 13.5 16 3.9 3.9 0 0 0 17.4 12.1c0-5-2.4-9.1-5.4-9.1z"></path><circle cx="8" cy="10" r="1"></circle><circle cx="12" cy="7" r="1"></circle><circle cx="16" cy="10" r="1"></circle></svg>
+    </button>
+    <button id="tClose" title="关闭桌面歌词">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+    </button>
+  </div>
+
+<div id="wrap">
+  <div id="bar" title="">
+    <!-- 动态内容 -->
+  </div>
+  <div id="hint">已锁定 · 点击主界面右上角「桌面歌词」按钮即可解锁</div>
+</div>
+
+<script>
+(function () {
+  /* ★ 远程页面的 window.__TAURI__ 是注入的，可能晚于本脚本执行（与
+     250-desktop-lyrics.js 同源问题）。不能一次性捕获 invoke —— 必须在
+     调用时动态解析并在注入完成后回填，否则 savePos/autoResize/click-through
+     全部静默失效（表现为桌面歌词位置无法保存、窗口不随内容自适应）。 */
+  var invoke = null;
+  function getInvoke() {
+    var TA = window.__TAURI__;
+    return TA && TA.core && typeof TA.core.invoke === 'function' ? TA.core.invoke.bind(TA.core) : null;
+  }
+  (function ensureInvoke() {
+    var fn = getInvoke();
+    if (fn) {
+      invoke = fn;
+      /* 注入完成：补齐因此前 invoke 为空而跳过的初始自适应 */
+      requestAnimationFrame(function () { requestAnimationFrame(autoResize); });
+    } else {
+      setTimeout(ensureInvoke, 100);
+    }
+  })();
+
+  var bar = document.getElementById('bar');
+  var tLock = document.getElementById('tLock');
+  var tDec = document.getElementById('tDec');
+  var tInc = document.getElementById('tInc');
+  var tClose = document.getElementById('tClose');
+
+  var locked = localStorage.getItem('aria_dtk_locked') === '1';
+
+  /* ============================================================
+     横向锚点 = 歌词可视盒「中点」的逻辑 X。
+     窗口左边缘恒等于 `anchorCenterX - 窗口宽/2`。
+
+     ★ 为什么必须是「绝对锚点」而不是「当前位置 + Δw/2」：
+       旧实现每次 resize 都按当前 X 做增量平移，而 X 要经过
+       outer_position()（物理整数）→ /scale（小数）→ set_position(Logical)
+       （又被换算回物理整数）这几步，**每次都可能有亚像素取整误差**；
+       歌词每换一句只要宽度变化 >12px 就会 resize 一次 → 误差逐步累积，
+       屏幕缩放 ≠100% 时尤其明显，窗口看起来就是在缓慢漂移。
+       锁定到锚点后，X 只由「锚点、宽度」决定、与当前 X 无关，
+       重复调用结果完全相同 → 不可能累积。
+     ============================================================ */
+  var anchorCenterX = null;
+
+  /* 用「当前左边缘 + 当前半宽」确立锚点（拖动结束后 / 冷启动首次定尺寸后调用）。
+     ★ 刻意不跨会话持久化：重启时先按上次左边缘落位（原有行为，不会有横向跳动），
+       锚点再由那一刻的位置确立 —— 若恢复持久化中点，首曲宽度与上次不同就会跳一下。 */
+  function captureAnchor() {
+    if (!invoke || document.hidden) return;
+    invoke('desktop_lyrics_pos').then(function (p) {
+      anchorCenterX = p[0] + window.innerWidth / 2;
+    }).catch(function () {});
+  }
+
+  function applyLockedUI() {
+    document.documentElement.classList.toggle('locked-ui', locked);
+    tLock.classList.toggle('on', locked);
+    if (locked) document.getElementById('tools').classList.remove('show');
+  }
+
+  /* ---------- 渲染：逐字 HTML ---------- */
+  var cache = { t1: null, t2: null, tr: null, wordsSig: null };
+  var fillEls = [];
+
+  function refreshFillEls() {
+    fillEls = Array.prototype.slice.call(bar.querySelectorAll('.word .fill'));
+    for (var i = 0; i < fillEls.length; i++) fillEls[i]._lastQ = -1;
+  }
+
+  /* ---- 逐字本地插值：rAF 每帧按墙上时钟推进，消除 120ms 推送颗粒的阶梯感 ---- */
+  var anim = { running: false, tms: 0, recvAt: 0, words1: null, curStart: null, nextStart: null, paused: true };
+
+  function lineFillRatio(tms, wordItems, i, curStart, nextStart) {
+    var len = (wordItems && wordItems.length) || 0;
+    if (!len || i < 0 || i >= len) return 0;
+    var lineDur = 5000;
+    if (typeof curStart === 'number') {
+      var d = (typeof nextStart === 'number' ? nextStart : curStart + 5000) - curStart;
+      if (d > 0) lineDur = d;
+    }
+    var w = wordItems[i];
+    var ws = (w && typeof w.start === 'number') ? w.start : (typeof curStart === 'number' ? curStart : 0);
+    var we = (w && typeof w.end === 'number') ? w.end : (ws + Math.floor(lineDur / len));
+    var dur = Math.max(1, we - ws);
+    var ratio = (tms - ws) / dur;
+    if (!isFinite(ratio)) ratio = 0;
+    if (ratio > 1) ratio = 1;
+    if (ratio < 0) ratio = 0;
+    return ratio;
+  }
+
+  function applySmoothFills(tms, wordItems, curStart, nextStart) {
+    var n = fillEls.length;
+    if (!n) return;
+    for (var k = 0; k < n; k++) {
+      var fEl = fillEls[k];
+      var wi = +(fEl.getAttribute('data-wi'));
+      var ratio = lineFillRatio(tms, wordItems, wi, curStart, nextStart);
+      var q = Math.round(ratio * 500); /* 0.2% 步进取重 */
+      if (fEl._lastQ === q) continue;
+      fEl._lastQ = q;
+      fEl.style.clipPath = 'inset(0 ' + (100 - q / 5).toFixed(1) + '% 0 0)';
+    }
+  }
+
+  function animTick() {
+    if (!anim.running) return;
+    requestAnimationFrame(animTick);
+    if (anim.paused) return;
+    var tms = anim.tms + (performance.now() - anim.recvAt);
+    applySmoothFills(tms, anim.words1, anim.curStart, anim.nextStart);
+  }
+  function startAnim() { if (!anim.running) { anim.running = true; requestAnimationFrame(animTick); } }
+  function stopAnim() { anim.running = false; }
+
+  function wordHTMLs(words, fill) {
+    if (!Array.isArray(words) || !words.length) return '';
+    var out = '';
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      /* trim 掉词文本内嵌的尾随空格；拉丁词间距交由 .word-latin 的 margin 提供，避免中/日等非拉丁字符逐字留白 */
+      var txt = String((w && w.text ? w.text : '') || '').trim();
+      if (!txt) txt = '\u200B';
+      var isLatin = /^[a-zA-Z0-9\s\p{P}\p{S}]+$/u.test(txt) && /[a-zA-Z]/.test(txt);
+      var fclss = isLatin ? ' word-latin' : '';
+      /* ★ 情感词颜色只在扫过的 fill 层出现（随歌词进度逐步显示），
+         底层 .stroke 保持主题/白色，避免一进歌词整段情感词同时上色 */
+      var emc = '';
+      if (window.__emcOn && window.__emcMap) { emc = window.__emcMap[txt] || ''; }
+      var fillStyle = '';
+      if (emc) fillStyle = 'color:' + emc + ';';
+      out += '<span class="word'+fclss+'"><span class="stroke">' + htmlEscape(txt) + '</span>';
+      if (fill) {
+        out += '<span class="fill" data-wi="'+i+'"><span style="'+fillStyle+'">' + htmlEscape(txt) + '</span></span>';
+      }
+      out += '</span>';
+    }
+    return out;
+  }
+
+  function htmlEscape(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return c === '&' ? '&amp;' :
+             c === '<' ? '&lt;' :
+             c === '>' ? '&gt;' :
+             c === '"' ? '&quot;' : '&#39;';
+    });
+  }
+
+  function buildLineRow(cls, words, text) {
+    var hasWords = Array.isArray(words) && words.length;
+    var inner = hasWords ? wordHTMLs(words, cls !== 'next')
+                         : '<span class="word"><span class="stroke">' + htmlEscape(text || '') + '</span></span>';
+    return '<div class="line ' + (cls || '') + '">' + inner + '</div>';
+  }
+
+  function wordsSig(ws) {
+    if (!Array.isArray(ws)) return '';
+    var s = '';
+    for (var i = 0; i < ws.length; i++) {
+      var w = ws[i];
+      if (!w) continue;
+      s += w.text || '';
+      s += '_' + (typeof w.start === 'number' ? w.start : 0) + '_';
+    }
+    return s;
+  }
+
+  function renderState(s) {
+    if (!s || typeof s !== 'object') return;
+    window.__lastSt = s;
+    window.__emcMap = (s && s.emColors) || {};
+    /* ★ 字体跟随：优先用主界面歌词实测字体族（含多语言解析结果），其次全局字体设置 */
+    const ff = s.lyricFontFamily || s.fontFamily;
+    if (ff) { try { document.body.style.fontFamily = ff; } catch (_) {} }
+    /* ★ 字号跟随：主界面原文行字号 → --fs-main（歌词/翻译/标题全部随之缩放）
+       双保险钳制 14~72px，防止异常大字号（如词云排版）把桌面歌词放大 */
+    if (s.lyricFontSize && /^[\d.]+px$/.test(String(s.lyricFontSize))) {
+      var fsPx = parseFloat(s.lyricFontSize);
+      if (isFinite(fsPx)) {
+        var fsClamped = Math.min(72, Math.max(14, fsPx)) + 'px';
+        try { document.documentElement.style.setProperty('--fs-main', fsClamped); } catch (_) {}
+      }
+    }
+    document.body.classList.toggle('paused', !s.playing);
+    var hasLine = s.l1 && String(s.l1).length;
+
+    var ws1 = s.words1;
+    var sig1 = wordsSig(ws1) + '|' + (s.l1 || '');
+    var tr = s.trans1 || '';
+
+    if (sig1 !== cache.t1 || tr !== cache.tr) {
+      cache.t1 = sig1; cache.tr = tr;
+      var html = '';
+      if (hasLine) {
+        html += buildLineRow('', ws1, s.l1);
+        if (tr) html += '<div class="trans">' + htmlEscape(tr) + '</div>';
+      } else {
+        var idle = (s.title || 'Aria') + (s.artist ? ' - ' + s.artist : '');
+        html += '<div class="idle">' + htmlEscape(idle) + '</div>';
+      }
+      bar.innerHTML = html;
+      refreshFillEls();
+    }
+
+    /* ---- 逐字 fill：交给本地 rAF 插值循环（按墙上时钟平滑推进）---- */
+    anim.tms = (typeof s.tms === 'number' && isFinite(s.tms) && s.tms >= 0) ? s.tms : (anim.tms || 0);
+    anim.recvAt = performance.now();
+    anim.words1 = (Array.isArray(s.words1) && s.words1.length) ? s.words1 : null;
+    anim.curStart = (typeof s.curStart === 'number') ? s.curStart : null;
+    anim.nextStart = (typeof s.nextStart === 'number') ? s.nextStart : null;
+    anim.paused = !s.playing;
+    if (anim.paused) {
+      stopAnim();
+      applySmoothFills(anim.tms, anim.words1, anim.curStart, anim.nextStart);
+    } else {
+      startAnim();
+    }
+
+    /* ---- 行变化后自动适配窗口 ---- */
+    if (sig1 !== cache._lastRenderedForResize || tr !== cache._lastTransForResize) {
+      cache._lastRenderedForResize = sig1;
+      cache._lastTransForResize = tr;
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          autoResize();
+        });
+      });
+    }
+  }
+
+  /* 按内容宽/高动态调整窗口：歌词/翻译各自单行不换行、不截断，窗口宽度
+     随最长的一行自适应（上限=屏幕可用宽度）；顶部已留工具条净空带 */
+  var lastH = -1, lastW = -1;
+  function autoResize() {
+    if (!invoke) return;
+    var lineEl = bar.querySelector('.line');
+    var trEl = bar.querySelector('.trans');
+    var lineW = lineEl ? (lineEl.scrollWidth || 0) : 0;
+    var trW = trEl ? (trEl.scrollWidth || 0) : 0;
+    /* ★ idle 标题：.idle 宽度 100% 会“窗口多宽它多宽”形成环依赖，必须用绝对定位
+       span 按标题自身字体实测文本宽度，否则窗口停在最小 220px → 标题被 ellipsis 截断 */
+    var idleW = 0;
+    var idleEl = bar.querySelector('.idle');
+    if (idleEl && idleEl.textContent) {
+      try {
+        var cs = getComputedStyle(idleEl);
+        var tmp = document.createElement('span');
+        tmp.style.cssText =
+          'position:absolute;visibility:hidden;pointer-events:none;white-space:nowrap;' +
+          'font-family:' + cs.fontFamily + ';font-size:' + cs.fontSize + ';' +
+          'font-weight:' + cs.fontWeight + ';letter-spacing:' + cs.letterSpacing + ';';
+        tmp.textContent = idleEl.textContent;
+        bar.appendChild(tmp);
+        idleW = tmp.offsetWidth || 0;
+        tmp.remove();
+      } catch (_e) { idleW = 0; }
+    }
+    var maxW = Math.max(320, window.screen.availWidth - 24);
+    var needH = 34 + bar.offsetHeight + 12; /* 净空带 + 歌词盒 + 底部呼吸 */
+    needH = Math.max(96, Math.min(640, needH));
+    var needW = Math.max(220, Math.min(maxW, Math.ceil(Math.max(lineW, trW, idleW)) + 28));
+    if (Math.abs(needH - lastH) < 6 && Math.abs(needW - lastW) < 12) return;
+    lastH = needH; lastW = needW;
+    /* ★ 绝对定位：X 由锚点（歌词宽度中点）与新宽算出，不掺入当前 X → 不会累积漂移。
+       锚点未知时（冷启动/首次定尺寸）传 null：本次只改尺寸、保持左边缘不挪位，
+       随后用「新左边缘 + 新半宽」确立锚点。 */
+    var wantX = (anchorCenterX === null) ? null : (anchorCenterX - needW / 2);
+    invoke('desktop_lyrics_resize', { w: needW, h: needH, x: wantX }).catch(function () {});
+    if (anchorCenterX === null) captureAnchor();
+  }
+
+  window.addEventListener('storage', function (e) {
+    /* ★ 锁定状态跨窗口同步：主界面解锁/加锁即时反映到本窗口 */
+    if (e.key === 'aria_dtk_locked' && e.newValue !== null) {
+      locked = e.newValue === '1';
+      applyLockedUI();
+      if (locked && invoke) invoke('desktop_lyrics_click_through', { enable: true }).catch(function () {});
+    }
+    if (e.key === 'aria_dtk_state' && e.newValue) {
+      try { applyTheme(JSON.parse(e.newValue)); renderState(JSON.parse(e.newValue)); } catch (_) {}
+    }
+  });
+
+  /* ★ 主题色跟随：主界面推送的 themeColor → 逐字高亮色 */
+  function hexToRgba(hex, a) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return null;
+    var n = parseInt(m[1], 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function applyTheme(st) {
+    if (!st || !st.themeColor) return;
+    try {
+      var c = String(st.themeColor).trim();
+      if (!/^#[0-9a-f]{3,8}$/i.test(c)) return;
+      document.documentElement.style.setProperty('--dtk-hl', c);
+      var g = hexToRgba(c, 0.35);
+      if (g) document.documentElement.style.setProperty('--dtk-hl-glow', g);
+    } catch (_) {}
+  }
+  try {
+    var raw0 = localStorage.getItem('aria_dtk_state');
+    if (raw0) { var st0 = JSON.parse(raw0); applyTheme(st0); renderState(st0); }
+  } catch (_) {}
+
+  /* ---------- 字体缩放 ---------- */
+  var fs = parseFloat(localStorage.getItem('aria_dtk_fs') || '1');
+  if (!isFinite(fs) || fs <= 0) fs = 1;
+  function applyFs() {
+    fs = Math.max(0.5, Math.min(2.5, fs));
+    document.documentElement.style.setProperty('--fs', String(fs));
+    localStorage.setItem('aria_dtk_fs', String(fs));
+    requestAnimationFrame(autoResize);
+  }
+  applyFs();
+  tDec.addEventListener('click', function (e) { e.stopPropagation(); fs -= 0.1; applyFs(); });
+  tInc.addEventListener('click', function (e) { e.stopPropagation(); fs += 0.1; applyFs(); });
+
+  /* ---------- 情感词颜色开关 ---------- */
+  var tEmc = document.getElementById('tEmc');
+  window.__emcOn = localStorage.getItem('aria_dtk_emcolor') === '1';
+  function applyEmcUI() {
+    if (tEmc) tEmc.classList.toggle('on', !!window.__emcOn);
+  }
+  if (tEmc) {
+    tEmc.addEventListener('click', function (e) {
+      e.stopPropagation();
+      window.__emcOn = !window.__emcOn;
+      localStorage.setItem('aria_dtk_emcolor', window.__emcOn ? '1' : '0');
+      applyEmcUI();
+      try { if (window.__lastSt) renderState(window.__lastSt); } catch (_) {}
+    });
+  }
+  applyEmcUI();
+
+  /* ---------- 主界面「设置 → 界面 → 桌面歌词」下发项 ---------- */
+  function applyDtkSettings() {
+    try {
+      var fsPx = parseInt(localStorage.getItem('aria_dtk_fontsize') || '0', 10);
+      if (fsPx >= 20 && fsPx <= 72) {
+        document.documentElement.style.setProperty('--fs-main', fsPx + 'px');
+      }
+      var ff = localStorage.getItem('aria_dtk_fontfamily');
+      if (ff && ff !== 'default') {
+        document.documentElement.style.setProperty('--dtk-font', ff);
+      } else {
+        document.documentElement.style.removeProperty('--dtk-font');
+      }
+      if (localStorage.getItem('aria_dtk_emwords') === '0') {
+        window.__emcOn = false;
+        applyEmcUI();
+        try { if (window.__lastSt) renderState(window.__lastSt); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+  applyDtkSettings();
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'aria_dtk_fontsize' || e.key === 'aria_dtk_fontfamily' || e.key === 'aria_dtk_emwords') {
+      applyDtkSettings();
+    }
+  });
+
+  /* ---------- 锁定 / 关闭 ---------- */
+  tLock.addEventListener('click', function (e) {
+    e.stopPropagation();
+    locked = !locked;
+    localStorage.setItem('aria_dtk_locked', locked ? '1' : '0');
+    applyLockedUI();
+    if (invoke) invoke('desktop_lyrics_click_through', { enable: locked }).catch(function () {});
+  });
+  tClose.addEventListener('click', function (e) {
+    e.stopPropagation();
+    localStorage.setItem('aria_dtk_closed', String(Date.now()));
+    if (invoke) invoke('desktop_lyrics_show', { show: false, x: null, y: null }).catch(function () {});
+  });
+
+  /* ---------- 拖动：OS 原生 start_dragging，彻底无抖动 ---------- */
+  var dragStarted = false;
+  function onBarDown(e) {
+    if (e.button !== 0) return;
+    if (locked) return;
+    if (e.target.closest('#tools')) return;
+    dragStarted = false;
+    var startX = e.clientX, startY = e.clientY;
+    function onMove(ev) {
+      if (!dragStarted && (Math.abs(ev.clientX - startX) > 2 || Math.abs(ev.clientY - startY) > 2)) {
+        dragStarted = true;
+        bar.classList.add('dragging');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        if (invoke) {
+          invoke('desktop_lyrics_start_drag').then(function () {
+            bar.classList.remove('dragging');
+            /* ★ 位置持久化（save-on-change）：轮询窗口位置，与上次持久化位置差
+               >1px 就立即 captureAnchor + savePos。不依赖 start_dragging 的
+               resolve 时序——该时序各平台不一致（有开始即返回、有结束才返回），
+               此前两版分别按两种假设实现，各错一半。 */
+            var lastSavedX = null, lastSavedY = null;
+            invoke('desktop_lyrics_pos').then(function (p) {
+                lastSavedX = p[0]; lastSavedY = p[1];
+            }).catch(function () {});
+            setInterval(function () {
+                if (document.hidden) return;
+                invoke('desktop_lyrics_pos').then(function (p) {
+                    if (lastSavedX === null) { lastSavedX = p[0]; lastSavedY = p[1]; return; }
+                    if (Math.abs(p[0] - lastSavedX) > 1 || Math.abs(p[1] - lastSavedY) > 1) {
+                        lastSavedX = p[0]; lastSavedY = p[1];
+                        captureAnchor();
+                        savePos();
+                    }
+                }).catch(function () {});
+            }, 400);
+          }).catch(function () {
+            bar.classList.remove('dragging');
+          });
+        }
+      }
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: false });
+  }
+  bar.addEventListener('pointerdown', onBarDown);
+
+  function savePos() {
+    /* ★ 窗口不可见（启动期尚未被 showWin 显示/定位）时不保存：
+       此时读取的是创建位（0,0）+ 启动 autoResize 的临时位，持久化会覆盖
+       用户上次保存的正确位置（配合 Rust resize「冷启动不挪位」双保险）。 */
+    if (document.hidden) return;
+    if (!invoke) return;
+    invoke('desktop_lyrics_pos').then(function (p) {
+      try { localStorage.setItem('aria_dtk_pos', JSON.stringify([p[0], p[1]])); } catch (_) {}
+      /* 同时落盘锚点中点：重启后按「中点 − 新宽/2」恢复，跨会话也不漂 */
+      if (anchorCenterX !== null) {
+        try { localStorage.setItem('aria_dtk_center', String(anchorCenterX)); } catch (_) {}
+      }
+    }).catch(function () {});
+  }
+  /* 窗口大小变化（切歌）后再存一次位置，避免偏移 */
+  window.addEventListener('resize', function () {
+    clearTimeout(window._dtk_posT);
+    window._dtk_posT = setTimeout(savePos, 400);
+  });
+  /* ★ 拖动结束已 savePos，再叠加低频定时保存 + 离开/隐藏时保存，
+       确保任何方式移动窗口后重启应用都能恢复到上次位置 */
+  setInterval(function () { if (invoke) savePos(); }, 3000);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) savePos(); });
+  window.addEventListener('pagehide', savePos);
+
+  applyLockedUI();
+  requestAnimationFrame(autoResize);
+})();
+</script>
+</body>
+</html>

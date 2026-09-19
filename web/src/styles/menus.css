@@ -1,0 +1,133 @@
+        .ctx-menu {
+            position: fixed;
+            z-index: 10000;
+            min-width: 160px;
+            background: rgba(32, 34, 46, 0.72) !important;
+            backdrop-filter: blur(28px) saturate(190%) contrast(105%) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(190%) contrast(105%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            border-radius: 14px;
+            padding: 6px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            overflow: hidden;
+            visibility: hidden;
+            opacity: 0;
+            transform: scale(0.95) translateY(-4px) translateZ(0);
+            pointer-events: none;
+            transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0.2s;
+        }
+        .ctx-menu.visible {
+            visibility: visible;
+            opacity: 1;
+            transform: scale(1) translateY(0) translateZ(0);
+            pointer-events: auto;
+            transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0s;
+        }
+
+        .ctx-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            transition: background 0.15s ease;
+            white-space: nowrap;
+        }
+        .ctx-item:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+        .ctx-item svg {
+            flex-shrink: 0;
+            opacity: 0.8;
+        }
+        .ctx-item.danger { color: #ff6b6b; }
+        .ctx-item.danger:hover { background: rgba(255, 80, 80, 0.15); }
+        .ctx-item .ctx-arrow {
+            margin-left: auto;
+            opacity: 0.5;
+        }
+        .ctx-item.active-rate {
+            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
+            color: var(--theme-color);
+        }
+        .ctx-item.active-rate svg { opacity: 1; }
+
+        .ctx-separator {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 4px 8px;
+        }
+
+        /* 确认对话框（iOS 18 毛玻璃） */
+        .ctx-confirm {
+            position: fixed;
+            z-index: 10001;
+            min-width: 260px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            visibility: hidden;
+            opacity: 0;
+            transform: scale(0.92);
+            pointer-events: none;
+            transition: opacity 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0.22s;
+        }
+        .ctx-confirm.visible {
+            visibility: visible;
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+            transition: opacity 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0s;
+        }
+        .ctx-confirm-title {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .ctx-confirm-msg {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            margin-bottom: 14px;
+        }
+        .ctx-confirm-btns {
+            display: flex;
+            gap: 8px;
+        }
+        .ctx-confirm-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.15s ease;
+        }
+        .ctx-confirm-btn.cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .ctx-confirm-btn.cancel:hover { background: rgba(255, 255, 255, 0.18); }
+        .ctx-confirm-btn.confirm {
+            background: rgba(255, 80, 80, 0.5);
+            color: #fff;
+        }
+        .ctx-confirm-btn.confirm:hover { background: rgba(255, 80, 80, 0.7); }
+

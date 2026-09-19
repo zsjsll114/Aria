@@ -1,0 +1,36 @@
+{
+  "name": "aria-player",
+  "version": "2.6.0",
+  "description": "歌词播放器 - 桌面版",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "lint": "eslint web/src scripts tests/js",
+    "lint:fix": "eslint web/src scripts tests/js --fix",
+    "format": "prettier --write \"web/src/**/*.js\"",
+    "format:check": "prettier --check \"web/src/**/*.js\""
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.11.0",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "kuromoji": "^0.1.2",
+    "node-shazam": "^1.2.7",
+    "segmentit": "^2.0.3",
+    "shazamio-core": "^1.3.1"
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "type": "commonjs"
+}

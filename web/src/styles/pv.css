@@ -1,0 +1,1144 @@
+/* ==========================================================================
+   PV 模式 (日系动态海报 / Kinetic Typography PV) 专用样式表 - pv.css
+   融合 上游参考项目 Cadenza (心象海报) 与 Diorama (镜台 3D 景深长镜头) 核心精髓
+   ========================================================================== */
+
+/* 1. 主播放器与设置预览窗容器状态切换 */
+.player-container.view-pv,
+.preview-player.view-pv {
+    position: relative;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+}
+
+/* 隐藏常规歌词滚动面板与封面，仅保留 PV 3D 海报视口 */
+.player-container.view-pv .player-controls-wrapper,
+.player-container.view-pv .lyrics-area-wrapper,
+.preview-player.view-pv .cover-area,
+.preview-player.view-pv .preview-cover-area,
+.preview-player.view-pv .lyrics-container,
+.preview-player.view-pv .preview-lyrics-container,
+.preview-player.view-pv .scroll-container,
+.preview-player.view-pv .preview-lyrics-scroll,
+.preview-player.view-pv .preview-wireframes {
+    display: none !important;
+}
+
+.player-container.view-pv .top-action-buttons {
+    z-index: 100 !important;
+}
+
+/* 底部控制栏：绝对定位在屏幕底部中央 */
+.player-container.view-pv .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+    margin: 0 !important;
+    background: rgba(18, 14, 30, 0.78) !important;
+    backdrop-filter: blur(28px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    border-radius: 24px !important;
+}
+
+/* 2. PV 主渲染视口：开启 3D 空间透视 */
+.pv-view-container {
+    display: none !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 10;
+    perspective: 1200px;
+    transform-style: preserve-3d;
+}
+
+.player-container.view-pv .pv-view-container,
+.preview-player.view-pv .pv-view-container {
+    display: block !important;
+}
+
+/* ★ 间隙 bridge 柔光脉冲：长间隙（·前景半透明等待词·相机预卷漂移）之外，
+   叠加一次扩散柔光呼吸，避免"长空隙之间什么动画都没有" */
+.pv-view-container.pv-bridge-active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 15;
+    background:
+        radial-gradient(62% 48% at 50% 44%, rgba(255, 255, 255, .17), transparent 70%),
+        radial-gradient(42% 30% at 50% 42%, color-mix(in srgb, var(--pv-emotion-color, #ffcc33) 24%, transparent), transparent 68%);
+    animation: pv-bridge-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes pv-bridge-pulse {
+    from { opacity: 0; transform: scale(1.06); }
+    16%  { opacity: 1; }
+    to   { opacity: 0; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pv-view-container.pv-bridge-active::after { animation: none; opacity: 0; }
+}
+body.perf-minimal .pv-view-container.pv-bridge-active::after { display: none; }
+
+/* 3. Layer 0: 3D 丝绸绸缎流动着色器画布 + 科技蓝图经纬网格 */
+.pv-silk-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.pv-blueprint-grid {
+    position: absolute;
+    inset: 0;
+    background-size: 50px 50px;
+    background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.75;
+}
+
+/* 4. Layer 2: 星芒微粒层 */
+.pv-particle-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.pv-particle {
+    position: absolute;
+    color: #ffffff;
+    text-shadow: 0 0 8px #ffffff, 0 0 16px rgba(255, 255, 255, 0.6);
+    user-select: none;
+    pointer-events: none;
+    animation: pv-particle-twinkle ease-in-out infinite alternate;
+}
+
+@keyframes pv-particle-twinkle {
+    0% { opacity: 0.2; transform: scale(0.7) translateY(0px); }
+    50% { opacity: 0.95; transform: scale(1.15) translateY(-8px); }
+    100% { opacity: 0.3; transform: scale(0.8) translateY(-16px); }
+}
+
+/* 5. 顶层 HUD 科技电影标尺与十字准心 */
+.pv-hud-overlay {
+    position: absolute;
+    inset: 18px;
+    pointer-events: none;
+    z-index: 50;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+}
+
+.pv-hud-corner {
+    position: absolute;
+}
+.pv-hud-corner.tl { top: 0; left: 0; }
+.pv-hud-corner.tr { top: 0; right: 0; text-align: right; }
+.pv-hud-corner.bl { bottom: 82px; left: 0; }
+.pv-hud-corner.br { bottom: 82px; right: 0; text-align: right; }
+
+.pv-hud-sub {
+    font-size: 9px;
+    opacity: 0.75;
+}
+
+.pv-hud-axis-h {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15) 20%, rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0.15) 80%, transparent);
+    pointer-events: none;
+}
+
+.pv-hud-crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 22px;
+    height: 22px;
+    transform: translate(-50%, -50%);
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+}
+.pv-hud-crosshair::before, .pv-hud-crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255, 255, 255, 0.4);
+}
+.pv-hud-crosshair::before { top: 10px; left: -6px; width: 34px; height: 1px; }
+.pv-hud-crosshair::after { left: 10px; top: -6px; height: 34px; width: 1px; }
+
+/* 6. 多层 3D 视差容器 */
+.pv-layer,
+.pv-parallax-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    will-change: transform;
+    pointer-events: none;
+    transform-style: preserve-3d;
+}
+
+.pv-layer-bg {
+    z-index: 1;
+}
+
+.pv-layer-deco,
+.pv-layer-outline {
+    z-index: 10;
+}
+
+.pv-layer-stage {
+    z-index: 30;
+}
+
+.pv-layer-hud {
+    z-index: 50;
+}
+
+/* 7. Layer 1: 背景巨型完整关键词镂空描边字 (清晰、霸气展现于底层) */
+.pv-outline-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pv-giant-outline-word {
+    position: absolute;
+    font-size: clamp(140px, 18vw, 260px);
+    font-weight: 900;
+    letter-spacing: -2px;
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+    pointer-events: none;
+    color: transparent !important;
+    opacity: 0.58 !important;
+    -webkit-text-stroke: 2.5px var(--pv-stroke-color, rgba(255, 255, 255, 0.45));
+    font-family: var(--pv-font-family, inherit);
+    transition: opacity 0.45s ease;
+}
+
+/* 几何矢量图层 */
+.pv-geometry-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pv-geo-svg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    overflow: visible;
+    pointer-events: none;
+    opacity: 0.85;
+    /* ★ 上游参考项目 对齐：底部几何整带轻微浮动（上下漂移 + 微转，独立 transform 属性，不覆盖定位） */
+    animation: pv-geo-float 12s ease-in-out var(--gf, 0s) infinite;
+    will-change: translate, rotate;
+}
+
+/* ★ 上游参考项目 fixedGeo 生长动画：
+   - geo-stroke：pathLength=1 + dashoffset → 描边错峰"画出来"
+   - geo-fill  ：实心块淡入
+   - geo-soft  ：排线错峰柔和浮现 */
+.pv-geo-svg .geo-stroke {
+    fill: none;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: pv-geo-draw 0.72s cubic-bezier(0.35, 0, 0.22, 1) var(--gd, 0s) forwards;
+}
+.pv-geo-svg .geo-fill {
+    opacity: 0;
+    animation: pv-geo-fill 0.55s cubic-bezier(0.32, 0, 0.24, 1) var(--gd, 0s) forwards;
+}
+.pv-geo-svg .geo-soft {
+    opacity: 0;
+    animation: pv-geo-soft 0.9s ease var(--gd, 0s) forwards;
+}
+
+@keyframes pv-geo-draw {
+    to { stroke-dashoffset: 0; }
+}
+@keyframes pv-geo-fill {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes pv-geo-soft {
+    from { opacity: 0; }
+    to { opacity: 0.8; }
+}
+@keyframes pv-geo-float {
+    0%, 100% { translate: 0 0; rotate: 0deg; }
+    33%      { translate: 0 -6px; rotate: 0.5deg; }
+    66%      { translate: 0 4px; rotate: -0.4deg; }
+}
+
+/* 8. Layer 2: 前景 2D/3D 海报词云舞台 (支持 2~4 句多句长海报错落流式排版) */
+.pv-poster-container {
+    position: absolute;
+    /* ★ 排版区域（参考实现 tempera region）：cx/cy 决定锚点，translate(-50%,-50%) 中和自身
+       使 region 中心落在 (cx,cy)*100% 处；w 限制内容宽度；rotate 独立于 world transform */
+    left: calc(var(--pv-region-cx, 0.5) * 100%);
+    top: calc(var(--pv-region-cy, 0.5) * 100%);
+    width: min(calc(var(--pv-region-w, 0.92) * 100%), 1150px);
+    max-height: 96%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 36px;
+    user-select: none;
+    pointer-events: none;
+    --pv-emotion-color: #ffcc33;
+    --halftone-size: 6px;
+    transform-style: preserve-3d;
+}
+/* region 对齐：左/右对齐时行群贴向对应侧 */
+.pv-poster-container.pv-region-left .pv-poster-lines { align-items: flex-start; }
+.pv-poster-container.pv-region-right .pv-poster-lines { align-items: flex-end; }
+
+/* 多行错落海报集群容器 (大幅扩充容量，展现长篇宏大排版)
+   ★ 宽度交给父 .pv-poster-container 的 min(92%,1150px)，不再用 92vw（预览小容器会溢出） */
+.pv-poster-lines {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    width: 100%;
+    max-width: none;
+}
+
+/* 每一行海报文本流 (Flex 错落排布)
+   ★ 参考实现 sonnet 式行间错落：--pv-line-shift 由渲染层按行序确定性交替赋值
+   （±10/18/26px，position:relative + left 不影响 wrap 布局流） */
+.pv-poster-line {
+    position: relative;
+    left: var(--pv-line-shift, 0px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+}
+
+.pv-poster-line.pv-line-horizontal {
+    width: 100%;
+}
+
+/* ★ 整行长竖排大柱 (Full-Line Vertical Pillar: 从上至下贯通，挺拔壮观) */
+.pv-poster-line.pv-line-vertical {
+    writing-mode: vertical-lr !important;
+    text-orientation: upright !important;
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 24px !important;
+    letter-spacing: 0.14em !important;
+    min-height: 260px;
+}
+
+/* 构图模版 1: 一竖多横 (Pillar-Wings: 长竖排大柱在左侧，横排句子在右侧错落，符合从左到右阅读习惯) */
+.pv-poster-lines.pv-layout-pillar-wings {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 32px 40px !important;
+}
+
+/* 构图模版 2: 双长柱门楼 (Twin-Pillars: 双长竖排分立两侧，横排跨越中间，从左到右排列) */
+.pv-poster-lines.pv-layout-twin-pillars {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 28px 48px !important;
+}
+
+/* 构图模版 3: 阶梯纯竖排瀑布流 (Vertical-Cascade: 多根长竖排从左向右高低错落) */
+.pv-poster-lines.pv-layout-vertical-cascade {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 36px !important;
+}
+
+/* ★ 阿拉伯语/希伯来语等 RTL 语言专享从右向左排版 */
+.pv-poster-container.pv-is-rtl {
+    direction: rtl !important;
+}
+.pv-poster-container.pv-is-rtl .pv-poster-lines {
+    direction: rtl !important;
+    flex-direction: row-reverse !important;
+}
+.pv-poster-container.pv-is-rtl .pv-poster-line.pv-line-vertical,
+.pv-poster-container.pv-is-rtl .pv-vertical-block {
+    writing-mode: vertical-rl !important;
+}
+
+/* ★ 科技瞄准逐字动态延伸虚线框 (Progressive Kinetic Target Box) */
+.pv-word-target-box {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    width: calc(100% + 16px);
+    height: calc(100% + 12px);
+    min-width: 32px;
+    min-height: 32px;
+    border: 1px dashed rgba(255, 255, 255, 0.28);
+    border-radius: 4px;
+    pointer-events: none;
+    opacity: 0 !important; /* 默认未唱到时完全隐藏 */
+    transition: opacity 0.25s ease, border-color 0.2s ease;
+    z-index: 1;
+}
+
+/* 词块唱响激活时：准心框动态弹入浮现 */
+.pv-word-block.active .pv-word-target-box {
+    opacity: 1 !important;
+    transform: translate(-50%, -50%) scale(1.0);
+}
+
+/* 词块唱毕时：保留微弱科技印记 */
+.pv-word-block.passed .pv-word-target-box {
+    opacity: 0.28 !important;
+    transform: translate(-50%, -50%) scale(1.0);
+}
+
+.pv-emotion-target-box {
+    border: 1px dashed var(--pv-block-color, #ff3366) !important;
+    background: rgba(255, 51, 102, 0.06);
+}
+
+.pv-tb-c {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-color: inherit;
+    border-style: solid;
+}
+.pv-tb-c.tl { top: -2px; left: -2px; border-width: 2px 0 0 2px; }
+.pv-tb-c.tr { top: -2px; right: -2px; border-width: 2px 2px 0 0; }
+.pv-tb-c.bl { bottom: -2px; left: -2px; border-width: 0 0 2px 2px; }
+.pv-tb-c.br { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; }
+
+/* 垂直对焦高亮标尺线 (两翼发光) */
+.pv-tb-bar-v {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 2px;
+    background: #66ffaa;
+    box-shadow: 0 0 8px #66ffaa;
+    border-radius: 1px;
+    opacity: 0.85;
+}
+.pv-tb-bar-v.left { left: -6px; }
+.pv-tb-bar-v.right { right: -6px; }
+
+/* 科技准心中心微标 */
+.pv-tb-crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
+    opacity: 0.35;
+}
+.pv-tb-crosshair::before,
+.pv-tb-crosshair::after {
+    content: '';
+    position: absolute;
+    background: var(--pv-block-color, rgba(255, 255, 255, 0.7));
+}
+.pv-tb-crosshair::before {
+    top: 5px;
+    left: 0;
+    width: 12px;
+    height: 1px;
+}
+.pv-tb-crosshair::after {
+    left: 5px;
+    top: 0;
+    width: 1px;
+    height: 12px;
+}
+
+/* 词块 (Word Block) 容器 */
+.pv-word-block {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    pointer-events: none;
+    font-family: var(--pv-font-family, inherit);
+    transition: transform 0.15s ease-out;
+}
+
+/* ★ 中文/日文横排连续词块：紧密相连，零大空格！ */
+.pv-horizontal-block {
+    margin: 0 1px;
+}
+
+/* ★ 竖排词块：柱子挺拔在横排之间，汉字保持正立，列顺序从左至右 */
+.pv-vertical-block {
+    writing-mode: vertical-lr !important;
+    text-orientation: upright !important;
+    letter-spacing: 0.12em !important;
+    margin: 0 16px !important;
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* ★★ 竖排流中的纯拉丁词块（上游 §6：拉丁整词不拆字）：
+   回归原生竖排文本流（vertical-lr + sideways + inline 字符）——字母整体顺时针
+   侧躺、按字符宽度连续推进（间距 = 横排词距），视觉即「横排单词旋转 90°」
+   放进竖排流，逐字卡拉OK仍按词内时间轴从首字母亮到尾字母。
+   用户反馈：默认的 upright/block 堆叠机制会把 word 拆成 w/o/r/d 直立堆叠
+   失去词形；CJK/假名/谚文词块不加此类、保持直立竖排不变。 */
+.pv-vertical-block.pv-latin-sideways {
+    writing-mode: vertical-lr !important;
+    text-orientation: sideways !important;
+    display: block !important;          /* 词块内部回归自然文本流（放弃逐字 block 堆叠） */
+    line-height: 1 !important;          /* 竖排流中 = 柱宽 1em，与 CJK 柱同宽感 */
+    letter-spacing: 0.02em !important;
+    margin: 0 16px !important;
+}
+.pv-vertical-block.pv-latin-sideways .pv-char {
+    display: inline !important;         /* 文本流连续排布 → sideways 连续词形 */
+    line-height: normal !important;
+}
+
+/* 单词之间的空格留白 (西文专属清晰单词间距) */
+.pv-word-space {
+    display: inline-block;
+    width: 0.46em;
+    min-width: 8px;
+}
+
+/* ★★★ Cadenza 同款字素三态生命周期流转 (Three-state Lifecycle) ★★★ */
+
+/* ★★★ Cadenza 同款字素三态生命周期流转 (Three-state Lifecycle) ★★★ */
+
+/* 1. 基础单字符节点 */
+.pv-char {
+    display: inline-block;
+    white-space: pre;
+    pointer-events: none;
+    position: relative; /* ★ 供逐字粒子 burst 定位基准 */
+    transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), filter 0.18s ease;
+}
+
+/* ★★★ 参考实现 sonnet 粒子迸发（对齐 sonnetGuides shapeBurst）：字符唱响(turn active)瞬间，
+   小几何体沿随机方位角直线迸发飞出 + 立方缓出 + 淡出 + 轻微缩小/小角度扫旋，
+   寿命单向 0.9~1.4s 渐消——与旧「无限公转轨道」不同，上游参考项目 是一去不返的迸发
+   （burstProgress 0.3→1.0 直线位移 + alpha 线性渐消），而非绕字符公转的机械环。
+   perf-minimal / prefers-reduced-motion 下由 JS 侧跳过不生成。 */
+.pv-char-burst-p {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--ps, 3px);
+    height: var(--ps, 3px);
+    margin: calc(var(--ps, 3px) / -2) 0 0 calc(var(--ps, 3px) / -2); /* 以字符中心为迸发原点 */
+    pointer-events: none;
+    z-index: 30;
+    will-change: transform, opacity; /* 一次性飞行：合成层只在这 1s 内存在，结束时 JS 移除 */
+    background: var(--pc, #ffcc33);
+    box-shadow: 0 0 var(--pg, 8px) var(--pc, #ffcc33),
+                0 0 calc(var(--pg, 8px) * 2) var(--pc, #ffcc33);
+    animation: pv-burst-fly var(--bd, 1.1s) cubic-bezier(0.22, 1, 0.36, 1) var(--bl, 0s) forwards;
+}
+/* 形状：dot 尘点 / square 圆角小方块 / dia 菱形 / cross 双线十字（参考实现 sonnet 四种随机） */
+.pv-char-burst-p.kind-dot { border-radius: 50%; }
+.pv-char-burst-p.kind-square { border-radius: 2px; }
+.pv-char-burst-p.kind-dia { border-radius: 2px; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+/* cross：本体透明，两条正交细条承担绘制（父元素动画 transform 仍随整体飞行） */
+.pv-char-burst-p.kind-cross {
+    background: transparent;
+    box-shadow: none;
+}
+.pv-char-burst-p.kind-cross::before,
+.pv-char-burst-p.kind-cross::after {
+    content: '';
+    position: absolute;
+    background: var(--pc, #ffcc33);
+    box-shadow: 0 0 var(--pg, 8px) var(--pc, #ffcc33);
+}
+.pv-char-burst-p.kind-cross::before {
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 1.6px;
+    transform: translateY(-50%);
+}
+.pv-char-burst-p.kind-cross::after {
+    left: 50%;
+    top: 0;
+    width: 1.6px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+/* 迸发飞行：起点字符中心快速亮起（10% 达峰）→ 立方缓出直线飞向 (--tx,--ty) → 淡出/缩小/扫旋 */
+@keyframes pv-burst-fly {
+    0% {
+        transform: translate(0, 0) scale(1.2) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: var(--pa, 0.85);
+    }
+    100% {
+        transform: translate(var(--tx, 1em), var(--ty, 0em)) scale(0.6) rotate(var(--tr, 0deg));
+        opacity: 0;
+    }
+}
+
+/* 状态 1: waiting (未唱到：完全隐藏不可见，绝不提前显示任何虚影/暗影) */
+.pv-char.waiting {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(8px) scale(0.92) !important;
+    color: transparent !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+}
+
+/* 状态 2: active (非情感词普通唱响：高亮色发光) */
+.pv-char.active {
+    visibility: visible !important;
+    opacity: 1 !important;
+    filter: drop-shadow(0 0 16px var(--pv-highlight-color, var(--pv-emotion-color, #ffcc33))) !important;
+    transform: translateY(0px) scale(1.12) !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: var(--pv-highlight-color, #ffffff) !important;
+    text-shadow: 0 0 14px var(--pv-highlight-color, #ffffff), 0 0 28px var(--pv-highlight-color, var(--pv-emotion-color, #ffcc33)) !important;
+    z-index: 20 !important;
+}
+
+/* 状态 3: passed / sung (唱毕：保留柔和白色微光，绝不覆盖网点，常驻舞台) */
+.pv-char.passed,
+.pv-char.sung {
+    visibility: visible !important;
+    opacity: 0.92 !important;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.4)) !important;
+    transform: translateY(0px) scale(1.0) !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: rgba(255, 255, 255, 0.95) !important;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.6) !important;
+    z-index: 5 !important;
+}
+
+/* ★★★ 上游参考项目 renderHints (lyricRenderHints.js)：短行/微行降级揭示 ★★★
+   --- instant 揭示：极短行(<100ms) 全行瞬时上屏，不做光束扫描、不留长 glow --- */
+.pv-line-micro .pv-char,
+.pv-line-short .pv-char,
+.pv-reveal-instant .pv-char {
+    transition: opacity 0.1s ease, transform 0.1s cubic-bezier(0.2, 0.9, 0.3, 1.15), filter 0.1s ease;
+}
+.pv-char.pv-char-instant.active {
+    filter: none !important;
+    text-shadow: 0 0 5px var(--pv-highlight-color, #fff) !important;
+    transform: translateY(0px) scale(1.06) !important;
+}
+.pv-char.pv-char-instant.passed,
+.pv-char.pv-char-instant.sung {
+    opacity: 0.85 !important;
+    filter: none !important;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.5) !important;
+}
+.pv-char-emotion.pv-char-instant.active {
+    filter: none !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 calc(var(--emotion-glow, 12px) * 0.35) color-mix(in srgb, var(--pv-char-color, #ff3366) 30%, transparent) !important;
+}
+
+/* --- fast 揭示：<180ms 行快进，过渡压缩到 ~60% --- */
+.pv-reveal-fast .pv-char {
+    transition-duration: 0.12s, 0.14s, 0.12s !important;
+}
+
+/* ★ 行级自行离场已移除（用户反馈：上一句不该提前消散，应等整个句组唱完，
+   由场景级 transitionToNode 的 handoff/pv-phrase-exit-fade 统一处理） */
+
+/* ★★★ AI 情感词专属：仅情感词唱响时才覆盖半调网点 (Halftone Dots) ★★★ */
+.pv-char-emotion.waiting {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+.pv-char-emotion.active {
+    visibility: visible !important;
+    opacity: 1 !important;
+    filter: drop-shadow(0 0 var(--emotion-glow, 12px) color-mix(in srgb, var(--pv-char-color, #ff3366) 35%, transparent)) !important;
+    transform: translateY(0px) scale(1.18) !important;
+    color: var(--pv-char-color, #ff3366) !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 calc(var(--emotion-glow, 12px) * 0.8) color-mix(in srgb, var(--pv-char-color, #ff3366) 40%, transparent) !important;
+    z-index: 25 !important;
+}
+.pv-char-emotion.passed,
+.pv-char-emotion.sung {
+    visibility: visible !important;
+    opacity: 0.95 !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    color: var(--pv-char-color, #ff3366) !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 calc(var(--emotion-glow, 12px) * 0.4) color-mix(in srgb, var(--pv-char-color, #ff3366) 25%, transparent) !important;
+}
+
+/* 横排样式 */
+.pv-horizontal-block {
+    writing-mode: horizontal-tb;
+    direction: ltr;
+}
+/* ★ RTL 歌词的横排词块必须跟随 rtl（用户反馈：PV 竖排正确但横排词块不正确——
+   根因就是这条 direction:ltr 硬编码把词块内字符锁成左→右，高亮也从左推进）。
+   pv-is-rtl 时覆盖为 rtl：词块内字符按 bidi 反排，点亮自然从右往左。 */
+.pv-poster-container.pv-is-rtl .pv-horizontal-block {
+    direction: rtl;
+    unicode-bidi: plaintext;
+}
+
+/* 竖排样式 (紧凑行高、字母无多余上下间隙、词距分明) */
+.pv-vertical-block {
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    margin: 0 16px !important;
+    line-height: 0.86 !important;
+    writing-mode: horizontal-tb !important;
+    direction: ltr !important;
+}
+
+.pv-vertical-block .pv-char {
+    display: block !important;
+    text-align: center !important;
+    margin: 0 !important;
+    line-height: 0.86 !important;
+}
+
+/* ★ 强烈两极化字阶样式 (Dramatic Scale Contrast)
+   ★ vw 基准针对全屏主播放器；小尺寸预览容器通过 --pv-dens 密度系数整体缩放，
+     --pv-scene-font-scale 为 shot 级字号缩放（参考实现 tempera region.fontScale） */
+.pv-scale-hero {
+    font-size: calc(var(--pv-dens, 1) * var(--pv-scene-font-scale, 1) * clamp(62px, 8.8vw, 112px)) !important;
+    font-weight: 900 !important;
+    line-height: 1.05 !important;
+    letter-spacing: -1.5px !important;
+}
+
+/* ★ hero 竖柱（上游参考项目 editorial 变体 4，用户批准的结构性混排）：
+   横排页里 hero 词转竖柱——柱高 = 字数 × 字号，全尺寸易爆高，字号降档约 0.62x，
+   行高收紧（advance ≈ fontSize×0.9，上游参考项目 竖柱规范）；瞄准框竖排拉高逻辑自动适配 */
+.pv-word-block.pv-scale-hero.pv-vertical-block {
+    font-size: calc(var(--pv-dens, 1) * var(--pv-scene-font-scale, 1) * clamp(40px, 5.4vw, 70px)) !important;
+    line-height: 0.92 !important;
+    letter-spacing: 0 !important;
+}
+
+.pv-scale-major {
+    font-size: calc(var(--pv-dens, 1) * var(--pv-scene-font-scale, 1) * clamp(30px, 3.8vw, 52px)) !important;
+    font-weight: 800 !important;
+    line-height: 1.18 !important;
+}
+
+.pv-scale-minor {
+    font-size: calc(var(--pv-dens, 1) * var(--pv-scene-font-scale, 1) * clamp(17px, 2.0vw, 28px)) !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    opacity: 0.65;
+}
+
+/* 括号副词标签 */
+.pv-bracket-text {
+    font-size: clamp(14px, 1.8vw, 22px);
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.75);
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+}
+/* 9. PV 模式底栏翻译区域 (固定在底部控制栏正上方，复用飞入模式相同的字体、颜色与动效) */
+.pv-translation-area {
+    display: block;
+    position: absolute;
+    bottom: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 700px;
+    text-align: center;
+    z-index: 60;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+}
+.pv-translation-area .flyin-translation-text {
+    font-size: var(--flyin-trans-size, 15px);
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 4px;
+    line-height: 1.5;
+    min-height: 1.5em;
+}
+.pv-translation-area .flyin-romaji-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+    min-height: 1.4em;
+}
+
+/* 10. 入场与消散动画 */
+/* ★ P3：PV 海报元素的内联 transform 承载世界坐标定位，
+   动效一律使用独立变换属性（translate / scale）与 opacity / filter / clip-path，绝不覆盖 transform 本身。 */
+.pv-phrase-enter {
+    animation: pv-pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes pv-pop-in {
+    0% {
+        opacity: 0;
+        filter: blur(12px);
+        /* ★ 入场向量按 shot profile（--pv-enter-x/y 单位 em，与字号联动） */
+        translate: var(--pv-enter-x, 0) var(--pv-enter-y, 1.2em);
+        scale: 0.97;
+    }
+    60% {
+        opacity: 0.9;
+        filter: blur(2px);
+    }
+    100% {
+        opacity: 1;
+        filter: blur(0px);
+        translate: 0 0;
+        scale: 1;
+    }
+}
+
+/* ★★★ 参考实现 tempera 入场方式变体：mood=loud→swing（小幅旋转回弹），
+   mood=quiet→stamp（原地按印章压平，不位移），neutral 走默认 pop-in。
+   只动独立变换属性、不碰 opacity（poster 已负责整体淡入，避免双重淡出效果）。 */
+.pv-enter-swing {
+    animation: pv-enter-swing 0.58s cubic-bezier(0.18, 0.89, 0.32, 1.16) forwards;
+}
+@keyframes pv-enter-swing {
+    0% {
+        rotate: -2.4deg;
+        scale: 0.94;
+        translate: var(--pv-enter-x, 0) calc(var(--pv-enter-y, 1.2em) * 0.6);
+    }
+    55% {
+        rotate: 1.5deg;
+        scale: 1.02;
+    }
+    78% {
+        rotate: -0.7deg;
+        scale: 0.99;
+    }
+    100% {
+        rotate: 0deg;
+        scale: 1;
+        translate: 0 0;
+    }
+}
+.pv-enter-stamp {
+    animation: pv-enter-stamp 0.34s cubic-bezier(0.25, 1, 0.4, 1) forwards;
+}
+@keyframes pv-enter-stamp {
+    0% {
+        scale: 0.9;
+        filter: blur(4px);
+    }
+    62% {
+        scale: 1.05;
+    }
+    100% {
+        scale: 1;
+        filter: blur(0px);
+    }
+}
+
+/* 上一句消散变体一：数字故障裂解（多段切片 + 红/青 RGB 色散 + 水平抖动） */
+.pv-phrase-exit-glitch {
+    animation: pv-glitch-out 0.36s linear forwards;
+    pointer-events: none;
+}
+
+@keyframes pv-glitch-out {
+    0% {
+        opacity: 1;
+        filter: blur(0px);
+        clip-path: none;
+        translate: 0 0;
+    }
+    15% {
+        opacity: 0.95;
+        filter: blur(0px) drop-shadow(-5px 0 rgba(255, 0, 60, 0.75)) drop-shadow(5px 0 rgba(0, 229, 255, 0.75));
+        clip-path: polygon(0 8%, 100% 8%, 100% 38%, 0 34%, 0 72%, 100% 76%, 100% 100%, 0 100%);
+        translate: -5px 0;
+    }
+    30% {
+        opacity: 0.85;
+        filter: blur(1px) drop-shadow(4px 0 rgba(255, 0, 60, 0.6)) drop-shadow(-4px 0 rgba(0, 229, 255, 0.6));
+        clip-path: polygon(0 0, 88% 0, 92% 30%, 100% 30%, 100% 62%, 4% 64%, 0 100%);
+        translate: 4px 0;
+    }
+    45% {
+        opacity: 0.75;
+        filter: blur(2px) drop-shadow(-3px 0 rgba(255, 0, 60, 0.5)) drop-shadow(3px 0 rgba(0, 229, 255, 0.5));
+        clip-path: polygon(0 14%, 96% 10%, 100% 44%, 2% 46%, 0 78%, 100% 82%, 100% 100%, 0 100%);
+        translate: -3px 1px;
+    }
+    60% {
+        opacity: 0.55;
+        filter: blur(5px) drop-shadow(3px 0 rgba(255, 0, 60, 0.35)) drop-shadow(-3px 0 rgba(0, 229, 255, 0.35));
+        clip-path: polygon(0 24%, 100% 20%, 100% 56%, 0 58%, 0 90%, 100% 92%, 100% 100%, 0 100%);
+        translate: 2px 0;
+    }
+    80% {
+        opacity: 0.25;
+        filter: blur(9px) drop-shadow(2px 0 rgba(255, 0, 60, 0.2)) drop-shadow(-2px 0 rgba(0, 229, 255, 0.2));
+        clip-path: polygon(0 40%, 100% 36%, 100% 70%, 0 74%, 0 100%);
+        translate: -1px 0;
+    }
+    100% {
+        opacity: 0;
+        filter: blur(16px);
+        clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%);
+        translate: 0 0;
+    }
+}
+
+/* 上一句消散变体二：柔和渐隐上浮（模糊 + 上飘 + 轻微放大后消散） */
+.pv-phrase-exit-fade {
+    animation: pv-fade-out 0.48s cubic-bezier(0.33, 0, 0.67, 1) forwards;
+    pointer-events: none;
+}
+
+@keyframes pv-fade-out {
+    0% {
+        opacity: 1;
+        filter: blur(0px);
+        translate: 0 0;
+        scale: 1;
+    }
+    100% {
+        opacity: 0;
+        filter: blur(12px);
+        translate: 0 -14px;
+        scale: 1.03;
+    }
+}
+
+/* P3.5 场景重叠滑出（上游参考项目 handoff）：
+   切场景时新海报从「衔接方向」对侧滑入、旧海报原地交叠后沿反向滑出尾段渐隐，
+   两者在中段重叠形成交棒层次。方向由 .phv-* 类上的 CSS 变量决定，
+   内联 world 坐标仍在 transform 上，动效独立走 translate/opacity/filter 不覆盖定位。 */
+.phv-right.pv-phrase-enter-handoff { --phv-ex: 150px;  --phv-ey: 0; }
+.phv-left.pv-phrase-enter-handoff  { --phv-ex: -150px; --phv-ey: 0; }
+.phv-down.pv-phrase-enter-handoff  { --phv-ex: 0;      --phv-ey: 120px; }
+.phv-up.pv-phrase-enter-handoff    { --phv-ex: 0;      --phv-ey: -120px; }
+.phv-right.pv-phrase-handoff-out   { --phv-ox: -140px; --phv-oy: 0; }
+.phv-left.pv-phrase-handoff-out    { --phv-ox: 140px;  --phv-oy: 0; }
+.phv-down.pv-phrase-handoff-out    { --phv-ox: 0;      --phv-oy: -110px; }
+.phv-up.pv-phrase-handoff-out      { --phv-ox: 0;      --phv-oy: 110px; }
+
+.pv-phrase-enter-handoff {
+    /* ★ 交接时长按 shot 时长 ×0.3（钳 0.4~1.1s），上游参考项目 handoff 规则 */
+    animation: pv-handoff-in var(--pv-handoff-dur, 0.5s) cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: translate, opacity;
+}
+.pv-phrase-handoff-out {
+    animation: pv-handoff-out var(--pv-handoff-dur, 0.5s) cubic-bezier(0.33, 0, 0.67, 0) both;
+    pointer-events: none;
+    will-change: translate, opacity;
+}
+
+@keyframes pv-handoff-in {
+    0% {
+        opacity: 0.12;
+        filter: blur(7px);
+        translate: var(--phv-ex, 150px) var(--phv-ey, 0);
+        scale: 1.015;
+    }
+    60% {
+        opacity: 1;
+        filter: blur(0px);
+        translate: 0 0;
+        scale: 1;
+    }
+    100% {
+        opacity: 1;
+        filter: blur(0px);
+        translate: 0 0;
+        scale: 1;
+    }
+}
+
+@keyframes pv-handoff-out {
+    0% {
+        opacity: 1;
+        filter: blur(0px);
+        translate: 0 0;
+        scale: 1;
+    }
+    30% {
+        opacity: 0.95;
+        filter: blur(1px);
+        translate: 0 0;
+    }
+    100% {
+        opacity: 0;
+        filter: blur(9px);
+        translate: var(--phv-ox, -140px) var(--phv-oy, 0);
+        scale: 0.96;
+    }
+}
+
+/* ==========================================================================
+   性能分档：.pv-no-bloom（PVEngine.setPerformanceConfig 下发）
+   关闭唱响/唱毕字符的发光合成（drop-shadow / text-shadow glow 每帧开销最大的部分）
+   ========================================================================== */
+.pv-no-bloom .pv-char.active,
+.pv-no-bloom .pv-char.passed,
+.pv-no-bloom .pv-char.sung,
+.pv-no-bloom .pv-char-emotion.active,
+.pv-no-bloom .pv-char-emotion.passed,
+.pv-no-bloom .pv-char-emotion.sung {
+    filter: none !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+/* 极简档：PV 入口 blur 动画也降级为纯透明度（无 filter 过渡） */
+body.perf-minimal .pv-phrase-enter,
+body.perf-minimal .pv-phrase-exit-fade,
+body.perf-minimal .pv-phrase-exit-blur,
+body.perf-minimal .pv-phrase-enter-handoff,
+body.perf-minimal .pv-phrase-handoff-out,
+body.perf-minimal .pv-enter-swing,
+body.perf-minimal .pv-enter-stamp,
+body.perf-minimal .pv-char-particle,
+body.perf-minimal .pv-char-orbit,
+body.perf-minimal .pv-char-orbit-rot,
+body.perf-minimal .pv-char-orbit-rot::before,
+body.perf-minimal .pv-geo-svg,
+body.perf-minimal .pv-geo-svg * {
+    animation: none !important;
+}
+
+/* P3：切行瞬间装饰层轻微压暗回弹，强化"换页"节拍感 */
+.pv-deco-swap {
+    animation: pv-deco-dip 0.42s ease both;
+}
+
+@keyframes pv-deco-dip {
+    0% { opacity: 1; }
+    35% { opacity: 0.22; }
+    100% { opacity: 1; }
+}
+
+/* 无障碍：偏好减少动态时压缩全部过渡动画 */
+@media (prefers-reduced-motion: reduce) {
+    .pv-phrase-enter,
+    .pv-phrase-exit-glitch,
+    .pv-phrase-exit-fade,
+    .pv-phrase-enter-handoff,
+    .pv-phrase-handoff-out,
+    .pv-enter-swing,
+    .pv-enter-stamp,
+    .pv-char-particle,
+    .pv-char-orbit,
+    .pv-char-orbit-rot,
+    .pv-char-orbit-rot::before,
+    .pv-geo-svg,
+    .pv-geo-svg *,
+    .pv-deco-swap {
+        animation-duration: 0.01ms !important;
+    }
+}
+
+/* 11. PV 模式弹窗卡片缩略预览图 */
+.view-mode-preview-pv {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: radial-gradient(circle at 40% 40%, rgba(56, 9, 79, 0.75), rgba(22, 6, 43, 0.85) 60%, rgba(7, 5, 14, 0.95));
+}
+.view-mode-mock-pv-outline {
+    position: absolute;
+    font-size: 56px;
+    font-weight: 900;
+    color: transparent;
+    -webkit-text-stroke: 1.2px rgba(255, 255, 255, 0.2);
+    transform: translate(-10px, -5px);
+    pointer-events: none;
+}
+.view-mode-mock-pv-box {
+    position: relative;
+    padding: 6px 16px;
+    border: 1px dashed rgba(255, 204, 51, 0.6);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(4px);
+}
+.view-mode-mock-pv-text {
+    font-size: 14px;
+    font-weight: 800;
+    color: #ffcc33;
+    text-shadow: 0 0 10px rgba(255, 204, 51, 0.9);
+}
+.view-mode-mock-pv-star {
+    position: absolute;
+    top: 18px;
+    right: 24px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    text-shadow: 0 0 6px #fff;
+    animation: pv-particle-twinkle 2s infinite alternate;
+}

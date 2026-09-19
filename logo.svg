@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- 主体：圆角方块容器，象征播放器窗口 -->
+  <rect x="8" y="8" width="48" height="48" rx="14"
+        fill="url(#lumiGrad)" opacity="0.15"/>
+  <!-- 声波弧线（歌词流动） -->
+  <path d="M20 40c4-10 8-16 12-16s8 6 12 16"
+        stroke="url(#lumiGrad)" stroke-width="4"
+        stroke-linecap="round" fill="none"/>
+  <path d="M24 44c3-7 5-11 8-11s5 4 8 11"
+        stroke="url(#lumiGrad)" stroke-width="4"
+        stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- 高光圆点（音符头） -->
+  <circle cx="44" cy="22" r="5" fill="url(#lumiGrad)"/>
+  <defs>
+    <linearGradient id="lumiGrad" x1="8" y1="8" x2="56" y2="56"
+                    gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD24A"/>
+      <stop offset="1" stop-color="#FF7A45"/>
+    </linearGradient>
+  </defs>
+</svg>

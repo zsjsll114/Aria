@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Aria">
+  <defs>
+    <!-- 4 段独立渐变，色相在莫兰迪区间内连贯过渡（粉 → 橙 → 黄 → 绿 → 青 → 蓝 → 紫） -->
+    <linearGradient id="grad-top" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#D49890"/>
+      <stop offset="50%"  stop-color="#D4A285"/>
+      <stop offset="100%" stop-color="#D6B088"/>
+    </linearGradient>
+
+    <linearGradient id="grad-right" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   stop-color="#D6B088"/>
+      <stop offset="35%"  stop-color="#B4B286"/>
+      <stop offset="65%"  stop-color="#9CB89A"/>
+      <stop offset="100%" stop-color="#A89AC0"/>
+    </linearGradient>
+
+    <linearGradient id="grad-mid" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#A8C09A"/>
+      <stop offset="50%"  stop-color="#9CB8A8"/>
+      <stop offset="100%" stop-color="#8EB4B4"/>
+    </linearGradient>
+
+    <linearGradient id="grad-bottom" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#8EB4B4"/>
+      <stop offset="50%"  stop-color="#8AAEC0"/>
+      <stop offset="100%" stop-color="#9098C0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 字母 a：4 段圆角拼贴（顶横条 / 右竖条 / 中横条 / 底圆肚），
+       每段使用不同方向的渐变，色相位置决定颜色，整体连贯过渡。
+       段间留 6px 间隙制造「分层」质感。 -->
+  <g>
+    <!-- 顶横条（a 的"帽子"） -->
+    <rect x="120" y="80"  width="260" height="72" rx="36" fill="url(#grad-top)"/>
+
+    <!-- 右竖条（a 的"脊椎"，贯通） -->
+    <rect x="314" y="80"  width="72"  height="352" rx="36" fill="url(#grad-right)"/>
+
+    <!-- 中横条（a 的"横杠"） -->
+    <rect x="120" y="204" width="260" height="72" rx="36" fill="url(#grad-mid)"/>
+
+    <!-- 底圆肚（a 的"圆肚"） -->
+    <ellipse cx="220" cy="364" rx="106" ry="76" fill="url(#grad-bottom)"/>
+  </g>
+
+  <!-- 底部小写 a 文字标签 -->
+  <text x="256" y="492"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', 'PingFang SC', sans-serif"
+        font-size="60" font-weight="400" fill="#2a2a2a" text-anchor="middle"
+        letter-spacing="-0.5">a</text>
+</svg>

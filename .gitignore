@@ -1,0 +1,102 @@
+# ======== Aria 播放器 .gitignore ========
+# 原则：只入库源码/文档/脚本/回归测试；构建产物、运行时数据、敏感文件一律排除。
+# 注意：gitignore 不支持行内注释，注释必须独占一行（行内 # 会被当模式内容）。
+
+# ---------- 构建产物（可再生） ----------
+src-tauri/target/
+build/
+dist/
+dist_runtime/
+docs/dist/
+new_style/
+backup_before_pv/
+
+# ---------- 依赖 ----------
+node_modules/
+web/node_modules/
+# _eval/ 整目录为运行时依赖（第三方音源 API 镜像），不再入库：
+# 全新 clone 用 scripts/setup-vendors.bat 重建（含本仓库 patches/ 内的本地补丁）
+_eval/
+# web/src/vendor/ 下的 segmentit.js / kuromoji.js（压缩单行构建，共约 4MB）入库，
+# 但 kuromoji 的 .dat.gz 字典约 17MB 不入库：由 scripts/vendor-kuromoji-dict.bat
+# 从 node_modules/kuromoji/dict 复制（npm install 已提供），缺失时前端自动退回 CDN。
+web/src/vendor/kuromoji/dict/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.spec
+# server.spec 是 PyInstaller 打包配置（build_portable.bat / docs/打包分发方案.md 依赖），必须入库
+!server.spec
+
+# ---------- 运行时/本地数据 ----------
+cache/
+local_music/
+models/
+user_config.json
+version.json
+build_info.json
+
+# ---------- 敏感文件（勿入库） ----------
+kugou_session.json
+_vk_test.json
+recognize_cache.json
+selfhost_login.json
+qq_session*.json
+*.session
+
+# ---------- AI 协作工作区（不入库） ----------
+.workbuddy/
+.trae/
+.claude/
+.agents/
+
+# ---------- 音乐下载工具输出 ----------
+musicdl_outputs/
+
+# ---------- 日志 ----------
+*.log
+debug.log
+server.log
+aria_*.log
+
+# ---------- 调试遗迹 / 一次性脚本 ----------
+# 1MB 测试音频已移出跟踪（git rm --cached），本地保留给 tools/test_real_recognition.js 用
+tools/real_song.mp3
+tools/real_test.mp3
+probe_*.py
+*_probe.py
+repro_*.py
+verify_*.py
+scratch_*.js
+_t.js
+_idx.html
+test_*.mjs
+chunk*.pid
+stall_*.mp3
+node_shazam_temp.pcm
+_verify_sample.mp3
+aria_boot_*.png
+%~dp0tmp_repos.json
+# 临时/诊断产物归档目录（不入库；测试与工具类脚本在 tests/、tools/ 正常跟踪）
+scratch/
+
+# ---------- macOS 遗留（Windows 项目中误入的 .app bundle） ----------
+test/
+Contents/
+
+# ---------- 系统/编辑器 ----------
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/
+server_debug.log
+
+# ---------- 临时/手跑探针 ----------
+# _tmp_* 是随手写在项目根的临时脚本：不入库、无版本历史，误删即不可恢复。
+# 要留下复用价值的探针请放 scripts/probes/（那目录是入库的）。
+_tmp_*
+_tmp_*/
+
