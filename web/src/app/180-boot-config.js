@@ -155,7 +155,14 @@ async function bootApp() {
             try { initSettingsPanel(); } catch(e) { logError('bootConfig', 'initSettingsPanel error:', e); }
             /* 设置 → 关于：作者链接呼出系统浏览器（Tauri opener / 网页回退） */
             try { initAboutLinks(); } catch(e) { logWarn('bootConfig', 'initAboutLinks 跳过:', e); }
-            try { initCustomFonts(); } catch(e) { logError('bootConfig', 'initCustomFonts error:', e); }
+            /* ★ 性能（2026-09-20）：自定义字体同步（IndexedDB 全量 + /api/font/list 逐个
+               fetch+FontFace 解析，仓库内置字体约 100MB）挪出启动关键路径——低端机冷启动
+               少几十次大 buffer 解析卡顿；延迟到浏览器空闲时执行，字体下拉打开前必然就绪
+               （下拉展示本就晚于设置面板首次交互，且 family 缺失时 CSS 回退链无缝兜底） */
+            const scheduleFontInit = (fn) => (typeof requestIdleCallback === 'function')
+                ? requestIdleCallback(fn, { timeout: 4000 })
+                : setTimeout(fn, 1500);
+            try { scheduleFontInit(() => { try { initCustomFonts(); } catch(e) { logError('bootConfig', 'initCustomFonts error:', e); } }); } catch(e) { logError('bootConfig', 'initCustomFonts schedule error:', e); }
             /* 打开应用即自动签到酷狗 VIP（静默；启用+已登录+今日未签才触发） */
             try { autoKugouCheckinOnce(); } catch(e) { logWarn('bootConfig', '启动签到跳过:', e); }
             /* 右上角「自建服务」入口：更新未登录角标 */
