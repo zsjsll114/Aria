@@ -336,7 +336,7 @@
             <div class="flyin-romaji-text" id="flyinRomaji"></div>
         </div>
 
-        <!-- 歌词模式下的底部控制栏 -->
+        <!-- 拾光 · Lyrics下的底部控制栏 -->
         <div class="bottom-control-bar" id="bottomControlBar">
             <!-- 左侧：歌曲信息卡片 -->
             <div class="bottom-song-card">
@@ -529,7 +529,7 @@
                         </div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">歌词模式</div>
+                        <div class="view-mode-name">拾光 · Lyrics</div>
                         <div class="view-mode-desc">全屏歌词沉浸体验，底部迷你控制栏</div>
                     </div>
                     <div class="view-mode-check">
@@ -552,7 +552,7 @@
                         </div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">飞入与渐显</div>
+                        <div class="view-mode-name">飞白 · Fly-In</div>
                         <div class="view-mode-desc">深色极简，逐字飞入发光，沉浸式体验</div>
                     </div>
                     <div class="view-mode-check">
@@ -575,7 +575,7 @@
                         <div class="view-mode-mock-wc-item" style="top:84%;left:18%;width:40px;height:6px;"></div>
                         <div class="view-mode-mock-wc-item blur" style="top:88%;right:15%;width:26px;height:4px;"></div>
                     </div>                    <div class="view-mode-info">
-                        <div class="view-mode-name">词云跟焦</div>
+                        <div class="view-mode-name">云涌 · WordCloud</div>
                         <div class="view-mode-desc">二维词云排版，镜头阻尼跟焦，逐字填充</div>
                     </div>
                     <div class="view-mode-check">
@@ -595,7 +595,7 @@
                         <div class="view-mode-mock-pv-star"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 6.2L21 9l-5 4.4 1.5 6.6L12 16.6 6.5 20l1.5-6.6L3 9l6.6-.8z"/></svg></div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">动态海报 / PV模式</div>
+                        <div class="view-mode-name">绘卷 · PV</div>
                         <div class="view-mode-desc">日系排版，网点半调质感，平滑运镜与多层视差</div>
                     </div>
                     <div class="view-mode-check">
@@ -621,7 +621,7 @@
                         <div class="vm-t-word w5">夢の</div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">蒙德里安拼画</div>
+                        <div class="view-mode-name">格律 · Mondrian</div>
                         <div class="view-mode-desc">蒙德里安风格色块拼画，按句意分块 + 8 种几何构图，词块贴合色块并碰撞避让</div>
                     </div>
                     <div class="view-mode-check">
@@ -638,7 +638,7 @@
                         <div class="view-mode-mock-dim-line floor"></div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">浮空模式</div>
+                        <div class="view-mode-name">穿行 · Tunnel</div>
                         <div class="view-mode-desc">3D空间粒子流体，主题色律动，景深运镜</div>
                     </div>
                     <div class="view-mode-check">
@@ -672,7 +672,7 @@
                         </div>
                     </div>
                     <div class="view-mode-info">
-                        <div class="view-mode-name">霓虹灯牌</div>
+                        <div class="view-mode-name">霓虹 · Neon</div>
                         <div class="view-mode-desc">深夜街角灯牌，未唱的字是熄灭灯管，唱到的字逐字通电点亮，段落情绪换灯色与功率</div>
                     </div>
                     <div class="view-mode-check">
@@ -1031,14 +1031,14 @@
                         <div class="appearance-section-title">视图模式</div>
                         <div class="appearance-mode-segment">
                             <button class="appearance-mode-btn active" data-mode="cover" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='cover')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='cover'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('cover');})();">默认模式</button>
-                            <button class="appearance-mode-btn" data-mode="lyrics" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='lyrics')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='lyrics'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('lyrics');})();">歌词模式</button>
-                            <button class="appearance-mode-btn" data-mode="flyin" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='flyin')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='flyin'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('flyin');})();">飞入与渐显</button>
-                            <button class="appearance-mode-btn" data-mode="wordcloud" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='wordcloud')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='wordcloud'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('wordcloud');})();">词云跟焦</button>
-                            <button class="appearance-mode-btn" data-mode="pv" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='pv')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='pv'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('pv');})();">动态海报 / PV模式</button>
-                            <button class="appearance-mode-btn" data-mode="tunnel" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='tunnel')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='tunnel'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('tunnel');})();">蒙德里安拼画</button>
-                            <button class="appearance-mode-btn" data-mode="dimension" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='dimension')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='dimension'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('dimension');})();">浮空模式</button>
-                            <button class="appearance-mode-btn" data-mode="letterpress" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='letterpress')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='letterpress'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('letterpress');})();">活字模式</button>
-                            <button class="appearance-mode-btn" data-mode="neon" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='neon')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='neon'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('neon');})();">霓虹灯牌</button>                        </div>
+                            <button class="appearance-mode-btn" data-mode="lyrics" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='lyrics')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='lyrics'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('lyrics');})();">拾光 · Lyrics</button>
+                            <button class="appearance-mode-btn" data-mode="flyin" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='flyin')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='flyin'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('flyin');})();">飞白 · Fly-In</button>
+                            <button class="appearance-mode-btn" data-mode="wordcloud" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='wordcloud')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='wordcloud'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('wordcloud');})();">云涌 · WordCloud</button>
+                            <button class="appearance-mode-btn" data-mode="pv" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='pv')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='pv'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('pv');})();">绘卷 · PV</button>
+                            <button class="appearance-mode-btn" data-mode="tunnel" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='tunnel')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='tunnel'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('tunnel');})();">格律 · Mondrian</button>
+                            <button class="appearance-mode-btn" data-mode="dimension" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='dimension')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='dimension'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('dimension');})();">穿行 · Tunnel</button>
+                            <button class="appearance-mode-btn" data-mode="letterpress" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='letterpress')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='letterpress'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('letterpress');})();">活字 · Letterpress</button>
+                            <button class="appearance-mode-btn" data-mode="neon" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='neon')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='neon'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('neon');})();">霓虹 · Neon</button>                        </div>
                         </div>
 
                     <div class="appearance-section active" data-mode-section="cover">
@@ -1064,7 +1064,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="lyrics">
-                        <div class="settings-group"><div class="settings-group-title">歌词模式</div>
+                        <div class="settings-group"><div class="settings-group-title">拾光 · Lyrics</div>
                         <div class="setting-row"><div><div class="setting-label">歌词字体大小</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
                         
                         <div class="setting-row"><div><div class="setting-label">歌词模糊强度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="blurLevel" min="0" max="8" step="1" value="2"><span class="setting-value" data-val="blurLevel">2</span></div></div>
@@ -1086,7 +1086,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="flyin">
-                        <div class="settings-group"><div class="settings-group-title">飞入与渐显</div>
+                        <div class="settings-group"><div class="settings-group-title">飞白 · Fly-In</div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">飞入位移距离</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="flyinTranslateY" min="0" max="30" step="1" value="16"><span class="setting-value" data-val="flyinTranslateY">16px</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">初始缩放比例</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="flyinScale" min="0.5" max="1.0" step="0.05" value="0.85"><span class="setting-value" data-val="flyinScale">0.85x</span></div></div>
@@ -1109,7 +1109,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="wordcloud">
-                        <div class="settings-group"><div class="settings-group-title">词云跟焦</div>
+                        <div class="settings-group"><div class="settings-group-title">云涌 · WordCloud</div>
                         <div class="setting-row"><div><div class="setting-label">字体随机 Min</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="wcFontMin" min="0.8" max="3.0" step="0.1" value="1.2"><span class="setting-value" data-val="wcFontMin">1.2rem</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">字体随机 Max</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="wcFontMax" min="2.0" max="6.0" step="0.1" value="3.5"><span class="setting-value" data-val="wcFontMax">3.5rem</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">螺旋排版间距</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="wcDensity" min="8" max="40" step="1" value="18"><span class="setting-value" data-val="wcDensity">18px</span></div></div>
@@ -1131,7 +1131,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="pv">
-                        <div class="settings-group"><div class="settings-group-title">动态海报 / PV模式</div>
+                        <div class="settings-group"><div class="settings-group-title">绘卷 · PV</div>
                         <div class="setting-row"><div><div class="setting-label">PV 预设风格</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="preset" data-val="dream">梦幻</button><button class="setting-btn" data-var="preset" data-val="anime">热血</button><button class="setting-btn" data-var="preset" data-val="cyber">赛博</button><button class="setting-btn" data-var="preset" data-val="minimal">极简</button></div></div></div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.5"><span class="setting-value" data-val="fontSize">1.50x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">网点大小</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="halftoneSize" min="3" max="12" step="1" value="6"><span class="setting-value" data-val="halftoneSize">6px</span></div></div>
@@ -1152,7 +1152,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="tunnel">
-                        <div class="settings-group"><div class="settings-group-title">蒙德里安拼画</div>
+                        <div class="settings-group"><div class="settings-group-title">格律 · Mondrian</div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.1"><span class="setting-value" data-val="fontSize">1.10x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">活泼排版（允许词块倾斜）</div><div class="setting-desc">关闭 = 横平竖直：不旋转、只保留字号大小差异，整齐居中排版</div></div><div class="setting-control"><button class="setting-toggle" data-var="mosaicTilt"></button></div></div>
                         <div class="setting-row"><div><div class="setting-label">运镜平滑速度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraSpeed" min="0.3" max="2.0" step="0.1" value="1.0"><span class="setting-value" data-val="cameraSpeed">1.0x</span></div></div>
@@ -1173,7 +1173,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="dimension">
-                        <div class="settings-group"><div class="settings-group-title">浮空模式</div>
+                        <div class="settings-group"><div class="settings-group-title">穿行 · Tunnel</div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.3"><span class="setting-value" data-val="fontSize">1.30x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">高亮颜色</div><div class="setting-desc">控制非情感词普通高亮文字颜色</div></div><div class="setting-control"><div class="setting-color-row" data-var="highlightColor"><div class="color-swatch active" data-var="highlightColor" data-color="#ffffff" style="background:#ffffff"></div><div class="color-swatch" data-var="highlightColor" data-color="#ffcc33" style="background:#ffcc33"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff6b6b" style="background:#ff6b6b"></div><div class="color-swatch" data-var="highlightColor" data-color="#51d0ff" style="background:#51d0ff"></div><div class="color-swatch" data-var="highlightColor" data-color="#a8ff51" style="background:#a8ff51"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff8aff" style="background:#ff8aff"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff9540" style="background:#ff9540"></div><div class="color-swatch custom" data-var="highlightColor" data-color="__custom__" title="自定义颜色"><svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><path d="M511.97 0.07c96.04 0 185.89 26.45 262.72 72.44l-6.74-3.84-127.95 221.64A254.79 254.79 0 0 0 511.97 256.05V0.07z" fill="#E70212"/><path d="M767.95 68.67a509.58 509.58 0 0 1 191.3 194.12l-3.92-3.74-221.64 127.99a257.26 257.26 0 0 0-93.69-93.69L767.95 68.67z" fill="#EA6101"/><path d="M955.33 256.05a509.58 509.58 0 0 1 68.6 263.75v-7.77h-255.98a254.79 254.79 0 0 0-34.26-127.99l221.64-127.99z" fill="#F39801"/><path d="M1023.93 512.03c0 90.02-23.25 174.67-64.04 248.18l-4.57 7.8-221.64-127.95c21.76-37.67 34.26-81.4 34.26-128.03v-0.04l255.98-0.04z" fill="#FCC902"/><path d="M733.69 640.03l221.64 127.99a509.66 509.66 0 0 1-179.53 182.9l-7.85 4.48-127.99-221.64a257.26 257.26 0 0 0 93.69-93.69z" fill="#FEF200"/><path d="M640 733.76l127.95 221.64A509.66 509.66 0 0 1 521.01 1024h-9.04v-255.98a254.79 254.79 0 0 0 128.03-34.26z" fill="#90C320"/><path d="M511.97 768.02v255.98c-90.02 0-174.67-23.25-248.18-64.04l-7.8-4.57 127.99-221.64c37.67 21.76 81.4 34.26 128.03 34.26z" fill="#019A44"/><path d="M383.97 733.76l-127.99 221.64a509.66 509.66 0 0 1-182.9-179.53l-4.48-7.85 221.64-127.99a257.26 257.26 0 0 0 93.69 93.69z" fill="#019E97"/><path d="M255.98 512.03c0 46.63 12.46 90.36 34.26 128.03L68.6 768.02A509.66 509.66 0 0 1 0 521.08v-9.05h255.98z" fill="#0169B8"/><path d="M68.6 256.05l221.64 127.99A254.79 254.79 0 0 0 255.98 512.03H0c0-90.02 23.25-174.67 64.04-248.18l4.57-7.8z" fill="#1C2089"/><path d="M262.68 64.75l-6.7 3.92 127.99 221.64A257.26 257.26 0 0 0 290.24 384.04L68.6 256.05A509.58 509.58 0 0 1 262.68 64.75z" fill="#621988"/><path d="M519.73 0.07h-7.77v255.98a254.79 254.79 0 0 0-128.03 34.26L255.98 68.67A509.58 509.58 0 0 1 519.73 0.07z" fill="#910783"/></svg></div></div></div></div>
                         <div class="setting-row"><div><div class="setting-label">显示翻译</div></div><div class="setting-control"><button class="setting-toggle on" data-var="showTranslation"></button></div></div>
@@ -1187,7 +1187,7 @@
 
                     
                     <div class="appearance-section" data-mode-section="letterpress">
-                        <div class="settings-group"><div class="settings-group-title">活字模式</div>
+                        <div class="settings-group"><div class="settings-group-title">活字 · Letterpress</div>
     <div class="setting-row"><div><div class="setting-label">基础字号</div><div class="setting-desc">活字是大字形模式，1.0x 约为屏宽 6%</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
     <div class="setting-row"><div><div class="setting-label">高亮颜色</div><div class="setting-desc">情感词唱响时的强调色</div></div><div class="setting-control"><div class="setting-color-row" data-var="highlightColor"><div class="color-swatch active" data-var="highlightColor" data-color="#ffffff" style="background:#ffffff"></div><div class="color-swatch" data-var="highlightColor" data-color="#ffcc33" style="background:#ffcc33"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff6b6b" style="background:#ff6b6b"></div><div class="color-swatch" data-var="highlightColor" data-color="#51d0ff" style="background:#51d0ff"></div><div class="color-swatch" data-var="highlightColor" data-color="#a8ff51" style="background:#a8ff51"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff8aff" style="background:#ff8aff"></div><div class="color-swatch" data-var="highlightColor" data-color="#ff9540" style="background:#ff9540"></div></div></div></div>
     <div class="setting-row"><div><div class="setting-label">字体</div></div><div class="setting-control"><div class="setting-dropdown appearance-font-dropdown" data-var="fontFamily"><div class="setting-dropdown-trigger">系统默认</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="inherit">系统默认</div><div class="setting-dropdown-item" data-value="'Noto Sans SC', sans-serif">思源黑体</div><div class="setting-dropdown-item" data-value="'Noto Serif SC', serif">思源宋体</div><div class="setting-dropdown-item" data-value="'Microsoft YaHei', sans-serif">微软雅黑</div><div class="setting-dropdown-item" data-value="'SimHei', sans-serif">黑体</div><div class="setting-dropdown-item" data-value="'PingFang SC', sans-serif">苹方</div><div class="setting-dropdown-item" data-value="monospace">等宽字体</div></div></div></div></div>
@@ -1197,7 +1197,7 @@
                     </div>
 
                     <div class="appearance-section" data-mode-section="neon">
-                        <div class="settings-group"><div class="settings-group-title">霓虹灯牌</div>
+                        <div class="settings-group"><div class="settings-group-title">霓虹 · Neon</div>
     <div class="setting-row"><div><div class="setting-label">基础字号</div><div class="setting-desc">大字形模式，1.0x 约为屏宽 5.5%</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
     <div class="setting-row"><div><div class="setting-label">灯管辉光</div><div class="setting-desc">点亮字符最外层光晕的扩散半径</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="emotionGlow" min="0" max="30" step="1" value="14"><span class="setting-value" data-val="emotionGlow">14px</span></div></div>
     <div class="setting-row"><div><div class="setting-label">字体</div></div><div class="setting-control"><div class="setting-dropdown appearance-font-dropdown" data-var="fontFamily"><div class="setting-dropdown-trigger">系统默认</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="inherit">系统默认</div><div class="setting-dropdown-item" data-value="'Noto Sans SC', sans-serif">思源黑体</div><div class="setting-dropdown-item" data-value="'Noto Serif SC', serif">思源宋体</div><div class="setting-dropdown-item" data-value="'Microsoft YaHei', sans-serif">微软雅黑</div><div class="setting-dropdown-item" data-value="'SimHei', sans-serif">黑体</div><div class="setting-dropdown-item" data-value="'PingFang SC', sans-serif">苹方</div><div class="setting-dropdown-item" data-value="monospace">等宽字体</div></div></div></div></div>

@@ -1,10 +1,6 @@
 <div align="center">
 
-<img src="docs/screenshots/pv.png" width="86%" alt="Aria PV 模式">
-
-<br>
-
-<img src="aria-logo.svg" width="72" alt="Aria">
+<img src="src-tauri/icons/icon.png" width="110" alt="Aria">
 
 # Aria 歌词播放器
 
@@ -35,26 +31,33 @@
 
 | 模式 | 说明 |
 |---|---|
-| 歌词 | 默认。逐字高亮 + 平滑滚动，支持翻译/音译行 |
-| 飞入 | 整句飞入，适合跟着唱 |
-| 词云 | 歌词聚合成词云，随播放浮动 |
-| PV | 分镜引擎：60 版式构图池按段落情绪分池、内容哈希轮换；hero 词竖柱大字、行间错落、镜头推拉与粒子 |
-| 蒙德里安 | 满屏色板拼画 + 纵深穿梭（七族版式：对分/四象限/双柱亮槽/阶梯/棋盘/角部体量/三带），按段落情绪轮换，换段平滑变形 |
-| 浮空 | 多层视差 |
-| 活字 | 深夜印刷台：纸页压印逐字显墨，30 款版式轮换，纸色随段落情绪变化 |
-| 霓虹 | 深夜街角灯牌：熄灭灯管细边框 → 逐字通电（电流闪烁 → 灯色实字圆角轮廓 + 辉光），SVG 圆角灯管店招水印 |
-| 和鸣 | 多角色对话式歌词合唱 |
+| 拾光 · Lyrics | 默认。逐字高亮 + 平滑滚动，支持翻译/音译行 |
+| 飞白 · Fly-In | 整句飞入，适合跟着唱 |
+| 云涌 · WordCloud | 歌词聚合成词云，随播放浮动 |
+| 绘卷 · PV | 分镜引擎：60 版式构图池按段落情绪分池、内容哈希轮换；hero 词竖柱大字、行间错落、镜头推拉与粒子 |
+| 格律 · Mondrian | 满屏色板拼画 + 纵深穿梭（七族版式：对分/四象限/双柱亮槽/阶梯/棋盘/角部体量/三带），按段落情绪轮换，换段平滑变形 |
+| 穿行 · Tunnel | 3D 空间粒子流体，多层视差景深运镜，主题色律动 |
+| 活字 · Letterpress | 深夜印刷台：纸页压印逐字显墨，30 款版式轮换，纸色随段落情绪变化 |
+| 霓虹 · Neon | 深夜街角灯牌：熄灭灯管细边框 → 逐字通电（电流闪烁 → 灯色实字圆角轮廓 + 辉光），SVG 圆角灯管店招水印 |
+| 和鸣 · Harmony | 多角色对话式歌词合唱 |
 
-<p>
-  <img src="docs/screenshots/letterpress.png" width="45%" alt="活字">
-  <img src="docs/screenshots/neon.png" width="45%" alt="霓虹">
-  <img src="docs/screenshots/mondrian.png" width="45%" alt="蒙德里安">
-  <img src="docs/screenshots/tunnel.png" width="45%" alt="纵深穿梭">
-  <img src="docs/screenshots/lyrics1.png" width="45%" alt="歌词">
-  <img src="docs/screenshots/lyrics2.png" width="45%" alt="歌词纯享">
-  <img src="docs/screenshots/flyin.png" width="45%" alt="飞入">
-  <img src="docs/screenshots/wordcloud.png" width="45%" alt="词云">
-</p>
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/screenshots/pv.png" width="100%" alt="绘卷 · PV"><br><sub><b>绘卷 · PV</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/mondrian.png" width="100%" alt="格律 · Mondrian"><br><sub><b>格律 · Mondrian</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/tunnel.png" width="100%" alt="格律 · Mondrian 纵深穿梭"><br><sub><b>格律 · Mondrian</b>（纵深穿梭）</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/letterpress.png" width="100%" alt="活字 · Letterpress"><br><sub><b>活字 · Letterpress</b></sub></td>
+    <td align="center"><img src="docs/screenshots/neon.png" width="100%" alt="霓虹 · Neon"><br><sub><b>霓虹 · Neon</b></sub></td>
+    <td align="center"><img src="docs/screenshots/wordcloud.png" width="100%" alt="云涌 · WordCloud"><br><sub><b>云涌 · WordCloud</b></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/flyin.png" width="100%" alt="飞白 · Fly-In"><br><sub><b>飞白 · Fly-In</b></sub></td>
+    <td align="center"><img src="docs/screenshots/lyrics1.png" width="100%" alt="拾光 · Lyrics"><br><sub><b>拾光 · Lyrics</b></sub></td>
+    <td align="center"><img src="docs/screenshots/lyrics2.png" width="100%" alt="拾光 · Lyrics 纯享版式"><br><sub><b>拾光 · Lyrics</b>（纯享版式）</sub></td>
+  </tr>
+</table>
 
 PV 和蒙德里安在开启 AI 情绪分析后效果最好：AI 会为每句歌词做分页、情感标注与构图建议。没配 AI 也有内置降级方案，只是构图与配色不贴合歌词情绪。
 
