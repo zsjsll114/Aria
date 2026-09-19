@@ -12,8 +12,8 @@ import { closePlaylists, loadPlaylistTrack, openAddToPlaylist } from './135-cros
 import { extractNeteaseId, extractQQId, getPlaylistSource, resolveShortLink } from './140-playlist-ui-events.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 
-/* 网易云歌单分页获取的token */
-const NETEASE_API_TOKEN = '82EQgFTKgTA5gYDP5McuGg';
+/* 网易云歌单分页获取的 token：本仓库不含凭证，请到 https://apicx.asia 免费注册后在下方自填 */
+const NETEASE_API_TOKEN = '';
 
 /* 通过 apicx.asia API 分页获取网易云歌单（每次最多100条，随机延迟防封IP）
            使用重试逻辑和连续空页计数，避免因API偶发限流导致提前停止
