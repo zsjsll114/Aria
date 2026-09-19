@@ -20,6 +20,12 @@ def check(name, cond, extra=""):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 720}, reduced_motion="no-preference")
+    # ★ CI 稳定（2026-09-19 首次 CI 实证）：预置「手动高性能档」短路启动期异步性能自检——
+    # 2 核 CI 实测 FPS 低，自检会晚于测试把 perf-minimal 重新加回 body，
+    # pv.css 的 body.perf-minimal …{ animation:none !important } 会杀掉被测的 handoff 动画。
+    page.add_init_script(
+        "try { localStorage.setItem('lyrics_player_performance', JSON.stringify({ profile: 'high', manuallyConfigured: true })); } catch (e) {}"
+    )
     console_errors = []
     page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: console_errors.append(str(e)))

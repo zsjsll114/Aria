@@ -21,6 +21,11 @@ def mk(size, start_ms, gap_ms, dur_ms=2500, tag=None):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 720})
+    # ★ CI 稳定（2026-09-19 首次 CI 实证）：预置「手动高性能档」短路启动期异步性能自检，
+    # 防止 2 核 CI 上自检晚于测试把 perf-minimal 加回 body，触发 pv.css 的 animation:none !important。
+    page.add_init_script(
+        "try { localStorage.setItem('lyrics_player_performance', JSON.stringify({ profile: 'high', manuallyConfigured: true })); } catch (e) {}"
+    )
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(BASE, wait_until="domcontentloaded", timeout=30000)
