@@ -210,7 +210,9 @@
 .neon-main {
     font-weight: 900;
     font-size: 1em;
-    line-height: 1.26;
+    /* ★ 行距 1.26 → 1.4（用户实测截图：英文多行时行与行挤在一起；
+       1.4 是灯牌多行排版的呼吸下限） */
+    line-height: 1.4;
     /* ★ v3 逐字 SVG：svg 占位已按字形实宽校准（0.94em/字），原 0.03em 字距
        叠加后视觉偏大（用户反馈字间距突然偏大）——归零由占位精度接管 */
     letter-spacing: 0;
@@ -250,7 +252,10 @@
     stroke-linecap: round;
     transition: stroke 0.25s ease, fill 0.25s ease, filter 0.3s ease;
 }
-.neon-space { display: inline-block; width: 0.5em; height: 1em; }
+/* ★ 词距 0.5em → 0.3em（2026-09-20 实测截图：词间隙 ≈0.5+两侧字符呼吸
+   0.14+margin ≈0.7em，比正常英文词距大一倍，用户反馈「间隔不定、有的挤」；
+   0.3em + 呼吸 ≈0.44em 落回自然词距区间） */
+.neon-space { display: inline-block; width: 0.3em; height: 1em; }
 /* ★ 暗管微呼吸：未点亮字缓慢明暗起伏，像灯管待机时的电压波动——点亮瞬间
    动画移除（:not(.neon-lit)），由 flicker-on 接管。只动 opacity（合成器友好）。 */
 .neon-char:not(.neon-lit) {

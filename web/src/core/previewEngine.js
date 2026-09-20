@@ -1018,7 +1018,7 @@ function resolveFontFamilyInner(fontKey) {
                         if (ow[i] && ow[i].classList.contains('active')) ow[i].classList.remove('active');
                         /* ★ P1 性能：高亮归零改为重置裁切前沿（恒定盒，无重排） */
                         if (oh[i]) {
-                            if (oh[i].classList.contains('rtl-highlight')) oh[i].style.clipPath = 'inset(0 0 0 100%)';
+                            if (oh[i].classList.contains('rtl-highlight')) oh[i].style.clipPath = 'inset(-0.4em 0 -0.4em 100%)';
                             else oh[i].style.setProperty('--reveal', '0%');
                             oh[i].dataset.lw = '';
                         }
@@ -1060,7 +1060,8 @@ function resolveFontFamilyInner(fontKey) {
                 if (hl.dataset.lw === ps) continue;
                 hl.dataset.lw = ps;
                 if (hl.classList.contains('rtl-highlight')) {
-                    hl.style.clipPath = `inset(0 0 0 ${100 - pct}%)`;
+                    /* ★ 上下 -0.4em 外扩（2026-09-20 裁剪彻底修复，见 base.css .word-highlight） */
+                    hl.style.clipPath = `inset(-0.4em 0 -0.4em ${100 - pct}%)`;
                 } else {
                     hl.style.setProperty('--reveal', pct + '%');
                 }

@@ -297,14 +297,9 @@
 }
 .vm-lp-line .sung { color: #c2452d; }
 
-/* —— 外观面板的字体下拉框：实底黑底（与其他下拉观感一致，用户要求） —— */
-.appearance-font-dropdown .setting-dropdown-trigger {
-    background: rgba(30, 30, 38, 0.95);
-    border-color: rgba(255, 255, 255, 0.16);
-}
-.appearance-font-dropdown .setting-dropdown-menu {
-    background: rgba(30, 30, 38, 0.97) !important;
-}
+/* —— 外观面板的字体下拉框 ——
+   ★ 2026-09-20：删除旧的实底黑底覆盖（用户反馈样式与其他下拉明显不一样），
+   完全回归 modals.css 的标准 .setting-dropdown 半透明毛玻璃样式 */
 /* 外观面板内所有下拉文字跟随全局字体设置 */
 #lyricStyleControls .setting-dropdown-trigger,
 #lyricStyleControls .setting-dropdown-menu,

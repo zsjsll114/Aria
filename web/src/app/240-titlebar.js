@@ -36,7 +36,13 @@
        标题栏仍是深色文字、看不见） */
     const pcCls = (document.querySelector('.player-container') || {}).className || '';
     if (/view-(letterpress|neon|tunnel|dimension|pv)\b/.test(pcCls)) light = true;
-    document.documentElement.style.setProperty('--titlebar-fg', light ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,24,0.92)');
+    /* ★ 性能（2026-09-20）：CSS 自定义属性重复写同值会触发全树 style recalc——
+       值不变时跳过写入（该函数被 700ms 定时器反复调用，恒定值 = 纯浪费） */
+    const fg = light ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,24,0.92)';
+    if (fg !== updateBrandColor._last) {
+      updateBrandColor._last = fg;
+      document.documentElement.style.setProperty('--titlebar-fg', fg);
+    }
   }
   updateBrandColor();
   /* 定时轻量同步：dominantColor 随歌曲切换更新 */

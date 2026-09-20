@@ -83,17 +83,18 @@
     text-shadow: 0 2px 6px rgba(0,0,0,.5);
   }
   .word .fill {    position: absolute;
-    /* ★ 上下各放宽 0.35em：g/j/y/p/q 的下伸部（以及 j 的上点、带音符的字母）可能
-       超出 line-height 1.3 的行盒，原样 overflow:hidden 会把超出的部分裁掉，
-       露出白色描边底层 → 视觉上"高亮不全/部分变白"。
-       左右仍按进度裁剪（inset 的 left/right 不变），纵向放宽不影响逐字上色。 */
-    inset: -0.35em 0 -0.35em 0;
+    /* ★ 上下各放宽 0.45em（2026-09-20 二次放宽 0.35→0.45：宋体 j 的下伸钩+上点、
+       g/y/p/q 在大字号下超出 0.35em 仍被裁，用户实测「j 高亮不全」复发）——
+       字形上伸/下伸超出 line-height 行盒的部分不能再被 overflow:hidden 裁掉。
+       另外每帧写入的 clipPath 上下同步负扩 0.4em（见 applySmoothFills），双保险。
+       左右仍按进度裁剪，纵向放宽不影响逐字上色。 */
+    inset: -0.45em 0 -0.45em 0;
     overflow: hidden;
     width: 100%;
     pointer-events: none;
   }  .word .fill > * {
     position: absolute;
-    left: 0; top: 0.35em; /* 补回上移的 0.35em：与底层描边字逐像素重合 */
+    left: 0; top: 0.45em; /* 补回上移的 0.45em：与底层描边字逐像素重合 */
     width: 100%;
     color: var(--dtk-hl, #7cd7ff);
     text-shadow: 0 0 10px var(--dtk-hl-glow, rgba(124, 215, 255, .35));
@@ -320,7 +321,10 @@
       var q = Math.round(ratio * 500); /* 0.2% 步进取重 */
       if (fEl._lastQ === q) continue;
       fEl._lastQ = q;
-      fEl.style.clipPath = 'inset(0 ' + (100 - q / 5).toFixed(1) + '% 0 0)';
+      /* ★ 上下负 inset 外扩 0.4em（2026-09-20）：clip-path 的 inset 正值/零值会把
+         字形上伸/下伸裁掉（j/y/g 高亮不全），负值把裁剪区扩出行盒，与 .fill 的
+         overflow 扩量（0.45em）形成双保险 */
+      fEl.style.clipPath = 'inset(-0.4em ' + (100 - q / 5).toFixed(1) + '% -0.4em 0)';
     }
   }
 
@@ -391,12 +395,17 @@
     if (!s || typeof s !== 'object') return;
     window.__lastSt = s;
     window.__emcMap = (s && s.emColors) || {};
-    /* ★ 字体跟随：优先用主界面歌词实测字体族（含多语言解析结果），其次全局字体设置 */
-    const ff = s.lyricFontFamily || s.fontFamily;
+    /* ★ 字体跟随：优先用主界面歌词实测字体族（含多语言解析结果），其次全局字体设置
+       ★ 用户显式设置优先（2026-09-20 修复「设置无法设置桌面歌词」）：设置里选了
+       字体（aria_dtk_fontfamily 非 default）时忽略推送里的跟随字段——renderState
+       每 120ms 跑一次，原先总是用 payload 的主界面实测样式覆盖设置值，
+       设置只在启动瞬间生效、第一次推送即被冲掉 */
+    const ff = window.__dtkUserFf || s.lyricFontFamily || s.fontFamily;
     if (ff) { try { document.body.style.fontFamily = ff; } catch (_) {} }
     /* ★ 字号跟随：主界面原文行字号 → --fs-main（歌词/翻译/标题全部随之缩放）
-       双保险钳制 14~72px，防止异常大字号（如词云排版）把桌面歌词放大 */
-    if (s.lyricFontSize && /^[\d.]+px$/.test(String(s.lyricFontSize))) {
+       双保险钳制 14~72px，防止异常大字号（如词云排版）把桌面歌词放大
+       ★ 用户显式设置优先：设置里选过字号（__dtkUserFs）时跟随字段不再覆盖 */
+    if (!window.__dtkUserFs && s.lyricFontSize && /^[\d.]+px$/.test(String(s.lyricFontSize))) {
       var fsPx = parseFloat(s.lyricFontSize);
       if (isFinite(fsPx)) {
         var fsClamped = Math.min(72, Math.max(14, fsPx)) + 'px';
@@ -556,20 +565,32 @@
   applyEmcUI();
 
   /* ---------- 主界面「设置 → 界面 → 桌面歌词」下发项 ---------- */
+  /* ★ __dtkUserFs/__dtkUserFf：用户显式设置状态——renderState 每帧消费推送时
+     以此判断「设置优先」还是「跟随主界面」（2026-09-20 修复设置被推送覆盖） */
+  window.__dtkUserFs = 0;
+  window.__dtkUserFf = null;
   function applyDtkSettings() {
     try {
       var fsPx = parseInt(localStorage.getItem('aria_dtk_fontsize') || '0', 10);
-      if (fsPx >= 20 && fsPx <= 72) {
+      window.__dtkUserFs = (fsPx >= 20 && fsPx <= 72) ? fsPx : 0;
+      if (window.__dtkUserFs) {
         document.documentElement.style.setProperty('--fs-main', fsPx + 'px');
       }
       var ff = localStorage.getItem('aria_dtk_fontfamily');
-      if (ff && ff !== 'default') {
-        document.documentElement.style.setProperty('--dtk-font', ff);
+      window.__dtkUserFf = (ff && ff !== 'default') ? ff : null;
+      if (window.__dtkUserFf) {
+        document.documentElement.style.setProperty('--dtk-font', window.__dtkUserFf);
       } else {
         document.documentElement.style.removeProperty('--dtk-font');
       }
       if (localStorage.getItem('aria_dtk_emwords') === '0') {
         window.__emcOn = false;
+        applyEmcUI();
+        try { if (window.__lastSt) renderState(window.__lastSt); } catch (_) {}
+      } else if (localStorage.getItem('aria_dtk_emwords') === '1') {
+        /* ★ 主设置重新开启时同步恢复（2026-09-20 修复：原先只有关没有开，
+           情感词总开关关了能关、开不回来，重启前一直失效） */
+        window.__emcOn = localStorage.getItem('aria_dtk_emcolor') === '1';
         applyEmcUI();
         try { if (window.__lastSt) renderState(window.__lastSt); } catch (_) {}
       }

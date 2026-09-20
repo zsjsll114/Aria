@@ -249,8 +249,7 @@ class WaveLyricSystem {
         }
     }
 
-    /* 切换激活行：snap=瞬时对齐（seek/进模式），否则注入冲量发波 */
-    setActive(index, snap) {
+    /* 切换激活行：snap=瞬时对齐（seek/进模式），否则注入冲量发波 */    setActive(index, snap) {
         if (!this.inited || index < 0 || index >= this.nodes.length) return;
         const prevIdx = this.activeIndex;
         this.activeIndex = index;
@@ -352,9 +351,11 @@ class WaveLyricSystem {
         const isCenter = (appSettings.lyrics && appSettings.lyrics.align === 'center') || (playerContainer && playerContainer.classList.contains('view-lyrics'));
         const origin = isCenter ? 'center center' : 'left center';
 
-        /* 视口可见范围动态裁剪：以当前视口像素高度为准，仅渲染中心 ±1 屏范围（避免无谓开销与误裁） */
-        const vh = (typeof document !== 'undefined' && document.querySelector('.lyrics-container'))
-            ? document.querySelector('.lyrics-container').clientHeight
+        /* 视口可见范围动态裁剪：以当前视口像素高度为准，仅渲染中心 ±1 屏范围（避免无谓开销与误裁）
+           ★ 性能（2026-09-20）：容器引用改为模块级缓存（失连才重查）——原本每帧
+           document.querySelector('.lyrics-container')×2（三目两侧各一次），常驻 rAF 下纯浪费 */
+        const lcEl = lyricsContainerEl();
+        const vh = lcEl ? lcEl.clientHeight
             : (typeof window !== 'undefined' ? window.innerHeight : 800);
         /* ★ 视口中心在「质点坐标」里是不动的常量：弹簧把每个质点拉向
            `targetY + off`（见下方积分），且渲染写的是 `translate3d(0, nd.y - h/2, 0)`
@@ -491,6 +492,19 @@ function cleanupLyricsTouchesFromLines(els) {
         if (romaEl && romaEl.style.visibility) romaEl.style.visibility = '';
         if (el.dataset && el.dataset.virtual) delete el.dataset.virtual;
     }
+}
+
+/* ★ 性能（2026-09-20）：歌词容器引用缓存——wave.step 常驻 rAF 每帧都要拿
+   .lyrics-container（读 clientHeight 做可见窗口裁剪），querySelector 每帧两连发是纯浪费。
+   失连（重渲染/切模式）时才重查。 */
+let _lyricsContainerRef = null;
+function lyricsContainerEl() {
+    if (!_lyricsContainerRef || !_lyricsContainerRef.isConnected) {
+        _lyricsContainerRef = (typeof document !== 'undefined')
+            ? document.querySelector('.lyrics-container')
+            : null;
+    }
+    return _lyricsContainerRef;
 }
 
 /* 确保物理引擎就绪（懒初始化单例） */
@@ -809,19 +823,23 @@ function updateLyricsGapDots(t) {
             : (lineRect.bottom - boxRect.top + lyricsGapPush.y / 2);
     }
 
-    /* 水平定位：左对齐时统一靠左 15px（与 .line 内边距 15px 保持一致）；居中时居中 */
-    if (align === 'right' || align === 'end') {
-        el.style.left = 'auto';
-        el.style.right = '15px';
-        el.style.top = Math.max(0, Math.round(dotCenterY)) + 'px';
-    } else if (align === 'left' || align === 'start') {
-        el.style.left = '15px';
-        el.style.right = 'auto';
-        el.style.top = Math.max(0, Math.round(dotCenterY)) + 'px';
-    } else {
-        el.style.left = '50%';
-        el.style.right = 'auto';
-        el.style.top = Math.max(0, Math.round(dotCenterY)) + 'px';
+    /* ★ 性能（2026-09-20）：left/right/top 是布局属性，间奏期每帧写入会强制 layout。
+       top 取整后脏检查，left/right 仅在对齐方式变化时写入。 */
+    const topPx = Math.max(0, Math.round(dotCenterY)) + 'px';
+    if (el._gapTop !== topPx) { el._gapTop = topPx; el.style.top = topPx; }
+    const gapLR = (align === 'right' || align === 'end') ? 'r' : (align === 'left' || align === 'start') ? 'l' : 'c';
+    if (el._gapLR !== gapLR) {
+        el._gapLR = gapLR;
+        if (gapLR === 'r') {
+            el.style.left = 'auto';
+            el.style.right = '15px';
+        } else if (gapLR === 'l') {
+            el.style.left = '15px';
+            el.style.right = 'auto';
+        } else {
+            el.style.left = '50%';
+            el.style.right = 'auto';
+        }
     }
 
     /* ★ 动画时间轴跟随音乐时间：暂停冻结、seek 往回 clamp 到 0（重放入场） */
@@ -1190,8 +1208,15 @@ function updateLyricsHighlight() {
                     const wordEl = activeWords[j];
                     const highlightEl = activeHighlights[j];
                     if (!highlightEl) continue;
-                    const start = parseInt(wordEl.dataset.start);
-                    const end = parseInt(wordEl.dataset.end);
+                    /* ★ 性能（2026-09-20）：dataset 每帧读+parseInt 是字符串解析开销——
+                       逐字时间轴解析一次后用 WeakMap 缓存（歌词重渲染时元素重建自动失效） */
+                    let timing = _wordTimingCache.get(wordEl);
+                    if (timing === undefined) {
+                        timing = { s: parseInt(wordEl.dataset.start) || 0, e: parseInt(wordEl.dataset.end) || 0 };
+                        _wordTimingCache.set(wordEl, timing);
+                    }
+                    const start = timing.s;
+                    const end = timing.e;
                     /* ★ P1 性能：数值百分比 + 恒定盒。写入 --reveal（LTR mask 前沿）
                        或 clip-path（RTL），不再动画 width → 每帧零重排 */
                     let pct;
@@ -1210,7 +1235,9 @@ function updateLyricsHighlight() {
                     /* 跳过未变化的目标值，避免无谓的样式写入与重绘 */
                     if (lastWordProgress.get(wordEl) === pct) continue;
                     if (highlightEl.classList.contains('rtl-highlight')) {
-                        highlightEl.style.clipPath = `inset(0 0 0 ${100 - pct}%)`;
+                        /* ★ 上下 -0.4em 外扩（2026-09-20 裁剪彻底修复）：inset 正值裁
+                           字形上伸/下伸（g/j/y/f 不全），负值把裁剪区扩出行盒 */
+                        highlightEl.style.clipPath = `inset(-0.4em 0 -0.4em ${100 - pct}%)`;
                     } else {
                         highlightEl.style.setProperty('--reveal', pct + '%');
                     }
@@ -1247,6 +1274,8 @@ function updateLyricsHighlight() {
    由 180-boot-config.applyPerformanceProfile 调用。 */
 let _wcPerf = { enabled: true, intervalMs: 0 };
 let _wcLastWrite = 0;
+/* ★ 逐字时间轴解析缓存（updateLyricsHighlight 每帧消费，见上方 ★ 性能注释） */
+const _wordTimingCache = new WeakMap();
 function wordcloudApplyPerf(profile = {}) {
     const w = profile.wordcloud || {};
     const v = profile.vfx || {};

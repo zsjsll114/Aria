@@ -1048,16 +1048,25 @@
            前沿 14px 柔和过渡视觉与原先一致。 */
         .word-highlight {
             position: absolute;
-            top: 0;
+            /* ★ 高亮裁剪彻底修复（2026-09-20，用户三度反馈：宋体 f 顶部被裁、
+               g/j/y/q 下伸被裁、桌面歌词 j 被裁）——根因：mask-image 渐变默认只
+               覆盖元素 border-box（=line-height 行盒），字形上伸/下伸超出盒子的
+               部分落在 mask 区域外 → alpha=0 直接隐藏。旧 width 动画方案的
+               overflow:hidden 同样裁。
+               修法：盒子上下各外扩 0.4em（top:-0.4em + padding 0.4em +
+               border-box 抵消），内容区与字形位置不变，mask/裁剪区随之扩大，
+               f/g/j/y/q 完整显形。垂直外扩不影响 --reveal 的水平百分比语义。 */
+            top: -0.4em;
             left: 0;
-            height: 100%;
+            height: calc(100% + 0.8em);
             width: 100%;
+            box-sizing: border-box;
+            padding: 0.4em 0;
             color: white;
             overflow: hidden;
             white-space: nowrap;
             text-align: left;
             line-height: 1.4;
-            padding: 0;
             margin: 0;
             -webkit-user-select: none;
             -moz-user-select: none;
@@ -1079,7 +1088,9 @@
              盒子恒定宽后用 inset 镜像裁切代替 width 动画（无重排） */
         .word-highlight.rtl-highlight {
             text-align: right;
-            clip-path: inset(0 0 0 100%);
+            /* 上下负 inset 外扩（与上方 mask 修法同源）：clip-path 的 inset 正值内缩
+               会裁掉字形上伸/下伸，负值把裁剪区外扩 0.4em，f/g/j/y 完整 */
+            clip-path: inset(-0.4em 0 -0.4em 100%);
             -webkit-mask-image: none;
             mask-image: none;
         }

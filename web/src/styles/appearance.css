@@ -54,9 +54,12 @@
 .preview-word { display: inline-block; color: var(--preview-inactive-color, rgba(255,255,255,0.6)); position: relative; line-height: 1.4; vertical-align: top; transition: transform 0.3s ease-out; }
 .preview-line.active .preview-word { color: var(--preview-highlight-inactive-color, rgba(255,255,255,0.6)); }
 .preview-word.active { transform: translateY(-2px); }
+/* P1 性能：预览侧与主画面同步改为恒定盒 + --reveal 驱动 mask / RTL clip-path
+   ★ 裁剪彻底修复（2026-09-20，同 base.css .word-highlight）：上下外扩 0.4em，
+   mask 渐变默认只覆盖 border-box、字形上伸/下伸超出即被隐藏（f/g/j/y 不全） */
+.preview-word-highlight { position: absolute; top: -0.4em; left: 0; height: calc(100% + 0.8em); width: 100%; box-sizing: border-box; padding: 0.4em 0; color: var(--preview-highlight-color, #fff); overflow: hidden; white-space: nowrap; text-align: left; line-height: 1.4; z-index: 1; transition: none; transform: none !important; contain: strict; --reveal: 0%; -webkit-mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); }
 /* P1 性能：预览侧与主画面同步改为恒定盒 + --reveal 驱动 mask / RTL clip-path */
-.preview-word-highlight { position: absolute; top: 0; left: 0; height: 100%; width: 100%; color: var(--preview-highlight-color, #fff); overflow: hidden; white-space: nowrap; text-align: left; line-height: 1.4; z-index: 1; transition: none; transform: none !important; contain: strict; --reveal: 0%; -webkit-mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); }
-.preview-word-highlight.rtl-highlight { text-align: right; clip-path: inset(0 0 0 100%); -webkit-mask-image: none; mask-image: none; }
+.preview-word-highlight.rtl-highlight { text-align: right; clip-path: inset(-0.4em 0 -0.4em 100%); -webkit-mask-image: none; mask-image: none; }
 .preview-word-highlight.done { clip-path: none !important; -webkit-mask-image: none !important; mask-image: none !important; }
 .preview-word-highlight.word-highlight-latin { font-weight: 800; }
 .preview-word-rtl-char { display: inline-block; white-space: nowrap; direction: rtl; }

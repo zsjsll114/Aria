@@ -155,6 +155,57 @@ import { saveSettings } from './180-boot-config.js';
     return fills;
   }
 
+  /* ★ 性能（2026-09-20）：主题色/字体/字号等样式类字段按 2s TTL 探测缓存——
+     它们只在切歌/设置变更时变，原本每 120ms 各做一次 getComputedStyle（强制
+     style recalc）+ querySelector×4，是主窗口周期性掉帧的确定性来源 */
+  let _styleProbeAt = 0;
+  let _styleProbe = null;
+  const STYLE_PROBE_TTL = 2000;
+  function buildEmColorMap() {
+    const map = {};
+    try {
+      const ws = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.aiEmotionWords)) ? globalThis.aiEmotionWords : [];
+      const max = Math.min(ws.length, 120);
+      for (let i = 0; i < max; i++) {
+        const w = ws[i];
+        if (w && w.word && w.color) map[String(w.word).trim()] = w.color;
+      }
+    } catch (e) {}
+    return map;
+  }
+  function probeStyles() {
+    const now = Date.now();
+    if (_styleProbe && now - _styleProbeAt < STYLE_PROBE_TTL) return _styleProbe;
+    _styleProbeAt = now;
+    const st = _styleProbe || {};
+    try {
+      st.themeColor = (typeof document !== 'undefined' && document.documentElement)
+        ? (getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#ffcc33')
+        : '#ffcc33';
+      st.fontFamily = (typeof document !== 'undefined' && document.documentElement)
+        ? (getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim() || undefined)
+        : undefined;
+    } catch (_e) {}
+    try {
+      let visualMode = false;
+      if (typeof document !== 'undefined' && document.querySelector('.player-container')) {
+        visualMode = /(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-polyphony|view-letterpress|view-neon)/.test(document.querySelector('.player-container').className);
+      }
+      const el = document.querySelector('.player-container:not(.preview-player) .lrc-original')
+              || document.querySelector('.lrc-original');
+      st.lyricFontFamily = el ? getComputedStyle(el).fontFamily : undefined;
+      if (visualMode) {
+        st.lyricFontSize = undefined;
+      } else {
+        const fs = el ? parseFloat(getComputedStyle(el).fontSize) : 0;
+        st.lyricFontSize = (!fs || !isFinite(fs)) ? undefined : `${Math.min(72, Math.max(16, Math.round(fs)))}px`;
+      }
+    } catch (_e) {}
+    st.emColors = buildEmColorMap();
+    _styleProbe = st;
+    return st;
+  }
+
   function currentPayload() {
     const pl = globalThis.playlist || [];
     const idx = typeof globalThis.currentTrackIndex === 'number' ? globalThis.currentTrackIndex : 0;
@@ -165,17 +216,29 @@ import { saveSettings } from './180-boot-config.js';
     let curStart = null, nextStart = null;
     const tms = (typeof globalThis.currentTime === 'number' ? globalThis.currentTime : 0) + (globalThis.lyricOffset || 0);
 
+    /* ★ 性能（2026-09-20）：words 数组与行文本只随「活动行/歌词对象」变化，按行缓存复用——
+       原本每 120ms 重建两行逐字数组是纯浪费（fills 才是逐帧变的量） */
+    let _wc = currentPayload._wc || (currentPayload._wc = { line: -1, lyrRef: null });
     if (Array.isArray(lyr) && lyr.length && typeof i === 'number' && i >= 0 && i < lyr.length) {
-      const cur = lyr[i] || {};
-      const nx = lyr[i + 1] || null;
-      l1 = String(cur.original || cur.text || '').trim();
-      words1 = Array.isArray(cur.words) && cur.words.length ? cur.words.map(w => ({ text: w.text, start: w.start, end: w.end })) : null;
-      l2 = nx ? String(nx.original || nx.text || '').trim() : '';
-      words2 = nx && Array.isArray(nx.words) && nx.words.length ? nx.words.map(w => ({ text: w.text, start: w.start, end: w.end })) : null;
-      trans1 = String(cur.translation || '').trim();
-      fills = calcFills(cur, nx, tms);
-      curStart = typeof cur.start === 'number' ? cur.start : null;
-      nextStart = nx && typeof nx.start === 'number' ? nx.start : null;
+      if (_wc.line !== i || _wc.lyrRef !== lyr) {
+        const cur = lyr[i] || {};
+        const nx = lyr[i + 1] || null;
+        currentPayload._wc = _wc = {
+          line: i, lyrRef: lyr,
+          l1: String(cur.original || cur.text || '').trim(),
+          words1: Array.isArray(cur.words) && cur.words.length ? cur.words.map(w => ({ text: w.text, start: w.start, end: w.end })) : null,
+          l2: nx ? String(nx.original || nx.text || '').trim() : '',
+          words2: nx && Array.isArray(nx.words) && nx.words.length ? nx.words.map(w => ({ text: w.text, start: w.start, end: w.end })) : null,
+          trans1: String(cur.translation || '').trim(),
+          curStart: typeof cur.start === 'number' ? cur.start : null,
+          nextStart: nx && typeof nx.start === 'number' ? nx.start : null
+        };
+      }
+      l1 = _wc.l1; words1 = _wc.words1;
+      l2 = _wc.l2; words2 = _wc.words2;
+      trans1 = _wc.trans1;
+      curStart = _wc.curStart; nextStart = _wc.nextStart;
+      fills = calcFills(lyr[i], lyr[i + 1] || null, tms);
     }
     return JSON.stringify({
       title: tr.title || '',
@@ -185,56 +248,18 @@ import { saveSettings } from './180-boot-config.js';
          curStart/nextStart=上下行起始时间，用于行内逐字推进计算 */
       tms, curStart, nextStart,
       playing: !!(audio && !audio.paused && !(globalThis.isBuffering)),
-      /* ★ 主题色跟随：主界面当前主题色随推送带上，桌面歌词按此给逐字高亮上色 */
-      themeColor: (typeof document !== 'undefined' && document.documentElement)
-        ? getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#ffcc33'
-        : '#ffcc33',
-      /* ★ 字体跟随：主界面字体设置变量 → 桌面歌词窗口 */
-      fontFamily: (typeof document !== 'undefined' && document.documentElement)
-        ? (getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim() || undefined)
-        : undefined,
-      /* ★ 歌词样式跟随（与主界面歌词一致）：
-         - lyricFontFamily：主界面歌词行实测 font-family（含多语言字体解析结果）
-         - lyricFontSize：主界面原文行实测 font-size，桌面歌词以此替换固定 30px
-         （描边/粗体桌面歌词保留自身设计，不与主界面同步） */
-      lyricFontFamily: (function () {
-        try {
-          const el = document.querySelector('.player-container:not(.preview-player) .lrc-original')
-                  || document.querySelector('.lrc-original');
-          return el ? getComputedStyle(el).fontFamily : undefined;
-        } catch (_e) { return undefined; }
-      })(),
-      /* ★ 字号跟随：主界面原文行字号 → --fs-main（歌词/翻译/标题全部随之缩放）
-         ★ 词云/PV/隧道/浮空/全景等视觉模式下不加前缀——它们的 .lrc-original 是超大排版字号，
-           直接送到桌面歌词窗口会导致"无端放大很多倍"；并对任意来源字号做 16~72px 钳制 */
-      lyricFontSize: (function () {
-        try {
-          if (typeof document !== 'undefined' && document.querySelector('.player-container')) {
-            const cls = document.querySelector('.player-container').className;
-            if (/(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-polyphony|view-letterpress|view-neon)/.test(cls)) return undefined;
-          }
-          const el = document.querySelector('.player-container:not(.preview-player) .lrc-original')
-                  || document.querySelector('.lrc-original');
-          const fs = el ? parseFloat(getComputedStyle(el).fontSize) : 0;
-          if (!fs || !isFinite(fs)) return undefined;
-          return `${Math.min(72, Math.max(16, Math.round(fs)))}px`;
-        } catch (_e) { return undefined; }
-      })(),
-      /* ★ 情感词颜色：AI 情感词 {word: color}，桌面歌词可按词着色（最多 120 条防泡大） */
-      emColors: buildEmColorMap()
+      /* ★ 主题色跟随（2s TTL 缓存）：主界面当前主题色随推送带上，桌面歌词按此给逐字高亮上色 */
+      themeColor: probeStyles().themeColor || '#ffcc33',
+      /* ★ 字体跟随（2s TTL 缓存）：主界面字体设置变量 → 桌面歌词窗口 */
+      fontFamily: probeStyles().fontFamily,
+      /* ★ 歌词样式跟随（2s TTL 缓存，与主界面歌词一致）：实测主界面歌词行 font-family / font-size */
+      lyricFontFamily: probeStyles().lyricFontFamily,
+      /* ★ 字号跟随（2s TTL 缓存）：主界面原文行字号 → --fs-main；视觉模式下不加前缀，
+           避免它们的 .lrc-original 超大排版字号把桌面歌词"无端放大很多倍" */
+      lyricFontSize: probeStyles().lyricFontSize,
+      /* ★ 情感词颜色（随样式探测低频重建）：AI 情感词 {word: color}，桌面歌词可按词着色（最多 120 条防泡大） */
+      emColors: probeStyles().emColors
     });
-    function buildEmColorMap() {
-      const map = {};
-      try {
-        const ws = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.aiEmotionWords)) ? globalThis.aiEmotionWords : [];
-        const max = Math.min(ws.length, 120);
-        for (let i = 0; i < max; i++) {
-          const w = ws[i];
-          if (w && w.word && w.color) map[String(w.word).trim()] = w.color;
-        }
-      } catch (e) {}
-      return map;
-    }
   }
 
   let last = null;
@@ -313,8 +338,12 @@ import { saveSettings } from './180-boot-config.js';
             sel.classList.add('selected');
             trigger.textContent = sel.textContent;
         }
-        if (trigger && !trigger._dtkBound) {
-            trigger._dtkBound = true;
+        /* ★ 开合只挂一次（2026-09-20 修复「桌面歌词字体下拉打不开」）：
+           220 的 initCustomDropdowns 已统一给 trigger 绑 toggle（标志 _ariaToggleBound），
+           这里原来用 _dtkBound 又绑一遍 → 两个 handler 各 toggle 一次互相抵消，
+           点击永远弹不出。改用同一约定标志防重。 */
+        if (trigger && !trigger._ariaToggleBound) {
+            trigger._ariaToggleBound = true;
             trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
                 dd.classList.toggle('open');

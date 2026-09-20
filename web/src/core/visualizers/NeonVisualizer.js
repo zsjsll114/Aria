@@ -473,8 +473,10 @@ export class NeonVisualizer extends VisualizerBase {
         try {
           const len = t.getComputedTextLength();
           if (!len || !isFinite(len)) continue;
-          const units = Math.max(24, len + 14);   /* 左右各 7 单位呼吸 */
-          el.setAttribute('viewBox', `-7 0 ${units.toFixed(1)} 100`);
+          /* ★ 呼吸 7 → 10 单位/侧（2026-09-20 实测截图：900 字重下字符挤在一起；
+             加宽呼吸同时让词内间距均匀，配合词距 0.3em 回到自然节奏） */
+          const units = Math.max(24, len + 20);   /* 左右各 10 单位呼吸 */
+          el.setAttribute('viewBox', `-10 0 ${units.toFixed(1)} 100`);
           el.style.width = `${(units / 100).toFixed(3)}em`;
           changed = true;
         } catch (_e) { /* 字体未就绪时量不到，下一行渲染会重来 */ }
