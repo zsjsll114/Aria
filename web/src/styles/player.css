@@ -1,0 +1,247 @@
+        /* ========== 视图模式切换 ========== */
+        .player-container.view-lyrics {
+            flex-direction: column;
+            padding-bottom: 0;
+        }
+        .player-container.view-lyrics .player-controls-wrapper {
+            display: none;
+        }
+        .player-container.view-lyrics .lyrics-area-wrapper {
+            flex: 1;
+            min-height: 0;
+        }
+        /* 歌词模式下底部控制栏显示 */
+        .player-container.view-lyrics .bottom-control-bar {
+            display: flex;
+        }
+
+        /* 默认隐藏底部控制栏 */
+        .bottom-control-bar {
+            display: none;
+            position: relative;
+            z-index: 10;
+            margin: 0 auto 20px;
+            padding: 12px 24px 14px;
+            background: rgba(30, 30, 35, 0.75);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            flex-shrink: 0;
+            animation: bottomBarIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            /* 三栏布局 */
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            /* 浮空圆角矩形：不填满宽度，居中 */
+            width: fit-content;
+            max-width: calc(100% - 40px);
+            min-width: 0;
+        }
+
+        @keyframes bottomBarIn {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* 左侧歌曲信息卡片 */
+        .bottom-song-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 0 0 auto;
+            min-width: 180px;
+            max-width: 240px;
+        }
+
+        .bottom-song-cover {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            object-fit: cover;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            flex-shrink: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .bottom-song-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            overflow: hidden;
+        }
+
+        .bottom-song-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .bottom-song-artist {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.55);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 中间控制区域 */
+        .bottom-center-area {
+            flex: 1;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* 右侧占位 */
+        .bottom-right-spacer {
+            flex: 0 0 auto;
+            min-width: 180px;
+            max-width: 240px;
+        }
+
+        /* 底部进度条区域 */
+        .bottom-progress-area {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 10px;
+        }
+
+        .bottom-progress-track {
+            flex: 1;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            position: relative;
+            cursor: pointer;
+            transition: height 0.2s ease;
+        }
+
+        .bottom-progress-track:hover {
+            height: 7px;
+        }
+
+        .bottom-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.9));
+            border-radius: 3px;
+            position: relative;
+            z-index: 1;
+            transition: width 0.08s linear;
+        }
+
+        /* 时间显示（当前时间在上，总时间在下） */
+        .bottom-time-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+            font-feature-settings: "tnum";
+            user-select: none;
+            min-width: 44px;
+            padding-right: 16px;
+            margin-right: 16px;
+        }
+
+        .bottom-current-time {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .bottom-total-time {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        /* 控制按钮行 */
+        .bottom-controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* 底部按钮基础样式 */
+        .bottom-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            color: rgba(255, 255, 255, 0.85);
+            cursor: pointer;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .bottom-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.12);
+            transform: translateY(-1px);
+        }
+
+        .bottom-btn:active {
+            transform: scale(0.95) translateY(0);
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .bottom-btn-small {
+            padding: 8px 9px;
+        }
+
+        .bottom-mode-text {
+            font-size: 11px;
+            letter-spacing: 0.3px;
+        }
+
+        /* 播放按钮特殊样式 */
+        .bottom-play-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            background: #fff;
+            border: none;
+            border-radius: 50%;
+            color: #1a1a1a;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .bottom-play-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .bottom-play-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 倍速值和音量值 */
+        .speed-value, .volume-value {
+            font-size: 11px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.7);
+            min-width: 22px;
+            text-align: left;
+        }
+

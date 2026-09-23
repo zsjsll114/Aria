@@ -1,0 +1,11 @@
+/* main.css — 样式入口文件 */
+@import "./base.css";          /* :root变量 / 全局重置 / welcome / blur-bg / 歌词样式 / keyframes */
+@import "./ai.css";            /* AI 主题动画 / AI 浮动状态面板 */
+@import "./menus.css";         /* 右键菜单 / 确认对话框 */
+@import "./eq.css";            /* 均衡器面板 */
+@import "./modals.css";        /* 设置面板 / 搜索弹窗 / 收藏弹窗 / 取色器 */
+@import "./playlists.css";     /* 歌单系统 */
+@import "./player.css";        /* 视图模式 / 播放器容器 / 底部控制栏 */
+@import "./controls.css";      /* 倍速菜单 / 音量滑块 / 更多菜单 */
+@import "./viewmode.css";      /* 样式切换弹窗 */
+@import "./responsive.css";    /* 响应式适配 */

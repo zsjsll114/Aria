@@ -1,0 +1,153 @@
+        /* ========== 倍速二级菜单 ========== */
+        .speed-menu-wrapper, .volume-menu-wrapper, .more-menu-wrapper {
+            position: relative;
+        }
+
+        .speed-submenu, .volume-slider-popup, .more-submenu {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            /* ★ 与 ctx-menu / setting-dropdown 统一缩放数值 (0.95)，仅保留向上弹出的方向差异 */
+            transform: translateX(-50%) translateY(6px) scale(0.95) translateZ(0);
+            transform-origin: bottom center;
+            background: rgba(32, 34, 46, 0.72) !important;
+            backdrop-filter: blur(28px) saturate(190%) contrast(105%) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(190%) contrast(105%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            border-radius: 14px;
+            padding: 6px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0.2s;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+            z-index: 999;
+            min-width: 160px;
+            will-change: transform, opacity;
+        }
+
+        .speed-submenu.open, .volume-slider-popup.open, .more-submenu.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0) scale(1) translateZ(0);
+        }
+
+        .speed-submenu {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 80px;
+        }
+
+        .speed-option {
+            padding: 8px 12px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.92);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .speed-option:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        .speed-option.active {
+            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
+            color: var(--theme-color, #ffcc33);
+        }
+
+        .speed-submenu-separator {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 3px 0;
+        }
+
+        .speed-pitch-toggle {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .speed-pitch-toggle.active {
+            color: var(--theme-color, #ffcc33);
+            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
+        }
+
+        /* ========== 音量滑块 ========== */
+        .volume-slider-popup {
+            width: 120px;
+            padding: 14px 12px;
+        }
+
+        .volume-slider-track {
+            width: 100%;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .volume-slider-bar {
+            height: 100%;
+            width: 80%;
+            background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.85));
+            border-radius: 3px;
+            pointer-events: none;
+        }
+
+        /* 音量滑块小圆点已移除 */
+
+        /* ========== 更多菜单 ========== */
+        .more-submenu {
+            right: 0;
+            left: auto;
+            transform: translateX(0) translateY(6px) scale(0.95) translateZ(0);
+            transform-origin: bottom right;
+            min-width: 150px;
+            padding: 6px;
+        }
+
+        .more-submenu.open {
+            transform: translateX(0) translateY(0) scale(1) translateZ(0);
+        }
+
+        .more-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            transition: background 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .more-item:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .more-item svg {
+            flex-shrink: 0;
+            opacity: 0.8;
+        }
+
+        .eq-status {
+            margin-left: auto;
+            font-size: 11px;
+            color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.9);
+            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.1);
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        /* ========== 视图切换按钮（已移至右上角） ========== */
+        /* ★ 用户反馈：切换样式按钮不应有 selected/主题色样式（仅 hover 微亮），删除此规则 */
+

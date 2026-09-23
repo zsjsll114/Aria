@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install devDependencies (eslint/prettier)
+        run: npm ci
+      - name: ESLint (only hard errors block; warnings are tracked debt)
+        run: npm run lint
+
+  pv-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install chromium --with-deps
+
+      - name: Start local server (python server.py :8001)
+        run: |
+          python server.py > server.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8001/index.html > /dev/null 2>&1; then
+              echo "server up on :8001"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to start, log:"; tail -50 server.log; exit 1
+
+      - name: Run JS unit tests (parsers / particles / music fallback / nowplaying)
+        run: |
+          node --test tests/js/test_parsers.js
+          node --test tests/js/test_particles.js
+          node --test tests/js/test_music_api_fallback.js
+          node --test tests/js/test_nowplaying.js
+
+      - name: Run Python unit tests (audio stream proxy / MIME)
+        run: |
+          python -m unittest tests.python.test_audio_stream
+
+      - name: Run PV regression tests
+        run: |
+          python tests/test_pv_handoff.py
+          python tests/test_pv_scene_group.py
+          python tests/test_pv_geo_mosaic.py
+
+      - name: Settings panel regression smoke
+        run: |
+          python tests/test_settings_smoke.py

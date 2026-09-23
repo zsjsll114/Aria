@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-lyrics-click-through"
+description = "Enables the desktop_lyrics_click_through command without any pre-configured scope."
+commands.allow = ["desktop_lyrics_click_through"]
+
+[[permission]]
+identifier = "deny-desktop-lyrics-click-through"
+description = "Denies the desktop_lyrics_click_through command without any pre-configured scope."
+commands.deny = ["desktop_lyrics_click_through"]

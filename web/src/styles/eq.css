@@ -1,0 +1,145 @@
+        /* ========== 均衡器面板（iOS 18 毛玻璃） ========== */
+        .eq-panel {
+            position: fixed;
+            z-index: 10002;
+            width: 520px;
+            max-width: calc(100vw - 32px);
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 16px;
+            padding: 18px 20px 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            visibility: hidden;
+            opacity: 0;
+            transform: scale(0.92) translateY(-8px);
+            pointer-events: none;
+            transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0.25s;
+        }
+        .eq-panel.visible {
+            visibility: visible;
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+            transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        visibility 0s 0s;
+        }
+        .eq-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .eq-title {
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .eq-header-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .eq-header-btn {
+            padding: 4px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .eq-header-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+        .eq-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .eq-preset {
+            padding: 4px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .eq-preset:hover {
+            background: rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.95);
+        }
+        .eq-preset.active {
+            background: rgba(var(--theme-color-rgb),0.25);
+            border-color: rgba(var(--theme-color-rgb),0.5);
+            color: var(--theme-color);
+        }
+        .eq-bands {
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+        }
+        .eq-band {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+        }
+        .eq-band-value {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            min-height: 14px;
+        }
+        /* 垂直滑块 */
+        .eq-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            writing-mode: vertical-lr;
+            direction: rtl;
+            width: 6px;
+            height: 130px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            margin: 0;
+        }
+        .eq-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        .eq-slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+        }
+        .eq-band-label {
+            color: rgba(255, 255, 255, 0.55);
+            font-size: 10px;
+            white-space: nowrap;
+        }
+

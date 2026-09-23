@@ -1,0 +1,152 @@
+/* ========== 外观设置：全屏双栏布局 ========== */
+/* 设置顶部导航（.settings-tabs）的换行修复在 modals.css 中维护，避免重复定义 */
+.appearance-panel { display: none; flex: 1; min-height: 0; overflow: hidden; }
+.appearance-panel.active { display: flex; }
+.appearance-preview { flex: 0 0 50%; max-width: 50%; position: relative; overflow: hidden; background: transparent; border-right: 1px solid rgba(255,255,255,0.08); padding: 12px; box-sizing: border-box; }
+#lyricPreviewContainer { position: absolute; inset: 12px; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+.appearance-controls { flex: 0 0 50%; max-width: 50%; overflow-y: auto; overflow-x: hidden; padding: 16px 20px 20px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+.appearance-controls::-webkit-scrollbar { width: 6px; }
+.appearance-controls::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+/* 右侧控制项 — 复用常规设置的 .setting-row / .setting-label / .setting-control 等 CSS 类 */
+.appearance-section { margin-bottom: 24px; display: none; }
+.appearance-section.active { display: block; }
+.appearance-section-title { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-left: 4px; }
+/* ★ appearance-controls 内的 settings-group 间距微调 */
+.appearance-controls .settings-group { margin-bottom: 16px; }
+/* ★ appearance-controls 内的 setting-value 颜色与常规设置一致 */
+.appearance-controls .setting-value { color: rgba(255,255,255,0.7); }
+/* ★ appearance-controls 内的 setting-slider 宽度适配 */
+.appearance-controls .setting-slider { width: 120px; }
+
+/* 模式切换 Segment */
+/* ★ flex-wrap：窄窗口下模式按钮自动换行，避免溢出容器 */
+.appearance-mode-segment { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 16px; }
+.appearance-mode-btn { flex: 1 1 calc(20% - 4px); min-width: 96px; box-sizing: border-box; background: none; border: none; color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 4px; border-radius: 8px; white-space: nowrap; transition: all 0.2s ease; font-family: inherit; }
+.appearance-mode-btn:hover { color: rgba(255,255,255,0.85); }
+.appearance-mode-btn.active { background: rgba(var(--theme-color-rgb,255,204,51),0.2); color: var(--theme-color,#ffcc33); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+
+/* 色块、开关 — 已统一使用常规设置的 .color-swatch / .setting-toggle 等 CSS 类（见 modals.css） */
+
+/* 字体下拉 — 毛玻璃风格（与常规设置 100% 保持一致） */
+.appearance-font-dropdown { width: 140px; min-width: 140px; max-width: 220px; }
+.appearance-font-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-family: inherit; outline: none; transition: all 0.2s ease; min-width: 120px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appearance-font-select:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); }
+.appearance-font-select option { background: rgba(30,28,40,0.95); color: #fff; }
+
+/* ========== 预览播放器（复用真实播放器 CSS 类名） ========== */
+.preview-player { position: relative; display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: stretch; gap: clamp(10px,2vw,30px); width: 100%; height: 100%; padding: clamp(10px,2vh,30px) clamp(24px,3vw,48px) 60px clamp(24px,3vw,48px); overflow: hidden; font-family: var(--preview-font-family, inherit) !important; }
+.preview-blur-bg { position: absolute !important; top: -25% !important; left: -25% !important; width: 150% !important; height: 150% !important; background-size: cover; background-position: center; filter: blur(var(--preview-bg-blur,60px)) brightness(var(--preview-bg-brightness,0.35)) !important; z-index: 0; animation: bgSway 16s ease-in-out infinite; }
+.preview-dark-overlay { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.preview-cover-area { margin-bottom: 0; flex-shrink: 0; width: clamp(100px,16vw,180px); height: clamp(100px,16vw,180px); display: flex; justify-content: center; align-items: center; align-self: center; }
+.preview-cover { width: 100% !important; height: 100% !important; border-radius: 8%; object-fit: cover; box-shadow: 0 4px 15px rgba(0,0,0,0.6); }
+.preview-lyrics-container { flex: 1; min-width: 0; height: 100%; overflow: hidden; position: relative; z-index: 1; }
+.preview-lyrics-scroll { position: absolute; top: 0; left: 0; width: 100%; transition: transform 0.5s cubic-bezier(0.15,0.85,0.25,1); text-align: left; }
+
+/* 行样式 — 模糊级别由 JS 动态生成 .preview-blur-style 覆盖 */
+.preview-line { padding: 10px 15px; opacity: 0.35; filter: blur(5px); width: 100%; box-sizing: border-box; text-align: var(--preview-align, left); border-radius: 12px; position: relative; transition: opacity 0.35s ease, filter 0.35s ease; }
+
+.preview-lrc-original { font-size: var(--preview-font-size,clamp(18px,2.4vw,28px)); font-weight: 600; margin-top: 5px; margin-bottom: 2px; line-height: 1.4; color: var(--preview-inactive-color, rgba(255,255,255,0.6)); text-align: var(--preview-align, left); white-space: pre-wrap; word-break: keep-all; overflow-wrap: break-word; box-sizing: border-box; }
+.preview-lrc-romaji { font-size: calc(var(--preview-font-size,24px)*0.6); font-weight: bold; color: rgba(255,255,255,0.7); margin-top: 2px; margin-bottom: 5px; line-height: 1.3; text-align: var(--preview-align, left); box-sizing: border-box; }
+.preview-lrc-translation { font-size: calc(var(--preview-font-size,24px)*0.6); font-weight: bold; color: rgba(255,255,255,0.6); padding-top: 3px; margin-bottom: 10px; text-align: var(--preview-align, left); box-sizing: border-box; }
+
+.preview-words-container { display: block; word-wrap: break-word; white-space: normal; max-width: 100%; }
+.preview-word { display: inline-block; color: var(--preview-inactive-color, rgba(255,255,255,0.6)); position: relative; line-height: 1.4; vertical-align: top; transition: transform 0.3s ease-out; }
+.preview-line.active .preview-word { color: var(--preview-highlight-inactive-color, rgba(255,255,255,0.6)); }
+.preview-word.active { transform: translateY(-2px); }
+/* P1 性能：预览侧与主画面同步改为恒定盒 + --reveal 驱动 mask / RTL clip-path
+   ★ 裁剪彻底修复（2026-09-20，同 base.css .word-highlight）：上下外扩 0.4em，
+   mask 渐变默认只覆盖 border-box、字形上伸/下伸超出即被隐藏（f/g/j/y 不全） */
+.preview-word-highlight { position: absolute; top: -0.4em; left: 0; height: calc(100% + 0.8em); width: 100%; box-sizing: border-box; padding: 0.4em 0; color: var(--preview-highlight-color, #fff); overflow: hidden; white-space: nowrap; text-align: left; line-height: 1.4; z-index: 1; transition: none; transform: none !important; contain: strict; --reveal: 0%; -webkit-mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); mask-image: linear-gradient(to right,#000 calc(var(--reveal) - 14px),transparent var(--reveal)); }
+/* P1 性能：预览侧与主画面同步改为恒定盒 + --reveal 驱动 mask / RTL clip-path */
+.preview-word-highlight.rtl-highlight { text-align: right; clip-path: inset(-0.4em 0 -0.4em 100%); -webkit-mask-image: none; mask-image: none; }
+.preview-word-highlight.done { clip-path: none !important; -webkit-mask-image: none !important; mask-image: none !important; }
+.preview-word-highlight.word-highlight-latin { font-weight: 800; }
+.preview-word-rtl-char { display: inline-block; white-space: nowrap; direction: rtl; }
+.preview-word-rtl-char .word-highlight.rtl-highlight { left: auto; right: 0; direction: rtl; text-align: right; }
+
+/* 默认模式 */
+.preview-player.view-cover .preview-cover-area { display: flex; }
+.preview-player.view-lyrics .preview-cover-area,
+.preview-player.view-flyin .preview-cover-area,
+.preview-player.view-wordcloud .preview-cover-area { display: none; }
+
+/* 飞入模式 — ★ 背景亮度使用变量 */
+.preview-player.view-flyin .preview-blur-bg { filter: blur(var(--preview-bg-blur,80px)) brightness(var(--preview-bg-brightness,0.12)) !important; }
+.preview-player.view-flyin::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg,rgba(10,8,20,0.4),rgba(20,18,30,0.3)); z-index: 0; pointer-events: none; }
+.preview-wireframes { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: hidden; }
+.preview-wireframes svg.wf-svg { position: absolute; overflow: visible; fill: none; stroke: rgba(var(--preview-graphic-color-rgb, var(--preview-theme-color-rgb, var(--theme-color-rgb, 255,204,51))),0.12); stroke-width: 1.5; }
+.preview-wireframes svg.wf-svg:nth-child(1) { width: 200px; height: 200px; top: 10%; right: 6%; animation: view-flyin-wf-rotate 24s linear infinite; }
+.preview-wireframes svg.wf-svg:nth-child(2) { width: 140px; height: 140px; bottom: 16%; left: 8%; animation: view-flyin-wf-rotate-rev 18s linear infinite; }
+.preview-wireframes svg.wf-svg:nth-child(3) { width: 300px; height: 300px; top: 35%; left: 30%; opacity: 0.5; animation: view-flyin-wf-float 30s ease-in-out infinite; }
+.preview-wireframes svg.wf-svg:nth-child(4) { width: 100px; height: 100px; top: 62%; right: 18%; animation: view-flyin-wf-rotate 16s linear infinite reverse; }
+@keyframes view-flyin-wf-rotate { 0% { transform: rotate(0deg) scale(1); opacity: 0.5; } 50% { transform: rotate(180deg) scale(1.08); opacity: 0.9; } 100% { transform: rotate(360deg) scale(1); opacity: 0.5; } }
+@keyframes view-flyin-wf-rotate-rev { 0% { transform: rotate(0deg) scale(1); opacity: 0.4; } 50% { transform: rotate(-180deg) scale(0.92); opacity: 0.8; } 100% { transform: rotate(-360deg) scale(1); opacity: 0.4; } }
+@keyframes view-flyin-wf-float { 0%,100% { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0.4; } 33% { transform: translate(20px,-15px) rotate(120deg) scale(1.05); opacity: 0.7; } 66% { transform: translate(-15px,10px) rotate(240deg) scale(0.95); opacity: 0.3; } }
+.preview-player:not(.view-flyin) .preview-wireframes { display: none; }
+.preview-player.view-flyin .preview-lyrics-scroll { transform: none !important; transition: none !important; display: flex !important; align-items: center !important; justify-content: center !important; height: 100%; position: absolute; top: 0; left: 0; width: 100%; z-index: 1; }
+.preview-player.view-flyin .preview-line { position: absolute !important; top: 50%; left: 50%; transform: translate(-50%,-50%) !important; width: 92% !important; max-width: 900px; text-align: center !important; opacity: 0 !important; visibility: hidden; pointer-events: none !important; filter: none !important; transition: opacity 0.5s ease, visibility 0s 0.5s !important; }
+.preview-player.view-flyin .preview-line.active { opacity: 1 !important; visibility: visible; transition: opacity 0.5s ease, visibility 0s !important; }
+.preview-player.view-flyin .preview-lrc-translation,
+.preview-player.view-flyin .preview-lrc-romaji { display: none !important; }
+.preview-player.view-flyin .preview-line .preview-lrc-original { font-weight: 700 !important; line-height: 1.3 !important; margin: 0 auto !important; padding: 12px 24px !important; word-break: keep-all !important; overflow-wrap: break-word !important; white-space: normal !important; overflow: hidden !important; }
+.preview-player.view-flyin .preview-line .preview-words-container { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; align-items: center !important; gap: 0 !important; }
+.preview-player.view-flyin .preview-line:not(.active) .preview-word { opacity: 0 !important; transition: none !important; }
+.preview-player.view-flyin .preview-line.active .preview-word { opacity: 0; transform: translateY(var(--preview-flyin-translateY,14px)) translateX(6px) scale(var(--preview-flyin-scale,0.8)) rotate(-3deg); transition: opacity 0.45s cubic-bezier(0.25,0.46,0.45,0.94), transform 0.45s cubic-bezier(0.25,0.46,0.45,0.94), filter 0.4s ease; }
+.preview-player.view-flyin .preview-line.active .preview-word.active { opacity: 1; transform: translateY(0) translateX(0) scale(var(--micro-s,1)) rotate(var(--micro-r,0deg)) translateY(var(--micro-y,0)); filter: none; }
+.preview-player.view-flyin .preview-line.active .preview-word.active .preview-word-highlight.done { opacity: 0.85; }
+.preview-flyin-trans-area { display: none; position: absolute; bottom: calc(var(--preview-flyin-trans-bottom,16px) + 50px) !important; left: 50% !important; transform: translateX(-50%) !important; width: 90% !important; max-width: 700px; text-align: center; z-index: 50 !important; pointer-events: none; transition: opacity 0.4s ease; }
+.preview-player.view-flyin .preview-flyin-trans-area,
+.preview-player.view-wordcloud .preview-flyin-trans-area { display: block !important; bottom: calc(var(--preview-flyin-trans-bottom,16px) + 50px) !important; }
+.preview-flyin-trans { font-size: var(--preview-flyin-trans-size,15px); color: rgba(255,255,255,0.7); margin-bottom: 4px; line-height: 1.5; min-height: 1.5em; }
+.preview-flyin-roma { font-size: calc(var(--preview-flyin-trans-size,15px)*0.85); color: rgba(255,255,255,0.5); line-height: 1.4; min-height: 1.4em; }
+
+/* 词云模式 — ★ 背景亮度使用变量 */
+.preview-player.view-wordcloud .preview-blur-bg { filter: blur(var(--preview-bg-blur,80px)) brightness(var(--preview-bg-brightness,0.1)) !important; }
+.preview-player.view-wordcloud::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg,rgba(5,4,12,0.4),rgba(12,10,22,0.3)); z-index: 0; pointer-events: none; }
+.preview-player.view-wordcloud .preview-lyrics-container { overflow: hidden !important; position: relative !important; }
+.preview-player.view-wordcloud .preview-lyrics-scroll { position: absolute !important; top: 0; left: 0; transform-origin: 0 0; will-change: transform; transition: none !important; display: block !important; padding: 0 !important; }
+.preview-player.view-wordcloud .preview-line { position: absolute !important; display: inline-block !important; white-space: nowrap !important; width: auto !important; max-width: none !important; box-sizing: content-box !important; padding: 8px 14px !important; opacity: var(--preview-wc-dim-opacity,0.25) !important; filter: blur(var(--preview-wc-dim-blur,4px)) !important; transition: opacity 0.6s ease, filter 0.6s ease !important; border-radius: 0 !important; background-color: transparent !important; }
+.preview-player.view-wordcloud .preview-line.active { opacity: 1 !important; filter: none !important; z-index: 2 !important; }
+.preview-player.view-wordcloud .preview-line .preview-lrc-translation,
+.preview-player.view-wordcloud .preview-line .preview-lrc-romaji { display: none !important; }
+.preview-player.view-wordcloud .preview-line .preview-lrc-original { display: inline-block !important; white-space: nowrap !important; width: auto !important; max-width: none !important; overflow: visible !important; font-weight: 700 !important; font-size: inherit !important; line-height: 1.3 !important; margin: 0 !important; }
+.preview-player.view-wordcloud .preview-line .preview-words-container { display: inline !important; flex-wrap: nowrap !important; }
+.preview-player.view-wordcloud .preview-line .preview-word { display: inline-block !important; white-space: nowrap !important; }
+
+/* PV 模式预览专属适配 */
+.preview-player.view-pv { padding: 0 !important; }
+.preview-player.view-pv .preview-cover-area,
+.preview-player.view-pv .preview-lyrics-container,
+.preview-player.view-pv .preview-wireframes { display: none !important; }
+.preview-player.view-pv .pv-view-container {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 5 !important;
+}
+.preview-player.view-pv .pv-translation-area { bottom: 60px !important; }
+
+/* ========== 预览播放器控件栏 ========== */
+.preview-controls-bar { position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 20px; background: rgba(0,0,0,0.5); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.08); z-index: 9999 !important; pointer-events: auto !important; }
+.preview-ctrl-btn { background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s ease; padding: 0; flex-shrink: 0; box-sizing: border-box; }
+.preview-ctrl-btn:hover { color: #fff; background: rgba(255,255,255,0.15); }
+.preview-play-btn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; }
+.preview-play-btn svg { display: block; margin: auto; }
+.preview-progress-wrap { flex: 1; display: flex; align-items: center; max-width: calc(100% - 120px); }
+.preview-progress-bar { width: 100%; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); cursor: pointer; position: relative; }
+.preview-progress-fill { height: 100%; border-radius: 2px; background: var(--preview-theme-color, var(--theme-color, #ffcc33)); width: 0%; transition: width 0.05s linear; }
+.preview-progress-thumb { position: absolute; top: 50%; transform: translate(-50%,-50%); width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.3); left: 0%; transition: left 0.05s linear; pointer-events: none; }
+.preview-time { font-size: 11px; color: rgba(255,255,255,0.5); white-space: nowrap; font-family: 'Segoe UI', monospace; }
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .appearance-panel.active { flex-direction: column; }
+    .appearance-preview { flex: 0 0 40%; max-width: none; max-height: 40%; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 8px; }
+    #lyricPreviewContainer { inset: 8px; }
+    .appearance-controls { flex: 1; max-width: none; }
+    .appearance-mode-segment { flex-wrap: wrap; }
+    .appearance-mode-btn { flex: 1 1 calc(50% - 2px); }
+}
