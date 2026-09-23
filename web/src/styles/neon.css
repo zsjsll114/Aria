@@ -1,0 +1,373 @@
+/* ============================================================
+   neon.css — 「霓虹 Neon Sign」歌词视觉
+   叙事：深夜街角灯牌——未唱的字是熄灭的灯管（单线管形轮廓），唱到的字
+   逐字通电（电流闪烁 → 灯色内芯 + 霓虹辉光），段落情绪定灯色与功率。
+   结构：深夜底 → 街景光斑 → 灯牌（灯管描边 + 近透明底）→ 店招巨物 + 版心大字
+   ============================================================ */
+
+/* —— 容器显隐（镜像 view-letterpress 的规则） —— */
+.player-container.view-neon,
+.preview-player.view-neon {
+    position: relative;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+}
+
+.player-container.view-neon .lyrics-area-wrapper,
+.preview-player.view-neon .cover-area,
+.preview-player.view-neon .preview-cover-area,
+.preview-player.view-neon .lyrics-container,
+.preview-player.view-neon .preview-lyrics-container,
+.preview-player.view-neon .scroll-container,
+.preview-player.view-neon .preview-lyrics-scroll,
+.preview-player.view-neon .preview-wireframes {
+    display: none !important;
+}
+
+.player-container.view-neon .top-action-buttons {
+    z-index: 30;
+}
+
+/* ★ 底部控件栏：霓虹模式下保持显示（与其他视觉模式一致，不隐藏） */
+.player-container.view-neon .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+}
+
+/* ============================================================
+   舞台：深夜蓝黑 + 街景光斑（确定性固定位置） + 暗角
+   字体/字号跟随全局设置：--vis-font-family → --app-font-family
+   ============================================================ */
+.visualizer-stage-neon {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #0b0d12;
+    /* ★ !important 必须保留：210-color-multilang 注入的 `.player-container *`
+       (0-1-1) 直接命中每个字符，会压过本规则 (0-1-0) —— 霓虹的外观字体档
+       被全局字体架空；且该规则里 var(--app-font-family) 无 fallback，
+       变量缺失时继承链断到浏览器默认衬线（用户实测「启动变宋体」）。
+       important 让模式档 --vis-font-family 恒定生效，三层兜底永不落空。 */
+    font-family: var(--vis-font-family, var(--app-font-family, "PingFang SC", "Microsoft YaHei", sans-serif)) !important;
+    /* 字号：按视口宽自适应；外观面板乘数（0.5~2.0x）经 --neon-font-scale 作用其上 */
+    --neon-main-size: calc(clamp(24px, 4.4vw, 88px) * var(--neon-font-scale, 1));
+    /* 功率档默认值（verse）：光晕/背光强度系数 */
+    --neon-halo: 0.12;
+}
+/* 街景光斑：远处霓虹街区在夜色里的弥散（极低强度，纯氛围） */
+.visualizer-stage-neon::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 55% 38% at 16% 84%, rgba(255, 110, 80, 0.055), transparent 62%),
+        radial-gradient(ellipse 48% 34% at 84% 18%, rgba(70, 150, 255, 0.06), transparent 60%),
+        radial-gradient(ellipse 38% 28% at 62% 92%, rgba(255, 70, 150, 0.035), transparent 66%),
+        radial-gradient(ellipse 30% 22% at 8% 10%, rgba(140, 255, 220, 0.03), transparent 64%);
+    pointer-events: none;
+}
+/* 暗角：视线聚焦中心，四周沉入夜色 */
+.visualizer-stage-neon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 92% 82% at 50% 46%, transparent 52%, rgba(3, 4, 8, 0.6) 100%);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* ============================================================
+   功率档（段落 kind 决定）：控制光晕层与背光强度
+   ============================================================ */
+.neon-power-chorus { --neon-halo: 0.34; }
+.neon-power-lift   { --neon-halo: 0.24; }
+.neon-power-verse  { --neon-halo: 0.13; }
+.neon-power-dim    { --neon-halo: 0.07; }
+
+/* —— 灯牌（A/B 两块，交叉淡入；is-active 的那块在上） ——
+   造型 = 真实霓虹灯牌：玻璃灯管折出边框（圆角 + 管色描边），面板近乎透明，
+   内部无任何衬板与内阴影线条；光从管子自身发出——外溢到墙面 + 内腔微透。 */
+.neon-sign {
+    position: absolute;
+    font-size: var(--neon-main-size);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 3.2% 4%;
+    box-sizing: border-box;
+    border-radius: 18px;
+    /* ★ 辉光截断修复（用户反馈：发光被容器边缘裁掉，巨物也是）——
+       overflow:visible 让 drop-shadow 辉光完整外溢；内容边界由 fitBody/
+       fitGiant 的尺寸控制保证（版心 ≤70% 高、店招防遮挡）。 */
+    overflow: visible;
+    background: rgba(6, 8, 14, 0.3);
+    border: 2px solid color-mix(in srgb, var(--neon-c, #6ee7ff) 34%, rgba(158, 173, 210, 0.5));
+    box-shadow:
+        0 0 calc(20px + var(--neon-halo, 0.13) * 80px) color-mix(in srgb, var(--neon-c, #6ee7ff) 42%, transparent),
+        0 26px 70px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transform: translateY(2.2%) scale(0.985);
+    transition: opacity 0.55s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                left 0.7s cubic-bezier(0.22, 1, 0.36, 1), top 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.7s cubic-bezier(0.22, 1, 0.36, 1), height 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.9s ease, border-color 0.9s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+.neon-sign.is-active {
+    opacity: 1;
+    transform: none;
+    z-index: 2;
+}
+/* 内腔辉光：管光把近透明的面板从内部微微照亮（呼吸 = neon-hum） */
+.neon-sign::before {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background: radial-gradient(ellipse at center, var(--neon-c, #6ee7ff), transparent 68%);
+    opacity: var(--neon-halo, 0.13);
+    animation: neon-hum 5.2s ease-in-out infinite;
+    pointer-events: none;
+}
+/* 灯的呼吸：电压细微波动，灯牌永远不是死平的亮度（确定性循环动画） */
+@keyframes neon-hum {
+    0%, 100% { opacity: calc(var(--neon-halo, 0.13) * 0.78); }
+    50%      { opacity: calc(var(--neon-halo, 0.13) * 1.18); }
+}
+
+/* —— 10 款灯牌构图（段序确定性轮换）——
+   ★ 全部 top+height ≤ 76% 安全线，底部控制栏恒在灯牌之下不被遮挡 —— */
+.neon-layout-center      { left: 14%; top: 22%; width: 72%; height: 46%; text-align: center; }
+.neon-layout-wide-top    { left: 6%;  top: 10%; width: 88%; height: 36%; text-align: center; }
+.neon-layout-wide-bottom { left: 6%;  top: 38%; width: 88%; height: 36%; text-align: center; }
+.neon-layout-left        { left: 6%;  top: 14%; width: 46%; height: 58%; text-align: left; }
+.neon-layout-right       { left: 48%; top: 14%; width: 46%; height: 58%; text-align: right; }
+.neon-layout-strip       { left: 8%;  top: 30%; width: 84%; height: 26%; text-align: center; }
+.neon-layout-cinema      { left: 4%;  top: 34%; width: 92%; height: 38%; text-align: center; }
+.neon-layout-corner      { left: 6%;  top: 8%;  width: 50%; height: 42%; text-align: left; }
+.neon-layout-offset      { left: 40%; top: 30%; width: 54%; height: 44%; text-align: right; }
+.neon-layout-half        { left: 8%;  top: 18%; width: 52%; height: 54%; text-align: left; }
+
+/* —— 店招：本行 hero 词的巨型灯管单线轮廓字（SVG <text>，逐行更换） ——
+   用 SVG 才拿得到 stroke-linejoin/linecap = round：真圆角灯管折弯
+   （CSS text-stroke 无 linejoin 控制）——霓虹 vs 活字的核心造型差异。
+   ★ 尺寸回归字号体系（height:1.9em，v2 教训：宽度跟容器走会让店招占满
+   半个灯牌、版心被衬得几乎不可见）；viewBox(100×26) 内 fitGiant 按
+   getBBox 收缩超宽词。fill=舞台底色隐入夜色，只剩外扩单线管。 */
+.neon-giant {
+    position: absolute;
+    height: 1.9em;
+    aspect-ratio: 100 / 26;
+    overflow: visible;
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+    /* ★ 巨物退后（用户反馈：巨物词与普通歌词混在一块）——降透明度当水印层，
+       版心永远是主角 */
+    opacity: 0.55;
+}
+.neon-giant-text {
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 17px;                    /* viewBox 用户单位基准（fitGiant 收缩覆盖） */
+    letter-spacing: 0.02em;
+    fill: #0b0d12;
+    stroke: rgba(190, 203, 235, 0.44);
+    stroke-width: 1.05;
+    paint-order: stroke fill;
+    stroke-linejoin: round;      /* ★ 真圆角灯管折弯 */
+    stroke-linecap: round;
+    transition: fill 0.35s ease, stroke 0.35s ease;
+}
+.neon-giant-ch {
+    transition: opacity 0.45s ease, fill 0.35s ease;
+}
+.neon-giant-ch.neon-giant-lit {
+    fill: var(--neon-c, #6ee7ff);
+    stroke: transparent;
+    /* 巨物退后：辉光同步减半（水印层不与版心抢亮度） */
+    filter:
+        drop-shadow(0 0 0.05em rgba(255, 255, 255, 0.45))
+        drop-shadow(0 0 0.16em color-mix(in srgb, var(--neon-c, #6ee7ff) 45%, transparent));
+}
+.neon-giant-tl { top: 2%;    left: 4%; }
+.neon-giant-tr { top: 2%;    right: 4%; }
+/* ★ 底部巨物：更大、永不点亮（活字式压底暗字，用户要求）——
+   lit 类由 JS 跳过（onUpdate 检查锚点），尺寸放大到 2.5em */
+.neon-giant-bl,
+.neon-giant-br { height: 2.5em; }
+.neon-giant-bl { bottom: 2%; left: 4%; }
+.neon-giant-br { bottom: 2%; right: 4%; }
+
+/* —— 版心：主歌词（逐字通电）+ 翻译字条 —— */
+.neon-body { position: relative; z-index: 1; }
+.neon-main {
+    font-weight: 900;
+    font-size: 1em;
+    /* ★ 行距 1.26 → 1.4（用户实测截图：英文多行时行与行挤在一起；
+       1.4 是灯牌多行排版的呼吸下限） */
+    line-height: 1.4;
+    /* ★ v3 逐字 SVG：svg 占位已按字形实宽校准（0.94em/字），原 0.03em 字距
+       叠加后视觉偏大（用户反馈字间距突然偏大）——归零由占位精度接管 */
+    letter-spacing: 0;
+    white-space: normal;
+    word-break: keep-all;
+    overflow: visible;
+}
+/* 未唱的字：熄灭的灯管。★ v3 逐字 SVG <text>（用户实测截图反馈：HTML
+   text-stroke 无 linejoin，折角是方的、不像霓虹灯管；lit 实心字更是普通
+   发光字）——每字一个独立 svg：stroke-linejoin/linecap = round 真圆角
+   灯管折弯 + paint-order 单线（fill 舞台底色盖掉 stroke 内半，只剩外扩
+   环形管）；lit = 管体烧成灯色（stroke 换灯色 + 管内微透 + 辉光链），
+   不再是实心发光字。CJK viewBox 100×100、拉丁词 len×60，宽 JS 按
+   1em/0.6em 每字符设定。 */
+.neon-char {
+    display: inline-block;
+    height: 1em;
+    overflow: visible;                  /* 外扩管与辉光出框 */
+    vertical-align: -0.08em;            /* svg 底边对齐文本基线微调 */
+    opacity: 0.95;
+    /* ★ 字间呼吸垫（用户实测：lit 膨胀 stroke + 辉光使相邻字接触糊成一团）：
+       恒定左右 0.03em，lit 与暗字都占位，避免点亮时行宽跳动 */
+    margin: 0 0.03em;
+    transition: opacity 0.3s ease;
+}
+.neon-char text {
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 100px;                   /* ★ viewBox 用户单位满格（SVG text 默认
+                                           16px 会让字形缩成小方块——probe 实锤） */
+    fill: #0b0d12;
+    stroke: rgba(198, 210, 238, 0.55);
+    stroke-width: 4.5;                  /* viewBox 单位 → 细边框（用户反馈：改回原
+                                           来的「仅是边框」观感，圆角由 linejoin 保留） */
+    paint-order: stroke fill;
+    stroke-linejoin: round;             /* ★ 圆角灯管折弯 */
+    stroke-linecap: round;
+    transition: stroke 0.25s ease, fill 0.25s ease, filter 0.3s ease;
+}
+/* ★ 词距 0.5em → 0.3em（2026-09-20 实测截图：词间隙 ≈0.5+两侧字符呼吸
+   0.14+margin ≈0.7em，比正常英文词距大一倍，用户反馈「间隔不定、有的挤」；
+   0.3em + 呼吸 ≈0.44em 落回自然词距区间） */
+.neon-space { display: inline-block; width: 0.3em; height: 1em; }
+/* ★ 暗管微呼吸：未点亮字缓慢明暗起伏，像灯管待机时的电压波动——点亮瞬间
+   动画移除（:not(.neon-lit)），由 flicker-on 接管。只动 opacity（合成器友好）。 */
+.neon-char:not(.neon-lit) {
+    animation: neon-tube-idle 5.2s ease-in-out infinite;
+}
+@keyframes neon-tube-idle {
+    0%, 100% { opacity: 0.95; }
+    50%      { opacity: 0.68; }
+}
+/* 通电的字：★ 整字上色 + 白芯（用户实测：纯灯色 fill 与辉光同亮度，
+   字被自己的光淹没看不清）——芯提白（可读），边缘留灯色膨胀与辉光（氛围）。 */
+.neon-char.neon-lit text {
+    fill: color-mix(in srgb, var(--neon-c, #6ee7ff) 32%, #ffffff);
+    stroke: color-mix(in srgb, var(--neon-c, #6ee7ff) 78%, #ffffff);
+    stroke-width: 6;
+    filter:
+        drop-shadow(0 0 0.045em rgba(255, 255, 255, 0.55))
+        drop-shadow(0 0 0.18em color-mix(in srgb, var(--neon-c, #6ee7ff) 45%, transparent));
+}
+.neon-char.neon-lit { opacity: 1; }
+/* 正在唱的字：过载一档——芯更白 */
+.neon-char.neon-lit.neon-hot text {
+    fill: color-mix(in srgb, var(--neon-c, #6ee7ff) 22%, #ffffff);
+    stroke: color-mix(in srgb, var(--neon-c, #6ee7ff) 60%, #ffffff);
+    filter:
+        drop-shadow(0 0 0.055em rgba(255, 255, 255, 0.7))
+        drop-shadow(0 0 0.22em color-mix(in srgb, var(--neon-c, #6ee7ff) 55%, transparent));
+}
+/* 情感词：★ AI 情感色管体 + 白描边勾边（与普通 lit 明显区分） */
+.neon-char.neon-emo.neon-lit text {
+    fill: var(--neon-c, #6ee7ff);
+    stroke: #ffffff;
+    stroke-width: 4;
+    filter:
+        drop-shadow(0 0 0.06em #ffffff)
+        drop-shadow(0 0 0.24em color-mix(in srgb, var(--neon-c, #6ee7ff) 70%, transparent));
+}
+.neon-char.neon-emo.neon-lit.neon-hot text {
+    stroke-width: 5;
+    filter:
+        drop-shadow(0 0 0.07em #ffffff)
+        drop-shadow(0 0 0.28em color-mix(in srgb, var(--neon-c, #6ee7ff) 80%, transparent));
+}
+/* 通电瞬间：电流不稳地闪两下再稳定（确定性动画，每字点亮时触发一次；
+   只闪 opacity——SVG 无 text-shadow，辉光由 filter 常驻） */
+.neon-char.neon-just-lit { animation: neon-flicker-on 0.6s linear; }
+@keyframes neon-flicker-on {
+    0%   { opacity: 0.18; }
+    10%  { opacity: 1; }
+    18%  { opacity: 0.22; }
+    30%  { opacity: 1; }
+    40%  { opacity: 0.5; }
+    52%  { opacity: 1; }
+    62%  { opacity: 0.72; }
+    72%  { opacity: 1; }
+    100% { opacity: 1; }
+}
+
+/* 翻译：灯牌下方的素净小字（无框无底——不再挂一块小牌子，靠投影保可读） */
+.neon-trans {
+    margin-top: 0.5em;
+    display: inline-block;
+    font-size: 0.3em;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: rgba(214, 226, 244, 0.8);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* —— 隐藏测量层：后台预计算 fit 字号（不可见、不参与动画） —— */
+.neon-sign.neon-mea {
+    visibility: hidden;
+    opacity: 0 !important;
+    transform: none;
+    transition: none;
+    pointer-events: none;
+}
+
+/* —— 模式选择弹窗的预览卡（与主视觉同步：管状描边灯牌 + 无框翻译） —— */
+.view-mode-preview-neon { background: #0b0d12; }
+.vm-neon-sign {
+    position: absolute;
+    left: 13%; top: 20%; width: 74%; height: 52%;
+    background: rgba(6, 8, 14, 0.35);
+    border: 1.5px solid rgba(255, 92, 138, 0.5);
+    border-radius: 9px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 24px rgba(255, 92, 138, 0.28);
+}
+.vm-neon-line {
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+.vm-neon-line span {
+    color: transparent;
+    -webkit-text-stroke: 0.6px rgba(174, 188, 220, 0.44);
+    margin: 0 1px;
+}
+.vm-neon-line span.lit {
+    color: #ffd9e6;
+    -webkit-text-stroke-color: transparent;
+    text-shadow: 0 0 4px #fff, 0 0 9px #ff5c8a, 0 0 18px rgba(255, 92, 138, 0.6);
+}
+.vm-neon-trans {
+    margin-top: 9px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: rgba(214, 226, 244, 0.68);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}

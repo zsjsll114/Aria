@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-page-loaded"
+description = "Enables the page_loaded command without any pre-configured scope."
+commands.allow = ["page_loaded"]
+
+[[permission]]
+identifier = "deny-page-loaded"
+description = "Denies the page_loaded command without any pre-configured scope."
+commands.deny = ["page_loaded"]

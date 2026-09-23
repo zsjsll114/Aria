@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题 / 配置咨询
+    url: https://github.com/zsjsll114
+    about: 先读 README 的「使用须知」与「常见问题」，仍无法解决再提 Bug 反馈。

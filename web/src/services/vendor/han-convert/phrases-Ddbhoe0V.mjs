@@ -1,0 +1,1 @@
+const e=new Map,t=new Map,n=new Map,r=new Map;function i(e){e.forEach(([e,t])=>o(n,e,t))}function a(e){e.forEach(([e,t])=>o(r,e,t))}function o(e,t,n){let r=t[0],i=e.get(r);!i&&e.set(r,i=[[],[]]),i[0].push(t),i[1].push(n===`_`?t:n)}function s(e,t){let n=e[0].split(` `),r=e[1].split(` `);n.forEach((e,n)=>o(t,e,r[n]))}export{e as a,n as i,a as n,r as o,s as r,t as s,i as t};

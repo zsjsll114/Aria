@@ -1,0 +1,334 @@
+/* ============================================================
+   letterpress.css — 「活字 Letterpress」歌词视觉
+   设计规范见 docs/歌词模式视觉规范.md「活字」一节。
+   结构：深底 → 色纸（非对称矩形，段落情绪定色）→ 巨物压印 + 版心大字
+   ============================================================ */
+
+/* —— 容器显隐（镜像 view-tunnel 的规则） —— */
+.player-container.view-letterpress,
+.preview-player.view-letterpress {
+    position: relative;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+}
+
+.player-container.view-letterpress .lyrics-area-wrapper,
+.preview-player.view-letterpress .cover-area,
+.preview-player.view-letterpress .preview-cover-area,
+.preview-player.view-letterpress .lyrics-container,
+.preview-player.view-letterpress .preview-lyrics-container,
+.preview-player.view-letterpress .scroll-container,
+.preview-player.view-letterpress .preview-lyrics-scroll,
+.preview-player.view-letterpress .preview-wireframes {
+    display: none !important;
+}
+
+.player-container.view-letterpress .top-action-buttons {
+    z-index: 30;
+}
+
+
+/* ============================================================
+   v3 版式：A/B 双纸交叉淡入 + 反字字盘 + 逐行 hero 巨物
+   字体/字号跟随全局设置：--vis-font-family（模式档）→ --app-font-family（全局）
+   ============================================================ */
+.visualizer-stage-letterpress {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #0e0e10;
+    perspective: 1400px;
+    /* ★ !important 必须保留（同 neon.css）：210-color-multilang 注入的
+       `.player-container *` (0-1-1) 会压过本规则并使活字字体档失效，
+       且其 var(--app-font-family) 无 fallback、缺失时断链到默认衬线 */
+    font-family: var(--vis-font-family, var(--app-font-family, "PingFang SC", "Microsoft YaHei", sans-serif)) !important;
+    /* 字号：优先模式档的 px 值（设置面板可调），否则按视口宽自适应 */
+    /* ★ 基准 4.6vw（v3 尺寸，用户确认合适）；外观面板乘数（0.5~2.0x）经
+       --lp-font-scale 作用其上。 */
+    --lp-main-size: calc(clamp(26px, 4.6vw, 92px) * var(--lp-font-scale, 1));
+    /* fitBody 缩放 .lp-paper 的 font-size，主/译/巨物以 em 跟随（翻译不再独立于主字号） */
+}
+/* 舞台的暗底加一层印刷台质感（细密网点，极低对比） */
+.visualizer-stage-letterpress::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 4px 4px;
+    pointer-events: none;
+}
+
+/* —— 纸页（A/B 两张，交叉淡入；is-active 的那张在上） —— */
+.lp-paper {
+    position: absolute;
+    font-size: var(--lp-main-size);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4% 5%;
+    box-sizing: border-box;
+    border-radius: 3px;
+    overflow: hidden;   /* 巨物/翻译不出纸页边界 */
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transform: translateY(2.2%) scale(0.985);
+    transition: opacity 0.55s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                left 0.7s cubic-bezier(0.22, 1, 0.36, 1), top 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.7s cubic-bezier(0.22, 1, 0.36, 1), height 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 0.9s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+.lp-paper.is-active {
+    opacity: 1;
+    transform: none;
+    z-index: 2;
+}
+/* 纸张纤维压纹 */
+.lp-paper::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.022) 0 1px, transparent 1px 3px),
+        repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.016) 0 1px, transparent 1px 4px);
+    pointer-events: none;
+}
+
+/* 三档纸色 × 多款变体（段序轮换）：米白/浅金/暖白 × 灰青/灰绿/灰蓝/灰紫 × 炭黑/黛紫/墨绿
+   ★ 亮纸角落「钤印」：一枚小方章（accent 色），活字印品的落款语言 */
+.lp-paper-bright   { background: #f2ead8; --lp-ink: #26241f; --lp-ink-dim: rgba(38, 36, 31, 0.55); --lp-accent: #c2452d; }
+.lp-paper-bright2  { background: #efe4cc; --lp-ink: #2b2620; --lp-ink-dim: rgba(43, 38, 32, 0.55); --lp-accent: #b8860b; }
+.lp-paper-bright3  { background: #f6efe6; --lp-ink: #33302a; --lp-ink-dim: rgba(51, 48, 42, 0.55); --lp-accent: #b0533a; }
+.lp-paper-neutral  { background: #57646a; --lp-ink: #f2f4f2; --lp-ink-dim: rgba(242, 244, 242, 0.5); --lp-accent: #ffd166; }
+.lp-paper-neutral2 { background: #5a6b5f; --lp-ink: #f2f4f0; --lp-ink-dim: rgba(242, 244, 240, 0.5); --lp-accent: #f0d98c; }
+.lp-paper-neutral3 { background: #4f5f70; --lp-ink: #eef2f6; --lp-ink-dim: rgba(238, 242, 246, 0.5); --lp-accent: #8ecaff; }
+.lp-paper-neutral4 { background: #5f5a6b; --lp-ink: #f2f0f4; --lp-ink-dim: rgba(242, 240, 244, 0.5); --lp-accent: #ffb3c8; }
+.lp-paper-dark     { background: #23252d; --lp-ink: #f2f4f2; --lp-ink-dim: rgba(242, 244, 242, 0.5); --lp-accent: #8ecaff; }
+.lp-paper-dark2    { background: #2a2430; --lp-ink: #f0ecf4; --lp-ink-dim: rgba(240, 236, 244, 0.5); --lp-accent: #c9a0ff; }
+.lp-paper-dark3    { background: #1f2a2b; --lp-ink: #ecf4f2; --lp-ink-dim: rgba(236, 244, 242, 0.5); --lp-accent: #7fd4c0; }
+
+/* —— 30 款版式（段序确定性轮换）：非对称 / 大留白 / 电影宽幅 / 角落构图 / 斜置 ——
+   斜置用独立 rotate 属性，不与入场 transform 冲突；底部最深 94%，控制栏 z-index 更高 —— */
+.lp-layout-duo { left: 8%; top: 14%; width: 84%; height: 58%; text-align: center; }
+.lp-layout-poster { left: 10%; top: 12%; width: 56%; height: 60%; text-align: left; }
+.lp-layout-note { left: 30%; top: 22%; width: 62%; height: 40%; text-align: right; }
+.lp-layout-banner { left: 6%; top: 30%; width: 88%; height: 32%; text-align: center; }
+.lp-layout-banner-high { left: 8%; top: 10%; width: 84%; height: 30%; text-align: center; }
+.lp-layout-banner-low { left: 8%; top: 44%; width: 84%; height: 30%; text-align: center; }
+.lp-layout-ribbon { left: 14%; top: 40%; width: 72%; height: 26%; text-align: center; }
+.lp-layout-strip { left: 4%; top: 46%; width: 92%; height: 26%; text-align: center; }
+.lp-layout-poster-wide { left: 6%; top: 14%; width: 66%; height: 60%; text-align: left; }
+.lp-layout-poster-right { left: 34%; top: 12%; width: 56%; height: 60%; text-align: right; }
+.lp-layout-canvas { left: 8%; top: 12%; width: 84%; height: 58%; text-align: center; }
+.lp-layout-note-left { left: 8%; top: 22%; width: 62%; height: 40%; text-align: left; }
+.lp-layout-card { left: 22%; top: 30%; width: 56%; height: 44%; text-align: center; }
+.lp-layout-ticket { left: 14%; top: 34%; width: 72%; height: 36%; text-align: center; }
+.lp-layout-pillar-left { left: 8%; top: 14%; width: 40%; height: 58%; text-align: left; }
+.lp-layout-pillar-right { left: 52%; top: 14%; width: 40%; height: 58%; text-align: right; }
+.lp-layout-pillar-center { left: 30%; top: 14%; width: 40%; height: 58%; text-align: center; }
+.lp-layout-cinema-scope { left: 5%; top: 34%; width: 90%; height: 32%; text-align: center; }
+.lp-layout-cinema-upper { left: 5%; top: 16%; width: 90%; height: 32%; text-align: center; }
+.lp-layout-cinema-lower { left: 5%; top: 42%; width: 90%; height: 30%; text-align: center; }
+.lp-layout-tilt-l { left: 10%; top: 20%; width: 76%; height: 52%; text-align: left; rotate: -1.6deg; }
+.lp-layout-tilt-r { left: 14%; top: 22%; width: 76%; height: 52%; text-align: right; rotate: 1.6deg; }
+.lp-layout-tilt-poster { left: 12%; top: 14%; width: 54%; height: 56%; text-align: left; rotate: 1.2deg; }
+.lp-layout-corner-tl { left: 5%; top: 6%; width: 52%; height: 46%; text-align: left; }
+.lp-layout-corner-tr { left: 43%; top: 6%; width: 52%; height: 46%; text-align: right; }
+.lp-layout-corner-bl { left: 5%; top: 40%; width: 52%; height: 34%; text-align: left; }
+.lp-layout-corner-br { left: 43%; top: 40%; width: 52%; height: 34%; text-align: right; }
+.lp-layout-offset-band { left: 16%; top: 36%; width: 68%; height: 28%; text-align: left; }
+.lp-layout-half-l { left: 4%; top: 22%; width: 46%; height: 50%; text-align: left; }
+.lp-layout-half-r { left: 50%; top: 22%; width: 46%; height: 50%; text-align: right; }
+
+/* —— 墨滚：每页开始时横向扫过一遍 —— */
+.lp-roller {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 16%;
+    background: linear-gradient(90deg, transparent,
+        color-mix(in srgb, var(--lp-ink) 14%, transparent),
+        color-mix(in srgb, var(--lp-ink) 24%, transparent),
+        color-mix(in srgb, var(--lp-ink) 14%, transparent), transparent);
+    opacity: 0;
+    pointer-events: none;
+}
+.lp-roller.lp-inking { animation: lp-ink-sweep 0.55s ease-in-out; }
+@keyframes lp-ink-sweep {
+    from { opacity: 0; transform: translateX(-40%); }
+    35%  { opacity: 1; }
+    to   { opacity: 0; transform: translateX(580%); }
+}
+
+/* —— 巨物：本行 hero 词的超大压印字（逐行更换） —— */
+.lp-giant {
+    position: absolute;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    color: var(--lp-ink);
+    opacity: 0.14;
+    white-space: nowrap;
+    user-select: none;
+    pointer-events: none;
+    font-size: 2.2em;
+}
+.lp-giant-ch {
+    display: inline-block;
+    transition: opacity 0.45s ease, color 0.45s ease, transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+/* ★ 巨物落印：整块大字字模重压进纸（大→正、虚→实），行首一次性触发 */
+.lp-giant.lp-giant-press { animation: lp-giant-press-in 0.62s cubic-bezier(0.2, 0.9, 0.25, 1.15); }
+@keyframes lp-giant-press-in {
+    from { opacity: 0;    transform: scale(1.5);  filter: blur(10px); }
+    60%  { opacity: 0.2;  filter: blur(2px); }
+    to   { opacity: 0.14; transform: scale(1);   filter: blur(0); }
+}
+.lp-giant-ch.lp-giant-sung { opacity: 1; }
+.lp-giant-tl { top: 3%;    left: 4%; }
+.lp-giant-tr { top: 3%;    right: 4%; }
+.lp-giant-ml { top: 28%;   left: 4%; }
+.lp-giant-mr { top: 28%;   right: 4%; }
+.lp-giant-bl { bottom: 3%; left: 5%; }
+.lp-giant-br { bottom: 3%; right: 5%; }
+
+/* —— 版心：主歌词（逐字压印）+ 翻译 —— */
+.lp-body { position: relative; z-index: 1; }
+.lp-main {
+    font-weight: 900;
+    font-size: 1em;
+    line-height: 1.24;
+    letter-spacing: 0.02em;
+    color: var(--lp-ink);
+    white-space: normal;
+    word-break: keep-all;
+    overflow: visible;
+}
+/* 未唱的字不显示（无预览、无空框——用户反馈框不好看） */
+.lp-char {
+    display: inline-block;
+    position: relative;   /* 钢印墨晕 ::after 的定位基准 */
+    white-space: pre;
+    color: transparent;
+    opacity: 0;
+    transform: translateY(0.22em) scale(1.28);
+    transition: opacity 0.2s ease, transform 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+                color 0.18s ease, text-shadow 0.5s ease;
+}
+/* ★ 钢印按压：墨影**沿笔画形状**分布——text-shadow 是跟着字形走的，
+   笔画中心墨最实（小 blur 高 alpha），按压瞬间 blur 变大 = 墨向笔画边缘
+   渐渐消散。不是套一个椭圆光斑（用户明确否定）。 */
+.lp-char.lp-active {
+    opacity: 1;
+    color: var(--lp-ink);
+    transform: translateY(0) scale(1.1);
+    animation: lp-press-ink 0.6s ease-out;
+}
+@keyframes lp-press-ink {
+    from {
+        text-shadow:
+            0 1px 0 rgba(0, 0, 0, 0.45),
+            0 0 3px  color-mix(in srgb, var(--lp-ink) 95%, transparent),
+            0 0 9px  color-mix(in srgb, var(--lp-accent) 85%, transparent);
+    }
+    to {
+        text-shadow:
+            0 1px 0 rgba(0, 0, 0, 0.24),
+            0 0 2px  color-mix(in srgb, var(--lp-ink) 30%, transparent),
+            0 0 20px color-mix(in srgb, var(--lp-accent) 0%, transparent);
+    }
+}
+/* 落定后的字：压痕还在（emboss），墨晕已消散，墨量带手压不均的微差 */
+.lp-char.lp-sung {
+    opacity: var(--char-ink, 1);
+    color: var(--lp-ink);
+    transform: none;
+    rotate: var(--char-tilt, 0deg);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.24), 0 -1px 0 rgba(255, 255, 255, 0.26);
+}
+.lp-char.lp-sung.lp-active { color: var(--lp-accent); }
+.lp-char.lp-sung.lp-emotion { color: var(--lp-accent); }
+.lp-char.lp-emotion.lp-active { color: var(--lp-accent); }
+.lp-trans {
+    margin-top: 0.6em;
+    font-size: 0.36em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--lp-ink-dim);
+}
+
+/* —— 底部控制栏：与其他视觉模式一致 —— */
+.player-container.view-letterpress .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+}
+
+/* —— 模式选择弹窗的预览卡 —— */
+.view-mode-preview-letterpress { background: #0e0e10; }
+.vm-lp-paper {
+    position: absolute;
+    left: 12%; top: 16%;
+    width: 76%; height: 60%;
+    background: #f2ead8;
+    padding: 8px;
+    box-sizing: border-box;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.vm-lp-giant {
+    position: absolute;
+    right: 4%; top: 0;
+    font-size: 30px;
+    font-weight: 900;
+    color: rgba(38, 36, 31, 0.16);
+    line-height: 1;
+}
+.vm-lp-line {
+    margin-top: 22px;
+    font-weight: 900;
+    font-size: 12px;
+    color: #26241f;
+    white-space: nowrap;
+}
+.vm-lp-line .sung { color: #c2452d; }
+
+/* —— 外观面板的字体下拉框 ——
+   ★ 2026-09-20：删除旧的实底黑底覆盖（用户反馈样式与其他下拉明显不一样），
+   完全回归 modals.css 的标准 .setting-dropdown 半透明毛玻璃样式 */
+/* 外观面板内所有下拉文字跟随全局字体设置 */
+#lyricStyleControls .setting-dropdown-trigger,
+#lyricStyleControls .setting-dropdown-menu,
+#lyricStyleControls .setting-dropdown-item {
+    font-family: var(--app-font-family, inherit);
+}
+
+/* —— 纸面装饰（按变体克制点缀）—— */
+/* 亮纸：右下角钤印 */
+.lp-paper-bright::after,
+.lp-paper-bright2::after,
+.lp-paper-bright3::after {
+    content: '';
+    position: absolute;
+    right: 4%; bottom: 5%;
+    width: 14px; height: 14px;
+    background: var(--lp-accent);
+    opacity: 0.75;
+    border-radius: 2px;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--lp-accent) 22%, transparent);
+    pointer-events: none;
+}
+/* 暗纸：内衬细线框 */
+.lp-paper-dark::after,
+.lp-paper-dark2::after,
+.lp-paper-dark3::after {
+    content: '';
+    position: absolute;
+    inset: 10px;
+    border: 1px solid color-mix(in srgb, var(--lp-ink) 14%, transparent);
+    pointer-events: none;
+}

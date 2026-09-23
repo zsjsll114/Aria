@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-lyrics-show"
+description = "Enables the desktop_lyrics_show command without any pre-configured scope."
+commands.allow = ["desktop_lyrics_show"]
+
+[[permission]]
+identifier = "deny-desktop-lyrics-show"
+description = "Denies the desktop_lyrics_show command without any pre-configured scope."
+commands.deny = ["desktop_lyrics_show"]

@@ -1,0 +1,281 @@
+diff --git a/src/controllers/getUserLikedSongs.ts b/src/controllers/getUserLikedSongs.ts
+index 78525d9..09c8407 100644
+--- a/src/controllers/getUserLikedSongs.ts
++++ b/src/controllers/getUserLikedSongs.ts
+@@ -1,5 +1,6 @@
+ import { KoaContext } from '../routes/types';
+ import { getUserLikedSongs } from '../services';
++import { resolveRequestCookie } from '../util/cookieResolver';
+ import { setApiResponse, withErrorHandler } from './util';
+ 
+ export default withErrorHandler(async (ctx: KoaContext) => {
+@@ -10,11 +11,17 @@ export default withErrorHandler(async (ctx: KoaContext) => {
+     return;
+   }
+ 
++  const normalizedUin = Array.isArray(uin) ? uin[0] : uin;
++  // ★ resolveRequestCookie 把 query/header 中的 cookie 化成 Cookie 头，
++  //   未登录态下拉"我喜欢"会返回 code:1000（上游校验 cookie），必须携带。
++  const { cookie } = resolveRequestCookie(ctx);
++
+   const result = await getUserLikedSongs({
+-    uin: uin as string,
++    uin: String(normalizedUin),
+     offset: Number(offset),
+     limit: Number(limit),
++    cookie,
+   });
+ 
+   setApiResponse(ctx, result);
+-});
++});
+\ No newline at end of file
+diff --git a/src/services/apis/user/getUserLikedSongs.ts b/src/services/apis/user/getUserLikedSongs.ts
+index 1bfe54e..16ecd87 100644
+--- a/src/services/apis/user/getUserLikedSongs.ts
++++ b/src/services/apis/user/getUserLikedSongs.ts
+@@ -1,6 +1,5 @@
+-import request from '../../../util/request';
+-import { getUserInfo } from '../../../config/user-info-store';
+ import { customResponse, errorResponse } from '../../../util/apiResponse';
++import { fetchWithTimeout, REQUEST_TIMEOUT_MS } from '../../../util/loginUtils';
+ import type { ApiResponse } from '../../../types/api';
+ 
+ const DEBUG_ENABLED = process.env.DEBUG === 'true';
+@@ -11,66 +10,68 @@ const debugLog = (message: string, payload?: unknown) => {
+ 	}
+ };
+ 
++// ★ 与 getUserPlaylists 同理：c6.y.qq.com 会拒绝 axios(node) TLS 指纹（code:1000），改用 undici fetch。
++const PROFILE_UA =
++	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
++
+ // 获取用户喜欢的歌曲列表
+ // 注意：此接口需要有效的 QQ 音乐 Cookie 才能正常工作
+ export const getUserLikedSongs = async (params: {
+ 	uin: string;
+ 	offset?: number;
+ 	limit?: number;
++	cookie?: string;
+ }): Promise<ApiResponse> => {
+-	const { uin, offset = 0, limit = 30 } = params;
++	const { uin, offset = 0, limit = 30, cookie } = params;
+ 	const page = Math.floor(offset / limit) + 1;
+ 
+ 	// 使用 c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg 接口
+ 	// 通过 mymusic 字段获取用户喜欢的歌曲信息
+-	const url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg';
++	const qs = new URLSearchParams({
++		_: String(Date.now()),
++		cv: '4747474',
++		ct: '24',
++		format: 'json',
++		inCharset: 'utf-8',
++		outCharset: 'utf-8',
++		notice: '0',
++		platform: 'yqq.json',
++		needNewCode: '0',
++		uin,
++		g_tk_new_20200303: '0',
++		g_tk: '0',
++		cid: '205360838',
++		userid: uin,
++		reqfrom: '1',
++		reqtype: '0',
++		hostUin: '0',
++		loginUin: uin,
++	});
++	const url = `https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?${qs.toString()}`;
+ 
+ 	try {
+-		const userInfo = getUserInfo();
+-
+ 		debugLog('request meta', {
+ 			url,
+ 			uin,
+ 			offset,
+ 			limit,
+ 			page,
+-			hasGlobalCookie: Boolean(userInfo.cookie),
+-			cookieLength: userInfo.cookie?.length || 0,
++			hasGlobalCookie: Boolean(cookie),
++			cookieLength: cookie?.length || 0,
+ 		});
+ 
+-		const response = await request<Record<string, any>>({
++		const response = await fetchWithTimeout(
+ 			url,
+-			method: 'GET',
+-			isUUrl: 'u',
+-			options: {
+-				params: {
+-					_: Date.now(),
+-					cv: 4747474,
+-					ct: 24,
+-					format: 'json',
+-					inCharset: 'utf-8',
+-					outCharset: 'utf-8',
+-					notice: 0,
+-					platform: 'yqq.json',
+-					needNewCode: 0,
+-					uin: Number.parseInt(uin, 10),
+-					g_tk_new_20200303: 0,
+-					g_tk: 0,
+-					cid: 205360838,
+-					userid: Number.parseInt(uin, 10),
+-					reqfrom: 1,
+-					reqtype: 0,
+-					hostUin: 0,
+-					loginUin: Number.parseInt(uin, 10),
+-				},
++			{
+ 				headers: {
++					'User-Agent': PROFILE_UA,
+ 					Referer: `https://y.qq.com/portal/profile.html?uin=${uin}`,
+-					Cookie: userInfo.cookie || '',
++					...(cookie ? { Cookie: cookie } : {}),
+ 				},
+ 			},
+-		});
+-
+-		const payload = response.data;
++			REQUEST_TIMEOUT_MS,
++		);
++		const payload = (await response.json()) as Record<string, any>;
+ 
+ 		debugLog('upstream payload summary', {
+ 			topLevelKeys: payload && typeof payload === 'object' ? Object.keys(payload) : null,
+@@ -120,9 +121,8 @@ export const getUserLikedSongs = async (params: {
+ 			);
+ 		}
+ 
+-		// 返回喜欢的歌曲信息（包含歌单 ID 和统计信息）
+-		// 注意：完整的歌曲列表需要通过 musics.fcg 接口获取（需要二进制加密）
+-		// 这里先返回歌单基本信息
++		// 返回喜欢的歌曲信息（包含"我喜欢"歌单 ID 与统计信息）
++		// 完整曲目通过 getSongListDetail?disstid=<id> 拉取（需要 ams_appid/sign 的专属加密接口已废弃）
+ 		return customResponse(
+ 			{
+ 				response: {
+@@ -137,6 +137,7 @@ export const getUserLikedSongs = async (params: {
+ 							albumCount: likedSongsInfo.num1,
+ 							playlistCount: likedSongsInfo.num2,
+ 							id: likedSongsInfo.id,
++							cover: likedSongsInfo.picurl,
+ 						},
+ 					},
+ 				},
+@@ -147,4 +148,4 @@ export const getUserLikedSongs = async (params: {
+ 		console.error('获取用户喜欢的歌曲失败:', error);
+ 		return errorResponse(error, 502);
+ 	}
+-};
++};
+\ No newline at end of file
+diff --git a/src/services/apis/user/getUserPlaylists.ts b/src/services/apis/user/getUserPlaylists.ts
+index e246c9d..f478c5b 100644
+--- a/src/services/apis/user/getUserPlaylists.ts
++++ b/src/services/apis/user/getUserPlaylists.ts
+@@ -1,5 +1,5 @@
+-import request from '../../../util/request';
+ import { customResponse, errorResponse } from '../../../util/apiResponse';
++import { fetchWithTimeout, REQUEST_TIMEOUT_MS } from '../../../util/loginUtils';
+ import type { ApiResponse } from '../../../types/api';
+ 
+ interface UserPlaylistItem {
+@@ -14,6 +14,11 @@ const debugLog = (message: string, payload?: unknown) => {
+ 	}
+ };
+ 
++// ★ 注意：上游 c6.y.qq.com 会用 TLS 指纹风控拒绝 axios(node) 请求（返回 code:1000），
++//   而 undici(fetch)/Node 原生 https 可正常返回。因此这里改用全局 fetch，不复用 axios。
++const PROFILE_UA =
++	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
++
+ const getNamedCandidateEntries = (payload: Record<string, any>) =>
+ 	[
+ 		['data.mydiss.list', payload?.data?.mydiss?.list],
+@@ -81,8 +86,27 @@ export const getUserPlaylists = async (params: {
+ 	const { uin, offset = 0, limit = 30, cookie } = params;
+ 
+ 	// 使用 c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg 接口
+-	// 这是通过 Chrome DevTools 抓包发现的实际使用的接口
+-	const url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg';
++	const qs = new URLSearchParams({
++		_: String(Date.now()),
++		cv: '4747474',
++		ct: '24',
++		format: 'json',
++		inCharset: 'utf-8',
++		outCharset: 'utf-8',
++		notice: '0',
++		platform: 'yqq.json',
++		needNewCode: '0',
++		uin,
++		g_tk_new_20200303: '0',
++		g_tk: '0',
++		cid: '205360838',
++		userid: uin,
++		reqfrom: '1',
++		reqtype: '0',
++		hostUin: '0',
++		loginUin: uin,
++	});
++	const url = `https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?${qs.toString()}`;
+ 	const pageOffset = offset % limit;
+ 
+ 	try {
+@@ -96,39 +120,18 @@ export const getUserPlaylists = async (params: {
+ 			cookieLength: cookie?.length || 0,
+ 		});
+ 
+-		const response = await request<Record<string, any>>({
++		const response = await fetchWithTimeout(
+ 			url,
+-			method: 'GET',
+-			isUUrl: 'u',
+-			cookie,
+-			options: {
+-				params: {
+-					_: Date.now(),
+-					cv: 4747474,
+-					ct: 24,
+-					format: 'json',
+-					inCharset: 'utf-8',
+-					outCharset: 'utf-8',
+-					notice: 0,
+-					platform: 'yqq.json',
+-					needNewCode: 0,
+-					uin: Number.parseInt(uin, 10),
+-					g_tk_new_20200303: 0,
+-					g_tk: 0,
+-					cid: 205360838,
+-					userid: Number.parseInt(uin, 10),
+-					reqfrom: 1,
+-					reqtype: 0,
+-					hostUin: 0,
+-					loginUin: Number.parseInt(uin, 10),
+-				},
++			{
+ 				headers: {
++					'User-Agent': PROFILE_UA,
+ 					Referer: `https://y.qq.com/portal/profile.html?uin=${uin}`,
++					...(cookie ? { Cookie: cookie } : {}),
+ 				},
+ 			},
+-		});
+-
+-		const payload = response.data;
++			REQUEST_TIMEOUT_MS,
++		);
++		const payload = (await response.json()) as Record<string, any>;
+ 
+ 		debugLog('upstream payload summary', {
+ 			topLevelKeys: payload && typeof payload === 'object' ? Object.keys(payload) : null,
+@@ -162,4 +165,4 @@ export const getUserPlaylists = async (params: {
+ 		console.error('获取用户歌单失败:', error);
+ 		return errorResponse(error, 502);
+ 	}
+-};
++};
+\ No newline at end of file

@@ -1,0 +1,427 @@
+        /* ========== 歌单系统样式 ========== */
+        .playlist-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .playlist-back-btn {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            background: transparent;
+            border: none;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .playlist-back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .playlist-back-btn.visible {
+            display: flex;
+        }
+
+        .playlist-add-btn {
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            background: transparent;
+            border: none;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            margin-left: auto;
+        }
+
+        .playlist-add-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            transform: rotate(90deg);
+        }
+
+        /* 歌单条目 */
+        .playlist-item {
+            padding: 12px 14px;
+            cursor: pointer;
+            border-radius: 14px;
+            margin-bottom: 2px;
+            background: transparent;
+            transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), background 0.2s ease, opacity 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            user-select: none;
+        }
+
+        .playlist-item.dragging,
+        .result-item.dragging {
+            opacity: 0.45;
+            transform: scale(0.98);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+
+        .playlist-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .playlist-cover {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .playlist-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .playlist-cover-fallback {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .playlist-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* 本地音乐上传横幅 */
+        .local-music-upload-banner {
+            margin: 10px 14px 16px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-align: center;
+        }
+        .local-music-upload-banner:hover {
+            background: rgba(var(--theme-color-rgb), 0.12);
+            border-color: var(--theme-color);
+            transform: translateY(-1px);
+        }
+        .local-music-upload-banner.dragover {
+            background: rgba(var(--theme-color-rgb), 0.2);
+            border-color: var(--theme-color);
+            box-shadow: 0 0 20px rgba(var(--theme-color-rgb), 0.3);
+        }
+        .local-music-upload-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .local-music-upload-sub {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        .local-music-progress-box {
+            width: 100%;
+            margin-top: 8px;
+            display: none;
+        }
+        .local-music-progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .local-music-progress-fill {
+            width: 0%;
+            height: 100%;
+            background: var(--theme-color);
+            transition: width 0.2s ease;
+        }
+        .local-music-progress-text {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 4px;
+        }
+
+        .playlist-name {
+            font-size: 14px;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 3px;
+        }
+
+        /* 歌单重命名内联输入框 */
+        .playlist-name-input {
+            font-size: 14px;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 6px;
+            padding: 2px 6px;
+            outline: none;
+            width: 100%;
+            max-width: 200px;
+            font-family: inherit;
+            margin-bottom: 3px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .playlist-name-input:focus {
+            border-color: rgba(var(--theme-color-rgb),0.7);
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .playlist-meta {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .playlist-play-btn {
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.12);
+            border: none;
+            border-radius: 50%;
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .playlist-play-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.1);
+        }
+
+        /* 创建歌单输入框 */
+        .playlist-create-box {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            padding: 12px 14px;
+        }
+
+        .playlist-create-box input {
+            flex: 1;
+            min-width: 0;
+            padding: 9px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+
+        .playlist-create-box input::placeholder {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .playlist-create-box input:focus {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .playlist-create-btn {
+            padding: 9px 14px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            flex-shrink: 0;
+        }
+
+        .playlist-create-btn:hover {
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .import-progress-wrap {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* 导入歌单弹窗 */
+        .import-modal {
+            width: min(480px, 100%);
+            height: auto;
+            max-height: 80vh;
+        }
+
+        .import-modal-body {
+            padding: 0 18px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .import-url-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .import-url-row input {
+            flex: 1;
+            min-width: 0;
+            padding: 9px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+
+        .import-url-row input::placeholder {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .import-url-row input:focus {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .import-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .import-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--theme-color, #f5a623);
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .import-progress-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.55);
+            text-align: center;
+        }
+
+        /* 添加到歌单选择器条目 */
+        .add-to-playlist-item {
+            padding: 11px 14px;
+            cursor: pointer;
+            border-radius: 14px;
+            margin-bottom: 2px;
+            background: transparent;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .add-to-playlist-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .add-to-playlist-name {
+            flex: 1;
+            font-size: 14px;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .add-to-playlist-count {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .add-to-playlist-item.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        /* 歌单标签 */
+        .playlist-tag {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(var(--theme-color-rgb),0.15);
+            color: var(--theme-color);
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* 窄窗口时垂直排列 */
+        @media (max-width: 700px) {
+            .player-container {
+                flex-direction: column;
+                gap: 10px;
+                padding: 10px;
+            }
+
+            .player-controls-wrapper {
+                width: 100%;
+                min-width: 0;
+                max-width: none;
+                flex-shrink: 0;
+            }
+
+            .cover-area {
+                width: clamp(80px, 30vw, 140px);
+                height: clamp(80px, 30vw, 140px);
+                margin-bottom: 10px;
+            }
+
+            .lyrics-area-wrapper {
+                flex: 1;
+                min-height: 0;
+            }
+        }
+

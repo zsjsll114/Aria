@@ -1,0 +1,61 @@
+        /* ==================== 触控适配（t1 P0） ====================
+           与 230-touch-gestures.js 配套：
+           - touch-action 划定浏览器手势边界（滑杆归 JS、页面留纵向滚动）
+           - pointer:coarse 下放大触控目标至 ≥40px
+           - 关闭点按高亮 / 下拉刷新干扰 */
+
+        html { -webkit-tap-highlight-color: transparent; }
+
+        body { overscroll-behavior-y: contain; }
+
+        /* 滑杆类：拖拽完全交给 touch 事件，禁掉浏览器滚动/缩放抢占 */
+        .progress-track,
+        .volume-track,
+        .bottom-progress-track {
+            touch-action: none;
+        }
+
+        /* 默认封面模式双页容器：允许纵向滚动，水平方向留给翻页手势 */
+        .player-container.view-cover {
+            touch-action: pan-y;
+        }
+
+        /* 触屏设备：触控目标不小于 40×40（WCAG 2.5.5 参考量级） */
+        @media (pointer: coarse) {
+            .bottom-btn {
+                min-width: 40px;
+                min-height: 40px;
+            }
+            .bottom-play-btn {
+                min-width: 44px;
+                min-height: 44px;
+            }
+            .control-button {
+                min-width: 42px;
+                min-height: 42px;
+            }
+            .icon-action-btn {
+                min-width: 40px;
+                min-height: 40px;
+            }
+            .mobile-page-toggle {
+                width: 44px;
+                height: 44px;
+            }
+            /* 滑杆轨道加高触控热区（视觉条高度不变，热区上下扩展） */
+            .progress-track,
+            .bottom-progress-track,
+            .volume-track {
+                position: relative;
+            }
+            .progress-track::before,
+            .bottom-progress-track::before,
+            .volume-track::before {
+                content: '';
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: -12px;
+                bottom: -12px;
+            }
+        }

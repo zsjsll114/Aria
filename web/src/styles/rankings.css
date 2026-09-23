@@ -1,0 +1,688 @@
+/* ============================================================
+ * rankings.css — 音乐榜单 / 最近播放 / 播放统计 页面样式
+ * 榜单弹窗复用与搜索一致的 .search-overlay > .search-modal > .search-modal-header
+ * （顶部 .source-toggle 音源切换导航），歌曲展示为「圆角方形封面 + 左下角名称」宫格。
+ * ============================================================ */
+
+/* ---- 榜选择 chips（横向滚动） ---- */
+.rank-chips {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+}
+.rank-chip {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+}
+.rank-chip:hover { border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.5); color: #fff; }
+.rank-chip.active {
+    border-color: var(--theme-color, #ffcc33);
+    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
+    color: var(--theme-color, #ffcc33);
+}
+
+/* ---- 歌曲封面宫格：圆角正方形封面 + 左下角名称（与搜索弹窗同框架） ---- */
+.rank-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 18px;
+    min-height: 0;
+}
+.rank-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 14px;
+}
+.rank-card {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.rank-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+.rank-card.np { box-shadow: 0 0 0 2px var(--theme-color, #ffcc33), 0 8px 24px rgba(0, 0, 0, 0.4); }
+.rank-card-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.rank-card-ph {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+}
+.rank-card-no {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    z-index: 2;
+}
+.rank-card-meta {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 22px 9px 8px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+    z-index: 2;
+}
+.rank-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.rank-card-artist {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.72);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.rank-card-src {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.85);
+    z-index: 2;
+}
+.rank-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 13px;
+    line-height: 1.8;
+}
+.rank-loading {
+    padding: 46px 20px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    letter-spacing: 2px;
+}
+
+/* ================= 布局切换（006-layouts.js） =================
+   B1 歌曲列表视图：.song-grid-view = 行式 → 宫格卡
+   B2 卡片宫格 ⇄ 横向轮播：.cards-carousel
+   切换按钮 .view-toggle-btn：透明、仅在 hover 给半透明方块底（用户偏好纯色主题按钮） */
+.view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.view-toggle-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.view-toggle-btn.active {
+    border-color: var(--theme-color, #ffcc33);
+    color: var(--theme-color, #ffcc33);
+}
+.cards-head {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 2px 8px;
+}
+
+/* ================= 播放全部按钮统一规范（Fix5） =================
+   所有 .play-all-btn / .rank-playall 统一：左三角 icon + 文字 + hover 微亮。
+   老实现有的没写 svg 导致「有的有 icon 有的没有」——这里用伪元素兜底：
+   只有缺 <svg> 的按钮才注入，避免与显式 svg 双份。 */
+.play-all-btn,
+.rank-playall {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    cursor: pointer;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    transition: background 0.15s ease;
+}
+.play-all-btn:hover,
+.rank-playall:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.play-all-btn:empty,
+.play-all-btn:not(:has(> svg))::before,
+.rank-playall:not(:has(> svg))::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    background-color: currentColor;
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8V4z"/></svg>') center / contain no-repeat;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8V4z"/></svg>') center / contain no-repeat;
+}
+
+/* B1：宫格卡视图（作用于歌曲列表容器；头部 play-all / playall 工具条占满整行）
+   ★ 固定 3 列：auto-fill/minmax 会让列数随容器宽度浮动（窄容器一张只剩 1 列、宽容器 5~6 列），
+   观感不一致 → 统一 repeat(3, minmax(0,1fr))，卡片等宽；minmax(0,1fr) 防 min-content 撑破布局 */
+.song-grid-view { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* ★ 歌单/收藏列表容器复用 .search-results（display:none 默认）且位于 .search-modal 内，
+   .search-modal .search-results{display:block}（0,2,0）会在级联中压制 .song-grid-view{display:grid}（0,1,0），
+   实测普通 ID 规则（1,1,0）仍被压回 block → 宫格卡片一行一个。
+   必须 !important 保底：实测注入 #playlistsList.song-grid-view{display:grid!important} 后恢复 3 列。 */
+#playlistsList.song-grid-view,
+#favoritesList.song-grid-view,
+#rankList.song-grid-view { display: grid !important; }
+.song-grid-view > .rank-list-head,
+.song-grid-view > .rank-playall,
+.song-grid-view > .local-music-upload-banner,
+.song-grid-view > .play-all-btn { grid-column: 1 / -1; }
+.song-grid-view > .result-item {
+    position: relative;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    padding: 10px;
+    margin: 0;
+    gap: 7px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+.song-grid-view > .result-item:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38); background: rgba(255, 255, 255, 0.09); }
+.song-grid-view > .result-item .result-cover {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1 / 1;
+    border-radius: 9px;
+}
+.song-grid-view > .result-item .rank-sno {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 2;
+    font-style: italic;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+.song-grid-view > .result-item .result-info { width: 100%; flex: none; }
+.song-grid-view > .result-item .result-actions { position: absolute; top: 8px; right: 8px; z-index: 2; opacity: 0; background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 2px; }
+.song-grid-view > .result-item:hover .result-actions { opacity: 1; }
+
+/* B2：卡片横向轮播（作用于 .rank-board-grid）
+   ★ 卡 158→190px：与网格槽位(≈130px)拉开可感知差距，否则单/少卡时切换"看起来没反应" */
+.cards-carousel {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding: 2px 6px 8px;
+    scrollbar-width: thin;
+}
+.cards-carousel > .rank-board-card {
+    flex: 0 0 190px;
+    width: 190px;
+    scroll-snap-align: start;
+}
+
+/* ================= 骨架屏（统一规范） =================
+   用法：window.__skeleton('cards', n) → 宫格卡骨架；__skeleton('list', n) → 列表行骨架；
+        __skeleton('lyrics', n) → 歌词区骨架（居中多行），函数定义在 005-skeleton.js。
+
+   ★ 推荐用带时序的封装（同一文件 005-skeleton.js）：
+       Aria.skeleton.load(el, 'list', 8);   // 150ms 后才显示（快响应不闪）
+       Aria.skeleton.settle(el, html);      // 若骨架已显示，补足 280ms 最短展示再换内容
+     load() 挂了 MutationObserver：任何外部 innerHTML 写入都会让骨架自动让位，
+     所以接入只需把 `el.innerHTML = Aria.__skeleton(...)` 换成 `Aria.skeleton.load(...)`，
+     成功/失败/空态那些渲染路径一个字都不用改。
+
+   基座 .sk：低对比底块 + 自右向左 shimmer 微光；禁用动画统一走 perf-minimal / reduced-motion。 */
+.sk {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+}
+.sk::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.10) 50%, transparent 80%);
+    animation: sk-shimmer 1.4s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes sk-shimmer {
+    100% { transform: translateX(100%); }
+}
+.sk-line { height: 12px; border-radius: 6px; }
+.sk-line.wide { width: 100%; }
+.sk-line.mid { width: 76%; }
+.sk-line.short { width: 56%; }
+.sk-line.half { width: 40%; }
+.sk-line.two { width: 88%; }
+.sk-banner { height: 110px; border-radius: 10px; }
+.sk-cover { width: 42px; height: 42px; border-radius: 8px; flex: 0 0 auto; }
+.sk-index { width: 22px; height: 14px; border-radius: 4px; flex: 0 0 auto; }
+.sk-ops { width: 64px; height: 28px; border-radius: 8px; flex: 0 0 auto; }
+.sk-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.sk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 14px;
+    padding: 4px 0;
+}
+.sk-grid .sk-card { display: flex; flex-direction: column; gap: 9px; }
+.sk-list { display: flex; flex-direction: column; gap: 13px; padding: 4px 0; }
+.sk-list .sk-row { display: flex; align-items: center; gap: 12px; }
+/* 歌词区中心骨架（切歌/加载歌词用） */
+.skeleton-lyrics {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    width: 100%;
+    height: 100%;
+    min-height: 55vh;
+    box-sizing: border-box;
+    padding: 0 14%;
+    pointer-events: none;
+}
+.skeleton-lyrics .sk-line { width: 100%; height: 15px; }
+/* 性能/无障碍：关闭 shimmer */
+body.perf-minimal .sk::after { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .sk::after { animation: none; }
+}
+.rank-error {
+    padding: 40px 20px;
+    text-align: center;
+    color: #ff8a80;
+    font-size: 13px;
+    line-height: 1.8;
+}
+.rank-error .rank-retry {
+    margin-top: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 5px 16px;
+    font-size: 12px;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---- 播放统计卡片 ---- */
+.stats-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 20px 20px;
+    min-height: 0;
+}
+.stats-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.stats-kpi {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px 10px;
+    text-align: center;
+}
+.stats-kpi .v {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--theme-color, #ffcc33);
+}
+.stats-kpi .l {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 3px;
+}
+.stats-block {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+.stats-block-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.stats-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.stats-bar-name {
+    width: 130px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stats-bar-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.stats-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--theme-color, #ffcc33);
+    opacity: 0.85;
+}
+.stats-bar-val {
+    width: 56px;
+    text-align: right;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+.stats-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+/* 最近播放列表复用 .result-item */
+#recentList .result-item .rank-del {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    visibility: hidden;
+    flex-shrink: 0;
+}
+#recentList .result-item:hover .rank-del { visibility: visible; color: rgba(255,255,255,.75); }
+#recentList .result-item .rank-del:hover { color: #ff8a80; background: rgba(255, 255, 255, 0.08); }
+
+/* ---- 榜单返回导航条 ---- */
+.rank-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+/* 榜单音源切换独立成行：
+   首行 = 「标题 + 关闭」（与收藏列表规范一致），本行放音源切换。
+   ★ 样式与搜索弹窗 header 内的 .source-toggle 保持一致：左右边距同 header 的 18px、
+     下边距取 12px；**宽度铺满容器**（.source-btn 自带 flex:1，三个按钮会均分整行），
+     与搜索弹窗一致——早前误加了 width:fit-content，导致胶囊只包住按钮、
+     文字还被挤到换行。 */
+.search-modal .rank-source-toggle {
+    margin: 0 18px 12px;
+    flex-shrink: 0;
+}
+/* 标题左内边距归零：让「榜单」标题与下方音源按钮、右上关闭按钮对齐到同一条 18px 基线 */
+.search-modal-header .favorites-title#rankPageTitle {
+    padding-left: 0;
+}
+.rank-back {
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.85);
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.16s ease;
+}
+.rank-back:hover { background: rgba(255, 255, 255, 0.2); }
+.rank-nav-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.92);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rank-nav-count { font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+
+/* ---- 榜单列表宫格（榜封面卡） ---- */
+.rank-board-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 14px;
+    padding: 4px 0;
+}
+/* ★ 歌单弹窗里的封面卡宫格：容器(.search-results)左右 padding 仅 10px，
+   卡片贴边太近 → 作用域内补水平留白（榜单容器自身 padding 充足，不受影响） */
+#playlistsList .rank-board-grid { padding: 4px 6px 8px; }
+.rank-board-card {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.rank-board-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+.rank-board-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.rank-board-ph { position: absolute; inset: 0; display: block; }
+.rank-board-meta {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 24px 10px 8px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
+    z-index: 2;
+}
+.rank-board-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rank-board-count { font-size: 10.5px; color: rgba(255, 255, 255, 0.72); margin-top: 1px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+
+/* ---- 榜单歌曲行（普通歌单样式）的序号 ---- */
+.rank-sno {
+    width: 22px;
+    flex-shrink: 0;
+    text-align: center;
+    font-style: italic;
+    font-weight: 800;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.35);
+}
+#rankList .result-item { cursor: pointer; }
+
+/* ---- 通用毛玻璃输入弹窗（showGlassPrompt / showGlassPick） ---- */
+.gp-modal {
+    width: min(380px, 90vw);
+    background: rgba(24, 26, 34, 0.82);
+    backdrop-filter: saturate(200%) blur(40px);
+    -webkit-backdrop-filter: saturate(200%) blur(40px);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    animation: modalIn 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gp-title { font-size: 15px; font-weight: 700; color: rgba(255, 255, 255, 0.94); margin-bottom: 6px; }
+.gp-sub { font-size: 12px; color: rgba(255, 255, 255, 0.55); margin-bottom: 8px; line-height: 1.6; }
+.gp-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.16s ease;
+}
+.gp-input:focus { border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.7); }
+.gp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.gp-cancel, .gp-ok {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    padding: 7px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+.gp-cancel:hover { background: rgba(255, 255, 255, 0.16); }
+.gp-ok { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.18); border-color: transparent; color: var(--theme-color, #ffcc33); font-weight: 600; }
+.gp-ok:hover { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.3); }
+.gp-pick-list { margin-top: 10px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.gp-pick-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.9);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.16s ease;
+}
+.gp-pick-item:hover { background: rgba(255, 255, 255, 0.12); }
+.gp-pick-meta { font-size: 11px; color: rgba(255, 255, 255, 0.5); flex-shrink: 0; }
+.gp-pick { padding: 16px; }
+
+/* ---- 歌单批量操作 ---- */
+/* 自定义 checkbox：适配项目圆形/主题色风格 */
+.pl-multi-cb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin: 0 4px 0 2px;
+    cursor: pointer;
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    vertical-align: middle;
+    position: relative;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.pl-multi-cb:hover { border-color: var(--theme-color, #ffcc33); }
+.pl-multi-cb:checked {
+    background: var(--theme-color, #ffcc33);
+    border-color: var(--theme-color, #ffcc33);
+    box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 255, 204, 51), 0.45);
+}
+.pl-multi-cb:checked::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 4px;
+    height: 8px;
+    border: solid #141414;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.pl-multi-cb:focus-visible { outline: 1px solid var(--theme-color, #ffcc33); outline-offset: 1px; }
+
+/* 编辑模式工具栏「全选/全不选」 */
+.pl-batch-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+    height: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 12px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.06);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    user-select: none;
+}
+.pl-batch-all:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.pl-batch-all input { cursor: pointer; }
+.playlist-song-drag-item.pl-edit-on {
+    cursor: default;
+    background: rgba(255, 255, 255, 0.03);
+}
+.playlist-song-drag-item.pl-edit-on:hover { background: rgba(255, 255, 255, 0.08); }
+/* 右下角管理歌单面板：字体跟随全局设置 */
+#plmPanel, #plmPanel * { font-family: var(--app-font-family, inherit) !important; }
+
+/* ★ 宫格视图下，卡片骨架的 sk-grid 包装器溶解为直布网格项
+   （否则骨架卡挤在 3 列网格的单格里，观感是"列表骨架"） */
+#rankList.song-grid-view .sk-grid { display: contents; }

@@ -1,0 +1,396 @@
+/* ==========================================================================
+   Visualizers Stylesheet (visualizers.css)
+   上游参考项目 视觉体系 — 全景歌词视觉动效模式 (浮空模式 Dimension & 和鸣模式 Polyphony)
+   ========================================================================== */
+
+/* 通用根视口 */
+.visualizer-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+  z-index: 10;
+  --vis-theme-color: #ffcc33;
+  --vis-font-size: 32px;
+  --vis-font-family: inherit;
+}
+
+
+/* ==========================================================================
+   1. 浮空模式 (Dimension Visualizer - 3D 空间流体点阵矩阵模式)
+   ========================================================================== */
+.vis-dimension-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+  perspective: 900px;
+  perspective-origin: 50% 50%;
+  background: #080612;
+}
+
+.dim-bg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: blur(36px) saturate(1.4) brightness(0.92);
+  transform: scale(1.12);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dim-shapes-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.dim-lyric-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+/* 极远景巨型水印幽灵文字 */
+.dim-ghost-word {
+  position: absolute;
+  font-size: clamp(80px, 12vw, 160px);
+  font-weight: 900;
+  font-family: 'Consolas', 'Menlo', monospace, sans-serif;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  transform: translateZ(-280px) translateY(-40px);
+  opacity: 0.45;
+  filter: blur(4px);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* 3D 纵深歌词基类（超大字排版，由 RAF 引擎高精度驱动） */
+/* ★ contain: layout style —— 单字符 class 变化时，样式/布局重算范围从整页缩到本行。
+   不用 contain: paint（会裁剪溢出，切掉模糊/发光效果）。 */
+.dim-line {
+  contain: layout style;
+  position: absolute;
+  width: 92%;
+  max-width: 1200px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: 'Consolas', 'SF Mono', 'Segoe UI Mono', monospace, sans-serif;
+  letter-spacing: 2px;
+  transform-style: preserve-3d;
+  will-change: transform, opacity, filter;
+  pointer-events: none;
+  font-size: var(--dim-font-size, 76px);
+  font-weight: 900;
+  color: #ffffff;
+}
+
+/* 单词容器：强制单词内部禁止折行，确保完整英文单词作为一个整体排版与换行 */
+.dim-word-wrap {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  pointer-events: none;
+}
+
+/* 独立空格占位元素 */
+.dim-space {
+  display: inline-block;
+  width: 0.36em;
+  pointer-events: none;
+}
+
+/* 1. 当前活跃行 */
+.dim-line.dim-line-active {
+  z-index: 20;
+  text-shadow: 0 6px 25px rgba(0, 0, 0, 0.95), 0 0 4px rgba(255, 255, 255, 0.9);
+}
+
+/* 2. 前面穿透行 */
+.dim-line.dim-line-past {
+  z-index: 50;
+  color: #ffffff;
+}
+
+/* 3. 后面紧随的行 */
+.dim-line.dim-line-next1,
+.dim-line.dim-line-next {
+  z-index: 10;
+  color: rgba(225, 235, 245, 0.85);
+  text-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
+}
+
+/* 4. 极远景行 */
+.dim-line.dim-line-next2 {
+  z-index: 5;
+  color: rgba(200, 220, 240, 0.6);
+}
+
+/* 5. 隐藏行 */
+.dim-line.dim-line-hidden {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* 逐字符点亮样式（单个字符染色，默认纯白，零发光） */
+.dim-char,
+.dim-word {
+  display: inline-block;
+  padding: 0;
+  white-space: pre;
+  color: #ffffff;
+  transition: color 0.72s cubic-bezier(0.25, 1, 0.5, 1) 0.18s;
+  transform: none !important;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.7); /* 仅深色打底增加可读性，零发光 */
+}
+
+/* 情感词默认正体纯白 */
+.dim-char.dim-char-emotion,
+.dim-word.dim-word-emotion {
+  color: #ffffff;
+  font-style: normal !important;
+  font-weight: 900;
+}
+
+/* 1. 当前唱到的单个字符（染色渐变：0.16s 快速平滑进入主题色/高亮色） */
+.dim-line-active .dim-char.active,
+.dim-line-active .dim-word.active {
+  color: var(--dim-highlight-color, var(--vis-theme-color, #ffcc33)) !important;
+  transform: none !important;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+  transition: color 0.16s ease-out; /* 快速平滑染色 */
+}
+
+/* 2. 当前唱到的单个情感字符（染色渐变：0.16s 快速进入情感色，柔和微光，字迹清晰） */
+.dim-line-active .dim-char.dim-char-emotion.active,
+.dim-line-active .dim-word.dim-word-emotion.active {
+  color: var(--emotion-color, #ff2a6d) !important;
+  transform: none !important;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 var(--emotion-glow, 10px) color-mix(in srgb, var(--emotion-color, #ff2a6d) 40%, transparent) !important;
+  font-style: normal !important;
+  transition: color 0.16s ease-out;
+}
+
+/* 3. 唱过后的字符（普通字恢复白色，情感字保留情感色与极微弱柔光） */
+.dim-line-active .dim-char.sung,
+.dim-line-active .dim-word.sung {
+  color: #ffffff !important;
+  transform: none !important;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
+  transition: color 0.72s cubic-bezier(0.25, 1, 0.5, 1) 0.18s;
+}
+
+.dim-line-active .dim-char.dim-char-emotion.sung,
+.dim-line-active .dim-word.dim-word-emotion.sung {
+  color: var(--emotion-color, #ff2a6d) !important;
+  transform: none !important;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 calc(var(--emotion-glow, 10px) * 0.5) color-mix(in srgb, var(--emotion-color, #ff2a6d) 25%, transparent) !important;
+  font-style: normal !important;
+  transition: color 0.72s cubic-bezier(0.25, 1, 0.5, 1) 0.18s;
+}
+
+/* ==========================================================================
+   2. 和鸣模式 (Polyphony Visualizer)
+   ========================================================================== */
+.vis-polyphony-view {
+  background: #090714;
+}
+
+.vis-polyphony-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 50vh;
+  z-index: 2;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vis-polyphony-bubble {
+  display: flex;
+  align-items: flex-start;
+  margin: 16px 0;
+  width: 85%;
+  max-width: 680px;
+  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  opacity: 0.35;
+}
+
+.vis-polyphony-bubble.align-right {
+  flex-direction: row-reverse;
+}
+
+.vis-polyphony-bubble.active {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.vis-polyphony-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  margin: 0 14px;
+}
+
+.vis-polyphony-bubble.active .vis-polyphony-avatar {
+  border-color: var(--vis-theme-color);
+  box-shadow: 0 0 15px var(--vis-theme-color);
+}
+
+.vis-polyphony-body {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px 20px;
+}
+
+.vis-polyphony-bubble.active .vis-polyphony-body {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.vis-polyphony-speaker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--vis-theme-color);
+  margin-bottom: 6px;
+}
+
+.vis-polyphony-words {
+  font-size: var(--vis-font-size);
+  font-family: var(--vis-font-family);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.vis-polyphony-bubble.active .vis-polyphony-words {
+  color: #ffffff;
+}
+
+/* ★★ RTL 歌词方向适配（阿拉伯/希伯来语等，用户反馈 PV 已部分适配但其余视图缺失）：
+   VisualizerBase.setLyrics 检测 RTL 语系并给 stage 挂 vis-rtl 类；逐字点亮元素
+   按字符串序创建，bidi 重排后视觉上自然「从右往左」点亮——各视图的高亮推进
+   逻辑无需改动。unicode-bidi: plaintext 让混合行（夹拉丁词）按段内方向排。 */
+.vis-rtl .neon-main,
+.vis-rtl .neon-trans,
+.vis-rtl .lp-main,
+.vis-rtl .lp-trans,
+.vis-rtl .dim-line,
+.vis-rtl .dim-char,
+.vis-rtl .vis-polyphony-word {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+/* 霓虹店招是 SVG <text>：SVG 的 bidi 走 direction 属性（继承自容器不生效，
+   需显式指到 text 元素） */
+.vis-rtl .neon-giant-text {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+/* 流光隧道/蒙德里安（TunnelEngine 自挂 tunnel-is-rtl，不在基类继承链内） */
+.tunnel-view-container.tunnel-is-rtl .tunnel-group-words,
+.tunnel-view-container.tunnel-is-rtl .tunnel-char {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+
+.vis-polyphony-word {
+  display: inline-block;
+  transition: all 0.2s ease;
+  padding: 0 2px;
+}
+
+.vis-polyphony-word.singing {
+  color: var(--vis-highlight-color, var(--vis-theme-color, #ffcc33));
+  text-shadow: 0 0 15px var(--vis-highlight-color, var(--vis-theme-color, #ffcc33));
+}
+
+.vis-polyphony-word.sung {
+  color: #ffffff;
+}
+
+.vis-polyphony-word.vis-word-emotion {
+  color: var(--emotion-color, #ff2a6d);
+}
+
+.vis-polyphony-word.vis-word-emotion.singing {
+  color: var(--emotion-color, #ff2a6d) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 var(--emotion-glow, 12px) color-mix(in srgb, var(--emotion-color, #ff2a6d) 40%, transparent) !important;
+}
+
+.vis-polyphony-word.vis-word-emotion.sung {
+  color: var(--emotion-color, #ff2a6d) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 calc(var(--emotion-glow, 12px) * 0.5) color-mix(in srgb, var(--emotion-color, #ff2a6d) 25%, transparent) !important;
+}
+
+.vis-dimension-trans,
+.vis-polyphony-trans {
+  position: absolute;
+  bottom: 70px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90% !important;
+  max-width: 600px;
+  text-align: center;
+  z-index: 100 !important;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.vis-dimension-trans-text,
+.vis-polyphony-trans-text {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  line-height: 1.4;
+}
+
+.vis-dimension-roma-text,
+.vis-polyphony-roma-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 4px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  line-height: 1.3;
+}

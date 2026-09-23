@@ -1,0 +1,24 @@
+# 包管理 / 依赖
+node_modules/
+web/node_modules/
+_eval/
+web/src/vendor/
+
+# 构建产物 & 运行时数据
+dist/
+build/
+src-tauri/target/
+cache/
+local_music/
+
+# 非前端源码（Python/Shell/Bat/其他语言不加 Prettier）
+*.py
+*.bat
+*.cmd
+*.md
+*.svg
+*.json
+*.html
+
+# 临时探针目录
+scratch/

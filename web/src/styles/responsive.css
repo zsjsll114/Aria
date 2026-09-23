@@ -1,0 +1,274 @@
+        /* 响应式适配 */
+        @media (max-width: 900px) {
+            .bottom-control-bar {
+                padding: 10px 16px 14px;
+                border-radius: 16px;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+            .bottom-song-card {
+                min-width: 0;
+                max-width: 160px;
+            }
+            .bottom-song-cover {
+                width: 40px;
+                height: 40px;
+            }
+            .bottom-song-title {
+                font-size: 12px;
+            }
+            .bottom-song-artist {
+                font-size: 10px;
+            }
+            .bottom-right-spacer {
+                display: none;
+            }
+            .bottom-center-area {
+                max-width: none;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .bottom-control-bar {
+                padding: 10px 12px 14px;
+                border-radius: 16px;
+                margin-bottom: 12px;
+            }
+            .bottom-song-card {
+                display: none;
+            }
+            .bottom-time-display {
+                min-width: 36px;
+                padding-right: 10px;
+                margin-right: 10px;
+            }
+            .bottom-current-time { font-size: 12px; }
+            .bottom-total-time { font-size: 10px; }
+            .bottom-btn { padding: 7px 9px; }
+            .bottom-play-btn { width: 42px; height: 42px; }
+            .bottom-mode-text { display: none; }
+            .speed-value, .volume-value { min-width: 18px; font-size: 10px; }
+        }
+
+        /* ==================== 手机版双页布局（仅窄屏 + 默认模式） ====================
+           窄屏(≤700px)下默认模式不再上下堆叠挤压（修复歌词区侵入音量条问题），
+           改为两页切换：第1页=播放控件（含歌词预览），第2页=完整歌词。
+           由 .mobile-page-lyrics 类切换当前页；其他视图模式不受影响。 */
+        .mobile-lyric-preview,
+        .mobile-page-toggle {
+            display: none;
+        }
+
+        @media (max-width: 700px) {
+            .player-container.view-cover {
+                flex-direction: column;
+                gap: 0;
+                padding: 0;
+            }
+
+            /* 页面切换胶囊：右上角控件按钮下方、水平居中，两页通用（双 icon 分段，仿搜索源切换） */
+            .player-container.view-cover .mobile-page-toggle {
+                display: flex;
+                align-items: center;
+                gap: 3px;
+                position: absolute;
+                top: 72px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: auto;
+                height: 38px;
+                padding: 0 5px;
+                border-radius: 19px;
+                border: 1px solid rgba(255,255,255,0.12);
+                background: rgba(255,255,255,0.08);
+                color: rgba(255,255,255,0.85);
+                cursor: pointer;
+                z-index: 40;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                transition: background 0.2s ease;
+            }
+            .player-container.view-cover .mobile-page-toggle:hover { background: rgba(255,255,255,0.15); }
+            .player-container.view-cover .mobile-page-toggle:active { transform: translateX(-50%) scale(0.96); }
+            /* 双 icon 段：当前页对应段高亮 */
+            .player-container.view-cover .mobile-page-toggle .mpt-seg {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 34px;
+                height: 28px;
+                border-radius: 14px;
+                color: rgba(255,255,255,0.5);
+                transition: background 0.2s ease, color 0.2s ease;
+                -webkit-tap-highlight-color: transparent;
+            }
+            .player-container.view-cover .mobile-page-toggle .mpt-seg.active {
+                background: rgba(255,255,255,0.2);
+                color: #fff;
+            }
+
+            /* 第1页：播放控件（占满整页，内容超高时内部滚动，不再侵入歌词区） */
+            .player-container.view-cover .player-controls-wrapper {
+                width: 100%;
+                min-width: 0;
+                max-width: none;
+                flex: 1 1 100%;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding: 8px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+                scrollbar-width: none;
+            }
+            .player-container.view-cover .player-controls-wrapper::-webkit-scrollbar { display: none; }
+
+            /* 第2页：歌词页（默认隐藏） */
+            .player-container.view-cover .lyrics-area-wrapper { display: none; }
+            /* 悬浮延时控件：仅手机版「歌词页」显示，封面页不遮挡 */
+            .player-container.view-cover .lyric-offset-control { display: none; }
+            .player-container.view-cover.mobile-page-lyrics .lyrics-area-wrapper {
+                display: flex;
+                flex: 1 1 100%;
+                min-height: 0;
+                animation: mobile-page-in 0.28s ease both;
+            }
+            .player-container.view-cover.mobile-page-lyrics .player-controls-wrapper { display: none; }
+            .player-container.view-cover:not(.mobile-page-lyrics) .player-controls-wrapper {
+                animation: mobile-page-in 0.28s ease both;
+            }
+
+            /* 歌词预览：歌名下方、进度条上方；无容器边框，与曲名/歌手左边缘对齐 */
+            .player-container.view-cover .mobile-lyric-preview {
+                display: block;
+                width: 100%;
+                margin: 4px 0 10px;
+                padding: 8px 0;
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                text-align: left;
+                -webkit-tap-highlight-color: transparent;
+                transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            }
+            .player-container.view-cover .mobile-lyric-preview:active { opacity: 0.7; }
+
+            /* ★ 切换歌词行时的渐隐与渐显动画 */
+            .player-container.view-cover .mobile-lyric-preview.mlp-fade-out {
+                opacity: 0;
+                transform: translateY(-4px);
+                transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+            }
+            .player-container.view-cover .mobile-lyric-preview.mlp-fade-in {
+                opacity: 1;
+                transform: translateY(0);
+                transition: opacity 0.22s ease-in, transform 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            }
+
+            /* 普通逐行歌词 (LRC)：线性推进渐变扫过 */
+            .player-container.view-cover .mobile-lyric-preview .mlp-original {
+                --mlp-p: calc(100% * min(max(var(--mlp-progress, 0), 0), 1));
+                font-size: clamp(12px, 2.8vw, 13px);
+                font-weight: 600;
+                color: transparent;
+                background-image: linear-gradient(to right, var(--highlight-color, #ffffff) var(--mlp-p), var(--highlight-inactive-color, rgba(255,255,255,0.6)) var(--mlp-p));
+                -webkit-background-clip: text;
+                background-clip: text;
+                line-height: 1.45;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            /* 逐字歌词 (has-words)：每个字符独立高亮扫过 */
+            .player-container.view-cover .mobile-lyric-preview .mlp-original.has-words {
+                color: var(--highlight-inactive-color, rgba(255,255,255,0.6));
+                background-image: none;
+                -webkit-background-clip: unset;
+                background-clip: unset;
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-words-container {
+                display: inline-block;
+                white-space: pre;
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-word {
+                display: inline-block;
+                position: relative;
+                color: var(--highlight-inactive-color, rgba(255,255,255,0.6));
+                vertical-align: top;
+                line-height: 1.45;
+                white-space: pre;
+                transition: transform 0.25s ease-out;
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-word.active {
+                transform: translateY(-1px);
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-word-text {
+                position: relative;
+                z-index: 0;
+                color: inherit;
+                white-space: pre;
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-word-highlight {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                color: var(--highlight-color, #ffffff) !important;
+                overflow: hidden;
+                white-space: pre;
+                z-index: 1;
+                contain: strict;
+                --reveal: 0%;
+                -webkit-mask-image: linear-gradient(to right, #000 calc(var(--reveal) - 10px), transparent var(--reveal));
+                mask-image: linear-gradient(to right, #000 calc(var(--reveal) - 10px), transparent var(--reveal));
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-word-highlight.done {
+                -webkit-mask-image: none !important;
+                mask-image: none !important;
+            }
+
+            .player-container.view-cover .mobile-lyric-preview .mlp-translation {
+                font-size: clamp(10px, 2.3vw, 11px);
+                color: rgba(255,255,255,0.55);
+                margin-top: 3px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            /* 默认模式封面与歌曲信息放大（仅手机版界面） */
+            .player-container.view-cover .cover-area {
+                width: clamp(200px, 56vw, 280px);
+                height: clamp(200px, 56vw, 280px);
+            }
+            .player-container.view-cover .song-title { font-size: clamp(19px, 5.4vw, 24px); }
+            .player-container.view-cover .song-artist { font-size: clamp(14px, 3.9vw, 17px); }
+
+            /* ★ 预览播放器保持自身布局，不受手机版双页规则影响 */
+            .preview-player {
+                flex-direction: row !important;
+                gap: clamp(10px, 2vw, 30px) !important;
+                padding: clamp(10px, 2vh, 30px) clamp(24px, 3vw, 48px) 60px clamp(24px, 3vw, 48px) !important;
+            }
+            .preview-player .preview-cover-area {
+                width: clamp(100px, 16vw, 180px) !important;
+                height: clamp(100px, 16vw, 180px) !important;
+                flex-shrink: 0 !important;
+            }
+            .preview-player .preview-lyrics-container {
+                flex: 1 !important;
+                min-width: 0 !important;
+                min-height: 80px !important;
+            }
+        }
+
+        @keyframes mobile-page-in {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
