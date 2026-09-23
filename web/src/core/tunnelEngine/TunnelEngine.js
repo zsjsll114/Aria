@@ -17,7 +17,7 @@
  */
 
 import { TunnelDirector } from './TunnelDirector.js';
-import { buildMosaicPatterns } from './mondrianTemplates.js';
+import { buildMosaicPatterns, applyPalette, MOSAIC_COLOR_SETS } from './mondrianTemplates.js';
 import { TunnelCameraController } from './TunnelCameraTrack.js';
 import { TunnelDepthStack, TunnelParticle3DLayer } from './TunnelDepthStack.js';
 import { playEnterAnimation, playExitAnimation, playMaskTransition, playFlashOverlay, buildDecorationComboSVG } from './TunnelAnimations.js';
@@ -682,11 +682,23 @@ export class TunnelEngine {
     const mood = MOOD_BY_TYPE[secType] || 'neutral';
     const moodPool = this._mosaicPatterns.filter(p => p.mood === mood);
     const usePool = (moodPool.length >= 2) ? moodPool : this._mosaicPatterns;
-    let idx = ((shot.sectionId * 2654435761) >>> 0) % usePool.length;
+    /* ★ 版式哈希加 groupId（2026-09-24 用户反馈「背景 6 句才换」）：原先只哈希
+       sectionId——同段落内 idx 恒定，色板与版式整段不变。加入 groupId 后每句组
+       （1~2 句）都在换，符合 2~4 句切换的预期节奏。 */
+    let idx = ((shot.sectionId * 2654435761 + (shot.groupId || 0) * 40503) >>> 0) % usePool.length;
     if (this._lastMosaicFamily && usePool[idx].family === this._lastMosaicFamily && usePool.length > 1) {
       idx = (idx + 1) % usePool.length;
     }
-    const pattern = usePool[idx];
+    /* ★ 色板随句组轮换：版式池里色板是启动期绑死的（(i*3)%10），同段落反复命中
+       同一幅就是同一套灰暗色。现在按 sectionId*3+groupId 轮换 10 套莫奈色板，
+       同段落相邻句组必不同板，整首歌色彩持续流动。 */
+    let pattern = usePool[idx];
+    try {
+      const csIdx = (shot.sectionId * 3 + (shot.groupId || 0)) % MOSAIC_COLOR_SETS.length;
+      if (pattern.paletteIdx !== csIdx || true) {
+        pattern = applyPalette(pattern, csIdx, (b) => this._normMosaicBlock(b));
+      }
+    } catch (_e) { /* 换色失败退回原 pattern */ }
     this._lastMosaicFamily = pattern.family;
     /* ★ 当前段选中的幅面存档：歌词贴靠/反色判定（_renderShot）必须用同一幅，
        否则文字贴靠的块与实际背景块对不上 */

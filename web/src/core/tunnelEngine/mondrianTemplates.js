@@ -18,16 +18,16 @@
  */
 
 export const MOSAIC_COLOR_SETS = [
-  ['#8A9BAF', '#A8B5C4', '#C9B08C', '#E2C8A8'], // 雾霾蓝灰
-  ['#9A8E84', '#B8AA9E', '#D2C2AE', '#E8D8C8'], // 奶油米灰
-  ['#829590', '#9CB0A8', '#B8C5B0', '#D2DCD0'], // 薄荷灰绿
-  ['#897D8E', '#A293A8', '#BFB0C7', '#D4C5D6'], // 紫灰
-  ['#8190A0', '#9AA8B8', '#B8C5D0', '#D0DAE4'], // 雾蓝
-  ['#8C7C74', '#A5928A', '#C4B2A8', '#DDD0C8'], // 烟灰粉
-  ['#809491', '#96AAA0', '#B4C2B6', '#CCD5CD'], // 青绿灰
-  ['#868696', '#9E9EAE', '#BDB5C2', '#D6D0DA'], // 薰衣草灰
-  ['#7E8A82', '#98A496', '#B4BFA6', '#CCCDBC'], // 橄榄灰
-  ['#8E808E', '#A696A4', '#C4B3C2', '#DCC8DA'], // 玫瑰灰
+  ['#8FB4D9', '#AAC9E6', '#C8DDF0', '#E2F0FA'], // 湖蓝
+  ['#C9A3CE', '#DABADD', '#E9D1EB', '#F4E4F5'], // 莫奈粉紫
+  ['#96C29A', '#B0D4B2', '#CBE3CB', '#E1F0E0'], // 嫩绿
+  ['#DBB277', '#E6C795', '#F0DCB5', '#F8EBD4'], // 暖金
+  ['#E39B90', '#ECB4AB', '#F4CDC6', '#F9E1DD'], // 珊瑚
+  ['#89BCCB', '#A5CEDA', '#C2DFE7', '#DCEFF3'], // 天青
+  ['#A99FD1', '#BFB7DF', '#D5CFEA', '#E9E5F4'], // 薰衣草
+  ['#D49FB0', '#E0B7C4', '#EBCFD8', '#F4E4EA'], // 玫瑰
+  ['#DDB88E', '#E8CBAC', '#F1DCC6', '#F8ECDA'], // 杏色
+  ['#9FC7B4', '#B9D8CA', '#D0E6DB', '#E4F1E9'], // 薄荷
 ];
 
 /* hex 变暗系数 f（1=原色）——tone 阶梯派生 */
@@ -40,13 +40,14 @@ export function shadeHex(hex, f) {
   return '#' + [t(r), t(g), t(b)].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
 
-/* 色板 → 4 档明度阶梯（压暗适配白色歌词）：tone1 亮档只在边缘出现 */
+/* 色板 → 4 档明度阶梯（★ 莫奈化：压暗系数放宽——灰暗感来自低饱和+过暗，
+   新色板饱和已提至 45~55%，阶梯只轻微压暗保白字可读；tone1 亮档只在边缘出现 */
 export function tonesOf(colors) {
   return [
-    shadeHex(colors[3], 0.86), // tone1 最亮（强调色亮档，边缘/角部）
-    shadeHex(colors[2], 0.72), // tone2 主
-    shadeHex(colors[1], 0.55), // tone3 次（中央排版区友）
-    shadeHex(colors[0], 0.38), // tone4 最暗
+    shadeHex(colors[3], 0.90), // tone1 最亮（强调色亮档，边缘/角部）
+    shadeHex(colors[2], 0.78), // tone2 主
+    shadeHex(colors[1], 0.62), // tone3 次（中央排版区友）
+    shadeHex(colors[0], 0.46), // tone4 最暗（白字可读底线）
   ];
 }
 
@@ -156,6 +157,9 @@ export function buildMosaicPatterns(normBlock) {
       const isSeam = Array.isArray(tpl.seam) && tpl.seam.indexOf(bi) >= 0;
       return normBlock({
         x, y, w, h,
+        /* ★ toneIdx 随块存档（seam=-1）：运行时按句组轮换色板（applyPalette）需要
+           知道每块在明度阶梯里的档位，否则色板绑死在启动期——同段落内色板永远不变 */
+        toneIdx: isSeam ? -1 : ti,
         color: isSeam ? ink : (tones[ti - 1] || tones[1]),
         opacity: isSeam ? 0.9 : 0.92,           // 近实心（tempera 0.94~0.96 的深底等效）
         rotation: rot || 0,
@@ -184,6 +188,7 @@ export function buildMosaicPatterns(normBlock) {
       blocks,
       family: tpl.family,
       mood: tpl.mood,
+      paletteIdx: (i * 3) % MOSAIC_COLOR_SETS.length,
       gridColor: colors[0],
       accentColor: colors[3],
       background: tones[2],
@@ -194,4 +199,36 @@ export function buildMosaicPatterns(normBlock) {
     });
   });
   return patterns;
+}
+
+/**
+ * ★ 运行时色板轮换（2026-09-24 用户反馈「背景 6 句才换、色彩灰暗」）：
+ * 同段落内 sectionId 不变导致版式哈希恒定 → 色板整段不变。此函数按句组
+ * 把 pattern 重新着色为指定色板（几何/家族/mood 全不变，只换颜色）。
+ * @param {Object} pattern buildMosaicPatterns 产物（blocks 带 toneIdx）
+ * @param {number} colorSetIdx 色板索引（调用方按 sectionId*3+groupId 轮换）
+ * @param {Function} normBlock TunnelEngine._normMosaicBlock
+ * @returns {Object} 换色后的新 pattern（原对象不变）
+ */
+export function applyPalette(pattern, colorSetIdx, normBlock) {
+  const colors = MOSAIC_COLOR_SETS[((colorSetIdx % MOSAIC_COLOR_SETS.length) + MOSAIC_COLOR_SETS.length) % MOSAIC_COLOR_SETS.length];
+  const tones = tonesOf(colors);
+  const ink = shadeHex(colors[0], 0.22);
+  const blocks = pattern.blocks.map((b) => {
+    const nb = normBlock({
+      ...b,
+      color: (b.toneIdx == null || b.toneIdx < 0) ? ink : (tones[b.toneIdx - 1] || tones[1]),
+      gridColor: b.isGrid ? (colors[0] + 'B8') : b.gridColor,
+    });
+    return nb;
+  });
+  return {
+    ...pattern,
+    blocks,
+    paletteIdx: ((colorSetIdx % MOSAIC_COLOR_SETS.length) + MOSAIC_COLOR_SETS.length) % MOSAIC_COLOR_SETS.length,
+    gridColor: colors[0],
+    accentColor: colors[3],
+    background: tones[2],
+    bgGradient: `linear-gradient(150deg, ${tones[1]} 0%, ${tones[2]} 55%, ${tones[3]} 100%)`,
+  };
 }

@@ -1846,7 +1846,7 @@ batchAnalyzePlaylist();
                     modelInput.value = appSettings.ai.model;
                     modelInput.placeholder = cfg.defaultModel || '';
                 }
-                if (keyDesc) keyDesc.textContent = `当前服务商: ${cfg.name || targetProv} 专属秘钥`;
+                if (keyDesc) { const _en = (globalThis.AriaI18n && globalThis.AriaI18n.getLanguage() === 'en-US'); keyDesc.textContent = _en ? `Current provider: ${cfg.name || targetProv} dedicated key` : `当前服务商: ${cfg.name || targetProv} 专属秘钥`; }
                 if (baseDesc) baseDesc.textContent = cfg.baseDesc || '接口基础地址';
                 /* ★ 隐私标注：Gemini 反代警示（走不走反代由 useProxy 决定，cleanApiBase 会
                    覆盖 apiBase，故不能只看输入框值；开关切换/服务商切换统一走同步函数） */

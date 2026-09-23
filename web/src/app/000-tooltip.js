@@ -304,7 +304,7 @@ import { saveSettings } from './180-boot-config.js';
           <div class="aria-oobe-hero">
             <div class="aria-oobe-app-badge">
               <div class="aria-oobe-app-icon">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                <img src="/icons/icon.png" alt="" draggable="false" style="width:26px;height:26px;object-fit:contain;border-radius:7px;display:block;" />
               </div>
               <span class="aria-oobe-app-name">Aria</span>
             </div>
@@ -547,11 +547,27 @@ import { saveSettings } from './180-boot-config.js';
 
     function render() {
       var body = document.getElementById('ariaOobeBody');
+      /* ★ 高度非线性过渡（用户反馈：切步时页面高度跳变）：先测旧卡片高度，
+         渲染新步骤后再测新高度，用 WAAPI 从旧到新做 ease-out 过渡——
+         动画结束不落内联高度，卡片始终自适应内容 */
+      var card = body.closest ? body.closest('.aria-oobe-card') : null;
+      var h0 = card ? card.offsetHeight : 0;
       body.innerHTML = '';
       body.className = 'aria-oobe-body ' + (step >= lastStep ? 'slide-right' : 'slide-left');
       lastStep = step;
       T[step].render(body);
       renderDots();
+      if (card && h0 > 0 && typeof card.animate === 'function') {
+        var h1 = card.offsetHeight;
+        if (h1 !== h0) {
+          try {
+            card.animate(
+              [{ height: h0 + 'px' }, { height: h1 + 'px' }],
+              { duration: 340, easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)' }
+            );
+          } catch (e) { /* 老引擎无 WAAPI 则跳过（高度瞬变，无害） */ }
+        }
+      }
     }
 
     document.getElementById('ariaOobeNext').addEventListener('click', function () {
@@ -602,6 +618,25 @@ import { saveSettings } from './180-boot-config.js';
     }
 
     render();
+
+    /* ★ 低配/软件渲染毛玻璃降级（用户反馈：OOBE 背景是黑色纯色）：这些环境
+       backdrop-filter 被全局禁用 → 62% 黑罩失去毛玻璃感。改用当前封面的
+       预烘焙模糊贴图（generatePrebakedBlurBackground，一次性离屏 128px 采样）
+       叠暗化渐变作 overlay 背景——「模糊观感」零实时模糊成本。 */
+    try {
+      var _soft = document.documentElement.classList.contains('is-software-renderer') ||
+        (document.body && (document.body.classList.contains('perf-low') || document.body.classList.contains('perf-minimal')));
+      var _cover = (window.currentSongData && window.currentSongData.cover) || '';
+      if (_soft && _cover && typeof window.__genPrebakedBg === 'function') {
+        window.__genPrebakedBg(_cover, 60, 0.35).then(function (url) {
+          if (url && overlay.parentNode) {
+            overlay.style.backgroundImage = 'linear-gradient(rgba(12,12,18,.58), rgba(12,12,18,.76)), url("' + url + '")';
+            overlay.style.backgroundSize = 'cover';
+            overlay.style.backgroundPosition = 'center';
+          }
+        }).catch(function () { /* 静默 */ });
+      }
+    } catch (e) { /* 静默 */ }
   }
 
   /* ★ 全局入口暴露：无论是否已完成过，随时可以通过 window.showAriaOobe(force) 呼出体验 */

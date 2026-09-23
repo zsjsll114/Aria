@@ -578,4 +578,6 @@ document.querySelector('.lyrics-container')?.classList.remove('user-scrolling');
             });
         }
 
+if (typeof window !== 'undefined') window.__genPrebakedBg = generatePrebakedBlurBackground;
+
 export { applyColorOverlay, applyColorToLyrics, extractDominantColor, generatePrebakedBlurBackground, getActiveBgLayer, getActiveCover, getInactiveBgLayer, getInactiveCover, initLyricsInteractions, sanitizeImageUrl, setBlurBackground, setCoverImage, shouldUsePrebakedBlur };

@@ -106,3 +106,9 @@ _tmp_*/
 .trae/
 .workbuddy/
 musicdl_outputs/
+思源黑体JP-VF.ttf
+
+# 大字体文件不入库（GitHub 单 blob 25MB 限制 + 上行被墙；本地手动恢复）
+web/src/font/思源*
+web/src/font/*Minecraft*
+web/src/font/宋体*

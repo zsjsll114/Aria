@@ -418,6 +418,8 @@ const STATIC_PHRASE_MAP = {
   /* ===== 2026-09-22 第二轮全量补全（index.html 静态扫描） ===== */
   // 顶栏与通用
   'QQ音乐': 'QQ Music',
+  'QQ 音乐': 'QQ Music',
+  '网易云音乐': 'Netease Music',
   '网易云': 'Netease',
   '酷狗音乐': 'KuGou Music',
   '酷我音乐': 'Kuwo Music',
@@ -1172,6 +1174,140 @@ const STATIC_PHRASE_MAP = {
   '粘贴登录状态，保存后即登录（可选）': 'Paste login state and save to log in (optional)',
   '每日签到领 VIP': 'Daily check-in for VIP',
   '每天可领 2 天概念版 VIP': 'Get 2 days of Lite VIP daily',
+  /* —— 2026-09-24 批量补齐（截图点名 UI）—— */
+  '设置': 'Settings',
+  '本地优先的多源歌词播放器 · 网页版 + Tauri 桌面壳': 'Local-first multi-source lyrics player · Web + Tauri desktop',
+  '9 种歌词视觉': '9 Lyric Visuals',
+  '上游式分镜': 'Upstream Storyboard',
+  '构图池按段落情绪分池轮换 · hero 竖柱': 'Layout pool rotates by section mood · hero pillar',
+  'AI 情绪分析': 'AI Emotion Analysis',
+  '逐句情感标注 · 构图配色随情绪编排': 'Per-line emotion tags · scene colors follow mood',
+  '多源音源': 'Multi-source Audio',
+  'QQ / 酷狗 / 网易 / 酷我 · 自建服务高音质': 'QQ / KuGou / Netease / Kuwo · self-hosted hi-res',
+  '独立窗口 · 点击穿透 · 逐字本地插值': 'Independent window · click-through · word-level interpolation',
+  '更多': 'More',
+  '本地音乐 · 歌单导入 · 均衡器 · KTL 适配': 'Local music · playlist import · EQ · KTL',
+  '点击复制版本号': 'Click to copy version',
+  '字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · Cubic 11　·　© 2026 Aria Lyrics Player': 'Fonts: Noto CJK (SIL OFL) · LXGW · Cubic 11 · © 2026 Aria Lyrics Player',
+  'API Key 仅存储在本地浏览器 localStorage 中，不会上传到任何第三方服务器。': 'Your API Key stays in browser localStorage only — never uploaded to any third party.',
+  '当前服务商': 'Current provider',
+  '专属密钥': 'dedicated key',
+  '选择样式': 'Choose Style',
+  '封面与歌词并排显示，完整控制栏': 'Cover and lyrics side by side, full controls',
+  '日系排版，网点半调赋予，平滑运镜与多层视差': 'Japanese layout with halftone grain, smooth camera and parallax',
+  '视觉开销（手动微调）': 'Visual Overhead (manual tuning)',
+  '更多硬件细节 ▾': 'More hardware details ▾',
+  '像素比': 'Pixel Ratio',
+  '性能评分': 'Performance Score',
+  '黑体 / 无衬线': 'Sans / Hei',
+  '衬线 / 宋体': 'Serif / Song',
+  '仿宋': 'Fangsong',
+  '手写': 'Handwriting',
+  '楷体': 'Kaiti',
+  '点击或将字体文件拖拽至此处上传': 'Click or drop font files to upload',
+  '支持 .ttf / .otf / .woff / .woff2 格式，将自动复制保存至本地 src/font 并持久化生效': 'Supports .ttf / .otf / .woff / .woff2 — copied to local src/font and persisted',
+  '自定义字体': 'Custom Fonts',
+  '上传并持久化字体': 'Upload & Persist Fonts',
+  '已登录': 'Logged in',
+  '未登录': 'Not logged in',
+  '酷狗音乐 · 已登录': 'KuGou · Logged in',
+  'QQ音乐 · 已登录': 'QQ Music · Logged in',
+  '网易云音乐 · 已登录': 'Netease · Logged in',
+  '酷狗音乐': 'KuGou Music',
+  'QQ音乐': 'QQ Music',
+  '网易云': 'Netease',
+  '酷我音乐': 'Kuwo Music',
+  '网易云音乐': 'Netease Music',
+  '退出登录': 'Log out',
+  '历史播放': 'History',
+  '本地音乐': 'Local Music',
+  '网易云歌单': 'Netease Playlists',
+  '酷狗歌单': 'KuGou Playlists',
+  'QQ音乐歌单': 'QQ Playlists',
+  '点击查看我的网易云歌单': 'View my Netease playlists',
+  '点击查看我的酷狗歌单': 'View my KuGou playlists',
+  '点击查看我的QQ音乐歌单': 'View my QQ playlists',
+  '暂无播放记录': 'No history yet',
+  '还没有自定义歌单，点击 + 创建': 'No custom playlists yet — tap + to create',
+  '该账号暂无歌单': 'No playlists on this account',
+  '该歌单暂无歌曲': 'This playlist is empty',
+  '还没有播放过歌曲': 'Nothing played yet',
+  '去搜索 / 榜单 / 收藏里点一首吧': 'Search, browse charts or favorites to start',
+  '暂无本地音乐，点击上方横幅上传第一首歌吧！': 'No local music yet — upload your first song via the banner above',
+  '正在播放': 'Now playing',
+  '管理播放队列': 'Manage play queue',
+  '续推': 'Refill',
+  '续推·开': 'Refill·On',
+  '循环播放': 'Repeat',
+  '顺序播放': 'Sequential',
+  '我喜欢的歌': 'Liked Songs',
+  '我的歌单': 'My Playlists',
+  '切换显示/隐藏': 'Toggle visibility',
+  '播放全部': 'Play All',
+  '桌面歌词': 'Desktop Lyrics',
+  '正在提取声学指纹与特征比对...': 'Extracting acoustic fingerprint & matching...',
+  '三大平台最佳匹配播放版本': 'Best-matching versions across 3 platforms',
+  '支持 MP3, WAV, FLAC, M4A, OGG, AAC, WEBM': 'MP3, WAV, FLAC, M4A, OGG, AAC, WEBM',
+  '未知歌曲': 'Unknown Track',
+  '未知歌手': 'Unknown Artist',
+  '麦克风录音': 'Microphone',
+  '上传音频': 'Upload Audio',
+  '点击或拖拽音频文件到此处识曲': 'Click or drop an audio file to recognize',
+  '已开启': 'On',
+  '未开启': 'Off',
+  '启用智能分析': 'Enable AI Analysis',
+  '恢复默认主题': 'Reset Theme',
+  '清除智能主题，回到手动设置': 'Clear AI theme and return to manual',
+  '离线自助收藏 · 高音质自建接口；无 VIP 时就能自动退免费源，扫码一次长期有效（登录态自动保存，注意！扫码完一定要「登录」后各平台的启用开关无论是「哪类颜色或是自建」——QQ 的收藏就能接受其开启光荣。酷狗目前只有日报/收藏走自建（播放链接仍是公网）。酷狗扫码后的提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。': 'Offline self-hosted favorites · hi-res; auto-fallback to free sources without VIP. Scan once for long-term login.',
+  '保存': 'Save',
+  '取消': 'Cancel',
+  '确定': 'OK',
+  '删除': 'Delete',
+  '搜索': 'Search',
+  '加载中...': 'Loading...',
+  '清除': 'Clear',
+  '已添加': 'Added',
+  '推荐': 'Recommended',
+  '候选预览': 'Candidate preview',
+  '逐字': 'Per-word',
+  '逐行': 'Per-line',
+  '中文': 'Chinese',
+  '英文': 'English',
+  '日文': 'Japanese',
+  '韩文': 'Korean',
+  '导出配置': 'Export Config',
+  '导入配置': 'Import Config',
+  '清空缓存': 'Clear Cache',
+  '分析缓存': 'Analysis Cache',
+  '导入数据': 'Import Data',
+  '从 JSON 文件导入，自动识别内容类型': 'Import from JSON with auto detection',
+  '未识别到有效数据': 'No valid data detected',
+  'Now Playing 服务地址说明': 'Now Playing service address',
+  'now-playing-service 默认 http://localhost:9863/query；教程见 docs/now-playing-接管教程.md': 'now-playing-service defaults to http://localhost:9863/query; see docs for setup',
+  '切换歌曲时音量渐变': 'Volume fade on song change',
+  '用于分析歌曲情绪并自动切换主题': 'Analyzes song emotion to auto-switch themes',
+  '已恢复出厂默认性能配置（高性能）': 'Factory performance config restored (High)',
+  '播放歌曲后将自动分析': 'Will analyze after playback starts',
+  '暂无数据': 'No data yet',
+  '全部': 'All',
+  '收藏': 'Favorites',
+  '歌单': 'Playlists',
+  '榜单': 'Charts',
+  '最近': 'Recent',
+  '统计': 'Stats',
+  '每日推荐': 'Daily Mix',
+  '批量下载': 'Download All',
+  '合并到...': 'Merge To...',
+  '歌曲': 'songs',
+  '分析完成': 'Analysis Complete',
+  '分析失败': 'Analysis Failed',
+  '正在分析...': 'Analyzing...',
+  '未分析': 'Not Analyzed',
+  '已恢复手动主题': 'Manual theme restored',
+  '已分析（缓存）': 'Analyzed (Cached)',
+  'AI 正在分析...': 'AI Analyzing...',
+  'AI 分析完成': 'AI Analysis Complete',
+
   '自建 Cloudflare 反代启用 Token 鉴权时填写，请求经 x-proxy-token 头携带；留空则不发送': 'Fill in when your custom Cloudflare proxy requires token auth (sent via x-proxy-token header); leave empty if not needed',
   '已恢复手动主题': 'Manual theme restored',
   '已分析（缓存）': 'Analyzed (Cached)',
@@ -1243,6 +1379,9 @@ const KEY_PHRASES = {
 
 /** 前缀映射：处理带动态数字/内容的文本（渲染时拼进文本的高频句式） */
 const STATIC_PHRASE_PREFIX = [
+  ['当前服务商: ', 'Current provider: '],
+  ['专属秘钥', 'dedicated key'],
+  ['专属密钥', 'dedicated key'],
   ['播放全部（', 'Play All ('],
   ['删除选中(', 'Delete Selected ('],
   ['已加载 ', 'Loaded '],
@@ -1297,7 +1436,7 @@ function translateTextNode(text) {
   if (m) return `Page ${m[1]} · ${m[2]} songs`;
   m = /^已加载\s*(\d+)\s*首$/.exec(t0);
   if (m) return `Loaded ${m[1]}`;
-  m = /^播放全部（(\d+)）$/.exec(t0);
+  m = /^播放全部[（(](\d+)[）)]$/.exec(t0);
   if (m) return `Play All (${m[1]})`;
   m = /^删除选中\((\d+)\)$/.exec(t0);
   if (m) return `Delete Selected (${m[1]})`;
@@ -1305,6 +1444,22 @@ function translateTextNode(text) {
   if (m) return `Level ${m[1]}`;
   m = /^(\d+)\s*核$/.exec(t0);
   if (m) return `${m[1]} cores`;
+  m = /^(\d+)\s*首歌曲$/.exec(t0);
+  if (m) return `${m[1]} songs`;
+  m = /^(\d+)\s*首\s*·\s*点击查看$/.exec(t0);
+  if (m) return `${m[1]} songs · tap to view`;
+  m = /^共\s*(\d+)\s*首收藏$/.exec(t0);
+  if (m) return `${m[1]} favorites`;
+  m = /^已缓存\s*(\d+)\s*首歌曲的分析结果$/.exec(t0);
+  if (m) return `Cached analysis for ${m[1]} songs`;
+  m = /^已登录\s*·\s*uid\s*(\S+)$/.exec(t0);
+  if (m) return `Logged in · uid ${m[1]}`;
+  m = /^(\d+)\s*个歌单\s*·\s*(\d+)\s*首本地音乐\s*·\s*(\d+)\s*平台$/.exec(t0);
+  if (m) return `${m[1]} playlists · ${m[2]} local · ${m[3]} platforms`;
+  m = /^(\d+)\s*首歌$/.exec(t0);
+  if (m) return `${m[1]} songs`;
+  m = /^播放全部：/.exec(t0);
+  if (m) return 'Play All: ' + t0.slice(5);
   for (const [zh, en] of STATIC_PHRASE_PREFIX) {
     if (!zh) continue;
     if (t0.startsWith(zh)) {
@@ -1353,7 +1508,13 @@ function _scanI18n(root, deadline) {
     '.settings-nav-group-title, .setting-btn, .favorites-title, .play-all-btn span, ' +
     '.rank-playall, .page-btn, .page-info, .view-mode-name, .status-hint, ' +
     '.search-history-label, .aria-oobe-title, .aria-oobe-desc, .aria-oobe-sub, ' +
-    '.setting-dropdown-item, .setting-dropdown-trigger, .search-btn, .search-btn span';
+    '.setting-dropdown-item, .setting-dropdown-trigger, .search-btn, .search-btn span, ' +
+    '.playlist-name, .playlist-meta, .view-mode-title, .view-mode-desc, .lyric-badge, .playlist-tag, ' +
+    '.about-feature b, .about-feature span, .about-tagline, .about-version, .settings-header span, ' +
+    '.source-btn, #favoritesHint, .plm-btn, .plm-count, .rank-empty, .empty-hint, .favorites-title, ' +
+    '.tunnel-ai-confirm-title, .tunnel-ai-confirm-desc, .tunnel-ai-cost-label, .tunnel-ai-cost-value, ' +
+    '.tunnel-ai-mode-name, .tunnel-ai-mode-sub, .plm-empty, .stats-empty, .rec-sources-header, ' +
+    '.about-fine, .settings-nav-search, #aiStatusText, #aiStatusDetail, .ai-proxy-warn';
   root.querySelectorAll?.(textSel).forEach(el => {
     if (el.children.length > 0) return;
     const text = (el.textContent || '').trim();
@@ -1390,7 +1551,7 @@ function _scanI18n(root, deadline) {
 /** UI 弹层容器选择器：所有二级弹窗/面板都在这些根内（歌单/榜单/搜索/每日推荐/统计/
     识曲/导入等全是 .search-overlay；设置面板/右键菜单/AI 浮窗/毛玻璃弹窗/OOBE 各自独立） */
 const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, .ctx-confirm, ' +
-  '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay';
+  '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay, #plmPanel, #favoritesOverlay, #rankTabs';
 
 /** ★ 性能路径（2026-09-22）：只扫描 UI 弹层容器，绝不进入歌词区/播放器主 DOM。
     二级弹窗都是这些固定容器内的动态渲染，observer 触发后只扫几百节点而非全文档
@@ -1426,23 +1587,39 @@ if (typeof window !== 'undefined') {
   };
 
   /* ★ 全局动态渲染自动翻译（2026-09-22）：二级弹窗都是 JS 动态 innerHTML 渲染，
-     时机无法逐个挂点——body 子树 childList 观察器 + 250ms 防抖兜底。
+     时机无法逐个挂点——body 子树观察器 + 250ms 防抖兜底。
      ★ 性能（同日二次收敛）：回调只扫 UI 弹层容器（applyLanguageToUiRoots），
      绝不进歌词区/播放器主 DOM——播放期间每次歌词重渲染虽然仍会触发观察器，
      但扫描范围从全文档数千节点降到弹层几百节点（<1ms），不构成可感开销。
      应用幂等（翻译后的文本不再命中词表 → 不再写 DOM → 不循环）。
-     不监听 characterData（AI 流式输出每 token 改 textContent 会刷爆）。 */
+     ★ characterData 监听（2026-09-24 用户反馈：续推/已登录/循环播放等
+     textContent 动态赋值的文本全部逃过翻译）：观察回调里先过滤——只有变更
+     目标落在 UI 弹层根内才安排扫描；歌词区的 textContent 高频变更被
+     closest 过滤挡掉，不产生扫描。 */
   try {
     let _i18nTimer = null;
-    const _i18nObserver = new MutationObserver(() => {
+    const _mutationRelevant = (muts) => {
+      for (const m of muts) {
+        const t = m.target;
+        if (t && t.closest && t.closest(UI_ROOT_SELECTOR)) return true;
+        if (m.addedNodes) {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1 && n.closest && n.closest(UI_ROOT_SELECTOR)) return true;
+          }
+        }
+      }
+      return false;
+    };
+    const _i18nObserver = new MutationObserver((muts) => {
       if (_i18nTimer || currentLang === 'zh-CN') return;
+      if (!_mutationRelevant(muts)) return;
       _i18nTimer = setTimeout(() => {
         _i18nTimer = null;
         applyLanguageToUiRoots();
       }, 250);
     });
     const _startObserver = () => {
-      if (document.body) _i18nObserver.observe(document.body, { childList: true, subtree: true });
+      if (document.body) _i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
       else setTimeout(_startObserver, 300);
     };
     _startObserver();
