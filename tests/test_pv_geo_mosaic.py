@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PV 底部几何（folia fixedGeo 对齐） + 蒙德里安方格必现 自动测试"""
+"""PV 图形场（folia shapeField 对齐） + 蒙德里安方格必现 + 色板轮换 自动测试"""
 import re
 import sys
 from playwright.sync_api import sync_playwright
@@ -19,6 +19,10 @@ for fn in ("web/src/styles/pv.css", "web/src/styles/pv-tunnel.css"):
     buf = re.sub(r"'(?:[^'\\]|\\.)*'", "''", buf)
     check(f"css-braces-{fn.split('/')[-1]}", buf.count("{") == buf.count("}"),
           f"open={buf.count('{')} close={buf.count('}')}")
+# ★ 图形场动画体系存在于 pv.css（folia shapeField 对齐）
+pv_css = open("web/src/styles/pv.css", encoding="utf-8", errors="replace").read()
+check("css-shape-orbit-keyframes", "pv-shape-orbit" in pv_css)
+check("css-shape-breathe-keyframes", "pv-shape-breathe" in pv_css)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
@@ -44,7 +48,7 @@ with sync_playwright() as p:
       // 无头环境 WebGL 缺失会降级 body.perf-minimal 禁动画，摘掉 perf-* 档
       document.body.className = document.body.className.split(' ').filter(c => !c.startsWith('perf-')).join(' ');
 
-      // ========== 1. PVDecorations 底部几何 ==========
+      // ========== 1. PVDecorations folia 图形场 ==========
       const decoMod = await import('./src/core/pvEngine/PVDecorations.js');
       const PVDecorations = decoMod.PVDecorations;
       const layer = document.createElement('div');
@@ -55,28 +59,28 @@ with sync_playwright() as p:
         index, lines: new Array(n).fill({}), pos: { x: 0, y: 0 },
         backgroundWords: ['PV']
       });
-      deco.renderForNode(mkNode(0, 2), '#ffcc33');
-      const svg0 = layer.querySelector('svg.pv-geo-svg');
-      out.geoSvg = !!svg0;
-      out.geoStroke = layer.querySelectorAll('.geo-stroke').length;
-      out.geoFill = layer.querySelectorAll('.geo-fill').length;
-      out.geoSoft = layer.querySelectorAll('.geo-soft').length;
-      out.geoBottom = svg0 ? /bottom\\s*:|2vh/.test(svg0.getAttribute('style') || '') : false;
-      out.geoFloatAnim = svg0 ? getComputedStyle(svg0).animationName : '';
-      // 元件描边生长动画（等一帧后读动画名）
-      await new Promise(r => setTimeout(r, 60));
-      const gs0 = layer.querySelector('.geo-stroke');
-      out.geoStrokeAnim = gs0 ? getComputedStyle(gs0).animationName : '';
-      out.dashArray = gs0 ? getComputedStyle(gs0).strokeDasharray : '';
-      // 换个场景构图变化
-      deco.renderForNode(mkNode(1, 2), '#ffcc33');
-      const svg1 = layer.querySelector('svg.pv-geo-svg');
-      deco.renderForNode(mkNode(0, 2), '#ffcc33');
-      const svgBack = layer.querySelector('svg.pv-geo-svg');
-      out.variantChanges = !!(svg0 && svg1 && svg0.outerHTML !== svg1.outerHTML);
-      out.variantBack = !!(svg0 && svgBack && svg0.outerHTML === svgBack.outerHTML);
+      deco.renderForNode(mkNode(0, 2), '#ffcc33', 'seedA');
+      const field = layer.querySelector('.pv-shape-field');
+      out.fieldCreated = !!field;
+      out.shapeCount = field ? field.querySelectorAll('.pv-shape').length : 0;
+      out.iconCount = field ? field.querySelectorAll('.pv-shape--icon').length : 0;
+      out.geoCount = field ? field.querySelectorAll('.pv-shape--circle, .pv-shape--square, .pv-shape--triangle, .pv-shape--cross').length : 0;
+      out.particleCount = field ? field.querySelectorAll('.pv-shape-particle').length : 0;
+      out.colorFollows = field ? field.style.color === 'rgb(255, 204, 51)' : false;
+      // 同 seed + 同色：不重建（歌曲级持久）
+      const html0 = field.innerHTML;
+      deco.renderForNode(mkNode(1, 2), '#ffcc33', 'seedA');
+      const field2 = layer.querySelector('.pv-shape-field');
+      out.sameSeedStable = field2.innerHTML === html0;
+      // 换 seed：重新洗牌
+      deco.renderForNode(mkNode(1, 2), '#ffcc33', 'seedB');
+      const field3 = layer.querySelector('.pv-shape-field');
+      out.newSeedReshuffles = field3.innerHTML !== html0;
+      // 动画体系挂在块上（CSS 动画名来自 pv.css）
+      const firstShape = field3.querySelector('.pv-shape');
+      out.orbitAnim = firstShape ? getComputedStyle(firstShape).animationName : '';
 
-      // ========== 2. TunnelEngine 蒙德里安方格必现 ==========
+      // ========== 2. TunnelEngine 蒙德里安方格必现 + 色板轮换 ==========
       const tunMod = await import('./src/core/tunnelEngine/TunnelEngine.js');
       const TunnelEngine = tunMod.TunnelEngine;
       const tcont = document.createElement('div');
@@ -88,7 +92,7 @@ with sync_playwright() as p:
       out.engineBuilt = !!built && !!tun.mosaicLayer;
       // 逐 pattern 校验：任一 pattern 渲染后必现栅格方块
       let gridAlways = true, allPatterns = 0, maxGrids = 0;
-      for (let s = 0; s < 24; s++) {
+      for (let s = 0; s < 32; s++) {
         tun._lastBgCacheKey = null;              // 强制重渲染
         tun._updateMosaicBackground({ sectionId: s, groupId: 0, params: { alignment: 'center' } });
         const grids = tun.mosaicLayer.querySelectorAll('.t-m-block.is-grid-block');
@@ -108,19 +112,30 @@ with sync_playwright() as p:
       // _hexWithAlpha 单元校验
       out.hexA = tun._hexWithAlpha('#ffcc33', 0.5);
       out.hexNeutral = tun._hexWithAlpha('#ffffff12', 0.5);
+      // ★ 反色判定 v2：_isLightColor 单元校验（莫奈亮块必须判亮）
+      out.lightTone1 = tun._isLightColor('#9db9dd');   // 湖蓝 tone2 × 0.78 → 亮
+      out.darkTone4 = tun._isLightColor('#3f5178');    // 湖蓝 tone4 → 暗
+      // ★ 色板轮换：同 section 不同 groupId → 块颜色应变化
+      tun._lastBgCacheKey = null;
+      tun._updateMosaicBackground({ sectionId: 2, groupId: 0, params: { alignment: 'center' } });
+      const c1 = tun.mosaicLayer.querySelector('.t-m-block') ? tun.mosaicLayer.querySelector('.t-m-block').style.backgroundColor : '';
+      tun._lastBgCacheKey = null;
+      tun._updateMosaicBackground({ sectionId: 2, groupId: 5, params: { alignment: 'center' } });
+      const c2 = tun.mosaicLayer.querySelector('.t-m-block') ? tun.mosaicLayer.querySelector('.t-m-block').style.backgroundColor : '';
+      out.paletteRotates = c1 !== c2;
       return out;
     }""")
 
-    check("deco-svg-created", ev["geoSvg"])
-    check("deco-has-stroke-geo", ev["geoStroke"] > 0, str(ev["geoStroke"]))
-    check("deco-has-fill-geo", ev["geoFill"] > 0, str(ev["geoFill"]))
-    check("deco-has-hatch", ev["geoSoft"] > 0, str(ev["geoSoft"]))
-    check("deco-bottom-anchored", ev["geoBottom"])
-    check("deco-svg-floating", "pv-geo-float" in str(ev["geoFloatAnim"]), str(ev["geoFloatAnim"]))
-    check("deco-stroke-grow-anim", "pv-geo-draw" in str(ev["geoStrokeAnim"]), str(ev["geoStrokeAnim"]))
-    check("deco-stroke-dash-prep", str(ev["dashArray"]).find("1") >= 0, str(ev["dashArray"]))
-    check("deco-variant-changes", ev["variantChanges"])
-    check("deco-variant-deterministic", ev["variantBack"])
+    # 图形场断言
+    check("shape-field-created", ev["fieldCreated"])
+    check("shape-count-15", ev["shapeCount"] == 15, str(ev["shapeCount"]))
+    check("shape-icons-present", ev["iconCount"] >= 1, str(ev["iconCount"]))
+    check("shape-geoms-present", ev["geoCount"] >= 5, str(ev["geoCount"]))
+    check("shape-particles-20", ev["particleCount"] == 20, str(ev["particleCount"]))
+    check("shape-color-follows-theme", ev["colorFollows"])
+    check("shape-same-seed-stable", ev["sameSeedStable"])
+    check("shape-new-seed-reshuffles", ev["newSeedReshuffles"])
+    check("shape-orbit-anim", "pv-shape-orbit" in str(ev["orbitAnim"]), str(ev["orbitAnim"]))
 
     check("mosaic-engine-built", ev["engineBuilt"])
     check("mosaic-grid-always", ev["gridAlways"], f"patterns={ev['allPatterns']} maxGrids={ev['maxGrids']}")
@@ -132,6 +147,10 @@ with sync_playwright() as p:
     check("hexWithAlpha-6-digit", re.match(r"^#[0-9a-fA-F]{8}$", ev["hexA"] or "") is not None, str(ev["hexA"]))
     # 8 位色不再原样返回：自带 alpha(0x12) × opacity(0.5) → 0x09，否则中性块永远 ~7% 不透明
     check("hexWithAlpha-8digit-multiplied", str(ev["hexNeutral"]) == "#ffffff09", str(ev["hexNeutral"]))
+    # ★ 反色判定 v2 + 色板轮换
+    check("invert-light-tone1", ev["lightTone1"] is True, str(ev["lightTone1"]))
+    check("invert-dark-tone4", ev["darkTone4"] is False, str(ev["darkTone4"]))
+    check("palette-rotates-per-group", ev["paletteRotates"])
 
     fatal = [e for e in errors if not any(k in e for k in ("favicon", "net::", "404", "CORS", "Access to image", "Failed to load resource",
                                                            "加载歌曲出错", "音频错误", "DEMUXER", "audio_load_error"))]
