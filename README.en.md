@@ -6,6 +6,9 @@
 
 [简体中文](README.md) | **English**
 
+[![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
+[![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
+
 **A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo search, nine full-screen lyric visual modes, a desktop lyrics overlay, and AI mood analysis**
 
 Web app + Tauri 2 desktop shell — a player built for one person's long listening sessions.
@@ -75,7 +78,7 @@ RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every 
 
 ### Portable build (regular users)
 
-Grab `Aria-Portable-v1.0.0.zip` from [Releases](../../releases), extract to a path with **ASCII characters only**, then:
+Grab `Aria-Portable.zip` from [Releases](../../releases), extract to a path with **ASCII characters only**, then:
 
 - `Aria.exe` — desktop window version (recommended)
 - `StartAria.bat` — browser web version

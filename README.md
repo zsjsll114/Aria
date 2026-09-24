@@ -12,6 +12,8 @@
 
 A multi-source online music player for Windows, built around word-by-word lyrics: 9 full-screen lyric visual modes, a desktop lyrics overlay, AI mood analysis, EQ and local music support.
 
+[![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
+[![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml/badge.svg)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
@@ -83,7 +85,7 @@ PV 和蒙德里安在开启 AI 情绪分析后效果最好：AI 会为每句歌�
 
 ### 绿色版（普通用户）
 
-到 [Releases](../../releases) 下载 `Aria-Portable-v1.0.0.zip`，解压到纯英文路径后：
+到 [Releases](../../releases) 下载 `Aria-Portable.zip`，解压到纯英文路径后：
 
 - `Aria.exe` —— 桌面窗口版（推荐）
 - `StartAria.bat` —— 浏览器网页版

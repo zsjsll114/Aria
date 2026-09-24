@@ -1517,7 +1517,8 @@ function _scanI18n(root, deadline) {
     '.source-btn, #favoritesHint, .plm-btn, .plm-count, .rank-empty, .empty-hint, .favorites-title, ' +
     '.tunnel-ai-confirm-title, .tunnel-ai-confirm-desc, .tunnel-ai-cost-label, .tunnel-ai-cost-value, ' +
     '.tunnel-ai-mode-name, .tunnel-ai-mode-sub, .plm-empty, .stats-empty, .rec-sources-header, ' +
-    '.about-fine, .settings-nav-search, #aiStatusText, #aiStatusDetail, .ai-proxy-warn';
+    '.about-fine, .settings-nav-search, #aiStatusText, #aiStatusDetail, .ai-proxy-warn, ' +
+    '.view-mode-name, .font-cat-tag, .font-cat-count, .font-upload-text, .font-upload-hint';
   root.querySelectorAll?.(textSel).forEach(el => {
     /* ★ svg 图标按钮（<svg>…文本）保护：此类节点 children>0，但直接文本子节点
        可安全翻译（如 rank-playall「播放全部（N）」——此前被整节点跳过永不翻译） */

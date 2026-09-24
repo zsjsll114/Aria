@@ -92,6 +92,23 @@ export class TunnelEngine {
   }
 
   /**
+   * ★ 相对亮度判定（Rec.709）：块背景亮度 > 0.5 视为亮块 → 歌词反色深墨。
+   * 莫奈色板提亮后白字在 tone1/tone2 亮块上对比度不足，此判定恢复可读性。
+   * 支持 6/8 位 hex（8 位时忽略 alpha）与 rgba() 前缀色。
+   */
+  _isLightColor(color) {
+    try {
+      let c = String(color || '').trim();
+      const m = c.match(/^#([0-9a-fA-F]{6})/);
+      if (!m) return false;
+      const n = parseInt(m[1], 16);
+      const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+      const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return luma > 0.5;
+    } catch (e) { return false; }
+  }
+
+  /**
    * ★ 将 6 位 / 8 位 hex 颜色与透明度合成 8 位 hex；rgb() / hsl() 原样返回。
    * - 6 位 hex：直接按 opacity 追加 alpha
    * - 8 位 hex：颜色自带的 alpha 与 opacity 相乘后再烘焙（不再原样返回——
@@ -1017,7 +1034,10 @@ export class TunnelEngine {
 
       // ★ 检查词块所在矩形是否需要反色
       const rectForText = findRectForBlock(finalX * 100, finalY * 100);
-      const shouldInvert = !!(rectForText && rectForText.invertText);
+      /* ★ 反色判定 v2（用户反馈：莫奈色板提亮后字体与背景融为一体）：不再只依赖
+         模板 invertText 标志（v2 满屏色板模板全为 false → 永不反色），改为按词块
+         所落色块的背景色相对亮度自动判定——亮块(Rec.709 亮度>0.5)上用深墨字。 */
+      const shouldInvert = !!(rectForText && (rectForText.invertText || this._isLightColor(rectForText.color)));
 
       // ★ 文字倾斜：每行基准角度 + 微调，限制在 ±5°；
       //   横平竖直模式（allowTilt=false）强制 0°，不多旋转
