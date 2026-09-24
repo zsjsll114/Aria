@@ -1583,11 +1583,18 @@ const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, .ctx-co
 export function applyLanguageToUiRoots() {
   if (typeof document === 'undefined') return;
   const roots = document.querySelectorAll(UI_ROOT_SELECTOR);
-  const deadline = performance.now() + 6; /* 单轮 6ms 预算，超时留待下轮 observer 触发 */
+  const deadline = performance.now() + 6; /* 单轮 6ms 预算 */
+  let completed = true;
   roots.forEach(root => {
-    if (performance.now() > deadline) return;
+    if (performance.now() > deadline) { completed = false; return; }
     try { _scanI18n(root, deadline); } catch (e) { /* 单容器异常不拖垮整体 */ }
   });
+  /* ★ 续扫兜底（用户反馈：弹窗内容翻一半就停）：预算耗尽时若当轮没扫完，
+     50ms 后再跑一轮——弹窗渲染后若再无 mutation，此前没人触发二轮，
+     残余节点永远停在中文。 */
+  if (!completed && currentLang !== 'zh-CN') {
+    setTimeout(() => { try { applyLanguageToUiRoots(); } catch (e) { /* 静默 */ } }, 50);
+  }
 }
 
 /** 全量应用（语言手动切换等一次性场景）：整个文档 */
@@ -1639,12 +1646,23 @@ if (typeof window !== 'undefined') {
       _i18nTimer = setTimeout(() => {
         _i18nTimer = null;
         applyLanguageToUiRoots();
-      }, 250);
+      }, 50);
     });
     const _startObserver = () => {
       if (document.body) _i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
       else setTimeout(_startObserver, 300);
     };
     _startObserver();
+
+    /* ★ 启动立即应用（用户反馈：英文模式先闪中文再变英文）：语言非中文时
+       DOM 就绪即刻全量翻译一次，不等 observer 防抖——消除首屏中文闪现。
+       全文档单轮几 ms，仅启动跑一次。 */
+    if (currentLang !== 'zh-CN') {
+      const _bootApply = () => {
+        try { applyLanguageToDocument(); } catch (e) { /* 静默 */ }
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _bootApply);
+      else _bootApply();
+    }
   } catch (e) { /* ignore */ }
 }
