@@ -6,7 +6,7 @@
 import { API_BASE } from '../config/constants.js';
 import { escapeHtml } from '../utils/formatters.js';
 import { proxyFetch, fetchKuwoSearch, searchKugouSongs } from '../services/musicApi.js';
-import { favoritesOverlay, searchBtn, searchInput, searchResultsEl, sourceBtns } from './30-dom-refs.js';
+import { favoritesOverlay, searchBtn, searchInput, searchResultsEl, sourceBtns, searchOverlay } from './30-dom-refs.js';
 import { closeSearch, getFavorites, saveFavorites, setHint, showResults, showResultsSkeleton, updateFavoriteBtn } from './120-search-results.js';
 import { renderFavoritesList } from './125-favorites.js';
 import { addToPlaylistOverlay, importPlaylistOverlay, playlistsOverlay } from './130-playlists.js';
