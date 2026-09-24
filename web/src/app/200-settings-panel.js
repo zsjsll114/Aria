@@ -869,9 +869,11 @@ function openExternalUrl(url) {
 }
 
 function initAboutLinks() {
-    /* 所有带 href 的链接卡片（作者 / 致谢）统一呼出系统浏览器 */
+    /* 所有带 href 的链接卡片（作者 / 致谢 / folia 参考 / Star）统一呼出系统浏览器。
+       ★ .about-project-card（folia-major 致谢卡）此前不在选择器里 → Tauri 壳内
+       target=_blank 不外开且无 opener 绑定 → 用户反馈「打不开浏览器」 */
     const links = typeof document !== 'undefined'
-        ? document.querySelectorAll('.about-link-card[href]')
+        ? document.querySelectorAll('.about-link-card[href], .about-project-card[href], .about-star-btn[href]')
         : [];
     links.forEach((link) => {
         if (link.dataset.bound === '1') return;

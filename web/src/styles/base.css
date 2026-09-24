@@ -1385,3 +1385,9 @@ body.perf-low .neon-char text,
 body.perf-minimal .neon-char text {
     filter: drop-shadow(0 0 0.05em rgba(255, 255, 255, 0.45)) !important;
 }
+        .about-star-btn:hover {
+            background: var(--theme-color, #ffcc33) !important;
+            border-color: var(--theme-color, #ffcc33) !important;
+            color: #150f04 !important;
+            transform: translateY(-1px);
+        }

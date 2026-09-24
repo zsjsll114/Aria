@@ -308,6 +308,9 @@ const STATIC_PHRASE_MAP = {
   '识曲': 'Recognize',
   '歌单': 'Playlists',
   '设置': 'Settings',
+  '在 GitHub 上点个 Star': 'Star on GitHub',
+  '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。注意：扫码只是「登录」，各平台的启用开关还决定「哪些功能真的走自建」——QQ 的取播放链接也受其开关控制，酷狗目前只有日推/收藏走自建（播放链接仍走公网）。酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。': 'After login, daily mix / favorites / hi-res go through self-hosted APIs; without VIP, trial links fall back to the free pool. Scan once — the login state is saved. Note: scanning only logs you in; each platforms enable switch also controls which features actually use the self-hosted channel — QQ play-URL fetching respects it, while KuGou currently routes only daily mix / favorites (play URLs stay public). If KuGou asks for verification after scanning, switch to SMS login in the dialog.',
+  '反馈问题': 'Report Issues',
   '播放全部': 'Play All',
   '上一页': 'Prev',
   '下一页': 'Next',
@@ -1516,7 +1519,27 @@ function _scanI18n(root, deadline) {
     '.tunnel-ai-mode-name, .tunnel-ai-mode-sub, .plm-empty, .stats-empty, .rec-sources-header, ' +
     '.about-fine, .settings-nav-search, #aiStatusText, #aiStatusDetail, .ai-proxy-warn';
   root.querySelectorAll?.(textSel).forEach(el => {
-    if (el.children.length > 0) return;
+    /* ★ svg 图标按钮（<svg>…文本）保护：此类节点 children>0，但直接文本子节点
+       可安全翻译（如 rank-playall「播放全部（N）」——此前被整节点跳过永不翻译） */
+    if (el.children.length > 0) {
+      const hasSvgChild = Array.from(el.children).some(c => /^svg$/i.test(c.tagName));
+      if (!hasSvgChild) return;
+      Array.from(el.childNodes).forEach(n => {
+        if (n.nodeType !== 3) return;
+        const t = (n.textContent || '').trim();
+        if (!t) return;
+        if (isEn) {
+          const en = translateTextNode(t);
+          if (en !== null && en !== t) {
+            if (!n.__i18nOrig) n.__i18nOrig = t;
+            n.textContent = en;
+          }
+        } else if (n.__i18nOrig) {
+          n.textContent = n.__i18nOrig;
+        }
+      });
+      return;
+    }
     const text = (el.textContent || '').trim();
     if (!text) return;
     if (isEn) {
