@@ -12,6 +12,7 @@
  * 5. 第 8.3 节：装饰组合 —— 每个句组从 37 种中选 3-5 个交错融合
  * 6. 第 11.1 节：几何蒙版 clip-path 转场
  */
+import { logCatch } from '../../services/log.js';
 
 const EASE_OUT = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const EASE_BACK = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
@@ -229,7 +230,7 @@ export function playEnterAnimation(el, type = 'slide-up', delay = 0, duration = 
   try {
     const anim = fn(el, delay, direction);
     if (duration && anim) {
-      try { anim.effect.updateTiming({ duration: Math.max(80, Math.round(duration)) }); } catch (e) {}
+      try { anim.effect.updateTiming({ duration: Math.max(80, Math.round(duration)) }); } catch (e) { logCatch('TunnelAnimations', e); }
     }
     return anim;
   } catch (e) { return null; }
@@ -309,7 +310,7 @@ export function playFlashOverlay(overlayEl, duration = 260) {
   if (!overlayEl || !overlayEl.animate) return;
   try {
     overlayEl.animate([{ opacity: 0.55 }, { opacity: 0 }], { duration, easing: 'ease-out' });
-  } catch (e) {}
+  } catch (e) { logCatch('TunnelAnimations', e); }
 }
 
 /* ==========================================================================

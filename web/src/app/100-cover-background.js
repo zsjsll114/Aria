@@ -11,7 +11,7 @@ import { songCover, songCover2 } from './30-dom-refs.js';
 import { playerContainer } from './40-playback-state.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { updatePlaybackPosition } from './65-playback-position.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 获取当前活动封面层 */
 function getActiveCover() {
@@ -74,7 +74,7 @@ function setCoverImage(url) {
 
                 try {
                     extractDominantColor(inactiveCover);
-                } catch (e) {}
+                } catch (e) { logCatch('coverBackground', e); }
 
                 /* ★ 同步更新底部控件栏封面（带淡入效果） */
                 const bottomCover = typeof document !== 'undefined' ? document.getElementById('bottomSongCover') : null;
@@ -233,7 +233,7 @@ function generatePrebakedBlurBackground(imageUrl, blurPx = 60, brightness = 0.35
                         ctx.filter = 'none';
                         filterApplied = true;
                     }
-                } catch (_) {}
+                } catch (_) { logCatch('coverBackground', _); }
 
                 /* 3. 若 ctx.filter 不可用，使用经典双重下采样柔化 + 压暗 */
                 if (!filterApplied) {

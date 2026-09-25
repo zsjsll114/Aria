@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>手机遥控器 · Aria</title>
+<link rel="icon" href="data:,">
+<!-- 动效令牌（约束 15：曲线只有三条）。motion.css 的浮层规则全部锚在
+     html#ariaRoot 上，本页没有该 id，所以引进来只拿令牌，不会带入主界面样式。 -->
+<link rel="stylesheet" href="src/styles/motion.css">
+<link rel="stylesheet" href="src/styles/remote.css">
+</head>
+<body class="is-idle">
+<div class="rm-wrap">
+
+    <header class="rm-head">
+        <!-- 断线时必须常驻可见，而不是点了没反应：状态 pill + 可选提示行 -->
+        <span class="rm-pill" id="rmStatus" role="status" aria-live="polite">连接中…</span>
+        <span class="rm-addr" id="rmAddr"></span>
+        <button class="rm-queue-btn" id="rmQueueBtn" type="button" aria-label="播放队列">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h12v2H3zM3 11h12v2H3zM3 16h8v2H3zM17 10.2l5.4 3.3-5.4 3.3z"/></svg>
+            <b class="rm-qbadge" id="rmQBadge" hidden></b>
+        </button>
+    </header>
+
+    <p class="rm-hint" id="rmHint"></p>
+
+    <section class="rm-stage">
+        <div class="rm-artwrap">
+            <div class="rm-glow" aria-hidden="true"></div>
+            <div class="rm-art">
+                <img id="rmCover" alt="" decoding="async">
+                <div class="rm-art-ph" id="rmArtPh" aria-hidden="true">♪</div>
+            </div>
+        </div>
+        <div class="rm-meta">
+            <div class="rm-title" id="rmTitle">—</div>
+            <div class="rm-artist" id="rmArtist">—</div>
+        </div>
+        <p class="rm-idle-hint">在电脑上开始播放后自动同步</p>
+        <!-- 歌词：竖屏是当前行字幕，横屏（第二屏模式）放大成主角，同一份 DOM -->
+        <div class="rm-lines" id="rmLines" aria-live="off"></div>
+    </section>
+
+    <section class="rm-ctl">
+        <div class="rm-bar" id="rmBar">
+            <span class="rm-time" id="rmCur">00:00</span>
+            <span class="rm-track" id="rmSeekTrack"><i class="rm-fill" id="rmSeekFill"></i></span>
+            <span class="rm-time" id="rmTot">00:00</span>
+        </div>
+
+        <div class="rm-transport">
+            <button class="rm-btn rm-btn-side" id="rmPrev" type="button" aria-label="上一曲">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.2v14H6zM20 5v14L9.6 12z"/></svg>
+            </button>
+            <button class="rm-btn rm-btn-play" id="rmPlay" type="button" aria-label="播放/暂停">
+                <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.4 4.6v14.8L20 12z"/></svg>
+                <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>
+            </button>
+            <button class="rm-btn rm-btn-side" id="rmNext" type="button" aria-label="下一曲">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.8 5H18v14h-2.2zM4 5v14l10.4-7z"/></svg>
+            </button>
+        </div>
+
+        <div class="rm-vol" id="rmVolRow">
+            <button class="rm-mini" id="rmVolDown" type="button" aria-label="音量减">−</button>
+            <span class="rm-track" id="rmVolTrack"><i class="rm-fill" id="rmVolFill"></i></span>
+            <button class="rm-mini" id="rmVolUp" type="button" aria-label="音量加">＋</button>
+            <span class="rm-volnum" id="rmVolNum">—</span>
+        </div>
+    </section>
+</div>
+
+<!-- 队列抽屉（毛玻璃面板，配方与搜索页一致，见 remote.css 注释） -->
+<div class="rm-overlay" id="rmQueueOverlay" role="dialog" aria-modal="true" aria-label="播放队列">
+    <div class="rm-sheet">
+        <div class="rm-sheet-head">
+            <span id="rmSheetTitle">播放队列</span>
+            <button class="rm-text-btn" id="rmQueueClose" type="button">关闭</button>
+        </div>
+        <div class="rm-qlist" id="rmQueueList"></div>
+    </div>
+</div>
+
+<script type="module">
+/* ============================================================
+ * remote.html — 手机遥控器视图（todos #17）
+ *
+ * 载荷字段与主窗 291-phone-remote.js 的 buildPayload 一对一；那条链路的语义
+ * （发送端只在变化时推 seq、接收端按本地时钟外推进度）抄的是 250-desktop-lyrics.js。
+ * 脚本内联在本页而不拆成 web/src/remote/*.js：拆出去就变成「从 app/index.js 不可达」
+ * 的影子层模块（约束 10 的头号陷阱），而这里只 import 了三个纯函数叶子模块。
+ * ============================================================ */
+import { esc, formatTime } from './src/utils/formatters.js';
+import { logCatch } from './src/services/log.js';
+import { getLanguage, translatePhrase } from './src/core/i18n.js';
+
+const BUS = '/api/remote';
+const POLL_FAST = 250;        /* 前台：250ms 一次，无变化时服务端回 204（几乎零流量） */
+const POLL_SLOW = 1500;       /* 页面隐藏时降频省电 */
+const OFFLINE_AFTER = 2;      /* 连续失败几次即判定「已断开」 */
+const CHAR_CAP = 140;         /* 逐字扫过的字符上限，超长行退回整行扫过 */
+
+/* 中文串的唯一登记处是 core/i18n.js 的 STATIC_PHRASE_MAP（约束 7），本页不另建词表：
+   动态文本过 L()，静态骨架由 i18n.js 载入时的全文档扫描整体翻译。 */
+const EN = (getLanguage() === 'en-US');
+const L = (zh) => (EN ? translatePhrase(zh) : zh);
+
+const $ = (id) => document.getElementById(id);
+const el = {
+    status: $('rmStatus'), addr: $('rmAddr'), hint: $('rmHint'),
+    cover: $('rmCover'), artPh: $('rmArtPh'), title: $('rmTitle'), artist: $('rmArtist'),
+    lines: $('rmLines'), cur: $('rmCur'), tot: $('rmTot'), seekFill: $('rmSeekFill'),
+    bar: $('rmBar'), seekTrack: $('rmSeekTrack'),
+    play: $('rmPlay'), prev: $('rmPrev'), next: $('rmNext'),
+    volRow: $('rmVolRow'), volTrack: $('rmVolTrack'), volFill: $('rmVolFill'), volNum: $('rmVolNum'),
+    volUp: $('rmVolUp'), volDown: $('rmVolDown'),
+    queueBtn: $('rmQueueBtn'), qBadge: $('rmQBadge'),
+    queueOverlay: $('rmQueueOverlay'), queueClose: $('rmQueueClose'),
+    queueList: $('rmQueueList')
+};
+
+const S = {
+    seq: -1, p: null, recvAt: 0,
+    ok: false, alive: false, fail: 0, unsupported: false,
+    lastSig: '', lastQueueSig: '', lastLineKey: '', idx: -1,
+    words: null,        /* 当前行按字符展开后的时间轴 */
+    drag: null,         /* 'seek' | 'vol'：拖拽期间不吃远端回传，避免与手指打架 */
+    dragFrac: 0,
+    coverSrc: ''
+};
+
+/* ---------------- 连接状态（要求：断线必须说出来，不能静默失效） ---------------- */
+
+function setStatus(kind, msg, hint) {
+    el.status.textContent = msg;
+    el.status.classList.remove('is-ok', 'is-warn', 'is-bad');
+    el.status.classList.add(kind === 'ok' ? 'is-ok' : kind === 'warn' ? 'is-warn' : 'is-bad');
+    el.hint.textContent = hint || '';
+    document.documentElement.classList.toggle('rm-offline', kind === 'bad');
+    document.documentElement.classList.toggle('rm-stale', kind === 'warn');
+}
+
+function describeConn() {
+    if (S.unsupported) {
+        setStatus('bad', L('遥控器后端未启用'),
+            L('本机服务器还没有开放遥控通道：用 python server.py --lan 启动后即可使用。'));
+        return;
+    }
+    if (!S.ok) {
+        setStatus('bad', L('已断开'),
+            L('连不上服务器：手机与电脑需在同一 Wi-Fi，电脑端要用 --lan 启动服务。'));
+        return;
+    }
+    if (!S.alive) {
+        setStatus('warn', L('主窗未响应'),
+            L('服务器在线，但播放器主窗口没有心跳（窗口刚被关闭或正在重启）。'));
+        return;
+    }
+    setStatus('ok', S.p && S.p.t ? L('已连接') : L('已连接 · 未播放'), '');
+}
+
+/* ---------------- 拉状态 ---------------- */
+
+let _timer = null;
+function schedule() {
+    clearTimeout(_timer);
+    _timer = setTimeout(poll, document.hidden ? POLL_SLOW : POLL_FAST);
+}
+
+async function poll() {
+    try {
+        const r = await fetch(`${BUS}/state?since=${S.seq}`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+        if (r.status === 404) { S.unsupported = true; S.ok = false; describeConn(); return; }
+        if (r.status === 204) { S.ok = true; S.alive = true; S.fail = 0; describeConn(); schedule(); return; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        S.ok = true; S.fail = 0; S.unsupported = false;
+        S.alive = !!j.alive;
+        if (typeof j.seq === 'number') S.seq = j.seq;
+        if (j.payload) applyState(j.payload);
+        describeConn();
+    } catch (e) {
+        S.fail++;
+        if (S.fail >= OFFLINE_AFTER) S.ok = false;
+        describeConn();
+        logCatch('remoteView', e);
+    }
+    schedule();
+}
+
+function applyState(p) {
+    S.p = p;
+    S.recvAt = Date.now();
+    if (p.sig === S.lastSig) return;
+    S.lastSig = p.sig || '';
+
+    document.body.classList.toggle('is-playing', !!p.playing);
+    document.body.classList.toggle('is-idle', !p.t);
+    el.title.textContent = p.t || L('未播放');
+    el.artist.textContent = p.a || '';
+    el.volFill.style.width = Math.max(0, Math.min(100, p.vol || 0)) + '%';
+    el.volNum.textContent = p.vol == null ? '—' : String(Math.round(p.vol));
+    /* 主题色只接受 #rgb/#rrggbb 形状：它来自总线，属于外部数据，不能直接进 CSS 变量 */
+    const th = String(p.th || '');
+    document.documentElement.style.setProperty('--accent', /^#[0-9a-fA-F]{3,8}$/.test(th) ? th : '#ffcc33');
+    setCover(p.c);
+    renderQueue(p);
+    document.title = p.t ? (p.playing ? '▶ ' : '⏸ ') + p.t : document.title;
+    S.lastLineKey = '';   /* 载荷一变就作废歌词窗口缓存，下一帧重建 */
+    S.idx = -1;
+}
+
+/* 封面 URL 收口：只放行 http(s)（外部数据，直接进 <img src>，约束 8 的 URL 侧），
+   并把回环主机换成本页正在用的主机——主窗常以 http://localhost:8001 起服务，
+   它给出的绝对地址在手机上指向手机自己，本地曲库的封面会永远裂开。 */
+function resolveCover(u) {
+    if (!u) return '';
+    try {
+        const x = new URL(String(u), location.href);
+        if (x.protocol !== 'http:' && x.protocol !== 'https:') return '';
+        if (/^(localhost|127\.0\.0\.1|\[::1\]|::1)$/i.test(x.hostname)) x.hostname = location.hostname;
+        if (location.protocol === 'https:' && x.protocol === 'http:') return '';   /* 混合内容：宁可不显示 */
+        return x.href;
+    } catch (e) {
+        logCatch('remoteView', e);
+        return '';
+    }
+}
+
+function setCover(src) {
+    const next = resolveCover(src);
+    if (next === S.coverSrc) return;
+    S.coverSrc = next;
+    if (!next) {
+        el.cover.classList.remove('is-on');
+        el.cover.removeAttribute('src');
+        el.artPh.style.display = '';
+        return;
+    }
+    el.artPh.style.display = 'none';
+    el.cover.classList.remove('is-on');
+    el.cover.onload = () => el.cover.classList.add('is-on');
+    el.cover.onerror = () => { el.artPh.style.display = ''; };
+    el.cover.src = next;
+}
+
+/* ---------------- 进度与歌词（本地外推，不等网络往返） ---------------- */
+
+function localPos() {
+    const p = S.p;
+    if (!p) return 0;
+    let pos = p.pos || 0;
+    /* 跨设备不做时钟对齐：pos 是主窗 publish 瞬间的采样，之后只用**本机**时间差外推，
+       局域网单程 1~3ms 的偏差不影响观感（与桌面歌词窗口同一做法） */
+    if (p.playing && S.alive) pos += Date.now() - S.recvAt;
+    const dur = p.dur || 0;
+    if (dur > 0) pos = Math.min(pos, dur);
+    return Math.max(0, pos);
+}
+
+function renderProgress() {
+    const p = S.p;
+    if (!p) return;
+    const dur = p.dur || 0;
+    const pos = (S.drag === 'seek') ? S.dragFrac * dur : localPos();
+    el.cur.textContent = formatTime(pos);
+    el.tot.textContent = dur ? formatTime(dur) : '00:00';
+    el.seekFill.style.width = (dur > 0 ? Math.min(100, (pos / dur) * 100) : 0).toFixed(2) + '%';
+}
+
+/* 活动行由本地时间在整首歌词里定位，不等主窗推 —— 行切换因此零延迟 */
+function activeIndexOf(lines, pos) {
+    let i = S.idx;
+    if (i < 0 || i >= lines.length) i = 0;
+    while (i < lines.length - 1 && lines[i + 1].t <= pos) i++;
+    while (i > 0 && lines[i].t > pos) i--;
+    return i;
+}
+
+/* 主窗只带「当前行」的逐字轴（与桌面歌词同一载荷约定），所以逐字只画那一行 */
+function expandWords(w) {
+    const out = [];
+    for (const word of w) {
+        const chars = Array.from(String(word.x || ''));
+        const n = chars.length || 1;
+        const step = Math.max(1, word.e - word.s) / n;
+        for (let c = 0; c < n; c++) out.push({ x: chars[c], s: word.s + c * step, e: word.s + (c + 1) * step });
+    }
+    return out;
+}
+
+function spanReveal(txt) {
+    const s = document.createElement('span');
+    s.className = 'rw';
+    const b = document.createElement('span');
+    b.className = 'rw-b';
+    b.textContent = txt;
+    const h = document.createElement('span');
+    h.className = 'rw-h';
+    h.textContent = txt;
+    s.appendChild(b);
+    s.appendChild(h);
+    return s;
+}
+
+function plainLine(txt, cls) {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = txt;
+    return d;
+}
+
+function buildActiveLine(txt) {
+    const d = plainLine('', 'rm-line is-active');
+    d.dataset.act = '1';
+    const chars = Array.from(txt);
+    if (S.words && S.words.length && S.words.length <= CHAR_CAP) {
+        for (const ch of S.words) {
+            const s = spanReveal(ch.x);
+            s.dataset.s = String(ch.s);
+            s.dataset.e = String(ch.e);
+            d.appendChild(s);
+        }
+    } else if (chars.length && chars.length <= CHAR_CAP) {
+        d.appendChild(spanReveal(txt));   /* 没有逐字轴：整行当一个「词」按行时长扫过 */
+    } else {
+        d.textContent = txt;
+    }
+    return d;
+}
+
+function renderLyric(pos) {
+    const p = S.p || {};
+    const lines = Array.isArray(p.lyr) ? p.lyr : [];
+    if (!lines.length) {
+        if (S.lastLineKey !== '__none__') {
+            S.lastLineKey = '__none__';
+            el.lines.replaceChildren(plainLine(p.l1 || L('暂无歌词'), 'rm-line'));
+        }
+        return;
+    }
+    const idx = activeIndexOf(lines, pos);
+    S.idx = idx;
+    const key = idx + '|' + (p.li || 0) + '|' + ((p.w || []).length) + '|' + lines.length;
+    if (key === S.lastLineKey) { sweepLyric(pos); return; }
+    S.lastLineKey = key;
+    S.words = (p.li === idx && Array.isArray(p.w) && p.w.length) ? expandWords(p.w) : null;
+
+    const from = Math.max(0, idx - 1);
+    const to = Math.min(lines.length - 1, idx + 5);
+    const frag = document.createDocumentFragment();
+    for (let i = from; i <= to; i++) {
+        frag.appendChild(i === idx ? buildActiveLine(lines[i].x) : plainLine(lines[i].x, 'rm-line'));
+        if (i === idx && p.tr) frag.appendChild(plainLine(p.tr, 'rm-line is-active is-tr'));
+    }
+    el.lines.replaceChildren(frag);
+    sweepLyric(pos);
+}
+
+/* 逐字扫过：每帧只写 clip-path，DOM 结构不动（与主窗 .mlp-word 同一做法） */
+function sweepLyric(pos) {
+    const act = el.lines.querySelector('[data-act="1"]');
+    if (!act) return;
+    if (S.words) {
+        for (const s of act.querySelectorAll('.rw')) {
+            const h = s.lastElementChild;
+            if (!h) continue;
+            const a = Number(s.dataset.s), b = Number(s.dataset.e);
+            const pct = pos >= b ? 100 : (pos <= a ? 0 : ((pos - a) / Math.max(1, b - a)) * 100);
+            h.style.clipPath = 'inset(0 ' + (100 - pct).toFixed(1) + '% 0 0)';
+        }
+        return;
+    }
+    const p = S.p || {};
+    const w = act.querySelector('.rw');
+    if (!w || !w.lastElementChild) return;
+    const a = typeof p.ls === 'number' ? p.ls : 0;
+    const b = typeof p.ln === 'number' ? p.ln : a + 4000;
+    const pct = b > a ? Math.max(0, Math.min(100, ((pos - a) / (b - a)) * 100)) : 0;
+    w.lastElementChild.style.clipPath = 'inset(0 ' + (100 - pct).toFixed(1) + '% 0 0)';
+}
+
+function tick() {
+    if (S.p && S.ok && S.alive) {
+        const pos = localPos();
+        renderProgress();
+        renderLyric(pos);
+    }
+    requestAnimationFrame(tick);
+}
+
+/* ---------------- 队列 ---------------- */
+
+function renderQueue(p) {
+    const q = Array.isArray(p.q) ? p.q : [];
+    /* 队列指纹由发布端算（含内容哈希）：拖拽排序/改名这类「数量不变」的重排
+       也会变指纹，手机才不会出现「队列顺序停在旧版」 */
+    const sig = (p.qs || q.map(x => x.t).join('\u0001')) + '|' + p.qi;
+    if (sig === S.lastQueueSig) return;
+    S.lastQueueSig = sig;
+    el.qBadge.hidden = !q.length;
+    el.qBadge.textContent = q.length > 99 ? '99+' : String(q.length);
+    if (!q.length) {
+        el.queueList.innerHTML = `<div class="rm-empty">${esc(L('队列为空'))}</div>`;
+        return;
+    }
+    /* 外部数据（歌名/歌手/封面）全部过 esc()（约束 8）；封面另有 scheme 白名单 */
+    el.queueList.innerHTML = q.map(x => {
+        const c = resolveCover(x.c);
+        return `<div class="rm-qitem${x.i === p.qi ? ' is-now' : ''}" data-i="${x.i}">
+            <span class="rm-qn">${x.i + 1}</span>
+            ${c ? `<img class="rm-qc" src="${esc(c)}" alt="" loading="lazy" decoding="async">` : '<span class="rm-qc"></span>'}
+            <span class="rm-qi">
+                <span class="rm-qt">${esc(x.t || L('未知歌曲'))}</span>
+                <span class="rm-qa">${esc(x.a || '')}</span>
+            </span>
+        </div>`;
+    }).join('');
+}
+
+el.queueList.addEventListener('click', (e) => {
+    const item = e.target.closest('.rm-qitem');
+    if (!item) return;
+    const i = Number(item.dataset.i);
+    if (!isFinite(i)) return;
+    send('jump', i);
+    closeQueue();
+});
+
+function openQueue() { el.queueOverlay.classList.add('visible'); }
+function closeQueue() { el.queueOverlay.classList.remove('visible'); }
+el.queueBtn.addEventListener('click', openQueue);
+el.queueClose.addEventListener('click', closeQueue);
+el.queueOverlay.addEventListener('click', (e) => { if (e.target === el.queueOverlay) closeQueue(); });
+
+/* ---------------- 发指令 ---------------- */
+
+async function send(cmd, arg) {
+    try {
+        const r = await fetch(`${BUS}/cmd`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cmd: cmd, arg: arg }),
+            cache: 'no-store',
+            signal: AbortSignal.timeout(4000)
+        });
+        if (r.status === 404) { S.unsupported = true; S.ok = false; describeConn(); return; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        S.ok = true; S.fail = 0;
+        describeConn();
+        /* 状态回传要一个往返（≤250ms 轮询 + 主窗长轮询被立即唤醒），
+           这期间先按乐观值画，避免「点了要等一下才动」 */
+        if (cmd === 'toggle') {
+            const want = !(S.p && S.p.playing);
+            document.body.classList.toggle('is-playing', want);
+        }
+    } catch (e) {
+        S.fail++;
+        if (S.fail >= OFFLINE_AFTER) S.ok = false;
+        describeConn();
+        logCatch('remoteView', e);
+    }
+}
+
+el.play.addEventListener('click', () => send('toggle'));
+el.next.addEventListener('click', () => send('next'));
+el.prev.addEventListener('click', () => send('prev'));
+el.volUp.addEventListener('click', () => send('vol', Math.min(100, (S.p ? S.p.vol || 0 : 80) + 5)));
+el.volDown.addEventListener('click', () => send('vol', Math.max(0, (S.p ? S.p.vol || 0 : 80) - 5)));
+
+/* ---------------- 滑杆（进度/音量；≥44px 命中区在 CSS 里由行高保证） ---------------- */
+
+function fracOf(track, clientX) {
+    const rect = track.getBoundingClientRect();
+    if (!rect.width) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+
+function bindSlider(row, track, name, onFrac) {
+    let dragging = false;
+    const move = (clientX) => {
+        const f = fracOf(track, clientX);
+        S.dragFrac = f;
+        track.querySelector('.rm-fill').style.width = (f * 100).toFixed(2) + '%';
+        onFrac(f, true);
+    };
+    const start = (clientX, ev) => {
+        dragging = true;
+        S.drag = name;      /* 'seek' | 'vol'：rAF 循环据此暂停远端回写 */
+        move(clientX);
+        if (ev.cancelable) ev.preventDefault();     /* 别让拖拽被浏览器当成页面滚动 */
+    };
+    const end = () => {
+        if (!dragging) return;
+        dragging = false;
+        onFrac(S.dragFrac, false);
+        S.drag = null;
+    };
+    row.addEventListener('touchstart', (e) => start(e.touches[0].clientX, e), { passive: false });
+    row.addEventListener('touchmove', (e) => { if (dragging) move(e.touches[0].clientX); }, { passive: false });
+    row.addEventListener('touchend', end);
+    row.addEventListener('touchcancel', end);
+    row.addEventListener('mousedown', (e) => start(e.clientX, e));
+    window.addEventListener('mousemove', (e) => { if (dragging) move(e.clientX); });
+    window.addEventListener('mouseup', end);
+}
+
+bindSlider(el.bar, el.seekTrack, 'seek', (f, live) => {
+    if (live) { el.cur.textContent = formatTime(f * ((S.p && S.p.dur) || 0)); return; }
+    const dur = (S.p && S.p.dur) || 0;
+    if (dur <= 0) return;
+    const ms = Math.round(f * dur);
+    /* 本端先落位：主窗状态要一个往返才回来，不落位会「拖完弹回旧位置」 */
+    if (S.p) { S.p.pos = ms; S.recvAt = Date.now(); }
+    send('seek', ms);
+});
+
+bindSlider(el.volRow, el.volTrack, 'vol', (f, live) => {
+    const v = Math.round(f * 100);
+    el.volNum.textContent = String(v);
+    if (live) return;
+    if (S.p) S.p.vol = v;
+    send('vol', v);
+});
+
+/* ---------------- 屏幕常亮（横屏当第二屏时不能被系统熄屏） ---------------- */
+
+let _wake = null;
+async function keepAwake() {
+    if (!('wakeLock' in navigator) || _wake) return;
+    try {
+        _wake = await navigator.wakeLock.request('screen');
+        _wake.addEventListener('release', () => { _wake = null; });
+    } catch (e) {
+        /* 非安全上下文（局域网 http:// 访问）拿不到 WakeLock：属预期失败，
+           熄屏由用户自己决定，不影响遥控功能 */
+        logCatch('remoteView', e);
+    }
+}
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        S.seq = -1;          /* 回前台先做一次全量同步（后台期间可能换了好几首歌） */
+        poll();
+        keepAwake();
+    }
+});
+
+/* ---------------- 启动 ---------------- */
+
+el.addr.textContent = location.host;
+/* 静态骨架的 i18n 全文档扫描只翻文本节点，够不到 aria-label 属性，这里补上 */
+[['rmPrev', '上一曲'], ['rmNext', '下一曲'], ['rmPlay', '播放/暂停'],
+ ['rmVolUp', '音量加'], ['rmVolDown', '音量减'], ['rmQueueBtn', '播放队列']]
+    .forEach(([id, key]) => { const n = $(id); if (n) n.setAttribute('aria-label', L(key)); });
+setStatus('warn', L('连接中…'), '');
+poll();
+requestAnimationFrame(tick);
+keepAwake();
+</script>
+</body>
+</html>

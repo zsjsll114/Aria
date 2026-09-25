@@ -16,6 +16,7 @@ import { PVLyricLayout } from '../pvEngine/PVLyricLayout.js';
 import { wordSegmenter } from '../pvEngine/WordSegmenter.js';
 import { pickDecorationCombo, pickEnterFamily, ENTER_FAMILIES, splitToCharAnimParams } from './TunnelAnimations.js';
 import { segmentBlocksByAI, multiPageSegment } from './AILyricSegmenter.js';
+import { logCatch } from '../../services/log.js';
 
 /* ========== 第 7.2 节：情感词典（无 AI 时的降级路径） ========== */
 const EMOTION_LEXICON = {
@@ -641,7 +642,7 @@ export class TunnelDirector {
       if (chars.length <= 4) { out.push(b); continue; }
 
       let subs = null;
-      try { subs = wordSegmenter.segmentFine(b.text); } catch (e) {}
+      try { subs = wordSegmenter.segmentFine(b.text); } catch (e) { logCatch('TunnelDirector', e); }
       if (!subs || !subs.length || subs.join('') !== b.text) { out.push(b); continue; }
 
       // 字符指针：把原生逐字时间精确分配给子词
@@ -702,7 +703,7 @@ export class TunnelDirector {
       const t = String(b.text || '');
       if (!/^[a-zA-Z][a-zA-Z'\u00C0-\u024F'-]*$/u.test(t) || t.length < 5) continue;
       let sub = null;
-      try { sub = wordSegmenter.segment(t); } catch (e) {}
+      try { sub = wordSegmenter.segment(t); } catch (e) { logCatch('TunnelDirector', e); }
       if (!sub || sub.length < 2) continue;
       const joined = sub.join('');
       if (joined !== t) continue; // 词典拼不回原文 → 跳过，别乱拆

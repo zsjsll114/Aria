@@ -30,6 +30,7 @@ For personal use only. This repository contains no audio, lyrics, or cover art; 
 
 | Mode | Description |
 |---|---|
+| Cover | Cover art and lyrics side by side, with the full control bar |
 | Lyrics | Default. Word-by-word highlighting + smooth scrolling, with translation / romaji lines |
 | Fly-In | Whole-line fly-in, great for singing along |
 | WordCloud | Lyrics aggregate into a word cloud that floats with playback |
@@ -38,7 +39,6 @@ For personal use only. This repository contains no audio, lyrics, or cover art; 
 | Tunnel | 3D particle scene with multi-layer parallax camera |
 | Letterpress | Print-shop theme: words are inked in one by one, 30 rotating layouts, paper color follows section mood |
 | Neon | Street-sign theme: unsung words are dark tubes that light up word by word, with a storefront watermark |
-| Harmony | Multi-character dialogue-style lyric chorus |
 
 <table>
   <tr>
@@ -87,7 +87,8 @@ No Python / Node installation needed; all dependencies are bundled.
 
 ### Running from source
 
-Prerequisites: Python 3.10+ (backend uses stdlib only), Node.js 16+ (music-source services), Git. The desktop shell needs the Rust toolchain.
+Prerequisites: Python 3.10+ (backend uses stdlib only), Node.js 20.19+ or 22.13+ (22 LTS recommended), Git. The desktop shell needs the Rust toolchain.
+The Node floor comes from two dependencies: the QQ music-source mirror requires `^20.17.0 || >=22.9.0`, and this repo's ESLint 10 requires `^20.19.0 || ^22.13.0 || >=24`.
 
 ```bat
 :: 1. Fetch music-source services into _eval\ (not committed; required once after a fresh clone)
@@ -97,7 +98,7 @@ scripts\setup-vendors.bat
 python server.py
 
 :: 3a. Web: open http://localhost:8001 in your browser
-:: 3b. Desktop: double-click「启动Tauri桌面版.bat」(auto cargo build on first run)
+:: 3b. Desktop: double-click restart-aria.bat (restart + incremental cargo build, first run compiles)
 ```
 
 macOS / Linux have no .bat files — run the equivalent commands manually.

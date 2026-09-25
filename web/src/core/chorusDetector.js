@@ -1,4 +1,4 @@
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 /**
  * 纯 JS 歌曲高潮检测模块 v4.0
  * - Web Worker 化，不阻塞主线程（解决歌词卡顿）
@@ -717,7 +717,7 @@ const ChorusDetector = {
             if (_chorusScriptSrc) {
                 try {
                     worker = new Worker(_chorusScriptSrc);
-                } catch (e) {}
+                } catch (e) { logCatch('chorusDetector', e); }
             }
             if (!worker && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
                 try {
@@ -776,7 +776,7 @@ const ChorusDetector = {
                     `;
                     var blob = new Blob([workerCode], { type: 'application/javascript' });
                     worker = new Worker(URL.createObjectURL(blob));
-                } catch (e) {}
+                } catch (e) { logCatch('chorusDetector', e); }
             }
             if (!worker) throw new Error('无法创建 Worker，回退主线程');
 

@@ -4,6 +4,7 @@
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
 import { formatTime } from '../utils/formatters.js';
+import { logCatch } from '../services/log.js';
 
 const playerContainer = typeof document !== 'undefined' ? document.querySelector('.player-container') : null;
 
@@ -38,7 +39,7 @@ function saveLyricOffset(songKey, offsetMs) {
                     data[songKey] = offsetMs;
                 }
                 localStorage.setItem(LYRIC_OFFSET_STORAGE_KEY, JSON.stringify(data));
-            } catch {}
+            } catch (e) { logCatch('playbackState', e); }
         }
 
 /* 更新偏移 UI 显示 */

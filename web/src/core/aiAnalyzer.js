@@ -8,6 +8,7 @@ import { state } from '../infrastructure/state.js';
 import { dom } from '../infrastructure/dom.js';
 import { eventBus, EVENTS } from '../infrastructure/eventBus.js';
 import { AI_PROVIDERS } from '../config/constants.js';
+import { hasRealWordTiming, realWordsOf } from '../parsers/wordTiming.js'; // 逐字兜底后区分真实/合成节拍
 import { aiCacheGet, aiCacheSet } from '../services/aiCache.js';
 import { applyAITheme } from './themeEngine.js';
 import { t } from './i18n.js';
@@ -33,7 +34,10 @@ export function getLyricsTextForAI() {
         });
     };
 
-    const hasWordByWord = state.lyrics.some(l => l.words && l.words.length > 0);
+    /* 只认**真实**逐字：renderLyrics 会给行级歌词兜底合成 words，那是按行时长摊平
+       的近似节拍、还被 maxLineMs 截断过。用它算 duration 再打 ★/◆ 权重喂给 LLM，
+       等于让 AI 信一套编造的节奏（实测会把 20s 的行报成 10s 并标成重点行）。 */
+    const hasWordByWord = hasRealWordTiming(state.lyrics);
     if (hasWordByWord) {
         const lines = [];
         for (let i = 0; i < state.lyrics.length; i++) {
@@ -42,16 +46,17 @@ export function getLyricsTextForAI() {
             let duration = 0;
             let lineStart = 0;
             let lineEnd = 0;
-            if (l.words && l.words.length > 0) {
+            const realWords = realWordsOf(l);
+            if (realWords) {
                 text = '';
-                for (let j = 0; j < l.words.length; j++) {
-                    const w = l.words[j];
+                for (let j = 0; j < realWords.length; j++) {
+                    const w = realWords[j];
                     const isLatin = !/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u309f\u30a0-\u30ff]/u.test(w.text) && /^[\p{L}\p{M}\p{N}\s\p{P}\p{S}]+$/u.test(w.text) && /[\p{L}]/u.test(w.text);
                     if (isLatin && j > 0) text += ' ';
                     text += w.text;
                 }
-                lineStart = l.words[0].start;
-                lineEnd = l.words[l.words.length - 1].end;
+                lineStart = realWords[0].start;
+                lineEnd = realWords[realWords.length - 1].end;
                 duration = lineEnd - lineStart;
             } else if (l.original) {
                 text = l.original;

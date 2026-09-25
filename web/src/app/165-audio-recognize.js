@@ -10,11 +10,12 @@ import { audio } from './20-lyrics-render.js';
 import { playIcon, sourceBtns } from './30-dom-refs.js';
 import { PLAY_ICON_PATH } from './65-playback-position.js';
 import { closeSearch } from './120-search-results.js';
-import { fadeOutVolume } from './135-crossfade.js';
+import { fadeOutVolume } from '../core/fadeController.js';
 import { calculateSongMatchScore, showToast } from './155-random-toast-match.js';
 import { detectScript, getIsrcCache, loadIsrcCacheFromBackend, localizeRecognizedName, rememberIsrcCache } from './160-text-normalize.js';
 import { loadOnlineSong } from './175-track-index-online.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
+import { esc } from '../utils/formatters.js';
 
 loadIsrcCacheFromBackend();
 
@@ -292,7 +293,7 @@ async function stopAudioRecording(triggerAnalyze = true) {
                 recMediaStream = null;
             }
             if (recAudioContext) {
-                recAudioContext.close().catch(() => {});
+                recAudioContext.close().catch(() => { /* 预期拒绝：上下文可能已经关闭（AbortError），不是故障 */ });
                 recAudioContext = null;
             }
 
@@ -575,11 +576,11 @@ async function matchSongAcross3Sources(title, artist, method, recognizedCover, r
                         recSourcesList.innerHTML = matches.map((m, idx) => `
                             <div class="rec-source-card">
                                 <div class="rec-src-left">
-                                    <span class="rec-src-platform ${m.platformClass}">${m.platformName}</span>
+                                    <span class="rec-src-platform ${m.platformClass}">${esc(m.platformName)}</span>
                                     <div class="rec-src-meta">
-                                        <div class="rec-src-title" title="${m.title}">${m.title}</div>
+                                        <div class="rec-src-title" title="${esc(m.title)}">${esc(m.title)}</div>
                                         <div class="rec-src-sub">
-                                            <span>${m.artist}</span>
+                                            <span>${esc(m.artist)}</span>
                                             <span class="rec-match-score">${m.score}% 匹配</span>
                                         </div>
                                     </div>

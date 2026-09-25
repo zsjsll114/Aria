@@ -12,7 +12,7 @@ import { PVEngine } from './pvEngine/PVEngine.js';
 import { TunnelEngine } from './tunnelEngine/TunnelEngine.js';
 import { VisualizerManager } from './visualizers/VisualizerManager.js';
 import { parseYrc } from '../parsers/yrcParser.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 const global = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -240,8 +240,7 @@ function resolveFontFamilyInner(fontKey) {
                     fontFamily: getMS('tunnel', 'fontFamily', globalFontKey),
                     emotionGlow: getMS('tunnel','emotionGlow', 12)
                 },
-                dimension: defaultVisModeVar('dimension'),
-                polyphony: defaultVisModeVar('polyphony')
+                dimension: defaultVisModeVar('dimension')
             };
             this.globalVars = { 
                 glassStrength: (intf.glassStrength != null ? intf.glassStrength : 40),
@@ -977,10 +976,10 @@ function resolveFontFamilyInner(fontKey) {
         stop() {
             this.pause();
             if (this.pvEngine) {
-                try { this.pvEngine.stop(); } catch(e) {}
+                try { this.pvEngine.stop(); } catch (e) { logCatch('previewEngine', e); }
             }
             if (this.visManager) {
-                try { this.visManager.stop(); } catch(e) {}
+                try { this.visManager.stop(); } catch (e) { logCatch('previewEngine', e); }
             }
         }
 
@@ -1082,7 +1081,7 @@ function resolveFontFamilyInner(fontKey) {
             if (this.currentMode === 'tunnel' && this.tunnelEngine) {
                 this.tunnelEngine.update(t / 1000);
             }
-            /* 全景视觉渲染器推进 (星雾/光曜/云阶/浮空/和鸣/星轨/丹青) */
+            /* 全景视觉渲染器推进 (浮空/活字/霓虹，见 VisualizerManager 注册表) */
             if (this.visManager && this.visManager.has(this.currentMode)) {
                 this.visManager.update(t / 1000);
             }
@@ -1102,7 +1101,7 @@ function resolveFontFamilyInner(fontKey) {
         setMode(mode) {
             this.currentMode = mode;
             this._wcLastTransform = '';   /* 切模式后 scrollEl 的 transform 可能被其他模式改写，强制相机重写 */
-            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-polyphony', 'view-letterpress', 'view-neon');
+            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
             
             const ca = this.playerEl.querySelector('.preview-cover-area');
             if (ca) ca.style.display = (mode === 'cover') ? '' : 'none';
@@ -1265,7 +1264,7 @@ function resolveFontFamilyInner(fontKey) {
                    歌词字号算成 0 且不再补救（ResizeObserver 只在尺寸变化时触发，
                    若切模式前后容器尺寸没变就不会再回调）。多重延迟兜底覆盖时序窗。 */
                 [140, 320, 650].forEach(d => setTimeout(() => {
-                    try { if (this.currentMode === 'flyin') this.flyinAutoScaleFont(); } catch (_e) {}
+                    try { if (this.currentMode === 'flyin') this.flyinAutoScaleFont(); } catch (_e) { logCatch('previewEngine', _e); }
                 }, d));
             } else if (mode === 'wordcloud') {
                 this.layoutWordCloud();

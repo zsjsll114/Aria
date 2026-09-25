@@ -22,7 +22,7 @@
     padding: 5px 12px;
     border-radius: 999px;
     cursor: pointer;
-    transition: all 0.16s ease;
+    transition: var(--t-fast);
     white-space: nowrap;
 }
 .rank-chip:hover { border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.5); color: #fff; }
@@ -567,7 +567,7 @@ body.perf-minimal .sk::after { animation: none; }
     border-radius: 16px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     padding: 20px;
-    animation: modalIn 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: modalIn 0.24s var(--e-enter);
 }
 .gp-title { font-size: 15px; font-weight: 700; color: rgba(255, 255, 255, 0.94); margin-bottom: 6px; }
 .gp-sub { font-size: 12px; color: rgba(255, 255, 255, 0.55); margin-bottom: 8px; line-height: 1.6; }
@@ -594,7 +594,7 @@ body.perf-minimal .sk::after { animation: none; }
     border-radius: 999px;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.16s ease;
+    transition: var(--t-fast);
 }
 .gp-cancel:hover { background: rgba(255, 255, 255, 0.16); }
 .gp-ok { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.18); border-color: transparent; color: var(--theme-color, #ffcc33); font-weight: 600; }
@@ -669,7 +669,7 @@ body.perf-minimal .sk::after { animation: none; }
     font-size: 12px;
     cursor: pointer;
     background: rgba(255, 255, 255, 0.06);
-    transition: all 0.2s ease;
+    transition: var(--t-base);
     white-space: nowrap;
     user-select: none;
 }

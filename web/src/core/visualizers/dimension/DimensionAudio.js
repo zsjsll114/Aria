@@ -2,6 +2,7 @@
  * DimensionAudio.js
  * 3D 浮空空间模式 - 安全音频频谱与节奏分析器 (非侵入式，杜绝阻塞音频播放)
  */
+import { logCatch } from '../../../services/log.js';
 
 export class DimensionAudio {
     constructor() {
@@ -63,7 +64,7 @@ export class DimensionAudio {
                 rawTreble = trebleSum / (len - 20);
                 rawOverall = totalSum / len;
                 if (rawOverall > 0.02) gotRealData = true;
-            } catch (e) {}
+            } catch (e) { logCatch('DimensionAudio', e); }
         }
 
         // 高度拟真、平滑富有动感的节奏发生器（保证所有音源动效拉满）

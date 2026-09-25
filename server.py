@@ -92,6 +92,7 @@ import local_music_server
 import qq_resolver
 import agg_resolver
 import selfhost_service
+import remote_bus
 import json
 import threading
 import time
@@ -496,6 +497,11 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
         return {'ok': False, 'err': '未找到封面', 'cover': ''}
 
     def do_GET(self):
+        # 手机遥控器总线（todos #17）：/api/remote/* 交 remote_bus 统一处理
+        if self.path.startswith('/api/remote/'):
+            remote_bus.handle(self)
+            return
+
         # 构建版本信息查询：/api/version 或 /version.json
         if self.path in ('/api/version', '/version.json', '/build_info.json'):
             self._handle_version_api()
@@ -1465,6 +1471,10 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json_response({'error': 'unknown action'}, 404)
 
     def do_POST(self):
+        # 手机遥控器总线：必须在读请求体之前接管（remote_bus 自己读 body）
+        if self.path.startswith('/api/remote/'):
+            remote_bus.handle(self)
+            return
         # 自建音乐服务副进程：/api/selfhost/<platform>/<action>
         if self.path.startswith('/api/selfhost/'):
             self._handle_selfhost('POST')

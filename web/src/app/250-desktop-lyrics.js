@@ -6,6 +6,7 @@
  * ============================================================ */
 import { audio } from './20-lyrics-render.js';
 import { saveSettings } from './180-boot-config.js';
+import { logCatch } from '../services/log.js';
 
 (function () {
   const btn = document.getElementById('desktopLyricsBtn');
@@ -55,7 +56,7 @@ import { saveSettings } from './180-boot-config.js';
     try {
       const q = JSON.parse(localStorage.getItem(LS_POS) || 'null');
       if (Array.isArray(q) && q.length === 2 && isFinite(q[0]) && isFinite(q[1])) return [q[0], q[1]];
-    } catch (_e) {}
+    } catch (_e) { logCatch('desktopLyrics', _e); }
     return null;
   }
 
@@ -81,23 +82,23 @@ import { saveSettings } from './180-boot-config.js';
         clearTimeout(window._dtkPosCfgT);
         window._dtkPosCfgT = setTimeout(function () { window.syncConfigToBackend(); }, 400);
       }
-    } catch (_e) {}
+    } catch (_e) { logCatch('desktopLyrics', _e); }
   }
 
   async function showWin() {
     const invoke = getInvoke();
     if (!invoke) return;
     const pos = readSavedPos();
-    await invoke('desktop_lyrics_show', { show: true, x: pos ? pos[0] : null, y: pos ? pos[1] : null }).catch(() => {});
+    await invoke('desktop_lyrics_show', { show: true, x: pos ? pos[0] : null, y: pos ? pos[1] : null }).catch((e) => logCatch('desktopLyrics', e));
     if (localStorage.getItem(LS_LOCKED) === '1') {
-      await invoke('desktop_lyrics_click_through', { enable: true }).catch(() => {});
+      await invoke('desktop_lyrics_click_through', { enable: true }).catch((e) => logCatch('desktopLyrics', e));
     }
   }
 
   function hideWin() {
     const invoke = getInvoke();
     if (!invoke) return;
-    invoke('desktop_lyrics_show', { show: false, x: null, y: null }).catch(() => {});
+    invoke('desktop_lyrics_show', { show: false, x: null, y: null }).catch((e) => logCatch('desktopLyrics', e));
   }
 
   btn.addEventListener('click', async () => {
@@ -105,7 +106,7 @@ import { saveSettings } from './180-boot-config.js';
       /* 已锁定穿透：第一次点击主界面按钮即解锁 */
       localStorage.setItem(LS_LOCKED, '0');
       const invoke = getInvoke();
-      if (invoke) await invoke('desktop_lyrics_click_through', { enable: false }).catch(() => {});
+      if (invoke) await invoke('desktop_lyrics_click_through', { enable: false }).catch((e) => logCatch('desktopLyrics', e));
       refreshBtn();
       return;
     }
@@ -133,7 +134,7 @@ import { saveSettings } from './180-boot-config.js';
       try {
         const pos = JSON.parse(e.newValue);
         if (Array.isArray(pos) && pos.length === 2) persistPosToSettings(pos);
-      } catch (_e) {}
+      } catch (_e) { logCatch('desktopLyrics', _e); }
     }
   });
 
@@ -170,7 +171,7 @@ import { saveSettings } from './180-boot-config.js';
         const w = ws[i];
         if (w && w.word && w.color) map[String(w.word).trim()] = w.color;
       }
-    } catch (e) {}
+    } catch (e) { logCatch('desktopLyrics', e); }
     return map;
   }
   function probeStyles() {
@@ -185,11 +186,11 @@ import { saveSettings } from './180-boot-config.js';
       st.fontFamily = (typeof document !== 'undefined' && document.documentElement)
         ? (getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim() || undefined)
         : undefined;
-    } catch (_e) {}
+    } catch (_e) { logCatch('desktopLyrics', _e); }
     try {
       let visualMode = false;
       if (typeof document !== 'undefined' && document.querySelector('.player-container')) {
-        visualMode = /(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-polyphony|view-letterpress|view-neon)/.test(document.querySelector('.player-container').className);
+        visualMode = /(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-letterpress|view-neon)/.test(document.querySelector('.player-container').className);
       }
       const el = document.querySelector('.player-container:not(.preview-player) .lrc-original')
               || document.querySelector('.lrc-original');
@@ -200,7 +201,7 @@ import { saveSettings } from './180-boot-config.js';
         const fs = el ? parseFloat(getComputedStyle(el).fontSize) : 0;
         st.lyricFontSize = (!fs || !isFinite(fs)) ? undefined : `${Math.min(72, Math.max(16, Math.round(fs)))}px`;
       }
-    } catch (_e) {}
+    } catch (_e) { logCatch('desktopLyrics', _e); }
     st.emColors = buildEmColorMap();
     _styleProbe = st;
     return st;
@@ -270,7 +271,7 @@ import { saveSettings } from './180-boot-config.js';
         last = p;
         localStorage.setItem(LS_STATE, p);
       }
-    } catch (_e) {}
+    } catch (_e) { logCatch('desktopLyrics', _e); }
   }
 
   setInterval(() => { if (enabled) push(false); }, 120);

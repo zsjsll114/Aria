@@ -1,0 +1,280 @@
+/* ============================================================
+ * readability.css — 「歌词可读性增强」叠加层（样式面；开关见 app/283-readability.js）
+ *
+ * 动机：浅色/高亮封面把歌词糊成一片时，用户要的是一个按钮，而不是去摸
+ * 背景糊度、背景亮度、歌词模糊、情感词发光、玻璃强度这五六个互不相干的滑杆。
+ *
+ * 机制：纯叠加类开关。JS 只在 body 上挂/摘类，本文件所有规则都以
+ * html#ariaRoot（约束 12 的特异性锚点）+ body.readability-boost 为前缀，
+ * 且从不覆写用户任何设置键的数值（vfx / blurLevel / bgBlur / 颜色全不动），
+ * 因此摘掉类即 100% 回到原状，不留残留。
+ *
+ * JS 侧挂的类：
+ *   readability-boost      总开关
+ *   readability-on-light    backdrop 偏亮（封面主色 >= 0.48，或用户把背景调亮/调清晰）
+ *   readability-on-dark     backdrop 偏暗（主色 <= 0.28），或该模式自带近黑舞台
+ *   readability-dim-bg      压暗膜允许出现（只有 封面/歌词 两档会挂：其余模式的
+ *                           舞台层是不透明/自带遮罩的，压暗膜在 z 轴上被它们整块盖住，
+ *                           挂了也看不见，只白扣一层合成）
+ * 亮/暗两个类都不挂 = 拿不到封面主色，走中性档（下面第一块参数即中性档）。
+ *
+ * ── 设计口径（2026-09-25 重做，用户反馈「有点丑，而且只作用在几个歌词样式」）──
+ * 1. **只给要读的那一行垫底**。上一版给每一行都挂底衬 + 把非活动行的不透明度
+ *    抬到地板值 + 抹掉按距离递进的模糊，结果整列歌词变成一摞硬边灰板（实测截图
+ *    里 6 条 1372×128 的矩形叠在一起）。现在：底衬只给 .line.active，
+ *    非活动行的景深（blur + 淡出）原样保留 —— 它们本来就该看不清。
+ * 2. **底衬是雾不是板**。横向用带 16%/84% 长羽化的渐变，纵向再套一层线性 mask，
+ *    四条边全部软收口；alpha 从 0.56/0.66 降到 0.24/0.34 一档。
+ * 3. **对比优先靠字色，不靠混凝土**。亮档用 color-mix 把用户自己的
+ *    --highlight-inactive-color 朝白提一档（保色相），而不是像上一版那样
+ *    写死 rgba(255,255,255,.95) 把用户的 highlightInactiveColor 顶掉。
+ * 4. **描边收到几乎看不见**（0.28~0.45px，且暗档整条规则不出），投影从
+ *    4~5 层方向性细线改成「一层贴地阴影 + 一层大范围环境阴影」。
+ * 5. **压暗膜减半并做柔化过渡**：从纯色块改成中心强、四角收的径向渐变，
+ *    淡入时长 0.45s → 0.8s（曲线走 motion.css 的 --e-enter-soft）。
+ * 6. **不新增 backdrop-filter**：歌词上永远不挂实时高斯（每帧成本）。
+ *
+ * ── 覆盖面：每种歌词呈现模式用各自合理的手段（逐条理由写在对应小节）──
+ *   封面 / 歌词   底衬 + 提字色 + 微描边 + 柔投影 + 压暗膜
+ *   飞入          同上（底衬只给活动行；**绝不抬非活动行的 opacity**，见 §2 注释）
+ *   词云          提字色 + 柔投影（散布单字，整行底衬会互相压成方块）
+ *   PV            微描边（逐字 3D 动画，底衬会跟着海报翻；text-shadow 被 pv.css 锁 !important）
+ *   隧道/格律      微描边，且排掉反色块（那是深墨字，暗描边只会更糊）
+ *   dimension     微描边（舞台自带重投影，只补字形边缘）
+ *   活字          抬 --lp-ink-dim 的 alpha（纸面本就不透明，缺的是次级文字对纸的对比）
+ *   霓虹          提「未通电灯管」的描边亮度（点亮字与情感词一个字都不碰）
+ * ============================================================ */
+
+/* ---------- 参数层：只活在开关期间，随类一起生灭 ---------- */
+html#ariaRoot body.readability-boost {
+    /* 底衬：横向长羽化 + 纵向 mask 收口（见文件头设计口径 2） */
+    --rb-plate: linear-gradient(90deg,
+            rgba(8, 10, 14, 0) 0%,
+            rgba(8, 10, 14, 0.24) 16%,
+            rgba(8, 10, 14, 0.26) 50%,
+            rgba(8, 10, 14, 0.24) 84%,
+            rgba(8, 10, 14, 0) 100%);
+    --rb-plate-mask: linear-gradient(to bottom,
+            rgba(0, 0, 0, 0) 0%, #000 30%, #000 70%, rgba(0, 0, 0, 0) 100%);
+    /* 软件渲染档用的实色底衬（无渐变、无 mask） */
+    --rb-plate-solid: rgba(8, 10, 14, 0.40);
+    /* 投影：一层贴地 + 一层环境，不再堆方向性细线 */
+    --rb-shadow: 0 1px 2px rgba(0, 0, 0, 0.42), 0 0 16px rgba(0, 0, 0, 0.18);
+    --rb-stroke-w: 0.28px;
+    --rb-stroke: rgba(0, 0, 0, 0.55);
+    --rb-scrim: radial-gradient(120% 86% at 50% 50%,
+            rgba(4, 6, 10, 0.13) 0%,
+            rgba(4, 6, 10, 0.11) 55%,
+            rgba(4, 6, 10, 0.04) 82%,
+            rgba(4, 6, 10, 0) 100%);
+    /* 字色提亮幅度：color-mix 朝白的比例。0% = 不改字色 */
+    --rb-lift: 0%;
+}
+
+html#ariaRoot body.readability-boost.readability-on-light {
+    --rb-plate: linear-gradient(90deg,
+            rgba(8, 10, 14, 0) 0%,
+            rgba(8, 10, 14, 0.33) 16%,
+            rgba(8, 10, 14, 0.36) 50%,
+            rgba(8, 10, 14, 0.33) 84%,
+            rgba(8, 10, 14, 0) 100%);
+    --rb-plate-solid: rgba(8, 10, 14, 0.52);
+    --rb-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 20px rgba(0, 0, 0, 0.26);
+    --rb-stroke-w: 0.45px;
+    --rb-stroke: rgba(0, 0, 0, 0.62);
+    --rb-scrim: radial-gradient(120% 86% at 50% 50%,
+            rgba(4, 6, 10, 0.22) 0%,
+            rgba(4, 6, 10, 0.19) 55%,
+            rgba(4, 6, 10, 0.07) 82%,
+            rgba(4, 6, 10, 0) 100%);
+    --rb-lift: 42%;
+}
+
+html#ariaRoot body.readability-boost.readability-on-dark {
+    --rb-plate: linear-gradient(90deg,
+            rgba(8, 10, 14, 0) 0%,
+            rgba(8, 10, 14, 0.16) 16%,
+            rgba(8, 10, 14, 0.19) 50%,
+            rgba(8, 10, 14, 0.16) 84%,
+            rgba(8, 10, 14, 0) 100%);
+    --rb-plate-solid: rgba(8, 10, 14, 0.30);
+    --rb-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
+    --rb-scrim: radial-gradient(120% 86% at 50% 50%,
+            rgba(4, 6, 10, 0.07) 0%,
+            rgba(4, 6, 10, 0.06) 55%,
+            rgba(4, 6, 10, 0.02) 82%,
+            rgba(4, 6, 10, 0) 100%);
+}
+
+/* ---------- 1. 降低背景干扰（只有 封面/歌词 会挂 readability-dim-bg）----------
+   body::after 当压暗膜：z-index -1 落在 .blur-background(-2) / .color-overlay(-1，树序更早)
+   之上、.player-container(1) 之下——只压背景，不碰歌词与控件，
+   也不用 filter/backdrop-filter（后者对 150% 面积的全屏层是每帧高斯卷积，见约束 12）。
+   中心强、四角收到 0，避免整屏蒙一层平灰。 */
+@keyframes rb-bg-in { from { opacity: 0; } to { opacity: 1; } }
+
+html#ariaRoot body.readability-boost.readability-dim-bg::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--rb-scrim);
+    animation: rb-bg-in 0.8s var(--e-enter-soft) both;
+}
+
+/* ---------- 2. 活动行底衬 ----------
+   只给 .line.active。作用域：#lyricsScroll 的 .line 真会显示出来的模式
+   （封面 / 歌词 / 飞入）。词云是散布单字、PV/隧道/活字/棱形/霓虹 的
+   .lyrics-container 本就 display:none，套底衬要么变成一堆互相叠压的方块，
+   要么根本没有承载元素 —— 它们各自的替代手段见 §5~§8。
+
+   ★ 飞入模式必须**只挂底衬、不抬非活动行的 opacity**：.view-flyin 把所有行
+     绝对定位堆在同一处（viewmode.css:425），靠 opacity:0 互相隐藏。上一版
+     在这里加了「非活动行不透明度地板」，特异性 (1,10,2) 直接盖过
+     .view-flyin .line{opacity:0!important} 的 (0,2,0)，于是 40 条隐形行的
+     底衬一起显形、叠成一块实心黑板（实测 lineIdle.opacity 0 → 0.62）。
+     现在整段只写 .line.active::before，非活动行一个属性都不动。
+
+   底衬走 ::before 绝对定位层：.line 已有 padding/position:relative，
+   故不产生任何布局位移——57 的链式弹簧与虚拟滚动按 offsetTop/clientHeight 定位，
+   改 padding 会让行距失真，这里刻意避开。 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player):not(.view-pv):not(.view-tunnel):not(.view-dimension):not(.view-letterpress):not(.view-neon):not(.view-wordcloud) .line.active::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 10px;
+    right: 10px;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--rb-plate);
+    /* 纵向也收口：只有横向羽化的话，上下两条边仍是硬边（「条状」的来源） */
+    -webkit-mask-image: var(--rb-plate-mask);
+    mask-image: var(--rb-plate-mask);
+}
+
+/* 上下羽化边收紧：原 12% 的渐隐会把靠边的活动行连底衬一起抹掉 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player):not(.view-wordcloud):not(.view-pv):not(.view-tunnel):not(.view-dimension) .lyrics-container {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 6%, #000 94%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 6%, #000 94%, transparent 100%);
+}
+
+/* ---------- 3. 描边 / 投影 ----------
+   写在 .line 上，靠继承覆盖 .word / .word-highlight / 译文 / 音译 / 时间标签，
+   所以不必逐个元素点名（也不去动 mask 与渐变填充那套逐字高亮机制）。
+   paint-order 让描边落在字面之下。
+   ★ 暗档整条不出：背景本来就暗时描边只会让字发脏，而且 -webkit-text-stroke-color
+     的初始值是 currentColor，写一条 width:0 的规则也会把计算值从白改成黑 ——
+     用 :not(.readability-on-dark) 让暗档真的「什么都不做」。 */
+html#ariaRoot body.readability-boost:not(.readability-on-dark) .player-container:not(.preview-player) .line {
+    -webkit-text-stroke: var(--rb-stroke-w) var(--rb-stroke);
+    paint-order: stroke fill;
+    text-shadow: var(--rb-shadow);
+}
+
+html#ariaRoot body.readability-boost.readability-on-dark .player-container:not(.preview-player) .line {
+    text-shadow: var(--rb-shadow);
+}
+
+/* ---------- 4. 提字色（亮档专属，且不碰用户色相）----------
+   未唱到的字默认 --highlight-inactive-color（出厂 rgba(255,255,255,.6)），
+   在亮背景上正是「看不见」的那一半原因。上一版直接写死 rgba(255,255,255,.95)，
+   特异性 (1,6,1) 盖过 190 注入的 .line .word (0,2,0)，等于把用户自己调过的
+   歌词色临时抹掉。现在改成拿那个变量本身朝白 mix —— 色相保住，只抬明度/alpha。
+   刻意不加 !important：AI 情感词的 .word-emotion-N{color:…!important} 仍然胜出，
+   情感词上色链路不受影响（约束 5）。color-mix 不支持时整条声明作废 = 不提亮，
+   比退回写死的白更安全。 */
+html#ariaRoot body.readability-boost.readability-on-light .player-container:not(.preview-player) .line .word:not(.word-emotion) {
+    color: color-mix(in srgb, var(--highlight-inactive-color, rgba(255, 255, 255, 0.6)) calc(100% - var(--rb-lift)), #ffffff);
+}
+
+/* ---------- 5. PV（绘卷）：描边，不用底衬 ----------
+   为什么换手段：PV 的字是 .pv-char 逐字 3D 海报（pv.css:740），每个字自己
+   飞入/缩放/rotate，整行底衬要么得逐字跟着 3D 变换画板子（一堆互相穿插的
+   矩形），要么挂在 .pv-word-block 上变成跟着镜头翻的灰卡 —— 两种都比现在更丑。
+   而 .pv-char.active/.passed 的 text-shadow 与 filter 都是 !important 写死的
+   辉光链，抢过来重写就等于改掉 PV 的视觉签名。
+   -webkit-text-stroke 是 PV 全篇没用过的属性，加 0.4px 暗边 + paint-order 把
+   它压到字面下，只给字形一个边缘，辉光/发光一个字都不动。
+   情感词（.pv-char-emotion）整类排掉 —— 它的颜色/辉光是 AI 上色链路（约束 5）。
+   .pv-char.waiting 是 visibility:hidden，描边不会被它提前画出来。 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player).view-pv .pv-view-container .pv-char:not(.pv-char-emotion) {
+    -webkit-text-stroke: 0.4px rgba(0, 0, 0, 0.5);
+    paint-order: stroke fill;
+}
+
+/* ---------- 6. 隧道/格律（Mondrian）与 dimension（穿行）：同样走描边 ----------
+   这两个舞台是色块构图，压暗膜在 z 轴上被整块不透明舞台盖住（挂了也看不见），
+   底衬更没有承载元素。它们真正缺的是字形边缘与色块的分离度 —— 描边刚好。
+   ★ 必须排掉 .tunnel-block-invert：那是「浅块深墨」的反色块
+     （pv-tunnel.css:275 把字色设成 --tunnel-ink 深灰），再叠暗描边只会让
+     深字更糊，帮不到任何一边。
+   ★ 情感字（.tunnel-char-emotion / .dim-char-emotion / .dim-word-emotion）整类排掉。
+   dimension 的 .dim-line-active 本来就带 0 6px 25px 的重投影（visualizers.css:134），
+   所以这里只补边缘、不再加投影，免得字被两层阴影吞掉。 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player).view-tunnel .tunnel-view-container .tunnel-block:not(.tunnel-block-invert) .tunnel-char:not(.tunnel-char-emotion),
+html#ariaRoot body.readability-boost .player-container:not(.preview-player) .vis-dimension-stage .dim-char:not(.dim-char-emotion),
+html#ariaRoot body.readability-boost .player-container:not(.preview-player) .vis-dimension-stage .dim-word:not(.dim-word-emotion) {
+    -webkit-text-stroke: 0.4px rgba(0, 0, 0, 0.45);
+    paint-order: stroke fill;
+}
+
+/* ---------- 7. 活字（Letterpress）：抬次级墨色的 alpha ----------
+   为什么换手段：这个模式的舞台是 #0e0e10 不透明底 + 一张不透明色纸
+   （letterpress.css:102 起，米白/浅金/炭黑…纸色由段落情绪定），
+   背景干扰在设计上就进不来 —— 压暗膜/底衬/描边全是打在空气上。
+   它真正的问题在 --lp-ink-dim：中性纸（#57646a 这类中灰底）上
+   rgba(242,244,242,.5) 的次级文字对纸只有约 2.3:1，译文和辅助行最先糊。
+   所以这里只把 --lp-ink-dim 重新按各纸自己的 --lp-ink 算一遍（抬到 .82），
+   色相/明度全部跟随纸色，不给任何元素直接写 color。
+   巨物水印（.lp-hero 的 opacity 档）是版式的一部分，不动。 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player) .visualizer-stage-letterpress .lp-paper {
+    --lp-ink-dim: color-mix(in srgb, var(--lp-ink, #f2f4f2) 82%, transparent);
+}
+
+/* ---------- 8. 霓虹（Neon）：提「未通电灯管」的描边亮度 ----------
+   为什么换手段：灯牌底是 .visualizer-stage-neon 的 #0b0d12 不透明深夜底，
+   压暗膜/底衬同样打在空气上。它可读性的短板是**还没唱到的字**：
+   neon.css:241 把未点亮字画成 fill:#0b0d12 + stroke:rgba(198,210,238,.55)
+   的暗管轮廓，再被 neon-tube-idle 呼吸动画压到 0.68 opacity —— 想提前看词
+   基本看不清。所以只提这一类的描边亮度。
+   ★ 选择器带 :not(.neon-lit)：通电字与情感词（.neon-emo.neon-lit）一个字都不碰，
+     约束 5 的上色链路原样。 */
+html#ariaRoot body.readability-boost .player-container:not(.preview-player) .visualizer-stage-neon .neon-char:not(.neon-lit) text {
+    stroke: rgba(216, 228, 248, 0.82);
+}
+
+/* ---------- 9. 软件渲染 / 低档位：底衬改实色、去掉 mask 与渐变 ----------
+   渐变底衬 + mask 收口的代价都在合成器软件光栅化上（约束 12 末尾），
+   无显卡设备改成不透明度更高的实色底衬、并且不再套 mask。
+   判定面与 shouldUsePrebakedBlur() 一致：is-software-renderer / perf-low / perf-minimal。
+   ★ 这里的 text-shadow 在那些设备上是拿不到效果的：modals.css 的降级块用
+     `* { text-shadow: none !important }` 全库掐掉了文字投影（它是最贵的光栅化项，
+     比本文件的特异性更高——通配 + !important）。所以实色底衬之外，唯一还活着的
+     字形级手段就是描边，故把 --rb-stroke-w 适度加厚到 0.6px（仍按「收到几乎
+     看不见」的上限走，上一版是 1.15px，字直接糊成一坨）。 */
+html#ariaRoot.is-software-renderer body.readability-boost,
+html#ariaRoot body.perf-low.readability-boost,
+html#ariaRoot body.perf-minimal.readability-boost {
+    --rb-plate: var(--rb-plate-solid);
+    --rb-plate-mask: none;
+    --rb-stroke-w: 0.6px;
+}
+
+html#ariaRoot.is-software-renderer body.readability-boost .player-container:not(.preview-player):not(.view-pv):not(.view-tunnel):not(.view-dimension):not(.view-letterpress):not(.view-neon):not(.view-wordcloud) .line.active::before,
+html#ariaRoot body.perf-low.readability-boost .player-container:not(.preview-player):not(.view-pv):not(.view-tunnel):not(.view-dimension):not(.view-letterpress):not(.view-neon):not(.view-wordcloud) .line.active::before,
+html#ariaRoot body.perf-minimal.readability-boost .player-container:not(.preview-player):not(.view-pv):not(.view-tunnel):not(.view-dimension):not(.view-letterpress):not(.view-neon):not(.view-wordcloud) .line.active::before {
+    -webkit-mask-image: none;
+    mask-image: none;
+    border-radius: 12px;
+}
+
+html#ariaRoot.is-software-renderer body.readability-boost.readability-dim-bg::after,
+html#ariaRoot body.perf-low.readability-boost.readability-dim-bg::after,
+html#ariaRoot body.perf-minimal.readability-boost.readability-dim-bg::after {
+    animation: none;
+}

@@ -11,8 +11,9 @@
  * 样式在 rankings.css「布局切换」段；静态布局不受 perf/reduced-motion 影响。
  * 本模块须在运行时最早期加载（index.js 第三个 import）。
  * ============================================================ */
+import { logCatch } from '../services/log.js';
 const readPref = (key, on) => { try { return localStorage.getItem(key) === on; } catch (e) { return false; } };
-const writePref = (key, v) => { try { localStorage.setItem(key, v ? '1' : '0'); } catch (e) {} };
+const writePref = (key, v) => { try { localStorage.setItem(key, v ? '1' : '0'); } catch (e) { logCatch('layouts', e); } };
 
 /* ---------- B1 歌曲列表视图 ---------- */
 Aria.__songView = readPref('aria_song_view', '1') ? 'grid' : 'list';

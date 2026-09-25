@@ -10,6 +10,13 @@ import ChorusDetector from '../core/chorusDetector.js';
 import AIAnalyzer from '../core/aiAnalyzer.js';
 import { LocalMusicManager } from '../services/localMusicManager.js';
 import { registerGlobal } from '../core/globalRegistry.js';
+import { PERFORMANCE_PROFILES } from '../config/performance.js';
+import { bridgeGlobalsToState } from '../infrastructure/globalBridge.js';
+
+/* ★ 必须早于本文件任何 globalThis 赋值：把 state 与 globalThis 的 59 个重叠键收口成一份存储。
+   此后 `globalThis.x`、裸 `x`、`state.x` 三种写法指向同一个值，core 层接线不会再读到初始值。
+   作用面与安全性扫描见 infrastructure/globalBridge.js 文件头。 */
+bridgeGlobalsToState();
 
 /* 相机"非线性(缓动)补间"状态 {start, target, sig}（时间驱动 easeOut） */
 globalThis.wcCacheSeq = 0;
@@ -43,7 +50,6 @@ globalThis.wcLastTransform = '';
 /* 缓存歌词颜色样式元素，避免重复创建 */
 globalThis.lyricsColorStyleEl = null;
 
-globalThis.fadeInVolumeTimeoutId = null;
 
 /* ========== 封面与背景颜色 ========== */
 /* 封面交叉淡入淡出：当前活动封面索引（0 或 1） */
@@ -66,13 +72,10 @@ globalThis.eqFilterNodes = [];
 /* 搜索提示元素缓存 */
 globalThis.searchHintEl = null;
 
-globalThis.fadeOutVolumeTimeoutId = null;
 
 /* 淡入音量到目标值 */
-globalThis.fadeInVolumeRafId = null;
 
 /* 淡出当前音量到 0 */
-globalThis.fadeOutVolumeRafId = null;
 
 /* 背景切换代际计数器——每次调用 setBlurBackground 递增，
    旧的 img.onload / setTimeout 回调通过比对代际自动作废 */
@@ -261,79 +264,9 @@ const MULTILANG_FAMILY = 'MultiLangFont';
    （典型症状：英文自定义字体不生效、非英语种预设字体统一显示楷体） */
 const langFamilyName = (langCode) => MULTILANG_FAMILY + '-' + langCode;
 
-const PERFORMANCE_PROFILES = {
-    high: {
-        name: '高性能',
-        description: '流畅运行所有视效与全量特效',
-        background: { dynamicBg: true, swayEnabled: true, swayAmp: 12, swayDuration: 16, blur: 60 },
-        lyrics: { blurLevel: 8, showTranslation: true, showRomaji: true },
-        interface: { glassStrength: 40, compactMode: false },
-        animation: { crossfadeDuration: 800, colorExtract: true },
-        flyin: { maxActiveBlocks: 16, enableGlow: true, enable3DDepth: true, blurFx: true },
-        wordcloud: { maxParticles: 60, updateIntervalMs: 16, enableRandomDrift: true },
-        floating: { parallaxLayers: 5, precisionSample: 'high' },
-        pv: { renderDpr: 1.25, maxParticles: 120, enableBloom: true, bufferCleanupMs: 15000 },
-        /* ★ 流光隧道 / 浮空 / 和鸣（原分档缺失，现补齐，供各引擎全量消费） */
-        tunnel: { particleCount: 60, depthDpr: 2, decorLevel: 3, dofEnabled: true, animBlur: true },
-        dimension: { particleScale: 1, shadowEnabled: true, canvasDpr: 2, bgLayers: 3 },
-        polyphony: { maxBubbles: 30, glow: 10 },
-        /* ★ 全局视觉效果模糊/粒子矩阵：各模式共享的降级开关，供设置项手动调整与 CSS/引擎读取 */
-        vfx: { renderScale: 1, coverBlur: 60, glassBlur: 40, lyricBlur: 8, textBlur: 6, pvBloom: true, flyinGlow: true, wcParticles: true, tunnelParticles: true, dimParticles: true, polyGlow: 10 },
-        memory: { maxProbeCache: 50, aggressiveGC: false }
-    },
-    medium: {
-        name: '中性能',
-        description: '平衡画质与流畅度，适中资源占用',
-        background: { dynamicBg: true, swayEnabled: true, swayAmp: 8, swayDuration: 20, blur: 40 },
-        lyrics: { blurLevel: 5, showTranslation: true, showRomaji: true },
-        interface: { glassStrength: 25, compactMode: false },
-        animation: { crossfadeDuration: 500, colorExtract: true },
-        flyin: { maxActiveBlocks: 10, enableGlow: true, enable3DDepth: false, blurFx: true },
-        wordcloud: { maxParticles: 40, updateIntervalMs: 33, enableRandomDrift: true },
-        floating: { parallaxLayers: 3, precisionSample: 'medium' },
-        pv: { renderDpr: 1.0, maxParticles: 60, enableBloom: false, bufferCleanupMs: 10000 },
-        tunnel: { particleCount: 40, depthDpr: 1.5, decorLevel: 2, dofEnabled: true, animBlur: true },
-        dimension: { particleScale: 0.8, shadowEnabled: false, canvasDpr: 1.5, bgLayers: 2 },
-        polyphony: { maxBubbles: 20, glow: 6 },
-        vfx: { renderScale: 0.9, coverBlur: 40, glassBlur: 25, lyricBlur: 5, textBlur: 4, pvBloom: false, flyinGlow: true, wcParticles: true, tunnelParticles: true, dimParticles: true, polyGlow: 6 },
-        memory: { maxProbeCache: 30, aggressiveGC: false }
-    },
-    low: {
-        name: '低性能',
-        description: '大幅降低视觉与内存开销，提升流畅度',
-        background: { dynamicBg: true, swayEnabled: false, swayAmp: 0, swayDuration: 20, blur: 20 },
-        lyrics: { blurLevel: 0, showTranslation: true, showRomaji: false },
-        interface: { glassStrength: 15, compactMode: false },
-        animation: { crossfadeDuration: 300, colorExtract: false },
-        flyin: { maxActiveBlocks: 6, enableGlow: false, enable3DDepth: false, blurFx: false },
-        wordcloud: { maxParticles: 20, updateIntervalMs: 60, enableRandomDrift: false },
-        floating: { parallaxLayers: 2, precisionSample: 'low' },
-        pv: { renderDpr: 0.75, maxParticles: 30, enableBloom: false, bufferCleanupMs: 5000 },
-        tunnel: { particleCount: 20, depthDpr: 1, decorLevel: 1, dofEnabled: false, animBlur: false },
-        dimension: { particleScale: 0.5, shadowEnabled: false, canvasDpr: 1, bgLayers: 1 },
-        polyphony: { maxBubbles: 12, glow: 4 },
-        vfx: { renderScale: 0.75, coverBlur: 20, glassBlur: 12, lyricBlur: 0, textBlur: 0, pvBloom: false, flyinGlow: false, wcParticles: false, tunnelParticles: false, dimParticles: false, polyGlow: 4 },
-        memory: { maxProbeCache: 15, aggressiveGC: true }
-    },
-    minimal: {
-        name: '极简',
-        description: '极低内存与GPU占用，专注极速播放',
-        background: { dynamicBg: false, swayEnabled: false, swayAmp: 0, swayDuration: 20, blur: 0 },
-        lyrics: { blurLevel: 0, showTranslation: false, showRomaji: false },
-        interface: { glassStrength: 10, compactMode: true },
-        animation: { crossfadeDuration: 200, colorExtract: false },
-        flyin: { maxActiveBlocks: 4, enableGlow: false, enable3DDepth: false, blurFx: false },
-        wordcloud: { maxParticles: 12, updateIntervalMs: 100, enableRandomDrift: false },
-        floating: { parallaxLayers: 1, precisionSample: 'minimal' },
-        pv: { renderDpr: 0.6, maxParticles: 10, enableBloom: false, bufferCleanupMs: 3000 },
-        tunnel: { particleCount: 0, depthDpr: 1, decorLevel: 0, dofEnabled: false, animBlur: false },
-        dimension: { particleScale: 0.3, shadowEnabled: false, canvasDpr: 1, bgLayers: 0 },
-        polyphony: { maxBubbles: 8, glow: 0 },
-        vfx: { renderScale: 0.6, coverBlur: 0, glassBlur: 8, lyricBlur: 0, textBlur: 0, pvBloom: false, flyinGlow: false, wcParticles: false, tunnelParticles: false, dimParticles: false, polyGlow: 0 },
-        memory: { maxProbeCache: 8, aggressiveGC: true }
-    }
-};
-
+/* PERFORMANCE_PROFILES 的唯一事实源已迁到 ../config/performance.js。
+ * 迁移动因：此前两处各有一份定义且已漂移（medium.glassStrength 30 vs 25、low.blurLevel 3 vs 0），
+ * 改错一份静默无效。文件末尾的 export 仍把它 re-export 出去，消费方（180/220 等）无需改动。 */
 const DROPDOWN_OPTIONS = {
     defaultPlayMode: [
         { value: 'sequence', label: '顺序播放' },
@@ -468,7 +401,6 @@ registerGlobal('wordcloudLayoutVer', { owner: '10-config-state' });
 registerGlobal('isUserScrolling', { owner: '10-config-state' });
 registerGlobal('wcLastTransform', { owner: '10-config-state' });
 registerGlobal('lyricsColorStyleEl', { owner: '10-config-state' });
-registerGlobal('fadeInVolumeTimeoutId', { owner: '10-config-state' });
 registerGlobal('activeCoverIndex', { owner: '10-config-state' });
 registerGlobal('currentScrollY', { owner: '10-config-state' });
 registerGlobal('lastWordProgress', { owner: '10-config-state' });
@@ -477,9 +409,6 @@ registerGlobal('eqInited', { owner: '10-config-state' });
 registerGlobal('eqSourceNode', { owner: '10-config-state' });
 registerGlobal('eqFilterNodes', { owner: '10-config-state' });
 registerGlobal('searchHintEl', { owner: '10-config-state' });
-registerGlobal('fadeOutVolumeTimeoutId', { owner: '10-config-state' });
-registerGlobal('fadeInVolumeRafId', { owner: '10-config-state' });
-registerGlobal('fadeOutVolumeRafId', { owner: '10-config-state' });
 registerGlobal('bgGen', { owner: '10-config-state' });
 registerGlobal('coverGen', { owner: '10-config-state' });
 registerGlobal('wcSuppressClick', { owner: '10-config-state' });

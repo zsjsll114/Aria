@@ -347,7 +347,7 @@ function renderSearchResults(list) {
                 const idx = offset + i;
                 const song = escapeHtml(item.song || '未知歌曲');
                 const singer = escapeHtml(item.singer || '未知歌手');
-                const cover = item.cover || '';
+                const cover = escapeHtml(item.cover || '');
                 const src = item.source || currentSource;
                 const songKey = `${src}:${item.id}`;
                 const isFav = favs.some(f => f.key === songKey);

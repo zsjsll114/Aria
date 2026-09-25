@@ -72,7 +72,7 @@
         .welcome-card {
             text-align: center;
             color: #fff;
-            animation: modalIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            animation: modalIn 0.4s var(--e-enter);
         }
         .welcome-icon {
             color: var(--theme-color, #ffcc33);
@@ -101,7 +101,7 @@
             font-weight: 700;
             cursor: pointer;
             font-family: inherit;
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
             box-shadow: 0 4px 20px rgba(var(--theme-color-rgb, 255, 204, 51), 0.35);
         }
         .welcome-btn:hover {
@@ -121,7 +121,7 @@
             filter: blur(60px) brightness(0.35);
             z-index: -2;
             opacity: 0;
-            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: opacity 0.8s var(--e-exit);
             transform-origin: center center;
             animation: bgSway 16s ease-in-out infinite;
         }
@@ -224,7 +224,7 @@
             -moz-user-select: none;
             -ms-user-select: none;
             user-select: none;
-            transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.8s var(--e-enter), box-shadow 0.8s var(--e-enter), opacity 0.8s var(--e-exit);
         }
 
         /* 封面层重叠定位 - 用于交叉淡入淡出 */
@@ -316,7 +316,7 @@
             align-items: center;
             justify-content: center;
             border-radius: 50%;
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
         }
 
         .favorite-btn:hover {
@@ -335,7 +335,7 @@
 
         .favorite-btn svg {
             display: block;
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: transform 0.3s var(--e-enter);
         }
 
         .favorite-btn.active:hover svg {
@@ -387,7 +387,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .fav-item-delete:hover {
@@ -442,7 +442,7 @@
             position: relative;
             overflow: hidden;
             cursor: pointer;
-            transition: height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: height 0.3s var(--e-enter-soft);
         }
 
         .progress-bar {
@@ -467,7 +467,7 @@
             border-radius: 999px;
             pointer-events: none;
             z-index: 2;
-            transition: height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: height 0.3s var(--e-enter-soft);
         }
         .progress-bar {
             z-index: 1;
@@ -506,7 +506,7 @@
             align-items: center;
             justify-content: center;
             opacity: 0.8;
-            transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: var(--t-slow);
             position: relative;
             border-radius: 50%;
             width: 44px;
@@ -600,7 +600,7 @@
             color: rgba(255, 255, 255, 0.6);
             display: flex;
             align-items: center;
-            transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: transform 0.3s var(--e-enter-soft);
             cursor: pointer;
             border-radius: 50%;
             padding: 8px;
@@ -620,7 +620,7 @@
             position: relative;
             overflow: hidden;
             cursor: pointer;
-            transition: height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: height 0.3s var(--e-enter-soft);
         }
 
         .volume-bar {
@@ -660,7 +660,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
         }
@@ -723,7 +723,7 @@
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
-            transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: transform 0.3s var(--e-enter-soft);
         }
 
         .icon-play, .icon-pause, .icon-next, .icon-previous {
@@ -799,7 +799,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
             flex-shrink: 0;
         }
 
@@ -834,7 +834,7 @@
             outline: none;
             -moz-appearance: textfield;
             appearance: textfield;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .lyric-offset-input::-webkit-inner-spin-button,
@@ -860,7 +860,7 @@
             left: 0;
             width: 100%;
             padding: 0;
-            transition: transform 0.5s cubic-bezier(0.15, 0.85, 0.25, 1);
+            transition: transform 0.5s var(--e-enter);
             text-align: left;
         }
 
@@ -888,7 +888,7 @@
         }
 
         /* 默认（封面）与歌词全屏模式：歌词视口上下边缘自然渐变羽化 */
-        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tunnel):not(.view-dimension):not(.view-polyphony) .lyrics-container {
+        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tunnel):not(.view-dimension) .lyrics-container {
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
             mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
         }
@@ -1147,15 +1147,12 @@
             background: rgba(0, 0, 0, 0.45);
             backdrop-filter: saturate(180%) blur(40px);
             -webkit-backdrop-filter: saturate(180%) blur(40px);
-            display: none;
+            /* display 由 motion.css 的浮层机制接管（常驻 flex + opacity/visibility），
+               原先这里是 display:none ↔ flex，导致只有入场、没有退场 */
             align-items: center;
             justify-content: center;
             z-index: 1000;
             padding: 20px;
-        }
-
-        .search-overlay.visible {
-            display: flex;
         }
 
         .search-modal {
@@ -1172,7 +1169,6 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         @keyframes modalIn {

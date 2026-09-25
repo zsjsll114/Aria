@@ -1,3 +1,25 @@
+/* ============================================================
+ * ⚠ 封存：未接线模块（从入口 web/src/app/index.js 静态不可达）
+ *
+ * 证据：scripts/audits/module-reachability.mjs 复扫（2026-09-25）——没有任何存活模块 import 本文件，
+ *       运行期不会加载；在这里改东西不会生效。
+ * 活实现：app/70-audio-engine.js（audio 元素与播放控制）、app/40-playback-state.js（isPlaying 等状态键）、app/65-playback-position.js（进度）
+ * 为什么还留着：docs/模块化重构方案.md 阶段 2-4 把本层列为目标架构，是否删除属产品决定；
+ *       现按「原地冻结」处理，配套门禁见 eslint.config.mjs 的 no-restricted-imports。
+ * state 双写已由 infrastructure/globalBridge.js 收口（state 是唯一存储，globalThis 同名键是视图），
+ * 所以接线不再会读到初始值；但仍须逐模块从活实现重新抽取——见 core/stallDetector.js 等已接管模块的
+ * 头注释：旧快照普遍缺活实现后来补的修复，直接接线等于退回旧行为。
+ *
+ * ★ 2026-09-25 判定：本模块**不做接管**，与前 4 个（stallDetector / fadeController /
+ *   shortcutManager / equalizer）不同——那 4 个都能沿一条清晰边界从单个分片抽出，
+ *   而它是四个分片关注点的门面：getDuration→56-playback-misc、
+ *   togglePlayPause/handleAudioPlayError/initAudioEvents→70-audio-engine、
+ *   waitForAudioReady/updatePlaybackPosition→65-playback-position、
+ *   nextTrack/prevTrack→95-track-loading，另外还重复定义了 PLAY_ICON_PATH / PAUSE_ICON_PATH
+ *   （活的那份由 65 导出）。"接管"它等于重写播放主链路，而主链路活路径目前无测试覆盖，
+ *   不适合做机械抽取。要真推进，需要先给播放/切歌/进度补上行为测试再动。
+ * ============================================================ */
+
 /**
  * core/audioPlayer.js — 音频播放核心控制
  * 封装 Audio 元素操作、播放/暂停、曲目加载、代际控制、进度更新

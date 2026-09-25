@@ -9,7 +9,9 @@
  * 6. 实时计算当前活跃词块中心坐标与当前活跃子句翻译
  */
 
-import { buildBurstParticle, burstCount } from './particleSpec.js';
+import { buildBurstParticle } from './particleSpec.js';
+import { wordBurstCount, wordLeadMs, wordBurstEnvelope, buildStarTrail, WORD_TAIL_MS } from './wordFxSpec.js';
+import { logCatch } from '../../services/log.js';
 
 /* 是否含 CJK/假名/谚文/CJK 标点（竖排保持直立的字符群）；
    纯拉丁/数字/西文标点的词块在竖排流中走 sideways 整词侧躺（上游 §6） */
@@ -261,7 +263,11 @@ export class PVRendering {
           end: b.end,
           isEmotion: b.isEmotion,
           isVertical: isBlockVert,
-          lineIndex: lIdx
+          lineIndex: lIdx,
+          /* 词级特效状态：lead = 提前起势量（唱到之前就爆），fxFired 防重复发射 */
+          lead: wordLeadMs(Math.random),
+          fxFired: false,
+          scale: b.scale || 'support'
         });
       });
 
@@ -300,6 +306,31 @@ export class PVRendering {
   }
 
   /**
+   * 演唱进度 0..1：按「已唱完的字符数 + 当前字符内部比例」单调推进。
+   *
+   * 这是背景笔触揭示层的**唯一驱动量**——它必须是 f(播放头) 而不是 f(墙钟)，
+   * 否则暂停时背景还在画、seek 之后和音频对不上，就退回「屏保」而不是「伴奏」。
+   * 不假设 chars 已按时间排序（跨行拼接时顺序不保证），所以整趟扫过去。
+   * @param {number} currentTimeMs
+   * @returns {number}
+   */
+  sungProgress(currentTimeMs = 0) {
+    const chars = this.chars;
+    if (!chars || chars.length === 0) return 0;
+    let done = 0;
+    let activeFrac = 0;
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (currentTimeMs > c.end) done++;
+      else if (currentTimeMs >= c.start && activeFrac === 0) {
+        activeFrac = (currentTimeMs - c.start) / Math.max(1, c.end - c.start);
+      }
+    }
+    const v = (done + activeFrac) / chars.length;
+    return v < 0 ? 0 : v > 1 ? 1 : v;
+  }
+
+  /**
    * 逐帧时钟驱动：Cadenza 风格光束扫描推进、逐字动态延伸虚线框与超界视野平滑跟焦
    * @param {number} currentTimeMs 当前毫秒数
    * @returns {Object} { activeBlockCenter, activeLineData }
@@ -317,6 +348,25 @@ export class PVRendering {
     // 严格实时唤醒 (绝不提前显示未播放字符)
     const LOOKAHEAD_MS = 0;
 
+    /* ===== 词级特效发射器（提前起势 + 拖尾） =====
+       判定式是 `now >= start - lead`，所以粒子在**唱到这个字之前** 200~380ms 就炸开，
+       这是上游 guide 窗口的核心（sonnetGuides.ts:22-29）：观感上像「被音乐推出去」，
+       而不是「跟着字幕补一帧」。seek 回退时把 fired 复位，重听一遍还会再爆。 */
+    if (this.blocks && this.blocks.length) {
+      for (let i = 0; i < this.blocks.length; i++) {
+        const w = this.blocks[i];
+        if (!w) continue;
+        const dueAt = w.start - (w.lead || 0);
+        if (!w.fxFired && currentTimeMs >= dueAt) {
+          /* 已经唱过去太久的词（例如刚 seek 进来落在句中）不补爆，避免满屏同时炸 */
+          if (currentTimeMs - dueAt <= WORD_TAIL_MS) this._spawnWordFx(w);
+          w.fxFired = true;
+        } else if (w.fxFired && currentTimeMs < dueAt) {
+          w.fxFired = false;
+        }
+      }
+    }
+
     // 1. 字符状态更新与寻找最新活跃字符
     let latestPassedLineData = null;
     for (let i = 0; i < this.chars.length; i++) {
@@ -330,8 +380,9 @@ export class PVRendering {
         if (!el.classList.contains('active')) {
           el.classList.remove('waiting', 'passed', 'sung');
           el.classList.add('active');
-          /* ★ 上游参考项目 逐字粒子：首次唱响迸发 mini 星尘（perf-minimal / 空格字符不发） */
-          this._spawnCharParticles(el);
+          /* ★ 迸发从**字级改成词级**（见 _spawnWordFx）：旧实现每个字符唱响都炸 3~5 颗，
+             一行十个字就是 30~50 颗，用户实测判定「杂、不如 folia」。上游根本不挂在
+             glyph 上，而是挂在 segment（词）级 guide 上。 */
         }
 
         if (start >= latestActiveCharTime) {
@@ -529,40 +580,77 @@ export class PVRendering {
    * perf-minimal 或 prefers-reduced-motion 下不生成。
    * @private
    */
-  _spawnCharParticles(el) {
+  /**
+   * 词级特效：一蓬甩出去的尘 + （重点词才有的）星轨描边。
+   *
+   * 与旧 `_spawnCharParticles` 的三点差别，正是用户反馈「不如 folia」的那三处：
+   *   1. 挂在**词**上而不是字上 —— 颗粒总量从「每字 3~5」降到「每词 3~6」；
+   *   2. 由 `now >= start - lead` 触发，唱到之前就起势，不是唱到才补一帧；
+   *   3. 距离/时长/大小乘上词级包络（wordBurstEnvelope），收尾缩到 0.6 而不是 0，
+   *      所以是「甩出去消散」而不是「原地闪一下」。
+   * 形状与颜色基准仍复用 particleSpec.buildBurstParticle，不另起一份事实源。
+   * @param {Object} w this.blocks 里的一项
+   * @private
+   */
+  _spawnWordFx(w) {
+    const el = w && w.blockEl;
     if (!el || typeof document === 'undefined' || !el.isConnected) return;
     try {
       const body = document.body;
-      if (body && (body.classList.contains('perf-minimal')
+      /* 低配/极简/无显卡一律不发：粒子是「每次都在造新 DOM + 起合成层」的东西，
+         在纯 CPU 设备上正是最贵的一类（AGENTS.md 约束 12 同一取向）。
+         比旧的字级实现多挡了 perf-low —— 词级本来就比字级省，但省的不是关键。 */
+      if (body && (body.classList.contains('perf-minimal') || body.classList.contains('perf-low')
         || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches))) {
         return;
       }
-      const parent = el.parentNode;
-      if (!parent) return;
-      /* 粒子基准色随字符所在行主题色一致；掺少量白尘增强层次 */
-      const host = getComputedStyle(parent).getPropertyValue('--pv-highlight-color') || '#ffcc33';
-      /* 上游参考项目 规格生成：kind/角度/距离/时长/大小/白尘概率由纯函数产出（particleSpec.js 可单测） */
-      const count = burstCount(Math.random);
+      const host = getComputedStyle(el).getPropertyValue('--pv-highlight-color') || '#ffcc33';
+      const env = wordBurstEnvelope(w.scale);
+      const count = wordBurstCount(w.scale, w.isEmotion);
       for (let i = 0; i < count; i++) {
         const spec = buildBurstParticle(Math.random, i, host);
         const p = document.createElement('span');
-        p.className = `pv-char-burst-p kind-${spec.kind}`;
-        /* 上游参考项目 终态：cos/sin*dist 直线终点 + rotSpeed 小角度扫旋，全部封进 CSS 变量 */
-        p.style.setProperty('--tx', `${spec.tx.toFixed(2)}em`);
-        p.style.setProperty('--ty', `${spec.ty.toFixed(2)}em`);
-        p.style.setProperty('--ps', `${spec.size.toFixed(1)}px`);
+        p.className = `pv-char-burst-p pv-word-burst-p kind-${spec.kind}`;
+        p.style.setProperty('--tx', `${(spec.tx * env.distMul).toFixed(2)}em`);
+        p.style.setProperty('--ty', `${(spec.ty * env.distMul).toFixed(2)}em`);
+        p.style.setProperty('--ps', `${(spec.size * env.sizeMul).toFixed(1)}px`);
         p.style.setProperty('--pc', spec.color);
-        p.style.setProperty('--pg', `${(spec.size * 2.2).toFixed(1)}px`);
+        p.style.setProperty('--pg', `${(spec.size * env.sizeMul * 2.2).toFixed(1)}px`);
         p.style.setProperty('--pa', String(spec.alpha));
-        p.style.setProperty('--bd', `${spec.dur.toFixed(2)}s`);
+        p.style.setProperty('--bd', `${(spec.dur * env.durMul).toFixed(2)}s`);
         p.style.setProperty('--bl', `${spec.bl.toFixed(2)}s`);
         p.style.setProperty('--tr', `${spec.rotateDeg.toFixed(0)}deg`);
-        /* ★ 挂载到字符自身（.pv-char position:relative 作包含块，burst 以字符中心为原点） */
         el.appendChild(p);
-        /* 单向生命：动画结束后移除 DOM，不留残影 */
-        setTimeout(() => { if (p.parentNode) p.remove(); }, (spec.dur + spec.bl + 0.15) * 1000);
+        setTimeout(() => { if (p.parentNode) p.remove(); }, (spec.dur * env.durMul + spec.bl + 0.2) * 1000);
       }
-    } catch (_e) { /* 粒子纯装饰，任何异常忽略 */ }
+      /* 星轨只给重点词（hero / 情感词）：每词都画一条就又把画面填满了，
+         「特殊」必须是稀缺的，这是上游把 guide 挂在 segment 而非 glyph 上的同一取向 */
+      if (w.scale === 'hero' || w.isEmotion) this._drawWordTrail(el, w);
+    } catch (e) { logCatch('pvRender', e); }
+  }
+
+  /**
+   * 词的「星轨」：一条三次贝塞尔从词外起笔、画到词位（上游 sonnetGuides.ts:48-66,160-183）。
+   * 用 pathLength="1" + dashoffset 揭示，所以不测长度、不进每帧循环。
+   * @private
+   */
+  _drawWordTrail(el, w) {
+    const box = { w: el.offsetWidth || 60, h: el.offsetHeight || 40 };
+    const trail = buildStarTrail(Math.random, box);
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'pv-word-trail');
+    svg.setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
+    svg.setAttribute('width', box.w);
+    svg.setAttribute('height', box.h);
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', trail.d);
+    path.setAttribute('pathLength', '1');
+    path.style.setProperty('--td', `${trail.durMs}ms`);
+    svg.appendChild(path);
+    el.appendChild(svg);
+    setTimeout(() => { if (svg.parentNode) svg.remove(); }, trail.durMs + 420);
   }
 
   /**

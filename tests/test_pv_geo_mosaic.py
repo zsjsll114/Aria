@@ -49,6 +49,8 @@ with sync_playwright() as p:
       document.body.className = document.body.className.split(' ').filter(c => !c.startsWith('perf-')).join(' ');
 
       // ========== 1. PVDecorations folia 图形场 ==========
+      // 注：2026-09-25 曾换成 core/sonnetField.js 四层描边场，用户实测判定不如原版，
+      //     已回退。契约仍是「歌曲级持久、不随 shot 重建」，所以 shot 变化不换版。
       const decoMod = await import('./src/core/pvEngine/PVDecorations.js');
       const PVDecorations = decoMod.PVDecorations;
       const layer = document.createElement('div');
@@ -79,6 +81,31 @@ with sync_playwright() as p:
       // 动画体系挂在块上（CSS 动画名来自 pv.css）
       const firstShape = field3.querySelector('.pv-shape');
       out.orbitAnim = firstShape ? getComputedStyle(firstShape).animationName : '';
+      // 描边生长：icon 的每条子路径都要归一化，否则 dash 不生效（shapeField 注入 pathLength）
+      const inked = field3.querySelector('.pv-shape--icon svg > [pathLength="1"]');
+      out.iconInkAnim = inked ? getComputedStyle(inked).animationName : '';
+
+      // ========== 1b. 长弧笔触：揭示量必须由**演唱进度**驱动 ==========
+      // 这是上一版被退回的核心（墙钟 CSS 动画 = 屏保），所以直接在浏览器里量
+      // 「改 --p → stroke-dashoffset 跟着变」，而不是只测字符串生成。
+      const arcField = layer.querySelector('.pv-arc-field');
+      out.arcFieldCreated = !!arcField;
+      out.arcCount = arcField ? arcField.querySelectorAll('path[pathLength="1"]').length : 0;
+      out.arcDots = arcField ? arcField.querySelectorAll('.pv-arc-dot').length : 0;
+      if (arcField) {
+        const arcs = [...arcField.querySelectorAll('path')];
+        const offs = () => arcs.map(p => getComputedStyle(p).strokeDashoffset);
+        deco.setProgress(0);
+        out.atZero = offs();
+        deco.setProgress(0.3);
+        out.at030 = offs();
+        deco.setProgress(1);
+        out.atOne = offs();
+        // 进度 0 必须全藏、进度 1 必须全画完，中间必须真的动起来
+        out.allHiddenAtZero = out.atZero.every(v => parseFloat(v) > 0.9);
+        out.allDrawnAtOne = out.atOne.every(v => parseFloat(v) < 0.01);
+        out.movesWithProgress = JSON.stringify(out.atZero) !== JSON.stringify(out.at030);
+      }
 
       // ========== 2. TunnelEngine 蒙德里安方格必现 + 色板轮换 ==========
       const tunMod = await import('./src/core/tunnelEngine/TunnelEngine.js');
@@ -136,6 +163,17 @@ with sync_playwright() as p:
     check("shape-same-seed-stable", ev["sameSeedStable"])
     check("shape-new-seed-reshuffles", ev["newSeedReshuffles"])
     check("shape-orbit-anim", "pv-shape-orbit" in str(ev["orbitAnim"]), str(ev["orbitAnim"]))
+    # 描边生长（todos #24 保留下来的那半：icon 子路径按弧长画出）
+    check("shape-icon-ink", "pv-shape-ink" in str(ev["iconInkAnim"]), str(ev["iconInkAnim"]))
+
+    # 长弧笔触：必须由演唱进度驱动（上一版栽在墙钟动画上）
+    check("arc-field-created", ev["arcFieldCreated"])
+    check("arc-count-3", ev["arcCount"] == 3, str(ev["arcCount"]))
+    check("arc-has-fill-dots", ev["arcDots"] == 3, str(ev["arcDots"]))
+    check("arc-hidden-at-progress-0", ev["allHiddenAtZero"], str(ev.get("atZero")))
+    check("arc-fully-drawn-at-progress-1", ev["allDrawnAtOne"], str(ev.get("atOne")))
+    check("arc-moves-with-progress", ev["movesWithProgress"],
+          f"{ev.get('atZero')} -> {ev.get('at030')}")
 
     check("mosaic-engine-built", ev["engineBuilt"])
     check("mosaic-grid-always", ev["gridAlways"], f"patterns={ev['allPatterns']} maxGrids={ev['maxGrids']}")

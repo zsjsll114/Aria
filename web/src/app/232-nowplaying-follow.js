@@ -25,7 +25,7 @@
  * ============================================================ */
 import { normalizeNowPlayingPayload, nowPlayingKey } from '../services/nowPlayingNormalize.js';
 import { saveSettings } from './180-boot-config.js';
-import { logInfo, logWarn } from '../services/log.js';
+import { logInfo, logWarn, logCatch } from '../services/log.js';
 import { setBlurBackground, setCoverImage } from './100-cover-background.js';    /* 切歌即时挂封面/背景 */
 import { renderLyrics } from './20-lyrics-render.js';                            /* WS 歌词直取渲染入口 */
 import { parseLrc } from '../parsers/lrcParser.js';                              /* LRC 文本→时间行 */
@@ -174,11 +174,11 @@ function lockNpDisplay(info, key) {
     /* Aria 若正在自主播放 → 静默暂停（接管只显示，避免两路音频交错） */
     if (aud && aud.getAttribute('src') && !aud.paused) {
         prevUserPlaying = true;
-        try { aud.pause(); } catch (_e) {}
+        try { aud.pause(); } catch (_e) { logCatch('nowPlaying', _e); }
     }
     /* 接管期间压制 Aria 自身任何自动播放（启动恢复播放/榜单切歌等） */
     if (aud && !_npSuppress) {
-        _npSuppress = () => { if (npState.active && !aud.paused) { try { aud.pause(); } catch (_e) {} } };
+        _npSuppress = () => { if (npState.active && !aud.paused) { try { aud.pause(); } catch (_e) { logCatch('nowPlaying', _e); } } };
         aud.addEventListener('play', _npSuppress);
     }
     try {
@@ -188,7 +188,7 @@ function lockNpDisplay(info, key) {
             if (songArtistEl) songArtistEl.textContent = info.artist || '';
             if (totalTimeEl && npState.duration > 0) totalTimeEl.textContent = formatTime(npState.duration * 1000);
         }
-    } catch (_e) {}
+    } catch (_e) { logCatch('nowPlaying', _e); }
     /* 接管期间禁用歌词虚拟滚动：默认模式虚拟窗口只随用户滚轮更新，
        长歌词（>renderRange）播放滚动到后端时行会被 placeholder 隐藏"消失"，
        接管改为全量渲染。
@@ -198,13 +198,13 @@ function lockNpDisplay(info, key) {
     if (!wasActive) prevVirtualScroll = LYRICS_VIRTUAL_SCROLL.enabled;
     LYRICS_VIRTUAL_SCROLL.enabled = false;
     /* 清空 Aria 旧歌词层（接管只显示外部歌词；快照已保存 Aria 歌词供恢复） */
-    try { renderLyrics([]); } catch (_e) {}
+    try { renderLyrics([]); } catch (_e) { logCatch('nowPlaying', _e); }
     /* 即时挂封面/背景（不等 poll 再刷） */
     if (info.cover) {
         npCoverUrl = info.cover;
-        try { setCoverImage(info.cover); setBlurBackground(info.cover); } catch (_e) {}
+        try { setCoverImage(info.cover); setBlurBackground(info.cover); } catch (_e) { logCatch('nowPlaying', _e); }
     }
-    try { startLyricsLoop(); } catch (_e) {} /* 启动显示循环（虚拟时钟驱动） */
+    try { startLyricsLoop(); } catch (_e) { logCatch('nowPlaying', _e); } /* 启动显示循环（虚拟时钟驱动） */
     /* 1s 保真定时器：对抗 Aria 内部（开篇歌单自动播放等）对歌名/封面/歌词的异步覆盖 */
     if (!npKeepaliveTimer) {
         npKeepaliveTimer = setInterval(() => { npEnforceDisplay(lastFollowInfo); }, 1000);
@@ -219,9 +219,9 @@ function restoreSnapshot(snap) {
         if (songTitleEl) songTitleEl.textContent = snap.title || '';
         if (songArtistEl) songArtistEl.textContent = snap.artist || '';
         if (totalTimeEl && snap.totalTime) totalTimeEl.textContent = snap.totalTime;
-    } catch (_e) {}
+    } catch (_e) { logCatch('nowPlaying', _e); }
     /* 封面恢复 */
-    if (snap.cover) { try { setCoverImage(snap.cover); } catch (_e) {} }
+    if (snap.cover) { try { setCoverImage(snap.cover); } catch (_e) { logCatch('nowPlaying', _e); } }
     /* 歌词层恢复（接管期间可能被 Aria 内部渲染覆盖，务必还原；无歌词时清空） */
     try {
         const back = (Array.isArray(snap.lyrics) && snap.lyrics.length) ? snap.lyrics : [];
@@ -229,7 +229,7 @@ function restoreSnapshot(snap) {
         if (typeof globalThis !== 'undefined' && globalThis.Aria && typeof globalThis.Aria.__lyricsRebuildChain === 'function') {
             globalThis.Aria.__lyricsRebuildChain();
         }
-    } catch (_e) {}
+    } catch (_e) { logCatch('nowPlaying', _e); }
     /* 播放恢复：接管前在播才恢复；src 仍在 → 原位续播；src 被换过 → 重载接管前歌曲 */
     if (snap.playing && aud) {
         const sameSrc = !!snap.src && aud.getAttribute('src') === snap.src;
@@ -240,11 +240,11 @@ function restoreSnapshot(snap) {
                         aud.currentTime = snap.position;
                     }
                     const pr = aud.play();
-                    if (pr && typeof pr.catch === 'function') pr.catch(() => {});
+                    if (pr && typeof pr.catch === 'function') pr.catch(() => { /* 预期拒绝：只是摘掉 play() 的未处理 rejection，暂停失败由 audio 事件兜底 */ });
                 }
-            } catch (_e) {}
+            } catch (_e) { logCatch('nowPlaying', _e); }
         } else if (snap.song && typeof loadOnlineSong === 'function') {
-            try { loadOnlineSong(snap.song); } catch (_e) {}
+            try { loadOnlineSong(snap.song); } catch (_e) { logCatch('nowPlaying', _e); }
         }
     }
 }
@@ -267,7 +267,7 @@ function releaseNpDisplay() {
         _npIconPaused = null;   /* 图标交回 audio 事件管理；下次接管需重新写入 */
         LYRICS_VIRTUAL_SCROLL.enabled = prevVirtualScroll; /* 还原虚拟滚动 */
         if (npKeepaliveTimer) { clearInterval(npKeepaliveTimer); npKeepaliveTimer = null; } /* 停保真定时器 */
-        try { if (typeof document !== 'undefined') document.body.classList.remove('np-readonly'); } catch (_e) {}
+        try { if (typeof document !== 'undefined') document.body.classList.remove('np-readonly'); } catch (_e) { logCatch('nowPlaying', _e); }
         /* 移除 Aria 自播压制 */
         const aud = (typeof globalThis !== 'undefined') ? globalThis.audio : null;
         if (_npSuppress && aud) {
@@ -497,14 +497,14 @@ function npEnforceDisplay(info) {
             playIcon.innerHTML = npState.paused ? PLAY_ICON_PATH : PAUSE_ICON_PATH;
             _npIconPaused = npState.paused;
         }
-    } catch (_e) {}
+    } catch (_e) { logCatch('nowPlaying', _e); }
     /* 封面保真：覆盖了封面（启动自动恢复等）拉回 NPS 封面 */
     if (info && info.cover) npCoverUrl = info.cover;
     if (npCoverUrl) {
         try {
             const cur = getCurrCover();
             if (cur && cur !== npCoverUrl) setCoverImage(npCoverUrl);
-        } catch (_e) {}
+        } catch (_e) { logCatch('nowPlaying', _e); }
     }
     /* 歌词保真：歌词层行数 ≠ 外部歌词行数 → 写回（外部无歌词则清空，防 Aria 内部歌词残留） */
     try {
@@ -515,8 +515,8 @@ function npEnforceDisplay(info) {
             if (want) applyExternalLyrics(npState.lyrics, true);
             else renderLyrics([]);
         }
-    } catch (_e) {}
-    try { startLyricsLoop(); } catch (_e) {} /* 保证接管显示循环常驻 */
+    } catch (_e) { logCatch('nowPlaying', _e); }
+    try { startLyricsLoop(); } catch (_e) { logCatch('nowPlaying', _e); } /* 保证接管显示循环常驻 */
 }
 
 /* WS 歌词帧容错提取：在任意包裹层找「含 [mm:ss] 时间标签的 LRC 文本」

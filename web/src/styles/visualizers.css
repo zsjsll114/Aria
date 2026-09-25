@@ -1,6 +1,6 @@
 /* ==========================================================================
    Visualizers Stylesheet (visualizers.css)
-   上游参考项目 视觉体系 — 全景歌词视觉动效模式 (浮空模式 Dimension & 和鸣模式 Polyphony)
+   上游参考项目 视觉体系 — 全景歌词视觉动效模式 (浮空模式 Dimension)
    ========================================================================== */
 
 /* 通用根视口 */
@@ -217,96 +217,6 @@
   transition: color 0.72s cubic-bezier(0.25, 1, 0.5, 1) 0.18s;
 }
 
-/* ==========================================================================
-   2. 和鸣模式 (Polyphony Visualizer)
-   ========================================================================== */
-.vis-polyphony-view {
-  background: #090714;
-}
-
-.vis-polyphony-stage {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding-top: 50vh;
-  z-index: 2;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.vis-polyphony-bubble {
-  display: flex;
-  align-items: flex-start;
-  margin: 16px 0;
-  width: 85%;
-  max-width: 680px;
-  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  opacity: 0.35;
-}
-
-.vis-polyphony-bubble.align-right {
-  flex-direction: row-reverse;
-}
-
-.vis-polyphony-bubble.active {
-  opacity: 1;
-  transform: scale(1.05);
-}
-
-.vis-polyphony-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-  margin: 0 14px;
-}
-
-.vis-polyphony-bubble.active .vis-polyphony-avatar {
-  border-color: var(--vis-theme-color);
-  box-shadow: 0 0 15px var(--vis-theme-color);
-}
-
-.vis-polyphony-body {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 12px 20px;
-}
-
-.vis-polyphony-bubble.active .vis-polyphony-body {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
-}
-
-.vis-polyphony-speaker {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--vis-theme-color);
-  margin-bottom: 6px;
-}
-
-.vis-polyphony-words {
-  font-size: var(--vis-font-size);
-  font-family: var(--vis-font-family);
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.vis-polyphony-bubble.active .vis-polyphony-words {
-  color: #ffffff;
-}
-
 /* ★★ RTL 歌词方向适配（阿拉伯/希伯来语等，用户反馈 PV 已部分适配但其余视图缺失）：
    VisualizerBase.setLyrics 检测 RTL 语系并给 stage 挂 vis-rtl 类；逐字点亮元素
    按字符串序创建，bidi 重排后视觉上自然「从右往左」点亮——各视图的高亮推进
@@ -316,8 +226,7 @@
 .vis-rtl .lp-main,
 .vis-rtl .lp-trans,
 .vis-rtl .dim-line,
-.vis-rtl .dim-char,
-.vis-rtl .vis-polyphony-word {
+.vis-rtl .dim-char {
   direction: rtl;
   unicode-bidi: plaintext;
 }
@@ -334,38 +243,7 @@
   unicode-bidi: plaintext;
 }
 
-
-.vis-polyphony-word {
-  display: inline-block;
-  transition: all 0.2s ease;
-  padding: 0 2px;
-}
-
-.vis-polyphony-word.singing {
-  color: var(--vis-highlight-color, var(--vis-theme-color, #ffcc33));
-  text-shadow: 0 0 15px var(--vis-highlight-color, var(--vis-theme-color, #ffcc33));
-}
-
-.vis-polyphony-word.sung {
-  color: #ffffff;
-}
-
-.vis-polyphony-word.vis-word-emotion {
-  color: var(--emotion-color, #ff2a6d);
-}
-
-.vis-polyphony-word.vis-word-emotion.singing {
-  color: var(--emotion-color, #ff2a6d) !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 var(--emotion-glow, 12px) color-mix(in srgb, var(--emotion-color, #ff2a6d) 40%, transparent) !important;
-}
-
-.vis-polyphony-word.vis-word-emotion.sung {
-  color: var(--emotion-color, #ff2a6d) !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 calc(var(--emotion-glow, 12px) * 0.5) color-mix(in srgb, var(--emotion-color, #ff2a6d) 25%, transparent) !important;
-}
-
-.vis-dimension-trans,
-.vis-polyphony-trans {
+.vis-dimension-trans {
   position: absolute;
   bottom: 70px !important;
   left: 50% !important;
@@ -378,16 +256,14 @@
   transition: opacity 0.3s ease;
 }
 
-.vis-dimension-trans-text,
-.vis-polyphony-trans-text {
+.vis-dimension-trans-text {
   font-size: 15px;
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
   line-height: 1.4;
 }
 
-.vis-dimension-roma-text,
-.vis-polyphony-roma-text {
+.vis-dimension-roma-text {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.65);
   margin-top: 4px;

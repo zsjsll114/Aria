@@ -15,8 +15,8 @@
             opacity: 0;
             transform: scale(0.92) translateY(-8px);
             pointer-events: none;
-            transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                        transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+            transition: opacity 0.25s var(--e-enter-soft),
+                        transform 0.25s var(--e-enter-soft),
                         visibility 0s 0.25s;
         }
         .eq-panel.visible {
@@ -24,8 +24,8 @@
             opacity: 1;
             transform: scale(1) translateY(0);
             pointer-events: auto;
-            transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                        transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+            transition: opacity 0.25s var(--e-enter-soft),
+                        transform 0.25s var(--e-enter-soft),
                         visibility 0s 0s;
         }
         .eq-header {
@@ -73,7 +73,7 @@
             color: rgba(255, 255, 255, 0.7);
             font-size: 12px;
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: var(--t-fast);
             white-space: nowrap;
         }
         .eq-preset:hover {

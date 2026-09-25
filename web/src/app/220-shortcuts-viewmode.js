@@ -28,7 +28,7 @@ import { showLyricSourceModal, switchLyricSource } from './170-lyric-sources.js'
 import { applyPerformanceProfile, autoDetectAndApplyPerformance, cleanGpuName, getPerformanceSettings, getPerfVfx, getVfxOverrides, initDefaultSong, loadSettings, savePerformanceSettings, saveSettings, setVfxOverride, showPerformanceDialog } from './180-boot-config.js';
 import { applyAllSettings, applyModeSettings, getSettingValue, setSettingValue } from './190-settings-fontsize.js';
 import { bindBtnGroup } from './200-settings-panel.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 快捷键录制 */
 globalThis.recordingShortcut = null;
@@ -226,7 +226,7 @@ function refreshSettingsUI() {
             if (typeof currentAiTheme !== 'undefined' && currentAiTheme) {
                 try {
                     updateAiSettingsPreview(currentAiTheme, '已分析', currentAiTheme.description || `情绪：${currentAiTheme.mood || '未知'} · 风格：${currentAiTheme.animation_style || '默认'}`);
-                } catch (e) {}
+                } catch (e) { logCatch('shortcutsViewmode', e); }
             } else if (typeof isAiAnalyzing !== 'undefined' && isAiAnalyzing) {
                 const statusText = document.getElementById('aiStatusText');
                 const statusDetail = document.getElementById('aiStatusDetail');
@@ -254,7 +254,7 @@ function refreshSettingsUI() {
             aiCacheCount().then(cnt => {
                 const cacheInfoEl = typeof document !== 'undefined' ? document.getElementById('aiCacheInfo') : null;
                 if (cacheInfoEl) cacheInfoEl.textContent = `已缓存 ${cnt} 首歌曲的分析结果`;
-            }).catch(() => {});
+            }).catch((e) => logCatch('shortcutsViewmode', e));
         }
 
 /* ========== 性能设置初始化 ========== */
@@ -301,7 +301,7 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
                 resetRecommendedBtn.addEventListener('click', async () => {
                     const btn = document.getElementById('btnResetPerfRecommended');
                     if (btn) { btn.textContent = '重置中...'; btn.disabled = true; }
-                    try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch(e) {}
+                    try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch (e) { logCatch('shortcutsViewmode', e); }
                     const result = await autoDetectAndApplyPerformance(false);
                     if (btn) { btn.textContent = '恢复推荐配置'; btn.disabled = false; }
                     if (typeof initVisualOverheadUI === 'function') initVisualOverheadUI();
@@ -316,7 +316,7 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
                误触即丢失全部手动微调——改走 aria-dialog 确认框 */
             document.getElementById('btnResetPerfFactory')?.addEventListener('click', () => {
                 const doReset = () => {
-                    try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch(e) {}
+                    try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch (e) { logCatch('shortcutsViewmode', e); }
                     applyPerformanceProfile('high');
                     savePerformanceSettings({
                         profile: 'high',
@@ -335,7 +335,7 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
                         desc: '将清空全部「视觉开销」手动微调并回到高性能档，此操作不可撤销。',
                         okText: '恢复',
                         danger: true
-                    }).then((ok) => { if (ok) doReset(); }).catch(() => {});
+                    }).then((ok) => { if (ok) doReset(); }).catch((e) => logCatch('shortcutsViewmode', e));
                 } else if (typeof window !== 'undefined' && window.confirm && window.confirm('恢复出厂性能配置？将清空全部手动微调，此操作不可撤销。')) {
                     doReset();
                 } else {
@@ -357,8 +357,7 @@ function initVisualOverheadUI() {
                 ['vfxPvBloom', 'pvBloom'],
                 ['vfxWcParticles', 'wcParticles'],
                 ['vfxTunnelParticles', 'tunnelParticles'],
-                ['vfxDimParticles', 'dimParticles'],
-                ['vfxPolyGlow', 'polyGlow']
+                ['vfxDimParticles', 'dimParticles']
             ];
 
             function syncVfxUI() {
@@ -385,7 +384,7 @@ function initVisualOverheadUI() {
                 try {
                     applyPerformanceProfile(prof);
                 } catch(e) { logWarn('shortcutsViewmode', '应用性能配置失败:', e); }
-                try { applyAllSettings(); } catch(e) {}
+                try { applyAllSettings(); } catch (e) { logCatch('shortcutsViewmode', e); }
             }
 
             if (!_vfxBound) {
@@ -433,8 +432,7 @@ function refreshVfxOverheadUI() {
                     ['vfxPvBloom', 'pvBloom'],
                     ['vfxWcParticles', 'wcParticles'],
                     ['vfxTunnelParticles', 'tunnelParticles'],
-                    ['vfxDimParticles', 'dimParticles'],
-                    ['vfxPolyGlow', 'polyGlow']
+                    ['vfxDimParticles', 'dimParticles']
                 ].forEach(([id, key]) => {
                     const el = document.getElementById(id);
                     if (!el) return;
@@ -519,7 +517,7 @@ document.getElementById('profileEffectItems').innerHTML = effectsHtml;
 
             /* 如果当前已分析出 AI 主题，同步渲染 AI 主题信息与色块列表 */
             if (typeof currentAiTheme !== 'undefined' && currentAiTheme) {
-                try { updateAiSettingsPreview(currentAiTheme); } catch (e) {}
+                try { updateAiSettingsPreview(currentAiTheme); } catch (e) { logCatch('shortcutsViewmode', e); }
             }
 
             /* ★ 同步「视觉开销」手动微调控件状态 */
@@ -819,7 +817,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 if (typeof window !== 'undefined') window.currentViewMode = mode;
                 
                 /* ★ 先移除并更新所有视图模式 class */
-                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-polyphony', 'view-letterpress', 'view-neon');
+                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
                 
                 if (mainVisManager && mainVisManager.has(mode)) {
                     playerContainer.classList.add(`view-${mode}`);
@@ -946,7 +944,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 }
 
                 /* ★ 保存当前视图模式到本地存储 */
-                try { localStorage.setItem('player_view_mode', mode); } catch(e) {}
+                try { localStorage.setItem('player_view_mode', mode); } catch (e) { logCatch('shortcutsViewmode', e); }
 
                 /* ★ 再应用该模式的独立歌词设置（使 renderLyrics 能识别正确的 view-flyin 状态） */
                 applyModeSettings(mode);
@@ -1082,7 +1080,7 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
                     card.classList.toggle('active', card.dataset.mode === mode);
                 });
                 /* 保存偏好 */
-                try { localStorage.setItem('player_view_mode', mode); } catch(e) {}
+                try { localStorage.setItem('player_view_mode', mode); } catch (e) { logCatch('shortcutsViewmode', e); }
             }
 
             /* 打开样式切换弹窗 */
@@ -1142,7 +1140,7 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
             try {
                 const saved = localStorage.getItem('player_view_mode');
                 if (saved) switchView(saved);
-            } catch(e) {}
+            } catch (e) { logCatch('shortcutsViewmode', e); }
 
             /* 如果底部控制栏不存在，跳过相关初始化 */
             if (!bottomControlBar) {

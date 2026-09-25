@@ -1,4 +1,4 @@
-import { logInfo, logWarn, logError } from '../../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../../services/log.js';
 /**
  * WordSegmenter.js
  * 专业级多语言语义分词与 YRC 时间轴聚合引擎：
@@ -17,7 +17,7 @@ if (typeof window === 'undefined' && typeof require === 'function') {
   try {
     nodeSegmentitLib = require('segmentit');
     nodeKuromojiLib = require('kuromoji');
-  } catch (e) {}
+  } catch (e) { logCatch('WordSegmenter', e); }
 }
 
 /* 日文 kuromoji 字典路径：同源优先 → CDN 兜底 → 整体降级到原生 Intl.Segmenter。
@@ -34,6 +34,7 @@ export class WordSegmenter {
     this.kuromojiTokenizer = null;
     this.isKuromojiLoading = false;
     this.isKuromojiReady = false;
+    this.isSegmentitWarming = false;
 
     // 原生 Intl.Segmenter 兜底器
     this.intlZh = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter('zh-CN', { granularity: 'word' }) : null;
@@ -44,7 +45,71 @@ export class WordSegmenter {
       ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
       : null;
 
-    this._initSync();
+    /* ★ 不在构造期**同步**探测/初始化分词库：本模块是 `export const wordSegmenter = new WordSegmenter()`
+       的模块级单例，只要 PV 引擎被 import，构造函数就会在启动瞬间跑 _initSync()，
+       进而拉起 kuromoji 的 17MB 日文词典（实测启动期 121 个 JS 请求 / 6.5MB JS）。
+       真正需要分词时 _segmentChinese / initAsync 都会重试 _initSync()，未就绪期间走
+       Intl.Segmenter 兜底，所以延迟到首次使用不改变任何输出路径。
+       注意：坑在于「同步调用 _initSync()」本身，不是「构造函数里不能出现任何语句」——
+       所以这里挂的是只登记监听、不当即干活的空闲预热（见 _scheduleIdleWarmup）。 */
+    this._scheduleIdleWarmup();
+  }
+
+  /**
+   * ★ 空闲预热中文分词实例（修「点 PV 卡片卡一下」，2026-09-26）。
+   *
+   * 约束 13 把「脚本注入」挪出启动期是对的，但它顺手把 `_initSync()` 从构造函数
+   * 移到了「首次分词那一刻」，而 `_initSync()` 里除了注入脚本还包含
+   * `useDefault(new Segment())` —— 那是 ~290ms 的**纯 CPU 词典构建**，不是网络。
+   * 于是它被整体搬进了「点击 PV 卡片」的那一次同步事件处理里：
+   *   switchView('pv') 实测 679ms，调用链
+   *   switchView → PVEngine.setLyrics → PVLyricLayout.process →
+   *   WordSegmenter._segmentChinese → _initSync → segmentit.useDefault ≈ 290ms
+   * （CDP Profiler 自时间，见 scratch/pv_switch_profile.py）。
+   *
+   * 这里把词典构建放回「window load 之后的第一个空闲片」，三条边界：
+   *   ① 只在 load 之后排 requestIdleCallback —— 与 index.html 延迟加载器自己的
+   *      预热**同时机**，所以启动期一个字节都不会多下（约束 13 的
+   *      DOMContentLoaded 936→551ms / 2s 传输 31.2→9.1MB 收益原样保留）；
+   *   ② 只建中文 segmentit，绝不碰 kuromoji（17MB 词典仍由 _segmentJapanese 按需拉）；
+   *   ③ 预算按**时间**算而不是按次数：空闲页面上 requestIdleCallback 可能几十毫秒
+   *      就发一次，按次数会在 3.7MB 脚本落地前把额度烧光（第一版实测如此——
+   *      12 次回调全跑完时 window.Segmentit 还没出现，预热等于没做）。
+   *      超时后不再排程，脚本 404 / 离线不会留下永久空转的空闲回调。
+   * 用户真点进 PV 时实例早已就位：既不用在点击里付词典钱，也不用退回
+   * Intl.Segmenter 兜底（分词质量不变）。
+   * @private
+   */
+  _scheduleIdleWarmup() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (this.isSegmentitWarming || this.segmentitInstance) return;
+    this.isSegmentitWarming = true;
+    const startedAt = Date.now();
+    const BUDGET_MS = 60000;
+    const later = (fn) => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 2000 });
+      else setTimeout(fn, 800);
+    };
+    const step = () => {
+      if (this.segmentitInstance) { this.isSegmentitWarming = false; return; }
+      if (Date.now() - startedAt > BUDGET_MS) { this.isSegmentitWarming = false; return; }
+      const lib = (typeof window !== 'undefined' && window.Segmentit)
+        || (typeof globalThis !== 'undefined' && globalThis.Segmentit);
+      if (lib) {
+        /* ★ 词典构建：在空闲片里付掉，不再落在点击里 */
+        this._initSync();
+        if (this.segmentitInstance) { this.isSegmentitWarming = false; return; }
+      } else if (typeof window.__ensureSegLibs === 'function') {
+        window.__ensureSegLibs();         /* 脚本还没到：只催一次注入（幂等），下一轮再看 */
+      }
+      later(step);
+    };
+    const start = () => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(step, { timeout: 5000 });
+      else setTimeout(step, 1500);
+    };
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start, { once: true });
   }
 
   /**
@@ -52,6 +117,13 @@ export class WordSegmenter {
    * @private
    */
   _initSync() {
+    /* 首次真正要分词时才按需拉取 vendor 库（index.html 的延迟加载器同时也在 load 后
+       空闲预热，所以这里只是把「用户一上来就进 PV」这种情况提前几秒触发）。
+       库还没到时不阻塞：本轮走 Intl.Segmenter 兜底，库落地后下一次分词自动切回真分词。 */
+    if (typeof window !== 'undefined' && typeof window.__ensureSegLibs === 'function'
+        && !(window.Segmentit && window.kuromoji)) {
+      window.__ensureSegLibs();
+    }
     try {
       const segLib = (typeof window !== 'undefined' && window.Segmentit) 
         ? window.Segmentit 
@@ -67,20 +139,34 @@ export class WordSegmenter {
           logInfo('WordSegmenter', '[WordSegmenter] Segmentit 中文分词器全局就绪');
         }
       }
-    } catch (e) {}
+    } catch (e) { logCatch('WordSegmenter', e); }
 
+    /* ★ 日文 kuromoji 不在这里拉起：它的词典是 17MB 的 .dat.gz，而本方法会被
+       _segmentChinese 调用——等于「播一首中文歌进 PV」就要下载并解析全部日文词典。
+       改为 _segmentJapanese 里按需触发（见 _ensureJapaneseEngine），
+       词典到位前日文走 intlJa → 正则 两级兜底，语种分派本来就在调用方，不会误判。 */
+  }
+
+  /**
+   * 按需拉起日文分词引擎（kuromoji.js + 17MB 词典）。fire-and-forget：
+   * 本轮仍用兜底分词，词典就绪后下一次分词自动升级。
+   * @private
+   */
+  _ensureJapaneseEngine() {
+    if (this.isKuromojiLoading || this.isKuromojiReady) return;
+    if (typeof window !== 'undefined' && typeof window.__ensureSegLibs === 'function') {
+      window.__ensureSegLibs('ja');   /* vendor 脚本本身也是这时候才注入 */
+    }
     try {
-      const kuromojiLib = (typeof window !== 'undefined' && window.kuromoji) 
-        ? window.kuromoji 
-        : ((typeof globalThis !== 'undefined' && globalThis.kuromoji) 
-          ? globalThis.kuromoji 
+      const kuromojiLib = (typeof window !== 'undefined' && window.kuromoji)
+        ? window.kuromoji
+        : ((typeof globalThis !== 'undefined' && globalThis.kuromoji)
+          ? globalThis.kuromoji
           : nodeKuromojiLib);
-
-      if (kuromojiLib && !this.isKuromojiLoading && !this.isKuromojiReady) {
-        this._buildKuromoji(kuromojiLib);
-      }
+      if (kuromojiLib) this._buildKuromoji(kuromojiLib);
     } catch (e) {
       this.isKuromojiLoading = false;
+      logCatch('WordSegmenter', e);
     }
   }
 
@@ -147,7 +233,7 @@ export class WordSegmenter {
           const { Segment, useDefault } = segPkg.default || segPkg;
           this.segmentitInstance = useDefault(new Segment());
         }
-      } catch (e) {}
+      } catch (e) { logCatch('WordSegmenter', e); }
     }
 
     if (!this.kuromojiTokenizer && !this.isKuromojiLoading && !this.isKuromojiReady) {
@@ -324,6 +410,8 @@ export class WordSegmenter {
    * @private
    */
   _segmentJapanese(text, maxChunk = 9) {
+    /* 只有真的遇到日文歌词才去拉 kuromoji + 17MB 词典；本轮未就绪则往下走兜底分词 */
+    if (!this.kuromojiTokenizer) this._ensureJapaneseEngine();
     if (this.kuromojiTokenizer) {
       try {
         const tokens = this.kuromojiTokenizer.tokenize(text);
@@ -353,7 +441,7 @@ export class WordSegmenter {
         }
         if (buf) result.push(buf);
         if (result.length > 0) return result;
-      } catch (e) {}
+      } catch (e) { logCatch('WordSegmenter', e); }
     }
 
     // 降级使用 Intl.Segmenter (同样粗粒度聚合)
@@ -403,7 +491,7 @@ export class WordSegmenter {
           }
           if (words.length > 0) return words;
         }
-      } catch (e) {}
+      } catch (e) { logCatch('WordSegmenter', e); }
     }
 
     // 降级使用 Intl.Segmenter
@@ -436,7 +524,7 @@ export class WordSegmenter {
   graphemeSplit(text = '') {
     if (!text) return [];
     if (this.intlGrapheme) {
-      try { return Array.from(this.intlGrapheme.segment(text), s => s.segment); } catch (_e) {}
+      try { return Array.from(this.intlGrapheme.segment(text), s => s.segment); } catch (_e) { logCatch('WordSegmenter', _e); }
     }
     return Array.from(text);
   }

@@ -51,4 +51,15 @@ import './240-titlebar.js';
 import './250-desktop-lyrics.js';
 import './258-rankings.js';
 import './259-selfhost-favorites.js';
+import './275-play-source.js';
+import './280-sleep-timer.js';
+import './281-osd.js';
+import './282-zen-mode.js';  /* 专注模式（只留歌词）：is-zen 叠加层 + 自挂载设置组 */
+import './283-readability.js';
+import './284-diagnostics.js';  /* 应用内诊断页（todos #21） */
+import './285-bilingual-cycle.js';  /* 双语排版一键循环（todos #4） */
+import './286-tempo-boost.js';  /* 长按临时加速（todos #13） */
+import './287-bg-throttle.js';  /* 窗口不可见时自动轻量（todos #18） */
+import './289-next-up.js';  /* 下一首预告 + 一键否决（todos #5）：自挂载浮层 + 自挂载设置组 */
+import './291-phone-remote.js';  /* 手机遥控器总线（todos #17）：主窗 → /api/remote 推状态 + 取指令 */
 import './999-global-audit.js';

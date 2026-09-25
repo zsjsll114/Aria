@@ -1,0 +1,244 @@
+/* ============================================================
+ * vfx-recipe.css — 视觉配方面板（app/290-vfx-recipe.js）
+ *
+ * 弹层根节点复用 .search-overlay：i18n observer 的 UI 根之一，显隐由 .visible 控制，
+ * 于是 motion.css 里那段「opacity + visibility 退场」的浮层纪律自动生效（AGENTS 约束 15），
+ * 本文件因此**不写任何过渡/缓动**——只补布局。
+ *
+ * ★ 毛玻璃一律照「搜索页」那套参数（AGENTS 约束 16）：
+ *   rgba(255,255,255,.12) + saturate(2) blur(40px) + 1px 白描边 + 24px 圆角 + 内外双阴影。
+ *   同时补 html#ariaRoot 的实色退化规则（约束 12：模糊的代价在合成器软件光栅化，
+ *   无显卡设备必须退掉；降级选择器不带 #ariaRoot 锚点会被组件里的 !important 顶掉）。
+ * ============================================================ */
+
+.vfx-recipe-modal {
+    width: min(660px, 92vw);
+    max-height: min(82vh, 760px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: saturate(2) blur(40px);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    color: #fff;
+    padding: 14px 18px 18px;
+}
+
+.vr-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    flex: 0 0 auto;
+}
+.vr-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.vr-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+.vr-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+.vr-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.vr-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.vr-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    font-variant-numeric: tabular-nums;
+}
+
+.vr-list-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vr-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+}
+.vr-row:hover { background: rgba(255, 255, 255, 0.09); }
+.vr-row-main { min-width: 0; flex: 1 1 auto; }
+.vr-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.94);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vr-meta {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.45);
+    font-variant-numeric: tabular-nums;
+}
+.vr-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.vr-row-actions .setting-btn { padding: 5px 10px; font-size: 11.5px; }
+.vr-danger:hover { background: rgba(255, 82, 82, 0.24) !important; color: #fff !important; }
+
+.vr-tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: var(--theme-color, #ffcc33);
+    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
+    border: 1px solid rgba(var(--theme-color-rgb, 255, 204, 51), 0.36);
+}
+
+.vr-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vr-block-title { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.88); }
+
+.vr-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 11px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    font-size: 12.5px;
+    font-family: inherit;
+    outline: none;
+}
+.vr-input:focus { border-color: var(--theme-color, #ffcc33); }
+.vr-input::placeholder { color: rgba(255, 255, 255, 0.32); }
+.vr-textarea {
+    min-height: 74px;
+    resize: vertical;
+    /* 分享码是一长串无空格字符：不强制换行就得横向滚，看着像被截断了 */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11.5px;
+}
+
+.vr-result {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 82, 82, 0.34);
+    background: rgba(255, 82, 82, 0.1);
+}
+.vr-result .setting-label { font-size: 12.5px; font-weight: 700; }
+.vr-result-bad { color: rgba(255, 255, 255, 0.92); }
+
+.vr-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.vr-li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.55;
+}
+.vr-li-key {
+    flex: 0 0 auto;
+    min-width: 96px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11.5px;
+    color: var(--theme-color, #ffcc33);
+}
+.vr-li .setting-desc { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+
+.vr-details {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.vr-details summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.68);
+    list-style-position: inside;
+}
+.vr-details summary:hover { color: #fff; }
+.vr-details .vr-block-title,
+.vr-details .vr-list,
+.vr-details .vr-note { margin-left: 4px; }
+.vr-details .vr-block-title { margin-top: 10px; }
+.vr-note {
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.46);
+}
+
+/* ---- 无显卡 / 低配档：退成实色、去阴影（必须锚 html#ariaRoot，AGENTS 约束 12） ---- */
+html#ariaRoot.is-software-renderer .vfx-recipe-modal,
+html#ariaRoot body.perf-low .vfx-recipe-modal,
+html#ariaRoot body.perf-minimal .vfx-recipe-modal {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(20, 22, 30, 0.98) !important;
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* ---- 窄屏 / 触控：动作按钮换行成整宽，命中区放大到 44px+ ---- */
+@media (max-width: 700px) {
+    .vfx-recipe-modal { width: 100%; max-height: 88vh; padding: 12px 14px 14px; }
+    .vr-row { flex-direction: column; align-items: stretch; }
+    .vr-row-actions { justify-content: flex-start; }
+    .vr-li { flex-direction: column; gap: 1px; }
+    .vr-li-key { min-width: 0; }
+}
+@media (pointer: coarse) {
+    .vr-row-actions .setting-btn, .vr-toolbar .setting-btn { min-height: 44px; }
+    .vr-close { padding: 8px; }
+}

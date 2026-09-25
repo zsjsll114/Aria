@@ -5,6 +5,8 @@
  * 切换函数，含各节副作用）。阶段 2（卡片化）/阶段 3（搜索）复用同一份数据。
  */
 
+import { esc } from '../utils/formatters.js';
+
 export const SETTINGS_NAV = [
   { group: '外观', groupEn: 'Appearance', items: [
     { tab: 'appearance', label: '视觉模式', labelEn: 'Visual Modes' },
@@ -56,8 +58,8 @@ export function renderSettingsNav(container) {
         <div class="settings-nav-group">
           <div class="settings-nav-group-title">${en ? (g.groupEn || g.group) : g.group}</div>
           ${g.items.map((it, i) => `
-            <button class="settings-tab${g === SETTINGS_NAV[0] && i === 0 ? ' active' : ''}" data-tab="${it.tab}" title="${en ? (it.labelEn || it.label) : it.label}">
-              <span>${en ? (it.labelEn || it.label) : it.label}</span>
+            <button class="settings-tab${g === SETTINGS_NAV[0] && i === 0 ? ' active' : ''}" data-tab="${it.tab}" title="${esc(en ? (it.labelEn || it.label) : it.label)}">
+              <span>${esc(en ? (it.labelEn || it.label) : it.label)}</span>
             </button>`).join('')}
         </div>`).join('')}
     </div>`;

@@ -21,6 +21,10 @@ export function escapeHtml(str) {
         .replace(/\r/g, '&#13;');
 }
 
+/* 模板插值用的短名：HTML 文本/属性值一律走 esc()（aria/no-unescaped-html 认它）。
+   与 escapeHtml 同一实现，别在分片里再写本地副本。 */
+export const esc = escapeHtml;
+
 export function processTextForLatin(text) {
     if (!text) return '';
     const latinRegex = /([a-zA-Z0-9\s\p{P}\p{S}]+)/gu;

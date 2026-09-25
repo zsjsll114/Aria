@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" id="ariaRoot">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -19,15 +19,46 @@
       } catch (e) { /* 非桌面环境忽略 */ }
     </script>
     <!-- 专业 NLP 歌词分词引擎: segmentit (中文) + kuromoji.js (日文)
-         ★ async 非阻塞: 不参与 DOMContentLoaded 等待。defer 会让 DOMContentLoaded
-           等外部脚本执行完——脚本慢时 page_loaded 信标延迟，Rust 端超时重试导航。
-           async 完全脱离主时序，加载完成后仍注册全局 window.Segmentit / window.kuromoji，
-           WordSegmenter 内部做了懒初始化与降级，晚到不影响功能
+         ★ 延迟 + 按语种分档注入：原先是两条无条件 <script async>，一旦 window.kuromoji
+           就位，WordSegmenter 的模块级单例就会在启动瞬间拉起 17MB 日文词典——播中文歌
+           也要付这个代价（实测启动期 121 个 JS 请求 / 6.5MB JS / DOMContentLoaded 936ms）。
+           现在：中文 segmentit 在 load 后空闲预热；日文 kuromoji 连脚本带词典都要等
+           真的出现日文歌词才由 WordSegmenter.__ensureSegLibs('ja') 触发。
+           保持 async 语义（不阻塞 DOMContentLoaded、不影响 page_loaded 信标与 Rust 端
+           超时重试），只是把时机挪后。
+         ★ 晚到不影响功能：未就绪期间走 Intl.Segmenter 兜底（日文还有正则一级），
+           库落地后下一次分词自动升级，不改变任何输出路径。
          ★ 同源托管（web/src/vendor/）: 原先是 jsdelivr CDN，离线/墙内/绿色版场景会
            静默 404 → 分词退化为逐字，PV 的中文词组切分随之失效。改为同源后无网络也能用。
            文件来自 packages：segmentit/dist/umd/segmentit.js、kuromoji/build/kuromoji.js -->
-    <script async src="src/vendor/segmentit/segmentit.js"></script>
-    <script async src="src/vendor/kuromoji/kuromoji.js"></script>
+    <script>
+    (function () {
+      /* 按语种分档：中文 segmentit 空闲预热（绝大多数歌词要用），
+         日文 kuromoji 只在真的遇到日文歌词时由 WordSegmenter 按需拉（它带 17MB 词典） */
+      var SEG_LIB_BY_SCOPE = { zh: 'src/vendor/segmentit/segmentit.js', ja: 'src/vendor/kuromoji/kuromoji.js' };
+      var requested = {};
+      function inject(which) {
+        var key = which === 'ja' ? 'ja' : 'zh';
+        if (requested[key]) return;
+        requested[key] = true;
+        var s = document.createElement('script');
+        s.async = true;              /* 与原先的 <script async> 语义一致：不参与 DOMContentLoaded */
+        s.src = SEG_LIB_BY_SCOPE[key];
+        document.head.appendChild(s);
+      }
+      /* 空闲预热只热中文那一档；不支持 requestIdleCallback 时用短延时兜底 */
+      function warm() {
+        if ('requestIdleCallback' in window) requestIdleCallback(function () { inject('zh'); }, { timeout: 5000 });
+        else setTimeout(function () { inject('zh'); }, 1500);
+      }
+      if (document.readyState === 'complete') warm();
+      else window.addEventListener('load', warm, { once: true });
+      /* 供 JS 侧按需提前触发（'zh' | 'ja'），不等空闲也不等 load */
+      window.__ensureSegLibs = inject;
+    })();
+    </script>
+    <!-- 动效令牌 + 浮层进出机制：必须在其它样式之前，后续文件才能引用 var(--e-*/--d-*) -->
+    <link rel="stylesheet" href="src/styles/motion.css">
     <link rel="stylesheet" href="src/styles/base.css">
     <link rel="stylesheet" href="src/styles/ai.css">
     <link rel="stylesheet" href="src/styles/menus.css">
@@ -48,6 +79,12 @@
     <link rel="stylesheet" href="src/styles/responsive.css">
     <link rel="stylesheet" href="src/styles/touch.css">
     <link rel="stylesheet" href="src/styles/rankings.css">
+    <link rel="stylesheet" href="src/styles/sleep-timer.css">
+    <link rel="stylesheet" href="src/styles/zen.css">
+    <link rel="stylesheet" href="src/styles/osd.css">
+    <link rel="stylesheet" href="src/styles/diagnostics.css">
+    <link rel="stylesheet" href="src/styles/readability.css">
+    <link rel="stylesheet" href="src/styles/next-up.css">
     <style>
     /* ★ 流光隧道修复：PV区域覆盖标题栏（栅格密度由 JS 按色块概率控制） */
     .tunnel-view-container {
@@ -271,6 +308,12 @@
                 </svg>
             </button>
 
+            <button class="icon-action-btn" id="sleepTimerBtn" data-tooltip="睡眠定时器" aria-label="睡眠定时器">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+                </svg>
+            </button>
+
             <!-- ④ 外观 / 系统 -->
             <button class="icon-action-btn" id="openViewModeBtn" data-tooltip="切换样式" aria-label="切换样式">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -343,7 +386,13 @@
                 <img class="bottom-song-cover" id="bottomSongCover" src="https://p2.music.126.net/8i-fh32MJD0mbOAAoiaCNw==/109951170729335255.jpg" alt="封面">
                 <div class="bottom-song-info">
                     <div class="bottom-song-title" id="bottomSongTitle">嘘つきは恋のはじまり</div>
-                    <div class="bottom-song-artist" id="bottomSongArtist">洛天依</div>
+                    <div class="bottom-song-meta-row">
+                        <div class="bottom-song-artist" id="bottomSongArtist">洛天依</div>
+                        <!-- 取链来源角标（todos #15）：主信息列在歌词/PV 等视图会整列隐藏，
+                             底栏是多数视图下仅剩的常显面，所以挂这里；详情另有无条件可达的「更多 → 取链详情」 -->
+                        <button class="play-source-badge" id="playSourceBadge" hidden
+                                data-tooltip="查看这首歌的取链来源与降级过程"></button>
+                    </div>
                 </div>
             </div>
 
@@ -452,6 +501,14 @@
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
                             <span>切换歌词来源</span>
                         </div>
+                        <div class="more-item" id="morePlaySourceItem">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path><path d="M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"></path></svg>
+                            <span>取链详情</span>
+                        </div>
+                        <div class="more-item" id="moreDiagnosticsItem">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"></path></svg>
+                            <span id="moreDiagnosticsLabel">应用诊断</span>
+                        </div>
                         <div class="more-item" id="moreSettingsItem">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             <span>设置</span>
@@ -480,7 +537,7 @@
                 </button>
             </div>
             <div class="view-mode-cards">
-                <div class="view-mode-card" data-mode="cover" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='cover')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='cover'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});var pc=document.querySelector('.player-container');if(pc){pc.classList.remove('view-letterpress','view-neon','view-tategaki','view-flyin','view-wordcloud','view-pv','view-tunnel','view-dimension','view-polyphony');pc.classList.add('view-cover');}if(window.switchAppearanceMode)window.switchAppearanceMode('cover');})();">
+                <div class="view-mode-card" data-mode="cover" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='cover')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='cover'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});var pc=document.querySelector('.player-container');if(pc){pc.classList.remove('view-letterpress','view-neon','view-tategaki','view-flyin','view-wordcloud','view-pv','view-tunnel','view-dimension');pc.classList.add('view-cover');}if(window.switchAppearanceMode)window.switchAppearanceMode('cover');})();">
                     <div class="view-mode-preview view-mode-preview-cover">
                         <div class="view-mode-mock-cover">
                             <div class="view-mode-mock-disc"></div>
@@ -1650,10 +1707,6 @@
                         <div><div class="setting-label">浮空粒子与阴影</div><div class="setting-desc">关闭后浮空点阵粒子减半且不绘制阴影</div></div>
                         <div class="setting-control"><button class="setting-toggle" id="vfxDimParticles"></button></div>
                     </div>
-                    <div class="setting-row">
-                        <div><div class="setting-label">和鸣情感词发光</div><div class="setting-desc">关闭后气泡中情感词不再文字发光</div></div>
-                        <div class="setting-control"><button class="setting-toggle" id="vfxPolyGlow"></button></div>
-                    </div>
                 </div>
                 <div class="settings-group">
                     <div class="settings-group-title" data-i18n="perf.hardware">硬件信息</div>
@@ -1957,6 +2010,50 @@
         </div>
     </div>
 
+    <!-- 取链详情弹窗（todos #15：这首歌到底走了哪个源 / 什么音质 / 降级了几级）
+         复用 .lyric-source-* 一套壳，只多一个日志列表样式 .ps-log -->
+    <div class="lyric-source-overlay" id="playSourceOverlay">
+        <div class="lyric-source-panel" style="width:560px;">
+            <div class="lyric-source-header">
+                <span class="lyric-source-title">取链详情</span>
+                <button class="lyric-source-close" id="playSourceCloseBtn" title="关闭">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="lyric-source-body" id="playSourceBody"></div>
+        </div>
+    </div>
+
+    <!-- 应用诊断页（todos #21）：一张截图定位低配设备问题。复用 .lyric-source-* 壳，
+         文案由 284-diagnostics.js 按当前语言重写，所以这里写中文即可。 -->
+    <div class="lyric-source-overlay" id="diagnosticsOverlay">
+        <div class="lyric-source-panel">
+            <div class="lyric-source-header">
+                <span class="lyric-source-title" id="diagTitle">应用诊断</span>
+                <div class="diag-head-actions">
+                    <button class="diag-btn" id="diagRefreshBtn" title="重新采集数据">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"></path><polyline points="21 3 21 9 15 9"></polyline></svg>
+                        <span id="diagRefreshLabel">刷新</span>
+                    </button>
+                    <button class="diag-btn diag-btn-primary" id="diagCopyBtn" title="复制为纯文本，便于粘贴到 issue">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span id="diagCopyLabel">复制诊断文本</span>
+                    </button>
+                    <button class="lyric-source-close" id="diagCloseBtn" title="关闭">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="lyric-source-body" id="diagBody"></div>
+        </div>
+    </div>
+
     <!-- 下载歌词弹窗（先选歌词来源，再选保存格式） -->
     <div class="lyric-source-overlay" id="lyricDownloadOverlay">
         <div class="lyric-source-panel lyric-download-panel">
@@ -1970,6 +2067,31 @@
                 </button>
             </div>
             <div class="lyric-source-body" id="lyricDownloadBody"></div>
+        </div>
+    </div>
+
+    <!-- 睡眠定时器弹层（逻辑 core/sleepTimer.js，渲染/绑定 280-sleep-timer.js） -->
+    <div class="search-overlay" id="sleepTimerOverlay">
+        <div class="sleep-timer-panel" role="dialog" aria-modal="true" aria-labelledby="sleepTimerTitleText">
+            <div class="st-header">
+                <span class="st-title" id="sleepTimerTitleText">睡眠定时器</span>
+                <button type="button" class="st-close" id="sleepTimerCloseBtn" title="关闭">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="st-status"><span id="sleepTimerStatus">未设置</span></div>
+            <div class="st-presets" id="sleepTimerPresets"></div>
+            <div class="st-custom">
+                <input type="number" class="st-custom-input" id="sleepTimerCustomInput" min="1" max="600" step="1" placeholder="自定义分钟数">
+                <button type="button" class="st-btn st-btn-ok" id="sleepTimerCustomBtn">启动</button>
+            </div>
+            <div class="st-foot">
+                <span class="st-fade-note">最后 1 分钟自动渐弱，到点暂停播放（队列保留）</span>
+                <button type="button" class="st-btn st-btn-cancel" id="sleepTimerCancelBtn" disabled>取消定时</button>
+            </div>
         </div>
     </div>
 
@@ -2100,6 +2222,16 @@
         </div>
     </div>
 
+
+    <!-- ★ 音量/进度/倍速屏幕浮层（281-osd.js 写文本，core/osd.js 管合并与计时） -->
+    <div class="aria-osd" id="ariaOsd" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true">
+        <div class="osd-card" data-osd-role="card">
+            <div class="osd-label" data-osd-role="label"></div>
+            <div class="osd-value" data-osd-role="value"></div>
+            <div class="osd-meter"><span class="osd-meter-fill" data-osd-role="fill"></span></div>
+            <div class="osd-sub" data-osd-role="sub"></div>
+        </div>
+    </div>
 
     <!-- 重构入口：分片版（原单文件 ./src/app.js 已删除，勿恢复） -->
     <script type="module" src="./src/app/index.js"></script>

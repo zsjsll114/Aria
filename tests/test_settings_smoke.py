@@ -41,6 +41,8 @@ with sync_playwright() as p:
     check("overlay-visible", page.evaluate("document.getElementById('settingsOverlay').classList.contains('visible')"))
 
     # —— 每个 tab 点击后仅对应 section 可见 ——
+    # .is-leaving 是要淡出的上一个分区：它绝对定位盖着、pointer-events:none、退场完就
+    # display:none，不算"可见分区"。这里必须排除它，否则交叉退场会被判成两个同显。
     ev = page.evaluate("""() => {
         const tabs = Array.from(document.querySelectorAll('#settingsTabs .settings-tab'))
             .map(t => t.dataset.tab);
@@ -48,7 +50,8 @@ with sync_playwright() as p:
         for (const name of tabs) {
             document.querySelector(`#settingsTabs .settings-tab[data-tab="${name}"]`).click();
             const visible = Array.from(document.querySelectorAll('#settingsBody .settings-section'))
-                .filter(s => s.style.display !== 'none' && s.style.display !== '')
+                .filter(s => s.style.display !== 'none' && s.style.display !== ''
+                          && !s.classList.contains('is-leaving'))
                 .map(s => s.dataset.section);
             result.perTab[name] = { visible, active: document.querySelector(`#settingsTabs .settings-tab.active`)?.dataset?.tab };
         }
@@ -59,6 +62,22 @@ with sync_playwright() as p:
     for name, st in ev["perTab"].items():
         is_ok = (st["visible"] == [name]) and (st["active"] == name)
         check(f"tab-{name}-solo-active", is_ok, f"visible={st['visible']} active={st['active']}")
+
+    # —— 连点 13 次后必须全部收干净：不能有分区卡在 is-leaving（会一直盖在当前分区上）——
+    page.wait_for_timeout(1500)
+    settle = page.evaluate("""() => {
+        const secs = Array.from(document.querySelectorAll('#settingsBody .settings-section'));
+        const isShown = (s) => { const d = getComputedStyle(s).display; return d !== 'none'; };
+        return {
+            stillLeaving: secs.filter(s => s.classList.contains('is-leaving')).map(s => s.dataset.section),
+            concealing: secs.filter(s => s.classList.contains('is-concealing')).map(s => s.dataset.section),
+            shown: secs.filter(isShown).map(s => s.dataset.section),
+            leftoverInline: secs.filter(s => s.style.getPropertyValue('--conceal-dur')).map(s => s.dataset.section),
+        };
+    }""")
+    check("crossfade-all-settled",
+          settle["shown"] == ["about"] and not settle["stillLeaving"] and not settle["concealing"],
+          f"{settle}")
 
     # —— initSettingsMisc 绑定已执行：滑块初值 + 开关状态与 appSettings 同步 ——
     misc = page.evaluate("""() => {

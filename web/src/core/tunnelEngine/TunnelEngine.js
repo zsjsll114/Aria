@@ -21,6 +21,7 @@ import { buildMosaicPatterns, applyPalette, MOSAIC_COLOR_SETS } from './mondrian
 import { TunnelCameraController } from './TunnelCameraTrack.js';
 import { TunnelDepthStack, TunnelParticle3DLayer } from './TunnelDepthStack.js';
 import { playEnterAnimation, playExitAnimation, playMaskTransition, playFlashOverlay, buildDecorationComboSVG } from './TunnelAnimations.js';
+import { logCatch } from '../../services/log.js';
 
 export class TunnelEngine {
   constructor(container) {
@@ -219,7 +220,7 @@ export class TunnelEngine {
         this._updateMosaicBackground({ sectionId: 0, groupId: 0, params: { alignment: this.currentAlignment || 'center' } });
         this._lastBgCacheKey = null;   // 放行第一句组更新覆盖默认 pattern
       }
-    } catch (_e) {}
+    } catch (_e) { logCatch('TunnelEngine', _e); }
 
     /* ★ 窗口尺寸变化 → 当前分镜按新视口重建（用户反馈：蒙德里安大字叠字，
        不随窗口变化调整字号/换行——字号缩放是入镜时按当时视口算的）。
@@ -528,7 +529,7 @@ export class TunnelEngine {
 
     // ★ 确定性渲染背景色块：新建句组时立即更新蒙德里安色块（不依赖 shot 切换时刻的 _applyShotShift），
     //   确保色块与歌词同步出现，避免“只有歌词没色块”的残缺状态。
-    try { if (firstShot) this._updateMosaicBackground(firstShot); } catch (_e) {}
+    try { if (firstShot) this._updateMosaicBackground(firstShot); } catch (_e) { logCatch('TunnelEngine', _e); }
 
     // ★ 和缓化：组的能量越低 → 过渡时长越长（--tunnel-slow>1）、运动幅度越小（--tunnel-slow-motion<1），顿挫感弱
     if (this.viewContainer) {

@@ -10,7 +10,8 @@ import { setSettingValue } from './190-settings-fontsize.js';
 import { applyFontFamily } from './210-color-multilang.js';
 import { resolveDtkFontFamily } from './250-desktop-lyrics.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
+import { esc } from '../utils/formatters.js';
 
 /* ========== 高级字体设置：按语言 Unicode 范围注入 @font-face ========== */
 /* MULTILANG_FAMILY、multilangFontFaces、advFontsGeneration 已提升至顶部 */
@@ -117,11 +118,7 @@ async function applyAdvancedFonts() {
                         .vis-dimension-stage *,
                         .dim-line,
                         .dim-char,
-                        .dim-word,
-                        .vis-polyphony-view,
-                        .vis-polyphony-view *,
-                        .vis-polyphony-words,
-                        .vis-polyphony-word {
+                        .dim-word {
                             font-family: var(--app-font-family) !important;
                         }
                         .preview-player,
@@ -260,11 +257,7 @@ async function applyAdvancedFonts() {
                 .vis-dimension-stage *,
                 .dim-line,
                 .dim-char,
-                .dim-word,
-                .vis-polyphony-view,
-                .vis-polyphony-view *,
-                .vis-polyphony-words,
-                .vis-polyphony-word {
+                .dim-word {
                     font-family: ${headFF} !important;
                 }
                 .preview-player,
@@ -325,7 +318,7 @@ function buildAdvancedFontUI() {
                 const currentFont = (adv.fonts && adv.fonts[langCode]) || 'default';
                 html += `<div class="adv-font-row">
                     <div class="adv-font-info">
-                        <div class="adv-font-lang">${info.name}</div>
+                        <div class="adv-font-lang">${esc(info.name)}</div>
                         <div class="adv-font-preview" id="advFontPreview-${langCode}" style="font-family: ${getPreviewFontFamily(currentFont)} !important;">${info.preview}</div>
                     </div>
                     <div class="setting-dropdown" id="dropdown-advFont-${langCode}" data-lang="${langCode}"></div>
@@ -580,7 +573,7 @@ async function loadFontFace(key, family, buffer, label = '', descriptors = null)
                         const lFace = new FontFace(label, buffer);
                         await lFace.load();
                         document.fonts.add(lFace);
-                    } catch(e) {}
+                    } catch (e) { logCatch('multilangFonts', e); }
                 }
                 return true;
             } catch (e) {
@@ -623,7 +616,7 @@ async function saveCustomFont(file) {
                    （'custom_xxx', sans-serif ≠ 注册族名 CustomFont_custom_xxx）
                    → 自定义字体设置重启后丢失（用户反馈）。注册完成后重放一次。 */
                 if (typeof window !== 'undefined' && typeof window.__reapplyFontSettings === 'function') {
-                    try { window.__reapplyFontSettings(); } catch (e) {}
+                    try { window.__reapplyFontSettings(); } catch (e) { logCatch('multilangFonts', e); }
                 }
                 /* ★ 派发确定性就绪事件：document.fonts.ready 在自定义字体开始加载
                    之前就可能已 resolve（之后的新加载不会重新触发它），依赖它做
@@ -632,7 +625,7 @@ async function saveCustomFont(file) {
                 try {
                     window.__ariaFontsReady = true;
                     window.dispatchEvent(new CustomEvent('aria-custom-fonts-ready'));
-                } catch (e) {}
+                } catch (e) { logCatch('multilangFonts', e); }
                 renderFontManagerUI();
                 showSettingsHint(`已导入并保存字体：${label}`);
                 return fontKey;
@@ -688,7 +681,7 @@ async function deleteCustomFont(fontKey) {
                    （'custom_xxx', sans-serif ≠ 注册族名 CustomFont_custom_xxx）
                    → 自定义字体设置重启后丢失（用户反馈）。注册完成后重放一次。 */
                 if (typeof window !== 'undefined' && typeof window.__reapplyFontSettings === 'function') {
-                    try { window.__reapplyFontSettings(); } catch (e) {}
+                    try { window.__reapplyFontSettings(); } catch (e) { logCatch('multilangFonts', e); }
                 }
                 /* ★ 派发确定性就绪事件：document.fonts.ready 在自定义字体开始加载
                    之前就可能已 resolve（之后的新加载不会重新触发它），依赖它做
@@ -697,7 +690,7 @@ async function deleteCustomFont(fontKey) {
                 try {
                     window.__ariaFontsReady = true;
                     window.dispatchEvent(new CustomEvent('aria-custom-fonts-ready'));
-                } catch (e) {}
+                } catch (e) { logCatch('multilangFonts', e); }
                 renderFontManagerUI();
                 showSettingsHint(`已删除字体：${cf.label}`);
             } catch (e) {
@@ -755,8 +748,8 @@ function renderFontManagerUI() {
                 return `
                     <div class="font-card" data-font-key="${cf.key}">
                         <div class="font-card-header">
-                            <div class="font-card-title" title="${cf.label}">
-                                <span>${cf.label}</span>
+                            <div class="font-card-title" title="${esc(cf.label)}">
+                                <span>${esc(cf.label)}</span>
                                 <span class="font-card-badge">${ext}</span>
                             </div>
                             ${sizeStr ? `<span class="font-card-size">${sizeStr}</span>` : ''}
@@ -778,7 +771,7 @@ function renderFontManagerUI() {
                 html += `
                     <div class="font-cat${isCollapsed ? ' collapsed' : ''}" data-cat="${cat}">
                         <div class="font-cat-header" data-cat="${cat}">
-                            <span class="font-cat-tag">${meta.label}</span>
+                            <span class="font-cat-tag">${esc(meta.label)}</span>
                             <span class="font-cat-count">${entries.length}</span>
                             <svg class="font-cat-arrow${isCollapsed ? ' collapsed' : ''}" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                         </div>
@@ -802,7 +795,7 @@ function renderFontManagerUI() {
                     catEl.classList.toggle('collapsed', nowCollapsed);
                     if (arrow) arrow.classList.toggle('collapsed', nowCollapsed);
                     collapsed[cat] = nowCollapsed;
-                    try { localStorage.setItem('aria_fontcat_collapsed', JSON.stringify(collapsed)); } catch (e) {}
+                    try { localStorage.setItem('aria_fontcat_collapsed', JSON.stringify(collapsed)); } catch (e) { logCatch('multilangFonts', e); }
                 });
             });
 
@@ -1064,7 +1057,7 @@ async function initCustomFonts() {
                                 try {
                                     const resp = await fetch(bf.url);
                                     if (resp.ok) buffer = await resp.arrayBuffer();
-                                } catch(e) {}
+                                } catch (e) { logCatch('multilangFonts', e); }
                             }
                             if (buffer) {
                                 const fontKey = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -1099,7 +1092,7 @@ async function initCustomFonts() {
                    （'custom_xxx', sans-serif ≠ 注册族名 CustomFont_custom_xxx）
                    → 自定义字体设置重启后丢失（用户反馈）。注册完成后重放一次。 */
                 if (typeof window !== 'undefined' && typeof window.__reapplyFontSettings === 'function') {
-                    try { window.__reapplyFontSettings(); } catch (e) {}
+                    try { window.__reapplyFontSettings(); } catch (e) { logCatch('multilangFonts', e); }
                 }
                 /* ★ 派发确定性就绪事件：document.fonts.ready 在自定义字体开始加载
                    之前就可能已 resolve（之后的新加载不会重新触发它），依赖它做
@@ -1108,7 +1101,7 @@ async function initCustomFonts() {
                 try {
                     window.__ariaFontsReady = true;
                     window.dispatchEvent(new CustomEvent('aria-custom-fonts-ready'));
-                } catch (e) {}
+                } catch (e) { logCatch('multilangFonts', e); }
                 renderFontManagerUI();
                 initFontUploadBindings();
 

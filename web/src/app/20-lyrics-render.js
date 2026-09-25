@@ -12,6 +12,7 @@ import { playerContainer } from './40-playback-state.js';
 import { layoutWordCloud } from './56-playback-misc.js';
 import { updateWordcloudCamera } from './57-wordcloud-camera.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
+import { ensureWordTiming } from '../parsers/wordTiming.js'; // 行级歌词 → 逐字时间补全
 
 /* 全景视觉模式调度器 */
 if (typeof window !== 'undefined') { window.currentViewMode = 'cover'; }
@@ -226,6 +227,16 @@ function buildWordsInto(wordsContainer, line, lineIndex, opts) {
 }
 
 function renderLyrics(lyrics) {
+            /* ★ 逐字兜底：只有行级时间戳的歌词（普通 LRC、多数外部源）按行时长摊平出
+               逐字时间，否则下面 `line.words.length` 分支不成立、整行一跳。
+               已有真实逐字会原样返回（不覆盖平台给的精确节拍）；合成行带
+               wordTiming='synthesized'，下载/标签/选源三处真值判定靠它区分假时间戳。
+               放在这个函数入口而不是各加载点：23 个 renderLyrics 调用点一次覆盖，
+               且 globalThis.lyrics 一起被补齐，桌面歌词/PV/词云/手机远端都受益。 */
+            lyrics = ensureWordTiming(lyrics, {
+                totalMs: (typeof audio !== 'undefined' && audio && Number.isFinite(audio.duration))
+                    ? Math.round(audio.duration * 1000) : 0
+            });
             /* ★ 当前歌词全局缓存：供"下载歌词"(90-eq.js)读取即时数据 */
             if (typeof window !== 'undefined') { Aria.__ariaLyrics = lyrics; }
             /* ★ 同步 globalThis.lyrics：形参 lyrics 会遮蔽全局名，

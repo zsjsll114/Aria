@@ -3,7 +3,7 @@
  * 来源区间: 原第 2145-2476 行 | 单元数: 21
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
-import { EQ_BANDS, EQ_LABELS, EQ_PRESETS, EQ_STORAGE_KEY } from '../config/constants.js';
+import { EQ_BANDS, EQ_LABELS, EQ_PRESETS } from '../config/constants.js';
 import { audio } from './20-lyrics-render.js';
 import { nextBtn, prevBtn } from './30-dom-refs.js';
 import { handleAudioPlayError } from './70-audio-engine.js';
@@ -13,218 +13,44 @@ import { nextTrack, prevTrack } from './95-track-loading.js';
 import { fetchLyricLinesFromSource, probeLyricSourcesAvailability, renderSourceBadges, switchLyricSource } from './170-lyric-sources.js';
 import { convertToEnhancedLrc, formatTimestamp } from '../services/enhancedLrcConverter.js';
 import { KRC_XOR_KEY } from '../services/krcParser.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logError } from '../services/log.js';
 import { setHint } from './120-search-results.js'; // 提示条唯一入口（90↔120 无环：120 不 import 90）
+import { escapeHtml as _escapeHtml } from '../utils/formatters.js';
+import { realWordsOf } from '../parsers/wordTiming.js'; // 下载歌词时区分真实逐字 / 兜底合成
+/* EQ 模型层。本分片把它原样 re-export（见文件末尾），所以 175/190/258 等消费方无需改动。 */
+import {
+    applyEqGains, applyEqPreset, cleanupEqAudioGraph, getCustomEqs, initEqAudioGraph,
+    initEqualizer, loadEqSettings, saveEqPreset, saveEqSettings, setEqBand,
+} from '../core/equalizer.js';
 
 /* 是否因跨域失败，避免重复尝试 */
-/* 关闭并清理旧的 Web Audio 上下文，防止内存泄漏 */
-function cleanupEqAudioGraph() {
-            if (eqFilterNodes.length > 0) {
-                eqFilterNodes.forEach(node => {
-                    try { node.disconnect(); } catch (e) {}
-                });
-                eqFilterNodes = [];
-            }
-            if (eqSourceNode) {
-                try { eqSourceNode.disconnect(); } catch (e) {}
-                eqSourceNode = null;
-            }
-            if (audioCtx) {
-                try { audioCtx.close(); } catch (e) {}
-                audioCtx = null;
-            }
-            eqInited = false;
-        }
+/* EQ 的音频图 / 增益状态 / 持久化已迁到 core/equalizer.js（core 层接管第 4 个模块，2026-09-25）。
+   逻辑逐行照搬自本分片，行为不变——包括用户自定义预设（getCustomEqs）与输出链上的
+   响度归一化压缩器，旧快照这两块都缺，所以是重新抽取而不是接线。
+   本分片只保留 DOM：频段滑块、预设按钮、面板开合、分享码 UI。
 
-/* 懒初始化 Web Audio 图：source → filter[0..9] → destination
-           跨域音频需先设置 crossOrigin 并重新加载测试，失败则回退 */
-async function initEqAudioGraph() {
-            if (eqInited) return true;
-            if (eqInitFailed) return false;
+   三个刷新回调对应活实现里三种不同的重渲染范围，别合并：拖频段时只刷新数值文本与
+   预设高亮，绝不重建滑块，否则拖拽会被自己的重渲染打断。 */
+initEqualizer({
+    audio,
+    onPlayError: () => handleAudioPlayError(),
+    onChanged: () => buildEqPresets(),
+    onPresetApplied: () => { buildEqBands(); buildEqPresets(); },
+    onBandChanged: (idx) => {
+        const valEl = typeof document !== 'undefined' ? document.getElementById('eq-val-' + idx) : null;
+        if (valEl) valEl.textContent = (eqGains[idx] > 0 ? '+' : '') + eqGains[idx];
+    },
+});
 
-            const AC = window.AudioContext || window.webkitAudioContext;
-            if (!AC) { logWarn('eq', '不支持 Web Audio API'); return false; }
-
-            const currentSrc = audio.src;
-            if (!currentSrc) return false;
-
-            const savedTime = audio.currentTime;
-            const wasPlaying = !audio.paused;
-            const isBlob = currentSrc.startsWith('blob:');
-
-            /* 跨域音频需要 crossOrigin='anonymous' 才能通过 Web Audio 输出
-               先重新加载测试，失败则回退 */
-            if (!isBlob) {
-                audio.crossOrigin = 'anonymous';
-                const reloadOk = await new Promise(resolve => {
-                    const onCanPlay = () => {
-                        audio.removeEventListener('canplay', onCanPlay);
-                        audio.removeEventListener('error', onError);
-                        resolve(true);
-                    };
-                    const onError = () => {
-                        audio.removeEventListener('canplay', onCanPlay);
-                        audio.removeEventListener('error', onError);
-                        resolve(false);
-                    };
-                    audio?.addEventListener('canplay', onCanPlay);
-                    audio?.addEventListener('error', onError);
-                    audio.src = currentSrc;
-                    audio.load();
-                    setTimeout(() => resolve(false), 4000);
-                });
-
-                if (!reloadOk) {
-                    /* CORS 不支持，回退：移除 crossOrigin，重新加载 */
-                    audio.crossOrigin = null;
-                    await new Promise(resolve => {
-                        const onRestore = () => {
-                            audio.removeEventListener('canplay', onRestore);
-                            resolve();
-                        };
-                        audio?.addEventListener('canplay', onRestore);
-                        audio.src = currentSrc;
-                        audio.load();
-                        setTimeout(resolve, 3000);
-                    });
-                    audio.currentTime = savedTime;
-                    if (wasPlaying) audio.play().catch(() => handleAudioPlayError());
-                    eqInitFailed = true;
-                    return false;
-                }
-            }
-
-            try {
-                audioCtx = new AC();
-                eqSourceNode = audioCtx.createMediaElementSource(audio);
-                eqFilterNodes = EQ_BANDS.map((freq, i) => {
-                    const f = audioCtx.createBiquadFilter();
-                    if (i === 0) f.type = 'lowshelf';
-                    else if (i === EQ_BANDS.length - 1) f.type = 'highshelf';
-                    else f.type = 'peaking';
-                    f.frequency.value = freq;
-                    f.Q.value = 1.0;
-                    f.gain.value = eqGains[i];
-                    return f;
-                });
-                /* 串联 */
-                let node = eqSourceNode;
-                for (const f of eqFilterNodes) {
-                    node.connect(f);
-                    node = f;
-                }
-                /* ★ 响度归一化：EQ 输出前插一个温和的 DynamicsCompressor，
-                   压低过响峰值、抬升总体响度，使不同歌曲（尤其不同音源）听感更一致 */
-                try {
-                    window.playerLoudnessComp = audioCtx.createDynamicsCompressor();
-                    window.playerLoudnessComp.threshold.value = -22;
-                    window.playerLoudnessComp.knee.value = 8;
-                    window.playerLoudnessComp.ratio.value = 3.2;
-                    window.playerLoudnessComp.attack.value = 0.008;
-                    window.playerLoudnessComp.release.value = 0.18;
-                    node.connect(window.playerLoudnessComp);
-                    node = window.playerLoudnessComp;
-                } catch (ce) { /* 不支持则跳过 */ }
-                node.connect(audioCtx.destination);
-                try {
-                    window.playerAudioAnalyser = audioCtx.createAnalyser();
-                    window.playerAudioAnalyser.fftSize = 128;
-                    window.playerAudioAnalyser.smoothingTimeConstant = 0.8;
-                    node.connect(window.playerAudioAnalyser);
-                } catch (ae) {}
-                eqInited = true;
-
-                if (audioCtx.state === 'suspended') {
-                    await audioCtx.resume();
-                }
-
-                /* 恢复播放状态 */
-                audio.currentTime = savedTime;
-                if (wasPlaying) audio.play().catch(() => handleAudioPlayError());
-
-                return true;
-            } catch (err) {
-                logError('eq', '初始化均衡器失败:', err);
-                eqInitFailed = true;
-                return false;
-            }
-        }
-
-/* 应用增益值到滤波器节点 */
-function applyEqGains(gains) {
-            eqGains = gains.slice();
-            if (eqInited) {
-                gains.forEach((g, i) => {
-                    if (eqFilterNodes[i]) {
-                        eqFilterNodes[i].gain.setValueAtTime(g, audioCtx.currentTime);
-                    }
-                });
-            }
-            saveEqSettings();
-        }
-
-/* 保存 / 加载设置 */
-function saveEqSettings() {
-            try {
-                localStorage.setItem(EQ_STORAGE_KEY, JSON.stringify({
-                    gains: eqGains,
-                    preset: eqActivePreset
-                }));
-            } catch (e) {}
-        }
-
-function loadEqSettings() {
-            try {
-                const raw = localStorage.getItem(EQ_STORAGE_KEY);
-                if (!raw) return;
-                const data = JSON.parse(raw);
-                if (Array.isArray(data.gains) && data.gains.length === 10) {
-                    eqGains = data.gains;
-                    eqActivePreset = data.preset || '自定义';
-                }
-            } catch (e) {}
-        }
-
+/* 启动时读回上次增益 */
 loadEqSettings();
 
-/* 应用预设（支持内置 EQ_PRESETS + 用户自定义预设） */
-function getCustomEqs() {
-            try { return JSON.parse(localStorage.getItem('aria_eq_custom') || '{}'); } catch (e) { return {}; }
-        }
-window.saveEqPreset = function (name) {
-            if (!name) return;
-            const customs = getCustomEqs();
-            customs[name] = { gains: (eqGains || []).slice(), preset: eqActivePreset || '自定义' };
-            try { localStorage.setItem('aria_eq_custom', JSON.stringify(customs)); } catch (e) {}
-            eqActivePreset = name;
-            saveEqSettings();
-            buildEqPresets();
-            if (typeof setHint === 'function') setHint('已保存预设：' + name);
-        };
+/* 预设保存入口（设置面板与 HTML onclick 都用这个名字） */
+window.saveEqPreset = (name) => saveEqPreset(name);
 
-function applyEqPreset(name) {
-            const preset = EQ_PRESETS[name] || getCustomEqs()[name];
-            if (!preset) return;
-            eqActivePreset = name;
-            applyEqGains(Array.isArray(preset) ? preset : (preset.gains || []));
-            /* 刷新面板 UI */
-            buildEqBands();
-            buildEqPresets();
-        }
-
-/* 单个频段改变 */
+/* 单个频段改变：状态与持久化在 core，这里只负责它不重建滑块的那部分刷新 */
 function onEqBandChange(idx, val) {
-            eqGains[idx] = parseInt(val);
-            eqActivePreset = '自定义';
-            if (eqInited && eqFilterNodes[idx]) {
-                eqFilterNodes[idx].gain.setValueAtTime(eqGains[idx], audioCtx.currentTime);
-            }
-            saveEqSettings();
-            /* 更新值显示 */
-            const valEl = typeof document !== 'undefined' ? document.getElementById('eq-val-' + idx) : null;
-            if (valEl) valEl.textContent = (eqGains[idx] > 0 ? '+' : '') + eqGains[idx];
-            /* 更新预设高亮 */
-            buildEqPresets();
+            setEqBand(idx, val);
         }
 
 /* 渲染频段滑块 */
@@ -253,7 +79,7 @@ function buildEqPresets() {
             const names = [...Object.keys(EQ_PRESETS), ...Object.keys(customs)];
             container.innerHTML = names.map(name => {
                 const active = name === eqActivePreset ? ' active' : '';
-                return `<button class="eq-preset${active}" data-preset="${name}">${name}</button>`;
+                return `<button class="eq-preset${active}" data-preset="${_escapeHtml(name)}">${_escapeHtml(name)}</button>`;
             }).join('');
             container.querySelectorAll('.eq-preset').forEach(btn => {
                 btn?.addEventListener('click', () => {
@@ -535,12 +361,6 @@ function closeLyricDownloadModal() {
     window._lyricDlData = null;
 }
 
-function _escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-        return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;';
-    });
-}
-
 function _sanitizeFileName(s) {
             return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || '歌词';
         }
@@ -579,7 +399,7 @@ function _krcText(lines) {
                 const start = line.start !== undefined ? line.start : (line.time || 0);
                 const end = line.end !== undefined ? line.end : (start + 3500);
                 const dur = Math.max(1, Math.round(end - start));
-                const words = Array.isArray(line.words) && line.words.length ? line.words : null;
+                const words = realWordsOf(line);
                 if (words) {
                     let s = `[${Math.round(start)},${dur}]`;
                     for (const w of words) {
@@ -706,4 +526,6 @@ nextBtn?.addEventListener('click', () => {
     });
 })();
 
-export { applyEqGains, applyEqPreset, buildEqBands, buildEqPresets, buildSpeedSubmenu, cleanupEqAudioGraph, closeLyricDownloadModal, hideEqPanel, initEqAudioGraph, loadEqSettings, moreBtn, onEqBandChange, openEqPanel, openLyricDownloadModal, openMoreMenu, saveEqSettings };
+/* _krcText 一并导出：它是纯函数，且「合成逐字不得写进下载文件」这条正确性
+   只有它能被单测覆盖到（走完整下载弹窗要网络 + 模态，测不动）。 */
+export { applyEqGains, applyEqPreset, buildEqBands, buildEqPresets, buildSpeedSubmenu, cleanupEqAudioGraph, closeLyricDownloadModal, hideEqPanel, initEqAudioGraph, loadEqSettings, moreBtn, onEqBandChange, openEqPanel, openLyricDownloadModal, openMoreMenu, saveEqSettings, _krcText };

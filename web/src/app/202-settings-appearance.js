@@ -13,7 +13,7 @@ import { saveCustomFont } from './215-multilang-fonts.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { aiCacheGetAll } from '../services/aiCache.js';
 import { DEFAULT_SETTINGS } from '../config/defaults.js'; // 模式设置默认值兜底
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 外观面板容器引用（原为 initSettingsPanel 内局部，重构提升到本模块共享） */
 let appearanceControlsEl = null;
@@ -149,7 +149,7 @@ function applyLyricSetting(name, value) {
                 /* ★ 外观板块渲染完成后补跑语言包（2026-09-22）：静态行/滑杆标签
                    按当前语言出英文，切 tab 或重开面板都会走到这里 */
                 try {
-                    import('../core/i18n.js').then(m => m.applyLanguageToDocument()).catch(() => {});
+                    import('../core/i18n.js').then(m => m.applyLanguageToDocument()).catch((e) => logCatch('settingsPanel', e));
                 } catch (err) { logWarn('settingsPanel', err); }
             }
 
