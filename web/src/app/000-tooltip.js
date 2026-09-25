@@ -205,8 +205,11 @@ import { saveSettings } from './180-boot-config.js';
       .aria-oobe-app-icon{
         width:34px;height:34px;display:flex;align-items:center;justify-content:center;
         border-radius:10px;
-        background:linear-gradient(135deg,var(--theme-color,#ffcc33) 0%,#ff5f57 100%);
-        color:#111;box-shadow:0 6px 18px color-mix(in srgb,var(--theme-color,#ffcc33) 35%,transparent);
+        /* ★ 纯色微透明底座（2026-09-25）：此前用主题色渐变底座，与彩色图标本体两层高饱和
+           背景互相打架，徽章底部（蓝色圆块+深青字干压在红色渐变上）糊成一团。
+           静音底座让图标成为唯一的彩色主体，与 OOBE 毛玻璃语言一致（同 base.css 标题栏按钮 rgba(255,255,255,.08)）。 */
+        background:rgba(255,255,255,.1);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 2px 10px rgba(0,0,0,.3);
       }
       .aria-oobe-app-name{font-size:16px;font-weight:800;color:#fff;letter-spacing:.4px}
       .aria-oobe-step-tag{
@@ -428,13 +431,13 @@ import { saveSettings } from './180-boot-config.js';
             { v: 'standard', t: '标准音质 (128kbps)', d: '轻量省流，弱网秒开' }
           ];
 
-          el.innerHTML = '<div style="margin-bottom:14px;font-size:12px;font-weight:600;color:rgba(255,255,255,.75)">默认播放音质</div>' +
+          el.innerHTML = '<div class="aria-oobe-label" style="margin-bottom:14px;font-size:12px;font-weight:600;color:rgba(255,255,255,.75)">默认播放音质</div>' +
             '<div class="aria-oobe-opt" style="gap:8px;margin-bottom:18px">' + qOpts.map(function (o) {
               return '<div class="aria-oobe-card-item' + (qualityPref === o.v ? ' sel' : '') + '" data-v="' + o.v + '" data-role="quality" style="padding:10px 14px">' +
                 '<div class="aria-oobe-radio"></div><div><div class="aria-oobe-title" style="font-size:13.5px">' + o.t + '</div>' +
                 '<div class="aria-oobe-desc" style="font-size:11.5px">' + o.d + '</div></div></div>';
             }).join('') + '</div>' +
-            '<div style="margin-bottom:10px;font-size:12px;font-weight:600;color:rgba(255,255,255,.75)">初始主题色</div>' +
+            '<div class="aria-oobe-label" style="margin-bottom:10px;font-size:12px;font-weight:600;color:rgba(255,255,255,.75)">初始主题色</div>' +
             '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' + colors.map(function (item) {
               var isSel = (themeColor === item.c);
               return '<div class="aria-oobe-colorchip" data-c="' + item.c + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid ' + (isSel ? item.c : 'rgba(255,255,255,.10)') + ';cursor:pointer;transition:all .2s">' +
@@ -557,6 +560,9 @@ import { saveSettings } from './180-boot-config.js';
       lastStep = step;
       T[step].render(body);
       renderDots();
+      /* ★ i18n（2026-09-25）：切步渲染的全是中文硬编码文案，等 observer 50ms 防抖
+         会闪一下中文——同步触发 UI 弹层扫描（词表命中即翻，zh 模式内部直通无开销） */
+      try { if (typeof globalThis.AriaI18n !== 'undefined' && typeof globalThis.AriaI18n.applyLanguageToUiRoots === 'function') globalThis.AriaI18n.applyLanguageToUiRoots(); } catch (e) { /* 静默 */ }
       if (card && h0 > 0 && typeof card.animate === 'function') {
         var h1 = card.offsetHeight;
         if (h1 !== h0) {

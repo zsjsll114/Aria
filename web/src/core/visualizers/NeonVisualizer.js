@@ -17,6 +17,7 @@
  */
 import { VisualizerBase } from './VisualizerBase.js';
 import { buildSceneGroups } from '../lyricSceneGrouper.js';
+import { logCatch } from '../../services/log.js';
 
 /* 段落 kind → 霓虹灯色板（段内同一色，段间按 gi 轮换）：
    chorus 高饱和暖色（粉/金/电光青），verse 冷色（青/蓝紫/薄荷），
@@ -482,8 +483,8 @@ export class NeonVisualizer extends VisualizerBase {
         } catch (_e) { /* 字体未就绪时量不到，下一行渲染会重来 */ }
       }
       if (changed) {
-        try { this.fitBody(slot, this._curGi != null ? this._curGi : null); } catch (_e) {}
-        try { this.fitGiant(slot); } catch (_e) {}
+        try { this.fitBody(slot, this._curGi != null ? this._curGi : null); } catch (_e) { logCatch('NeonVisualizer', _e); }
+        try { this.fitGiant(slot); } catch (_e) { logCatch('NeonVisualizer', _e); }
       }
     });
   }

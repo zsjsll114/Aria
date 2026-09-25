@@ -25,7 +25,7 @@ import { loadOnlineSong } from './175-track-index-online.js';
 import { debouncedSaveConfigToBackend, getStreamCachedAudioUrl } from './180-boot-config.js';
 /* ★ 自建平台歌单（网易云/酷狗/QQ）接入歌单页 */
 import { fetchStatus, selfhostEnabled, selfhostPlaylists, selfhostPlaylistSongs } from './selfhost-runtime.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* ===== 平台来源图标（src/img 官方 SVG；供各歌单列表右下角复用） ===== */
 (function installPlatformIconHelper() {
@@ -454,12 +454,12 @@ async function renderPlaylistsView() {
                         : (ok ? '点击查看我的' + meta.name + '歌单' : '未登录，点击去「设置 → 自建服务」登录');
                     const off = ok === false;
                     html += `
-                <div class="playlist-item selfplat-entry${off ? ' selfplat-off' : ''}" data-selfplat="${src}"${off ? ` style="opacity:.55;"` : ''}>
+                <div class="playlist-item selfplat-entry${off ? ' selfplat-off' : ''}" data-selfplat="${escapeHtml(src)}"${off ? ` style="opacity:.55;"` : ''}>
                     <div class="playlist-cover" style="background: ${meta.color}; color: var(--theme-color);">
                         <span class="playlist-cover-fallback" style="font-size:17px;font-weight:800;">${meta.mark}</span>
                     </div>
                     <div class="playlist-info">
-                        <div class="playlist-name">${meta.name}歌单</div>
+                        <div class="playlist-name">${escapeHtml(meta.name)}歌单</div>
                         <div class="playlist-meta">${shown}</div>
                     </div>
                 </div>`;
@@ -503,7 +503,7 @@ async function renderPlaylistsView() {
                         /* 未登录：引导去设置 → 自建服务登录 */
                         if (typeof setHint === 'function') setHint('请先到「设置 → 自建服务」登录对应平台');
                         const ob = typeof document !== 'undefined' ? document.getElementById('openSettingsBtn') : null;
-                        if (ob) { ob.click(); if (window.switchSettingsTab) setTimeout(() => { try { window.switchSettingsTab('selfhost'); } catch (_e) {} }, 80); }
+                        if (ob) { ob.click(); if (window.switchSettingsTab) setTimeout(() => { try { window.switchSettingsTab('selfhost'); } catch (_e) { logCatch('playlists', _e); } }, 80); }
                         return;
                     }
                     renderSelfPlatList(src);
@@ -617,7 +617,7 @@ function buildSelfPlatCards(meta) {
      "轮播(固定158px)"下宽度几乎相同，按钮看起来像坏的（实测探针结论） */
   const showViewToggle = selfPlatState.cards.length >= 2;
   playlistsListEl.innerHTML = `
-    <div style="font-size:11px;opacity:.6;padding:2px 4px 8px;">来自 ${meta.name} · 共 ${selfPlatState.cards.length} 个歌单（播放/操作同本地歌单）</div>
+    <div style="font-size:11px;opacity:.6;padding:2px 4px 8px;">来自 ${escapeHtml(meta.name)} · 共 ${selfPlatState.cards.length} 个歌单（播放/操作同本地歌单）</div>
     ${showViewToggle ? Aria.__cardsCarouselBarHTML() : ''}<div class="rank-board-grid">${selfPlatState.cards.map((b, i) => `
       <div class="rank-board-card" data-i="${i}" title="${escapeHtml(b.name)}">
         ${b.cover
@@ -627,7 +627,7 @@ function buildSelfPlatCards(meta) {
           <div class="rank-board-name">${escapeHtml(b.name)}</div>
           <div class="rank-board-count">${b.count ? b.count + ' 首' : ''}</div>
         </div>
-        <span class="rank-card-src">${meta.name}</span>
+        <span class="rank-card-src">${escapeHtml(meta.name)}</span>
       </div>`).join('')}</div>`;
   Aria.__bindCardsCarouselBar(playlistsListEl);
   playlistsListEl.querySelectorAll('.rank-board-card').forEach(card => {
@@ -735,7 +735,7 @@ function _renderSelfPlatSongsList(songs, preserveScroll) {
       e.stopPropagation();
       const s = songs[Number(btn.dataset.soid)];
       if (!s) return;
-      try { if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) globalThis.playlist.push(s); } catch (_e) {}
+      try { if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) globalThis.playlist.push(s); } catch (_e) { logCatch('playlists', _e); }
       if (typeof setHint === 'function') setHint('已加入当前播放队列');
     };
   });
@@ -748,7 +748,7 @@ function _renderSelfPlatSongsList(songs, preserveScroll) {
         const { faved } = toggleFavCore(s);
         btn.classList.toggle('active-fav', faved);
         if (typeof setHint === 'function') setHint(faved ? '已加入收藏' : '已取消收藏');
-      } catch (_e) {}
+      } catch (_e) { logCatch('playlists', _e); }
     };
   });
   /* ★ 后台刷新替换后恢复滚动位置（preserveScroll） */
@@ -1395,7 +1395,7 @@ function renderNowPlayingDetail() {
                 const isActive = (idx === currentTrackIndex);
                 html += ``
                     + `<div class="result-item${isActive ? ' now-playing-active' : ''}" data-sidx="${idx}">`
-                        + `<img class="result-cover" src="${cover}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+                        + `<img class="result-cover" src="${escapeHtml(cover)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
                         + `<div class="result-info">`
                             + `<div class="result-title">${title}</div>`
                             + `<div class="result-artist">${artist}${(typeof Aria.__platformIconHTML === 'function' ? Aria.__platformIconHTML(track.source || track.src) : '')}</div>`

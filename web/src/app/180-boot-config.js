@@ -20,7 +20,8 @@ import { initSettingsPanel, initAboutLinks } from './200-settings-panel.js';
 import { initCustomFonts } from './215-multilang-fonts.js';
 import { wordcloudApplyPerf } from './57-wordcloud-camera.js';
 import { setLanguage } from '../core/i18n.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
+import { esc } from '../utils/formatters.js';
 
 /* ★ 开篇歌单（刚进入应用播放的歌单，装进播放队列的那一份）：
    优先 三平台日推合并（QQ → 酷狗 → 网易云，登录且有日推才会返回）；
@@ -183,12 +184,12 @@ async function bootApp() {
                 if (welcomeOverlay) {
                     welcomeOverlay.classList.add('hidden');
                     setTimeout(() => {
-                        try { welcomeOverlay.remove(); } catch(err) {}
+                        try { welcomeOverlay.remove(); } catch (err) { logCatch('bootConfig', err); }
                     }, 400);
                 }
                 /* 用户手势已触发，安全激活 Web Audio Context 并播放音频 */
                 if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'suspended') {
-                    try { audioCtx.resume(); } catch(e) {}
+                    try { audioCtx.resume(); } catch (e) { logCatch('bootConfig', e); }
                 }
                 if (preloadedSongReady === true) {
                     /* 预加载已就绪：直接播放，秒开 */
@@ -253,6 +254,25 @@ function cleanGpuName(raw) {
     s = s.replace(/\s*\((0x)?[0-9a-fA-F]{4,12}\)\s*/g, ' ');
     s = s.replace(/\s{2,}/g, ' ').trim();
     return s || String(raw);
+}
+
+/**
+ * 挂/摘「软件渲染（纯 CPU）」标记。
+ *
+ * 为什么单独成函数：modals.css 的 `.is-software-renderer *` 会全局关掉 backdrop-filter /
+ * box-shadow / text-shadow，并给面板换实色底；JS 侧（预烘焙背景替代实时高斯、停止背景摇摆、
+ * 词云降级）读的是 window.__isSoftwareRenderer。这套降级此前只在 detectHardware() 内部挂载，
+ * 而「用户设过手动性能档」那条分支会在 detectHardware() 之前 return —— 于是纯 CPU 设备
+ * 只要动过手动档就拿不到任何降级。标记与档位是两件事：档位听用户的，标记只看有没有 GPU。
+ * @param {boolean} isSoftware
+ */
+function markSoftwareRenderer(isSoftware) {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.classList.toggle('is-software-renderer', !!isSoftware);
+    if (typeof window !== 'undefined') {
+        if (isSoftware) window.__isSoftwareRenderer = true;
+        else delete window.__isSoftwareRenderer;
+    }
 }
 
 async function detectHardware() {
@@ -324,11 +344,9 @@ async function detectHardware() {
             /* ★ 无 GPU（WebGL 缺失或软件渲染）：所有视觉模式全靠 CPU 合成，强制不高于 low */
             if (hw.isSoftwareRenderer) {
                 score = Math.min(score, 4);
-                if (typeof window !== 'undefined') window.__isSoftwareRenderer = true;
-                if (typeof document !== 'undefined' && document.documentElement) {
-                    document.documentElement.classList.add('is-software-renderer');
-                }
             }
+            /* 标记与档位解耦：见 markSoftwareRenderer 的注释（手动档也要挂） */
+            markSoftwareRenderer(hw.isSoftwareRenderer);
 
             hw.performanceScore = score;
             hw.recommendedProfile = score >= 8 ? 'high' : score >= 6 ? 'medium' : score >= 4 ? 'low' : 'minimal';
@@ -358,7 +376,7 @@ async function runPerformanceTest() {
         }
 
 /* ★ 渲染压力测试：模拟各歌词样式共用的高开销合成（backdrop-blur + 大量 transform/text-shadow/blur 卡片）。
-   词云/飞入/PV/浮空/和鸣/隧道的本质消耗都是「多层模糊+阴影+逐帧 transform」，
+   词云/飞入/PV/浮空/隧道的本质消耗都是「多层模糊+阴影+逐帧 transform」，
    用一次真实合成压力短测把软件渲染/无 GPU 机器暴露出来，覆盖全部样式场景。 */
 async function runRenderStressTest() {
             return new Promise((resolve) => {
@@ -404,7 +422,7 @@ function getPerformanceSettings() {
             try {
                 const raw = localStorage.getItem(PERF_STORAGE_KEY);
                 if (raw) return JSON.parse(raw);
-            } catch (e) {}
+            } catch (e) { logCatch('bootConfig', e); }
             return null;
         }
 
@@ -412,7 +430,7 @@ function getPerformanceSettings() {
 function savePerformanceSettings(settings) {
             try {
                 localStorage.setItem(PERF_STORAGE_KEY, JSON.stringify(settings));
-            } catch (e) {}
+            } catch (e) { logCatch('bootConfig', e); }
         }
 
 /* ========== 「视觉开销」手动覆盖（设置面板微调项，在所选档位 vfx 矩阵上叠加） ========== */
@@ -422,7 +440,7 @@ function getVfxOverrides() {
             try {
                 const raw = localStorage.getItem(PERF_VFX_KEY);
                 if (raw) return JSON.parse(raw) || {};
-            } catch (e) {}
+            } catch (e) { logCatch('bootConfig', e); }
             return {};
         }
 
@@ -431,7 +449,7 @@ function setVfxOverride(key, value) {
             cur[key] = value;
             try {
                 localStorage.setItem(PERF_VFX_KEY, JSON.stringify(cur));
-            } catch (e) {}
+            } catch (e) { logCatch('bootConfig', e); }
             return cur;
         }
 
@@ -533,6 +551,15 @@ async function autoDetectAndApplyPerformance(skipIfSaved = true) {
             if (skipIfSaved && saved && saved.manuallyConfigured) {
                 logInfo('bootConfig', '使用已保存的手动性能配置:', saved.profile);
                 applyPerformanceProfile(saved.profile);
+                /* ★ 手动档也要嗅一次硬件：不为改档位，只为挂上 is-software-renderer 标记。
+                   此前这条分支直接 return，跳过了 detectHardware()，导致纯 CPU 设备（虚拟机/
+                   无独显）一旦设过手动档，全局 backdrop-filter 禁用、实色面板保底、预烘焙背景、
+                   停止背景摇摆整套降级全部失效。放在套用档位之后，避免等 WebGL 而推迟档位生效。 */
+                try {
+                    await detectHardware();
+                } catch (e) {
+                    logCatch('bootConfig', e);
+                }
                 return { profile: saved.profile, hardware: saved.hardware, auto: false };
             }
 
@@ -541,7 +568,7 @@ async function autoDetectAndApplyPerformance(skipIfSaved = true) {
             logInfo('bootConfig', '硬件检测结果:', hw);
 
             /* 冷启动等待主线程安定（欢迎页/字体/首曲预加载会明显压低 FPS，易造成假阴性），
-           再进行双测：基础 rAF + 全样式合成压力短测（覆盖词云/飞入/PV/浮空/和鸣/隧道
+           再进行双测：基础 rAF + 全样式合成压力短测（覆盖词云/飞入/PV/浮空/隧道
            共用的模糊+阴影+transform 开销场景） */
             await new Promise(r => setTimeout(r, 600));
 
@@ -629,7 +656,7 @@ function showPerformanceDialog(detectResult) {
                         <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 13px;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                                 <span style="color: rgba(255,255,255,0.6)">推荐配置</span>
-                                <span style="color: var(--theme-color);">${profile.name}</span>
+                                <span style="color: var(--theme-color);">${esc(profile.name)}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                                 <span style="color: rgba(255,255,255,0.6)">内存</span>
@@ -651,7 +678,7 @@ function showPerformanceDialog(detectResult) {
                                 <span>${Math.round(detectResult.testFps)} FPS</span>
                             </div>` : '')}
                         </div>
-                        <p style="font-size: 13px; color: rgba(255,255,255,0.5);">${profile.description}</p>
+                        <p style="font-size: 13px; color: rgba(255,255,255,0.5);">${esc(profile.description)}</p>
                     </div>
                     <div style="display: flex; gap: 12px; justify-content: center;">
                         <button class="welcome-btn" id="perfAcceptBtn" style="background: var(--theme-color); color: #1a1a1a;">应用推荐</button>
@@ -721,6 +748,7 @@ function loadSettings() {
                             }
                         },
                         audio: { ...DEFAULT_SETTINGS.audio, ...(saved.audio || {}) },
+                        sleepTimer: { ...DEFAULT_SETTINGS.sleepTimer, ...(saved.sleepTimer || {}) },
                         nowPlaying: { ...DEFAULT_SETTINGS.nowPlaying, ...(saved.nowPlaying || {}) },
                         quality: { ...DEFAULT_SETTINGS.quality, ...(saved.quality || {}) },
                         shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...(saved.shortcuts || {}) },
@@ -807,7 +835,7 @@ function loadSettings() {
             if (typeof window !== 'undefined') window.appSettings = appSettings;
             if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance) previewEngineInstance.appSettings = appSettings;
             if (appSettings.interface && appSettings.interface.language) {
-                try { setLanguage(appSettings.interface.language); } catch (_) {}
+                try { setLanguage(appSettings.interface.language); } catch (_) { logCatch('bootConfig', _); }
             }
         }
 
@@ -821,29 +849,29 @@ async function syncConfigToBackend() {
                 const savedRaw = localStorage.getItem(SETTINGS_STORAGE_KEY);
                 let currentSettings = (appSettings && Object.keys(appSettings).length > 0) ? appSettings : null;
                 if (!currentSettings && savedRaw) {
-                    try { currentSettings = JSON.parse(savedRaw); } catch(e) {}
+                    try { currentSettings = JSON.parse(savedRaw); } catch (e) { logCatch('bootConfig', e); }
                 }
                 if (!currentSettings) currentSettings = DEFAULT_SETTINGS;
 
                 let favs = [];
                 try {
                     favs = typeof getFavorites === 'function' ? getFavorites() : JSON.parse(localStorage.getItem(FAV_STORAGE_KEY) || '[]');
-                } catch(e) {}
+                } catch (e) { logCatch('bootConfig', e); }
 
                 let pls = [];
                 try {
                     pls = typeof getPlaylists === 'function' ? getPlaylists() : JSON.parse(localStorage.getItem(PLAYLIST_STORAGE_KEY) || '[]');
-                } catch(e) {}
+                } catch (e) { logCatch('bootConfig', e); }
 
                 let eqData = {};
                 try {
                     eqData = typeof eqGains !== 'undefined' ? { gains: eqGains, activePreset: eqActivePreset } : JSON.parse(localStorage.getItem(EQ_STORAGE_KEY) || '{}');
-                } catch(e) {}
+                } catch (e) { logCatch('bootConfig', e); }
 
                 let perfData = {};
                 try {
                     perfData = JSON.parse(localStorage.getItem(PERF_STORAGE_KEY) || '{}');
-                } catch(e) {}
+                } catch (e) { logCatch('bootConfig', e); }
 
                 const fullBundle = {
                     settings: currentSettings,

@@ -15,7 +15,7 @@ import { aiThemeCache } from './40-playback-state.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { calculateSongMatchScore, showToast } from './155-random-toast-match.js';
 import { audioRecognizeOverlay, closeAudioRecognizeModal } from './165-audio-recognize.js';
-import { logWarn, logInfo, logError } from '../services/log.js';
+import { logWarn, logInfo, logError, logCatch } from '../services/log.js';
 audioRecognizeOverlay?.addEventListener('click', (e) => {
             if (e.target === audioRecognizeOverlay) {
                 closeAudioRecognizeModal();
@@ -386,7 +386,7 @@ async function probeLyricSourcesAvailability(title, artist, currentLyricSrc, bad
                     const optEl = typeof document !== 'undefined' ? document.getElementById(`${optIdPrefix}${sourceKey}`) : null;
                     const isActive = (sourceKey === currentLyricSrc);
                     renderSourceBadges(badgeContainer, optEl, sourceKey, result, isActive);
-                }).catch(() => {});
+                }).catch((e) => logCatch('lyricSources', e));
             }
         }
 

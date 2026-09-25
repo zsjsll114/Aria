@@ -18,7 +18,7 @@
             display: none;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .playlist-back-btn:hover {
@@ -42,7 +42,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             margin-left: auto;
         }
 
@@ -59,7 +59,7 @@
             border-radius: 14px;
             margin-bottom: 2px;
             background: transparent;
-            transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), background 0.2s ease, opacity 0.2s ease;
+            transition: transform 0.25s var(--e-exit), background 0.2s ease, opacity 0.2s ease;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -121,7 +121,7 @@
             justify-content: center;
             gap: 6px;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: var(--t-base);
             text-align: center;
         }
         .local-music-upload-banner:hover {
@@ -217,7 +217,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .playlist-play-btn:hover {
@@ -246,7 +246,7 @@
             font-size: 13px;
             font-weight: 600;
             outline: none;
-            transition: all 0.25s ease;
+            transition: var(--t-base);
         }
 
         .playlist-create-box input::placeholder {
@@ -267,7 +267,7 @@
             font-size: 13px;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: var(--t-base);
             flex-shrink: 0;
         }
 
@@ -314,7 +314,7 @@
             font-size: 13px;
             font-weight: 600;
             outline: none;
-            transition: all 0.25s ease;
+            transition: var(--t-base);
         }
 
         .import-url-row input::placeholder {
@@ -356,7 +356,7 @@
             border-radius: 14px;
             margin-bottom: 2px;
             background: transparent;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             display: flex;
             align-items: center;
             gap: 10px;

@@ -36,6 +36,17 @@ function mulberry32(seed) {
 const BASE_SHAPES = ['circle', 'square', 'triangle', 'cross'];
 const ICON_KEYS = Object.keys(ICON_PATHS);
 
+/* 商籁移植（todos #24）：描边生长。
+   它的做法是把 moveTo/lineTo/arc 记成命令流 + 累计弧长，每帧按弧长截断重放
+   （folia-major sonnetAnimatedGraphics.ts:118-234）。我们的图形全是静态 SVG，
+   不必自己实现——给每条子路径注入 pathLength="1" 把长度归一化，
+   于是 CSS 的 stroke-dasharray:1 / stroke-dashoffset:1→0 就是浏览器原生的弧长参数化，
+   零 JS、零每帧测量（getTotalLength 一次都不用）。 */
+const DRAWABLE_RE = /<(path|circle|rect|polyline|line|polygon)\b/g;
+const ICON_PATHS_INKED = Object.fromEntries(
+  Object.entries(ICON_PATHS).map(([k, v]) => [k, v.replace(DRAWABLE_RE, '<$1 pathLength="1"')])
+);
+
 /**
  * 生成图形场 HTML。同一 seed 输出完全一致（歌曲级调用一次，不随 shot 重建）。
  * @param {number|string} seed 稳定种子（如歌曲 id hash）
@@ -57,16 +68,20 @@ export function buildShapeFieldHTML(seed = 0) {
     const rot = Math.round(rnd() * 360);
     const dx = Math.round(rnd() > 0.5 ? 15 : -15);
     const dy = Math.round(rnd() > 0.5 ? 30 : -30);
+    /* 入场按序号错峰「画」出来：越靠后的图形晚一点起笔，读起来像一遍手绘铺陈 */
+    const inkDelay = (0.15 + i * 0.22 + rnd() * 0.25).toFixed(2);
+    const growDur = (1.1 + rnd() * 1.3).toFixed(2);
+    const ink = `--grow:${growDur}s;--grow-delay:${inkDelay}s;`;
     if (wantIcon) {
       const key = ICON_KEYS[Math.floor(rnd() * ICON_KEYS.length)];
       const op = (0.11 + rnd() * 0.08).toFixed(3);
       const breathe = (10 + rnd() * 10).toFixed(1);
-      parts.push(`<div class="pv-shape pv-shape--icon" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--dur:${dur}s;--delay:${delay}s;--rot0:${rot}deg;--dx:${dx}px;--dy:${dy}px;--op:${op};--breathe:${breathe}s;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[key]}</svg></div>`);
+      parts.push(`<div class="pv-shape pv-shape--icon" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--dur:${dur}s;--delay:${delay}s;--rot0:${rot}deg;--dx:${dx}px;--dy:${dy}px;--op:${op};--breathe:${breathe}s;${ink}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS_INKED[key]}</svg></div>`);
     } else {
       const type = BASE_SHAPES[Math.floor(rnd() * BASE_SHAPES.length)];
       const op = (0.11 + rnd() * 0.08).toFixed(3);
       const filled = rnd() < 0.3;
-      parts.push(`<div class="pv-shape pv-shape--${type}${filled ? ' is-filled' : ''}" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--dur:${dur}s;--delay:${delay}s;--rot0:${rot}deg;--dx:${dx}px;--dy:${dy}px;--op:${op};"></div>`);
+      parts.push(`<div class="pv-shape pv-shape--${type}${filled ? ' is-filled' : ''}" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--dur:${dur}s;--delay:${delay}s;--rot0:${rot}deg;--dx:${dx}px;--dy:${dy}px;--op:${op};${ink}"></div>`);
     }
   }
   for (let p = 0; p < 20; p++) {

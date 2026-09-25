@@ -4,6 +4,7 @@
  * - localStorage 持久化，按最近搜索时间倒序
  * ============================================================ */
 import { searchBtn, searchInput, searchOverlay, searchResultsEl } from './30-dom-refs.js';
+import { logCatch } from '../services/log.js';
 
 const SEARCH_HISTORY_KEY = 'aria_search_history_v1';
 const MAX_ITEMS = 20;
@@ -14,7 +15,7 @@ function getHistory() {
     try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '{}'); } catch (e) { return {}; }
 }
 function saveHistory(h) {
-    try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h)); } catch (e) {}
+    try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h)); } catch (e) { logCatch('searchHistory', e); }
 }
 function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

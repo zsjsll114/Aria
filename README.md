@@ -17,7 +17,7 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml/badge.svg)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
-[![Node](https://img.shields.io/badge/node-16%2B-green)]()
+[![Node](https://img.shields.io/badge/node-20.19%2B%20or%2022.13%2B-green)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-green)]()
 
 [视觉展示](#九种歌词视觉) ·
@@ -37,6 +37,7 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 
 | 模式 | 说明 |
 |---|---|
+| 默认模式 | 封面与歌词并排显示，完整控制栏 |
 | 拾光 · Lyrics | 默认。逐字高亮 + 平滑滚动，支持翻译/音译行 |
 | 飞白 · Fly-In | 整句飞入，适合跟着唱 |
 | 云涌 · WordCloud | 歌词聚合成词云，随播放浮动 |
@@ -45,7 +46,6 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 | 穿行 · Tunnel | 3D 粒子场景，多层视差运镜 |
 | 活字 · Letterpress | 印刷台主题：逐字压印上墨，30 款版式轮换，纸色随段落情绪变化 |
 | 霓虹 · Neon | 灯牌主题：未唱的字是熄灭灯管，唱到逐字通电点亮，店招水印 |
-| 和鸣 · Harmony | 多角色对话式歌词合唱 |
 
 <table>
   <tr>
@@ -94,7 +94,8 @@ PV 和蒙德里安在开启 AI 情绪分析后效果最好：AI 会为每句歌�
 
 ### 从源码运行
 
-前置：Python 3.10+（后端只用标准库）、Node.js 16+（音源服务）、Git。桌面壳需 Rust 工具链。
+前置：Python 3.10+（后端只用标准库）、Node.js 20.19+ 或 22.13+（建议 22 LTS）、Git。桌面壳需 Rust 工具链。
+Node 下限由两项依赖决定：QQ 音源镜像要求 `^20.17.0 || >=22.9.0`，仓库的 ESLint 10 要求 `^20.19.0 || ^22.13.0 || >=24`。
 
 ```bat
 :: 1. 拉取音源服务到 _eval\（不入库，全新 clone 必须执行一次）
@@ -104,7 +105,7 @@ scripts\setup-vendors.bat
 python server.py
 
 :: 3a. 网页版：浏览器打开 http://localhost:8001
-:: 3b. 桌面版：双击「启动Tauri桌面版.bat」（首次会自动 cargo build）
+:: 3b. 桌面版：双击 restart-aria.bat（重启 + 增量 cargo build，首次会自动编译）
 ```
 
 macOS / Linux 没有 bat，按脚本内容手动执行即可。

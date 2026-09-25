@@ -13,8 +13,9 @@ import { getDuration } from './56-playback-misc.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { PAUSE_ICON_PATH, PLAY_ICON_PATH, updatePlaybackPosition } from './65-playback-position.js';
 import { nextTrack } from './95-track-loading.js';
-import { fadeInVolume } from './135-crossfade.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { fadeInVolume } from '../core/fadeController.js';
+import { logError } from '../services/log.js';
+import { initStallDetector, startStallCheck, stopStallCheck, setBuffering } from '../core/stallDetector.js';
 
 audio?.addEventListener('play', () => {
             isPlaying = true;
@@ -39,48 +40,20 @@ audio?.addEventListener('pause', () => {
             stopStallCheck();
         });
 
+/* 卡死检测本体已迁入 core/stallDetector.js（core 层接管第 1 个模块，2026-09-25）。
+   检测循环与 stalled / waiting / playing 三个监听由该模块装配；本分片只在 play / pause
+   上启停，并把「判定失败后怎么办」的策略留在下面的 handleAudioPlayError 里。
+   四个状态键（stallTimer / isBuffering / stallLastTime / stallCheckGeneration）改由
+   infrastructure/state.js 持有，经 globalBridge 与 globalThis 同名键双向打通，
+   所以 app/250-desktop-lyrics.js 等按裸标识符读 isBuffering 的地方无需改动。 */
+initStallDetector(audio, handleAudioPlayError);
+
 /* 播放失败时暂停 audio 元素本身，确保 rAF 循环停止推进歌词/进度 */
-globalThis.stallTimer = null;
-
-globalThis.isBuffering = false;
-
-globalThis.stallLastTime = 0;
-
-globalThis.stallCheckGeneration = 0;
-
-/* 用于区分不同歌曲/播放会话 */
-function startStallCheck() {
-            stopStallCheck();
-            stallCheckGeneration++;
-            const gen = stallCheckGeneration;
-            stallLastTime = audio.currentTime;
-            const check = () => {
-                if (gen !== stallCheckGeneration) return; /* 已过期 */
-                if (audio.paused || isBuffering || (typeof document !== 'undefined' && document.hidden)) {
-                    stallTimer = setTimeout(check, 8000);
-                    return;
-                }
-                if (Math.abs(audio.currentTime - stallLastTime) < 0.1) {
-                    logWarn('audioEngine', '检测到音频卡死（currentTime 8秒未前进），自动停止');
-                    handleAudioPlayError();
-                    return;
-                }
-                stallLastTime = audio.currentTime;
-                stallTimer = setTimeout(check, 8000);
-            };
-            stallTimer = setTimeout(check, 8000);
-        }
-
-function stopStallCheck() {
-            stallCheckGeneration++;
-            if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
-        }
-
 function handleAudioPlayError() {
             /* 关键：必须真正暂停 audio，否则 rAF 循环的 !audio.paused 判断仍为 true */
             audio.pause();
             isPlaying = false;
-            isBuffering = false;
+            setBuffering(false);
             playIcon.innerHTML = PLAY_ICON_PATH;
             getBlurBgLayers().forEach(l => l.classList.add('paused'));
             stopStallCheck();
@@ -99,40 +72,7 @@ audio?.addEventListener('error', () => {
             }
         });
 
-/* 网络停滞：浏览器停止下载数据（常见于网络不稳定） */
-audio?.addEventListener('stalled', () => {
-            if (typeof document !== 'undefined' && document.hidden) {
-                return; /* 后台节流保护：不触发误判 */
-            }
-            logWarn('audioEngine', '音频网络停滞 (stalled)，尝试等待恢复');
-            /* 6秒后检查是否恢复，如果没有则判定为播放失败 */
-            setTimeout(() => {
-                if (typeof document !== 'undefined' && document.hidden) return;
-                if (!audio.paused && audio.currentTime === stallLastTime && audio.readyState < 3) {
-                    logWarn('audioEngine', '网络停滞后未恢复，停止播放');
-                    handleAudioPlayError();
-                }
-            }, 6000);
-        });
-
-/* 缓冲开始：暂停卡死检测 */
-audio?.addEventListener('waiting', () => {
-            isBuffering = true;
-            if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
-            /* 续播诊断：暂停几秒后恢复出现"卡一下"时，控制台会看到这条日志，
-               据此区分 网络层重缓冲(readyState 低/bufferedEnd 追不上) 与 解码层异常 */
-            if (audio.currentTime > 0.5 && audio.buffered && audio.buffered.length > 0) {
-                logWarn('audioEngine', `[waiting] 中途重缓冲 t=${audio.currentTime.toFixed(1)}s ` +
-                    `bufferedEnd=${audio.buffered.end(audio.buffered.length - 1).toFixed(1)}s ` +
-                    `readyState=${audio.readyState}`);
-            }
-        });
-
-/* 缓冲结束恢复播放：重新启动卡死检测 */
-audio?.addEventListener('playing', () => {
-            isBuffering = false;
-            startStallCheck();
-        });
+/* 网络停滞 / 缓冲 / 恢复播放三个监听：见 core/stallDetector.js 的 initStallDetector */
 
 /* ★ 页面后台/前台切换自适应：防止后台音频卡顿，切回前台即刻同步画面 */
 if (typeof document !== 'undefined') {

@@ -2,6 +2,7 @@
  * i18n.js — 国际化多语言系统 (English / 简体中文)
  * 提供声明式 key 翻译、动态语言切换、持久化与 DOM 文本智能映射
  */
+import { logCatch } from '../services/log.js';
 
 const STORAGE_KEY = 'aria_i18n_lang';
 
@@ -558,8 +559,6 @@ const STATIC_PHRASE_MAP = {
   '降低时以更低分辨率渲染 3D 视觉效果': 'Render 3D visuals at lower resolution when lowered',
   '降低时以更低分辨率渲染 3D 视觉效果（浮空/PV/隧道 Canvas）': 'Lower-res 3D rendering (aurora / PV / tunnel canvas)',
   '发光阴影强度': 'Glow Shadow Intensity',
-  '和鸣情感词发光': 'Emotion Word Glow',
-  '关闭后气泡中情感词不再文字发光': 'Off = no glow on emotion words',
   '情感词发光强度': 'Emotion Glow Strength',
   '情感词唱响时的强调色': 'Accent color when emotion words sing',
   '控制非情感词普通高亮文字颜色': 'Color of normal (non-emotion) highlighted text',
@@ -578,6 +577,294 @@ const STATIC_PHRASE_MAP = {
   '行间距': 'Line Height',
   '选择歌词来源': 'Lyric Source',
   '切换歌词来源': 'Switch lyric source',
+  // 取链透明化（todos #15）：角标 / 详情面板 / 渠道与音质名
+  '取链详情': 'Stream source',
+  '查看这首歌的取链来源与降级过程': 'See which source resolved this track and how it fell back',
+  '命中渠道': 'Resolved via',
+  '实际接口': 'Provider',
+  '容器': 'Container',
+  '缓存': 'Cache',
+  '命中 15 分钟解析缓存': 'Served from 15-min resolve cache',
+  '解析池逐源尝试': 'Resolve-pool attempts',
+  // 睡眠定时器（todos #1，280-sleep-timer.js）
+  '睡眠定时器': 'Sleep timer',
+  '自定义分钟数': 'Custom minutes',
+  '启动': 'Start',
+  '取消定时': 'Cancel timer',
+  '未设置': 'Not set',
+  '分钟': 'min',
+  '最后 1 分钟自动渐弱，到点暂停播放（队列保留）': 'Volume fades over the last minute; playback pauses at zero (queue kept)',
+  /* 280 自带 bilingual STR 表按语言组句（含 {t}/{m} 占位符的那几条走不了整句精确匹配，
+     仍由 STR 负责）；这里登记的是**无占位符**的整句，让全库词表对它们也有账。 */
+  '睡眠定时器已取消': 'Sleep timer cancelled',
+  '睡眠定时器到点，已暂停播放（队列已保留）': 'Sleep timer: playback paused (queue kept)',
+  // OSD 屏幕浮层（todos #14，281-osd.js）
+  '快进': 'Forward',
+  '快退': 'Rewind',
+  '正常': 'Normal',
+  /* —— 应用内诊断页（todos #21，284-diagnostics.js）——
+     2026-09-26 起该分片不再自带词表（原来是一张私有 PHRASE_EN），面板整页由 JS
+     渲染、逐条走 translatePhrase()，所以它的文案全部登记在这里。
+     ★ 与既有键同名的 18 条（音质/耗时/性能档位/应用诊断/是/否/在线/失败…）
+       保留的是**词表里既有位置**的英文值，没有被 284 的写法覆盖：同一个中文串在全库
+       只能有一个英文说法，否则同一个词在两个面板里长得不一样。 */
+  '应用诊断': 'App diagnostics',
+  /* 面板骨架 */
+  '刷新': 'Refresh',
+  '复制诊断文本': 'Copy diagnostics',
+  '已复制': 'Copied',
+  '采集中…': 'Collecting…',
+  '采集失败': 'Collection failed',
+  /* 作用域徽标 */
+  '浏览器环境': 'Browser',
+  '本机 Python 服务': 'Local Python server',
+  '本机自建 vendor': 'Local self-hosted vendor',
+  '渠道决定': 'Varies by channel',
+  /* 结论摘要 */
+  '结论摘要': 'Summary',
+  '本页只反映「当前这台设备 + 这次运行」的数据。开发机的帧率不代表虚拟机/无独显设备；换设备请重新打开本页。': 'This page reflects only this device and this run. Frame times on a dev machine do not represent a VM or a GPU-less box — reopen it on the device in question.',
+  '软件渲染（纯 CPU）已识别': 'Software rendering (CPU only)',
+  '页面帧时中位': 'Median page frame time',
+  '本机主服务未响应': 'Local server down',
+  /* 运行环境 */
+  '运行环境': 'Runtime environment',
+  '外壳': 'Shell',
+  '桌面壳（Tauri）': 'Desktop shell (Tauri)',
+  '纯浏览器': 'Plain browser',
+  '页面地址': 'Page URL',
+  '浏览器 UA': 'User agent',
+  '平台': 'Platform',
+  '界面语言': 'UI language',
+  '网络': 'Network',
+  '在线': 'online',
+  'CPU 逻辑核': 'CPU logical cores',
+  '设备内存': 'Device memory',
+  'JS 堆': 'JS heap',
+  '屏幕': 'Screen',
+  '视口': 'Viewport',
+  '标签页可见': 'Tab visible',
+  '当前视觉模式': 'Current visual mode',
+  '未知（浏览器未提供）': 'unknown (not exposed by browser)',
+  /* 显卡 */
+  '显卡与渲染后端': 'GPU & render backend',
+  'WebGL renderer 原文': 'WebGL renderer (raw)',
+  '未获取': 'not available',
+  '清洗后显卡名': 'GPU name (cleaned)',
+  '是否有 WebGL': 'WebGL available',
+  '软件渲染标记': 'Software-renderer marker',
+  '有': 'present',
+  '无': 'absent',
+  '低端/集显判定': 'Low-end GPU verdict',
+  '显卡分级': 'GPU tier',
+  '硬件评分': 'Hardware score',
+  '硬件推荐档位': 'Hardware-recommended profile',
+  '内存/核': 'Memory / cores',
+  '探测时间': 'Detected at',
+  '本次读取启动快照（未重新探测）': 'boot snapshot (not re-probed)',
+  '本次新探测': 'probed now',
+  /* 档位与 vfx */
+  '性能档位与 vfx 实际值': 'Performance profile & effective vfx',
+  '当前档位': 'Active profile',
+  '是否手动设定': 'Manually configured',
+  '手动档时自动检测会被跳过': 'auto detection is skipped while a manual profile is set',
+  '检测出的 FPS': 'Measured FPS (base/stress/used)',
+  'body 性能 class': 'body perf class',
+  '视觉开销手动覆盖': 'Manual vfx overrides',
+  '无（全部按档位矩阵）': 'none (profile matrix only)',
+  '手动覆盖': 'manual override',
+  '已生效设置（appSettings）': 'Effective settings (appSettings)',
+  '开': 'on',
+  '关': 'off',
+  '渲染缩放 renderScale': 'renderScale',
+  '封面模糊 coverBlur': 'coverBlur',
+  '玻璃模糊 glassBlur': 'glassBlur',
+  '歌词模糊 lyricBlur': 'lyricBlur',
+  '文字光晕 textBlur': 'textBlur',
+  'PV 泛光 pvBloom': 'pvBloom',
+  '飞入辉光 flyinGlow': 'flyinGlow',
+  '词云粒子 wcParticles': 'wcParticles',
+  '隧道粒子 tunnelParticles': 'tunnelParticles',
+  '景深粒子 dimParticles': 'dimParticles',
+  /* 帧时 */
+  '帧时（实时采样）': 'Frame time (live sampling)',
+  '在跑的 rAF 循环': 'Running rAF loops',
+  '个，其中引擎': 'loops, engines',
+  '已登记源': 'Registered sources',
+  '空闲': 'idle',
+  '每源保留帧数': 'Frames kept per source',
+  '帧': 'frames',
+  '记为挂起': 'counted as a gap',
+  '无样本': 'no samples',
+  '未运行': 'idle',
+  '运行中': 'running',
+  '中位': 'median',
+  '最大': 'max',
+  '样本': 'samples',
+  '挂起': 'gaps',
+  '引擎帧时需要在各引擎的 rAF 回调里加一行 frameProbe.frame(名称) 埋点；未埋点时只有内置心跳。': 'Per-engine rows need one frameProbe.frame(name) call inside each engine rAF loop; without it only the built-in heartbeat shows.',
+  /* 帧时源标签（由各引擎的 registerLoop/frame 埋点写死中文，这里过词表） */
+  '页面全局帧时（内置心跳）': 'Page frame time (built-in heartbeat)',
+  '歌词逐字高亮循环': 'Lyrics word-highlight loop',
+  '歌词弹簧/波纹循环': 'Lyrics spring & wave loop',
+  'PV 主循环': 'PV main loop',
+  'PV 背景丝绸': 'PV background silk',
+  '维度视觉化循环': 'Dimension visualizer loop',
+  '预览引擎循环': 'Preview engine loop',
+  '移动端逐字进度': 'Mobile word progress',
+  '音量淡变循环': 'Volume fade loop',
+  '睡眠定时淡出': 'Sleep-timer fade',
+  /* 启动耗时 */
+  '启动耗时分解': 'Boot timing breakdown',
+  '导航类型': 'Navigation type',
+  '协议': 'Protocol',
+  'DNS 解析': 'DNS lookup',
+  'TCP 连接': 'TCP connect',
+  'TLS': 'TLS',
+  '首字节 TTFB': 'TTFB',
+  'DOM 完成': 'DOM content loaded',
+  'load 事件结束': 'load event end',
+  '未完成': 'not finished',
+  '文档传输': 'Document transfer size',
+  '资源请求数': 'Resource requests',
+  '资源总传输': 'Total transferred',
+  '脚本请求': 'Scripts',
+  '最大资源': 'Largest resource',
+  '浏览器资源计时缓冲已满或未开放': 'Resource timing buffer full or unavailable',
+  /* 分词库 */
+  '分词库加载状态': 'Segmentation libraries',
+  '中文 segmentit': 'Chinese segmentit',
+  '日文 kuromoji': 'Japanese kuromoji',
+  '已就位': 'loaded',
+  '未加载': 'not loaded',
+  '延迟加载器': 'Lazy loader hook',
+  '已注入脚本': 'Injected script tags',
+  '日文词典分片': 'Japanese dictionary chunks',
+  'Intl.Segmenter 兜底': 'Intl.Segmenter fallback',
+  '可用': 'available',
+  '不可用': 'unavailable',
+  '日文词典未下载属正常：只有真的出现日文歌词才拉（约 17MB）。': 'The Japanese dictionary staying undownloaded is normal: it is fetched only when Japanese lyrics actually appear (~17MB).',
+  /* vendor */
+  '本机服务与 vendor': 'Local services & vendors',
+  '主服务 :8001': 'Main server :8001',
+  '正常返回': 'responding',
+  '无响应（未启动 / 绿色版路径异常）': 'no response (not started, or portable path issue)',
+  '查询异常': 'status query failed',
+  '配置后端标记': 'Config backend flag',
+  '副进程': 'sidecar',
+  '登录态': 'Login',
+  '平台开关': 'Toggle',
+  '已启用': 'enabled',
+  '未启用': 'disabled',
+  '源码缺失（未跑 scripts/setup-vendors.bat）': 'vendor source missing (run scripts/setup-vendors.bat)',
+  '公网上游（vkeys/ygking/byfuns）不主动探测：它们失联时是整体超时，探测会把面板卡住数秒。看下一段的实际渠道即可。': 'Public upstreams (vkeys/ygking/byfuns) are not probed on purpose: when they die they time out and would stall this panel for seconds. Check the actual channel in the next section.',
+  /* 取链 */
+  '取链详情（最近一次）': 'Playback resolve (latest)',
+  '当前歌曲': 'Current song',
+  '未在播放': 'nothing playing',
+  '角标': 'Badge',
+  '无取链记录': 'no resolve recorded',
+  '命中渠道层级': 'Channel tier',
+  '结果': 'Result',
+  '逐源尝试': 'Provider attempt',
+  '成功': 'ok',
+  '本次取链日志': 'Resolve log line',
+  '无日志（第一级就命中）': 'no log lines (first channel hit)',
+  '其它模块告警': 'Other module warnings',
+  '暂无告警': 'no warnings yet',
+  '直链是临时签名地址：本页只输出域名与路径尾段，不输出完整链接与参数。': 'Play URLs are temporarily signed: only host and path tail are emitted, never the full link or its query.',
+  '本机自建': 'self-hosted',
+  '本机解析': 'local resolver',
+  '平台官方接口': 'official API',
+  '公网上游': 'public upstream',
+  '跨源兜底': 'cross-source fallback',
+  '直链/本地': 'direct/local',
+  '未知': 'unknown',
+  /* 全局键 */
+  '全局状态登记表': 'Global state registry',
+  '登记键': 'Registered keys',
+  '未定义键': 'Undefined keys',
+  '未定义键名': 'Undefined key names',
+  '多写键': 'Multi-writer keys',
+  '只读 listGlobals()，未跑 auditGlobals()（后者会灌日志缓冲，挤掉取链轨迹）': 'Read-only listGlobals(); auditGlobals() is not called because it would flood the log ring and push out the resolve trail.',
+  /* 表外补登记：原来写死在渲染处的三元分支与常量表 */
+  '酷狗 KuGouMusicApi': 'KuGou KuGouMusicApi',
+  '网易云 NeteaseCloudMusicApi': 'Netease NeteaseCloudMusicApi',
+  '重新采集数据': 'Reload diagnostics',
+  '复制为纯文本，便于粘贴到 issue': 'Copy as plain text for an issue report',
+  // 可读性一键修正（todos #11，283-readability.js）
+  '歌词可读性增强': 'Lyrics readability boost',
+  '歌词可读性增强 · 已开启（点击关闭）': 'Readability boost on (click to turn off)',
+  '歌词可读性增强已开启：描边、底衬、压暗背景': 'Readability boost on: outline, backing, dimmed backdrop',
+  '歌词可读性增强已关闭': 'Readability boost off',
+  // 专注模式（todos #7，282-zen-mode.js）
+  '专注模式': 'Focus mode',
+  '启用专注模式': 'Enable focus mode',
+  '只留歌词与背景，其余控件淡出': 'Fade everything out but the lyrics and the background',
+  '鼠标静止后自动进入': 'Enter automatically when idle',
+  '停止操作若干秒后淡出控件，动一下鼠标立即唤回': 'Fades the controls out after a few idle seconds; any pointer motion brings them back',
+  '静止判定时长': 'Idle delay',
+  '多少秒无操作后进入专注模式（1~60 秒）': 'Seconds of no activity before entering (1-60s)',
+  '隐藏范围': 'What gets hidden',
+  '默认只隐藏右上角图标组、底部控制条与播放信息列': 'By default: top icons, bottom bar and the cover/info column only',
+  '右上角图标组': 'Top icon row',
+  '底部控制条': 'Bottom control bar',
+  '播放信息列（封面 / 歌名 / 主控制区）': 'Cover & info column',
+  '桌面端标题栏': 'Desktop title bar',
+  '歌词延时控件': 'Lyric offset control',
+  '专注模式：动一下鼠标即可唤回控件': 'Focus mode: move the pointer to bring the controls back',
+  '已关闭专注模式': 'Focus mode is off',
+  /* 282 自带 bilingual STR 表（同 280：无占位符的整句在这里也记一笔账） */
+  '点击按键后按下新键，Esc 取消': 'Click the chip, then press a new key; Esc cancels',
+  '该按键已被其它功能占用': 'That key is already bound to another action',
+  // 双语排版一键循环（todos #4，285-bilingual-cycle.js）
+  '原文': 'Original',
+  '原文+译文': 'Orig + Trans',
+  '原文+音译': 'Orig + Romaji',
+  '三行': 'All 3 lines',
+  '歌词排版：只看原文': 'Lyrics layout: original only',
+  '歌词排版：原文 + 译文': 'Lyrics layout: original + translation',
+  '歌词排版：原文 + 音译': 'Lyrics layout: original + romaji',
+  '歌词排版：三行全显示': 'Lyrics layout: all three lines',
+  '这首歌没有译文，已跳过带译文的排版': 'This song has no translation, so that layout was skipped',
+  '这首歌没有音译，已跳过带音译的排版': 'This song has no romaji, so that layout was skipped',
+  '这首歌既没有译文也没有音译，已跳过带它们的排版': 'This song has neither translation nor romaji, so those layouts were skipped',
+  '这首歌只有原文，没有可叠加的译文或音译': 'This song only has the original line, nothing to layer on',
+  '当前没有歌词，排版偏好已保存（下一首生效）': 'No lyrics loaded; layout preference saved (applies to the next song)',
+  '耗时': 'Elapsed',
+  '链接域名': 'Host',
+  '降级轨迹': 'Fallback trace',
+  '本次取链没有留下日志（说明第一级就命中了）': 'No log for this run — the first attempt already hit',
+  '尚未记录到取链过程': 'Nothing recorded yet',
+  /* 275-play-source（取链详情面板）：整段是 `html += '<div …>状态</div>'` 拼出来的，
+     文本节点就是这几个短词，所以按词登记而不是按整坨 HTML。 */
+  '（当前未播放歌曲）': '(nothing playing)',
+  '状态': 'Status',
+  '命中': 'hit',
+  '全部渠道失败': 'All sources failed',
+  '尚未取链': 'Not resolved yet',
+  '取链失败': 'Resolution failed',
+  '兜底': 'fallback',
+  '本机自建 QQ 服务': 'Self-hosted QQ',
+  '本机自建网易服务': 'Self-hosted Netease',
+  '本机自建酷狗服务': 'Self-hosted KuGou',
+  '本机解析池': 'Local resolve pool',
+  '酷狗取链接口': 'KuGou API',
+  '酷我官方取链': 'KuWo official',
+  'ygking 公网接口': 'ygking (public)',
+  'vkeys 预取链接': 'vkeys prefetched',
+  'vkeys 公网接口': 'vkeys (public)',
+  'byfuns 公网接口': 'byfuns (public)',
+  '网易云外链': 'Netease outer link',
+  '跨源·酷狗同名歌': 'Cross-source KuGou',
+  '跨源·网易同名歌': 'Cross-source Netease',
+  '跨源·酷我同名歌': 'Cross-source KuWo',
+  '歌曲自带直链': 'Track-provided link',
+  '未知渠道': 'Unknown source',
+  '母带': 'Master',
+  '臻品全景声': 'Immersive',
+  '极高 320k': 'Very high 320k',
+  '较高 192k': 'Higher 192k',
+  '标准 128k': 'Standard 128k',
   '显示/隐藏歌词': 'Show/Hide Lyrics',
   '切换播放/歌词页': 'Toggle Play / Lyrics page',
   '播放/暂停': 'Play / Pause',
@@ -671,6 +958,22 @@ const STATIC_PHRASE_MAP = {
   '毫秒': 'ms',
   '秒': 's',
   '秒)': 's)',
+
+  // 手机遥控器页（remote.html）
+  '连接中…': 'Connecting…',
+  '已连接': 'Connected',
+  '已连接 · 未播放': 'Connected · Idle',
+  '已断开': 'Disconnected',
+  '主窗未响应': 'Player not responding',
+  '遥控器后端未启用': 'Remote backend not enabled',
+  '本机服务器还没有开放遥控通道：用 python server.py --lan 启动后即可使用。': 'The local server has no remote channel yet: start it with "python server.py --lan".',
+  '连不上服务器：手机与电脑需在同一 Wi-Fi，电脑端要用 --lan 启动服务。': 'Cannot reach the server: phone and PC must be on the same Wi-Fi, and the PC server must run with --lan.',
+  '服务器在线，但播放器主窗口没有心跳（窗口刚被关闭或正在重启）。': 'Server is up, but the player window has no heartbeat (it was just closed or is restarting).',
+  '播放队列': 'Play Queue',
+  '队列': 'Queue',
+  '音量加': 'Volume up',
+  '音量减': 'Volume down',
+  '在电脑上开始播放后自动同步': 'Syncs automatically once playback starts on the desktop',
 
   // 数据
   '数据备份与迁移': 'Backup & Migration',
@@ -1247,6 +1550,76 @@ const STATIC_PHRASE_MAP = {
   '未启用的音源播放时将自动走多源解析获取。': 'Disabled sources fall back to multi-source resolution during playback.',
   '按步骤选择偏好设置，可随时在设置面板更改': 'Set up preferences step by step; change anytime in Settings',
   '3D 空间粒子流体，随主题色变换景深': '3D particle fluid, depth shifts with theme color',
+
+  /* —— OOBE 文案补漏（2026-09-25 用户反馈：英文模式 OOBE 无翻译）。
+     2026-09-24 那批 OOBE 词条对着旧文案加的，重构后新标题/选项标题/按钮漏了 —— */
+  '设备与渲染性能': 'Device & Rendering Performance',
+  '音质偏好与主题色': 'Audio Quality & Theme Color',
+  '自建音乐服务': 'Self-Hosted Music Services',
+  '默认语言，界面文案与排版完全本地化': 'Default language, fully localized UI copy and layout',
+  '流畅优先（虚拟机/核显推荐）': 'Smooth First (VM / iGPU recommended)',
+  'AI 情绪与情感词上色': 'AI Mood & Emotion Coloring',
+  '无损品质 (FLAC / Lossless)': 'Lossless (FLAC)',
+  '极高音质 (320kbps)': 'Extreme Quality (320kbps)',
+  '标准音质 (128kbps)': 'Standard Quality (128kbps)',
+  '跳过引导': 'Skip Setup',
+  '上一步': 'Back',
+  '开始使用': 'Get Started',
+  '扫码登录 网易云音乐': 'Scan QR · Netease Music',
+  '扫码登录 QQ 音乐': 'Scan QR · QQ Music',
+  '扫码登录 酷狗音乐': 'Scan QR · KuGou Music',
+  '视觉模式偏好': 'Visual Mode Preferences',
+
+  /* —— 日推兜底提示（2026-09-25 登录≠启用事故：服务端在线+已登录，前端开关关着 →
+     日推全灭。文案要指路：设置 → 自建服务 开开关）—— */
+  '今日日推暂时不可用（三平台未启用或服务离线）': 'Daily recommendations unavailable (all three sources disabled or offline)',
+  '已自动为你打开热门榜单': 'Hot charts opened automatically',
+  '登录了却不显示？到 设置 → 自建服务 打开对应平台开关': 'Logged in but not showing? Enable the source in Settings → Self-Hosted Services',
+  '日推不可用（三平台未启用或离线）；已登录平台可在 设置 → 自建服务 开启': 'Daily recs unavailable (all disabled or offline); enable logged-in sources in Settings → Self-Hosted Services',
+
+  /* —— 视觉配方 / 可读性 / Next-Up 补漏（2026-09-25 i18n-coverage 棘轮抓到的
+     团队新分片漏登记）。带「」的拼接 toast 句这里登记碎片供 translatePhrase /
+     审计命中（裸碎片不会作为 DOM 文本出现），运行时整句由 translateTextNode
+     的动态正则翻译 —— */
+  '视觉配方': 'Visual Recipes',
+  '保存 / 分享当前所有视觉参数': 'Save / share all visual parameters',
+  '把当前外观存为配方': 'Save Current Look as Recipe',
+  '把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API Key、登录态、本地路径、语言与快捷键都不在内。': 'Save mode, font size, blur, sway, highlight colors and per-mode layout preferences as named presets, or copy a share code for friends. API keys, login sessions, local paths, language and shortcuts are never included.',
+  '配方包含哪些设置、绝不包含哪些': 'What recipes include — and never include',
+  '会带走': 'Included',
+  '绝不带走（敏感或本机专属）': 'Never included (sensitive or machine-specific)',
+  '管理配方': 'Manage Recipes',
+  '复制当前分享码': 'Copy Share Code',
+  '导入分享码': 'Import Share Code',
+  '校验并导入': 'Validate & Import',
+  '导入前会逐条校验版本、校验和与每个参数的取值范围；有任何一项不合格就整份拒绝，不会只导入一半。': 'Before import, version, checksum and every parameter range are validated; any failure rejects the whole recipe — never a partial import.',
+  '输入弹窗未就绪': 'Input dialog not ready',
+  '设置未就绪': 'Settings not ready',
+  '名字不能为空': 'Name cannot be empty',
+  '配方数量已达上限': 'Recipe limit reached',
+  '保存失败：配方内容不合法': 'Save failed: recipe content invalid',
+  '保存失败': 'Save failed',
+  '已经有同名配方了': 'A recipe with this name already exists',
+  '重命名失败': 'Rename failed',
+  '复制失败，请手动选中复制': 'Copy failed — select and copy manually',
+  '分享码已复制到剪贴板': 'Share code copied to clipboard',
+  '先粘贴一段分享码': 'Paste a share code first',
+  '分享码被拒绝，详见面板里的逐条原因': 'Share code rejected — see per-entry reasons in the panel',
+  '导入失败：配方不合法': 'Import failed: invalid recipe',
+  '这份配方不合法，生成不了分享码': 'This recipe is invalid; cannot generate a share code',
+  '配方不合法，已拒绝应用': 'Invalid recipe — rejected',
+  '歌词可读性增强已开启': 'Lyric readability boost enabled',
+  '切歌前多少秒浮出提示条（3~15 秒）': 'Seconds before track end to pop up the next-up bar (3–15 s)',
+  /* 拼接句碎片（见上注释） */
+  '已保存配方「': 'Saved recipe "',
+  '已重命名为「': 'Renamed to "',
+  '已用当前外观覆盖「': 'Overwritten with current look: "',
+  '已删除「': 'Deleted "',
+  '已应用配方「': 'Applied recipe "',
+  '已导入并应用，同时存为配方「': 'Imported & applied, saved as recipe "',
+  '粘贴以': 'Paste a share code starting with ',
+  '粘贴以 ': 'Paste a share code starting with ',
+  '开头的分享码': 'share code',
 };
 
 /* ===== i18n key 词条（JS 源码 t('key') 直调用，双语对象形态） ===== */
@@ -1285,7 +1658,10 @@ const KEY_PHRASES = {
   'ai.proxyTokenCleared': { 'zh-CN': '反代访问令牌已清除', 'en-US': 'Proxy token cleared' },
   'common.unknown': { 'zh-CN': '未知', 'en-US': 'Unknown' },
   'common.unknownArtist': { 'zh-CN': '未知', 'en-US': 'Unknown' },
-  'common.default': { 'zh-CN': '默认', 'en-US': 'Default' }
+  'common.default': { 'zh-CN': '默认', 'en-US': 'Default' },
+  /* 关于页 Star/反馈按钮（index.html data-i18n 挂了 key 但词表一直没有 → 英文模式回退中文） */
+  'settings.about.star': { 'zh-CN': '在 GitHub 上点个 Star', 'en-US': 'Star on GitHub' },
+  'settings.about.issues': { 'zh-CN': '反馈问题', 'en-US': 'Report an Issue' }
 };
 
 /** 前缀映射：处理带动态数字/内容的文本（渲染时拼进文本的高频句式） */
@@ -1308,11 +1684,27 @@ try {
   if (saved && DICTIONARY[saved]) {
     currentLang = saved;
   }
-} catch (_) {}
+} catch (_) { logCatch('i18n', _); }
 
 /** 获取当前语言 */
 export function getLanguage() {
   return currentLang;
+}
+
+/**
+ * 只读查询：按「中文原文」精确取英文，全库唯一词表就是 STATIC_PHRASE_MAP。
+ * 语义与 JS 渲染型面板原来的模块内 tx() 一致 —— 非英文模式原样返回（调用方
+ * 不必自己判语言），词表没有的也原样返回（**绝不机翻兜底**）。
+ * ★ 只 export 查询函数、不 export 词表本体：拿到表就会有人 `Object.keys` 之后
+ *   自建第二份映射，284-diagnostics 的私有 PHRASE_EN 就是这么长出来的（2026-09-25）。
+ * ★ 适用面：整页由 JS 拼 innerHTML 的面板（诊断页等）——这类面板的文本是英文时
+ *   已经落地，i18n 的 DOM 扫描器按「整段文本节点等于中文」匹配，翻不到已经翻过的，
+ *   所以必须在渲染前逐条查表；普通 textContent 赋值仍可由 observer 兜住。
+ */
+export function translatePhrase(zh) {
+  if (typeof zh !== 'string' || !zh) return zh;
+  if (currentLang !== 'en-US') return zh;
+  return STATIC_PHRASE_MAP[zh] || zh;
 }
 
 /** 翻译：先查 KEY_PHRASES（双语对象），再查 DICTIONARY（当前语言词典），最后回退 fallback */
@@ -1333,7 +1725,7 @@ export function setLanguage(lang) {
     if (globalThis.appSettings && globalThis.appSettings.interface) {
       globalThis.appSettings.interface.language = lang;
     }
-  } catch (_) {}
+  } catch (_) { logCatch('i18n', _); }
   applyLanguageToDocument();
 }
 
@@ -1369,8 +1761,31 @@ function translateTextNode(text) {
   if (m) return `${m[1]} playlists · ${m[2]} local · ${m[3]} platforms`;
   m = /^(\d+)\s*首歌$/.exec(t0);
   if (m) return `${m[1]} songs`;
+  /* OOBE 步骤角标「步骤 1 / 4」 */
+  m = /^步骤\s*(\d+)\s*\/\s*(\d+)$/.exec(t0);
+  if (m) return `Step ${m[1]} / ${m[2]}`;
+  /* 确认弹窗动态插值句（歌单名/文件夹名嵌中间，前缀映射拼不出来） */
+  m = /^确定要删除歌单「(.+)」吗？此操作无法撤销。$/.exec(t0);
+  if (m) return `Delete playlist "${m[1]}"? This cannot be undone.`;
+  m = /^确定要从本地音乐库中删除「(.+)」吗？文件将被永久移除。$/.exec(t0);
+  if (m) return `Remove "${m[1]}" from the local library? The files will be permanently deleted.`;
   m = /^播放全部：/.exec(t0);
   if (m) return 'Play All: ' + t0.slice(5);
+  /* 视觉配方 toast 动态插值句（290，配方名嵌中间，碎片前缀拼不出英文引号闭合） */
+  m = /^已保存配方「(.+)」$/.exec(t0);
+  if (m) return `Saved recipe "${m[1]}"`;
+  m = /^已重命名为「(.+)」$/.exec(t0);
+  if (m) return `Renamed to "${m[1]}"`;
+  m = /^已用当前外观覆盖「(.+)」$/.exec(t0);
+  if (m) return `Overwritten with current look: "${m[1]}"`;
+  m = /^已删除「(.+)」$/.exec(t0);
+  if (m) return `Deleted "${m[1]}"`;
+  m = /^已应用配方「(.+)」$/.exec(t0);
+  if (m) return `Applied recipe "${m[1]}"`;
+  m = /^已导入并应用，同时存为配方「(.+)」$/.exec(t0);
+  if (m) return `Imported & applied, saved as recipe "${m[1]}"`;
+  m = /^粘贴以\s*(.+?)\s*开头的分享码$/.exec(t0);
+  if (m) return `Paste a share code starting with ${m[1]}`;
   for (const [zh, en] of STATIC_PHRASE_PREFIX) {
     if (!zh) continue;
     if (t0.startsWith(zh)) {
@@ -1426,7 +1841,15 @@ function _scanI18n(root, deadline) {
     '.tunnel-ai-confirm-title, .tunnel-ai-confirm-desc, .tunnel-ai-cost-label, .tunnel-ai-cost-value, ' +
     '.tunnel-ai-mode-name, .tunnel-ai-mode-sub, .plm-empty, .stats-empty, .rec-sources-header, ' +
     '.about-fine, .settings-nav-search, #aiStatusText, #aiStatusDetail, .ai-proxy-warn, ' +
-    '.view-mode-name, .font-cat-tag, .font-cat-count, .font-upload-text, .font-upload-hint';
+    '.view-mode-name, .font-cat-tag, .font-cat-count, .font-upload-text, .font-upload-hint, ' +
+    /* ★ OOBE 重构后新类名 + 确认弹窗 + 关于页项目卡（2026-09-25 用户反馈：英文模式
+       OOBE/取消确定/关于页 folia 卡全部不翻译——字符串早在词表里，但这些元素的
+       类名不在本名单，_scanI18n 永远扫不到。.aria-oobe-sub 是旧版残留死选择器 */
+    '.aria-oobe-hero-title, .aria-oobe-hero-sub, .aria-oobe-step-tag, .aria-oobe-btn, ' +
+    '.aria-oobe-label, .aria-oobe-scan-btn, .aria-oobe-colorchip span, ' +
+    '.ctx-confirm-title, .ctx-confirm-msg, .ctx-confirm-btn, .apc-text small, ' +
+    /* 外观设置：分区标题「视图模式」+ 模式分段按钮（词条早就在表里，类名一直不在名单） */
+    '.appearance-section-title, .appearance-mode-btn';
   root.querySelectorAll?.(textSel).forEach(el => {
     /* ★ svg 图标按钮（<svg>…文本）保护：此类节点 children>0，但直接文本子节点
        可安全翻译（如 rank-playall「播放全部（N）」——此前被整节点跳过永不翻译） */
@@ -1481,9 +1904,14 @@ function _scanI18n(root, deadline) {
 }
 
 /** UI 弹层容器选择器：所有二级弹窗/面板都在这些根内（歌单/榜单/搜索/每日推荐/统计/
-    识曲/导入等全是 .search-overlay；设置面板/右键菜单/AI 浮窗/毛玻璃弹窗/OOBE 各自独立） */
+    识曲/导入等全是 .search-overlay；设置面板/右键菜单/AI 浮窗/毛玻璃弹窗/OOBE 各自独立）
+    ★ .lyric-source-overlay 是「选择歌词来源 / 取链详情 / 应用诊断 / 下载歌词」四个面板共用的
+      类根（index.html 里 5 个元素，#selfhostQrOverlay 本来就单列过），此前不在名单上 →
+      这四种面板在英文模式下**完全没人翻译**，只能靠分片自己逐条查词表。补进来之后
+      JS 自译（284）与 observer 兜底（275/170）叠加是幂等的：翻成英文的文本不再命中词表。 */
 const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, .ctx-confirm, ' +
-  '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay, #plmPanel, #favoritesOverlay, #rankTabs';
+  '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay, #plmPanel, #favoritesOverlay, #rankTabs, ' +
+  '.lyric-source-overlay';
 
 /** ★ 性能路径（2026-09-22）：只扫描 UI 弹层容器，绝不进入歌词区/播放器主 DOM。
     二级弹窗都是这些固定容器内的动态渲染，observer 触发后只扫几百节点而非全文档
@@ -1522,7 +1950,8 @@ if (typeof window !== 'undefined') {
     getLanguage,
     setLanguage,
     t,
-    applyLanguageToDocument
+    applyLanguageToDocument,
+    applyLanguageToUiRoots   /* OOBE 切步等动态渲染后同步触发弹层翻译，免 50ms 防抖闪中文 */
   };
 
   /* ★ 全局动态渲染自动翻译（2026-09-22）：二级弹窗都是 JS 动态 innerHTML 渲染，

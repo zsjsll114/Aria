@@ -47,12 +47,29 @@ jobs:
           done
           echo "server failed to start, log:"; tail -50 server.log; exit 1
 
-      - name: Run JS unit tests (parsers / particles / music fallback / nowplaying)
+      - name: Run JS unit tests (parsers / particles / music fallback / nowplaying / escape-gate rule / stall detector)
         run: |
           node --test tests/js/test_parsers.js
           node --test tests/js/test_particles.js
           node --test tests/js/test_music_api_fallback.js
           node --test tests/js/test_nowplaying.js
+          node --test tests/js/test_html_escape_rule.js
+          node --test tests/js/test_stall_detector.js
+          node --test tests/js/test_fade_controller.js
+          node --test tests/js/test_shortcut_manager.js
+          node --test tests/js/test_equalizer.js
+          node --test tests/js/test_play_source.js
+          node --test tests/js/test_shape_field.js
+          node --test tests/js/test_pv_arc_field.js
+          node --test tests/js/test_motion.js
+          node --test tests/js/test_ai_lyrics_word_fallback.js
+          node --test tests/js/test_i18n_coverage.js
+
+      - name: Motion discipline ratchet (easing curves / bounce / transition:all / will-change)
+        run: node scripts/audits/motion-audit.mjs --check
+
+      - name: i18n phrase-registry ratchet (中文 UI 文本必须登记进 STATIC_PHRASE_MAP)
+        run: node scripts/audits/i18n-coverage.mjs --check
 
       - name: Run Python unit tests (audio stream proxy / MIME)
         run: |
@@ -67,3 +84,4 @@ jobs:
       - name: Settings panel regression smoke
         run: |
           python tests/test_settings_smoke.py
+          python tests/test_word_fallback.py

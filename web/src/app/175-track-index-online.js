@@ -7,7 +7,7 @@ import { API_BASE } from '../config/constants.js';
 import { playerConfig } from '../config/defaults.js';
 import { getCoverLayers } from '../infrastructure/dom.js';
 import { detectAndParseLyrics, mergeLyrics } from '../parsers/lyricMerger.js';
-import { checkAudioUrlPlayable, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveUrl } from '../services/musicApi.js';
+import { checkAudioUrlPlayable, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveInfo, qqResolveUrl } from '../services/musicApi.js';
 import { selfhostQQPlayUrl, selfhostNeteasePlayUrl } from './selfhost-runtime.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { audio, renderLyrics } from './20-lyrics-render.js';
@@ -20,9 +20,12 @@ import { cleanupEqAudioGraph } from './90-eq.js';
 import { initLyricsInteractions, setBlurBackground, setCoverImage } from './100-cover-background.js';
 import { getFavorites, makeSongKey, setHint, updateFavoriteBtn } from './120-search-results.js';
 import { getPlaylists } from './130-playlists.js';
-import { applyVolumeOnSongChange, fadeOutVolume, handlePlayFailure } from './135-crossfade.js';
+import { applyVolumeOnSongChange, handlePlayFailure } from './135-crossfade.js';
+import { fadeOutVolume } from '../core/fadeController.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
 import { chorusCacheGet } from '../services/aiCache.js'; // 高潮检测缓存读取（预加载链：无依赖环，175→services 单向）
+import { beginResolveTrace, markResolveFailed, recordResolveHit } from '../services/playSource.js'; // 取链透明化（todos #15）
+import { conceal } from '../utils/motion.js'; // 退场后再卸载（utils→services/log 单向，无分片环）
 import { logWarn, logInfo, logError } from '../services/log.js';
 /* { key, url, lyricData, chorusSegments, aiTheme, trackIndex } */
 globalThis.preloadAbortFlag = { aborted: false };
@@ -415,6 +418,8 @@ async function loadOnlineSong(songInfo, skipPlaylistUpdate, _isRetry, preloadOnl
             const songId = songInfo.id;
             const songMid = songInfo.mid;   /* 仅QQ有 */
             if (!songId) { setHint('无法获取歌曲ID'); isLoadingSong = false; return; }
+            /* 取链透明化：本次加载的降级轨迹从这里开始计（key 约定同 _preLyricKey） */
+            beginResolveTrace(`${songInfo.source || currentSource}:${songId}`);
 
 /* 立即暂停并重置 audio，取消上一次的加载 */
 audio.pause();
@@ -473,9 +478,9 @@ if (typeof isAiAnalyzing !== 'undefined' && isAiAnalyzing && typeof currentAiAbo
                     }
                     /* 高潮标记渐隐消失 */
 document.querySelectorAll('.chorus-marker').forEach(el => {
-                        el.style.transition = 'opacity 0.4s ease';
-                        el.style.opacity = '0';
-                        setTimeout(() => el.remove(), 400);
+                        /* 演完再摘掉节点：以前是内联 opacity + 手抄 400ms 定时器，
+                           两个数字各调一半，改一处就会留残留或截断 */
+                        conceal(el, { durationMs: 400, y: 0, scale: 1, onHidden: () => el.remove() });
                     });
                     /* ★ 当前歌曲高潮段落：currentChorusSegments 定义在 200-settings-panel，此处经 globalThis 访问（分片模块作用域隔离） */
                     globalThis.currentChorusSegments = [];
@@ -537,6 +542,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 if (songInfo.url && (songInfo.source === 'local' || songInfo.isRandomApi || (!songInfo.url.includes('stream.qqmusic.qq.com') && !songInfo.url.includes('api.vkeys.cn')))) {
                     /* 已有直链（如本地音乐、自定义外链、随机 API 返回的 Music 字段） */
                     playUrl = songInfo.url;
+                    recordResolveHit(songInfo.source === 'local' ? 'local' : 'direct', playUrl, songInfo.quality || '');
                 } else if (currentSource === 'kugou' || songInfo.source === 'kugou') {
                     /* 酷狗音乐：通过 hash 获取播放直链（含多源回退与用户音质参数） */
                     const hash = songInfo.hash || songMid || songId;
@@ -547,6 +553,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         /* VIP 未开通时酷狗常给 30s 试听链，须探测整曲时长后决定是否回退跨源 */
                         if (await checkAudioUrlPlayable(kgInfo.url, songId, '', expSec)) {
                             playUrl = kgInfo.url;
+                            recordResolveHit('kugou', playUrl, userQuality);
                             if (kgInfo.cover && !songInfo.cover) {
                                 songInfo.cover = kgInfo.cover;
                                 /* ★ 酷狗封面同步应用：搜索项常无 img，封面在 playInfo 才返回；
@@ -561,7 +568,10 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     if (!playUrl && songInfo.song) {
                         const kgSame = await fetchSameSongUrlFrom('netease', songInfo.song, songInfo.singer || '').catch(() => null);
-                        if (kgSame && kgSame.url && await checkAudioUrlPlayable(kgSame.url, songId, '', expSec)) playUrl = kgSame.url;
+                        if (kgSame && kgSame.url && await checkAudioUrlPlayable(kgSame.url, songId, '', expSec)) {
+                            playUrl = kgSame.url;
+                            recordResolveHit('crossNetease', playUrl);
+                        }
                     }
                     if (!playUrl && songInfo.song) {
                         try {
@@ -571,7 +581,10 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                                 : null;
                             if (kwBest && kwBest.id) {
                                 const kwInfo = await getKuwoPlayInfo(String(kwBest.id), songInfo.song, songInfo.singer || '');
-                                if (kwInfo && kwInfo.url && await checkAudioUrlPlayable(kwInfo.url, songId, '', expSec)) playUrl = kwInfo.url;
+                                if (kwInfo && kwInfo.url && await checkAudioUrlPlayable(kwInfo.url, songId, '', expSec)) {
+                                    playUrl = kwInfo.url;
+                                    recordResolveHit('crossKuwo', playUrl);
+                                }
                             }
                         } catch (e) { /* 酷我兜底失败，放弃 */ }
                     }
@@ -583,6 +596,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const kwInfo = await getKuwoPlayInfo(kuwoId, songName, singerName);
                     if (kwInfo && kwInfo.url) {
                         playUrl = kwInfo.url;
+                        recordResolveHit('kuwo', playUrl, kwInfo.quality || '');
                         if (kwInfo.cover && (!songInfo.cover || songInfo.cover.includes('img4.kuwo.cn/star/albumcover/'))) {
                             songInfo.cover = kwInfo.cover;
                             setCoverImage(kwInfo.cover);
@@ -625,6 +639,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         const shUrl = await selfhostQQPlayUrl(effectiveMid, userQuality);
                         if (shUrl && await checkAudioUrlPlayable(shUrl, songId, 'https://y.qq.com/', shDurSec)) {
                             playUrl = shUrl;
+                            recordResolveHit('selfhostQQ', playUrl, userQuality);
                             logInfo('trackIndexOnline', `[SelfHost] QQ 自建服务命中: ${songInfo.song}`);
                         } else if (shUrl) {
                             logWarn('trackIndexOnline', '[SelfHost] QQ 自建服务链接探测不可播/试听，落回原链');
@@ -632,9 +647,12 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     if (effectiveMid && !playUrl) {
                         const durSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
-                        const resolved = await qqResolveUrl(effectiveMid, durSec, userQuality);
-                        if (resolved) {
-                            playUrl = resolved;
+                        const info = await qqResolveInfo(effectiveMid, durSec, userQuality);
+                        if (info) {
+                            playUrl = info.url;
+                            recordResolveHit('qqResolve', playUrl, info.quality, {
+                                provider: info.provider, ext: info.ext, cached: info.cached, tried: info.tried,
+                            });
                             logInfo('trackIndexOnline', `[QQResolve] 本地解析池命中: ${songInfo.song}`);
                         }
                     }
@@ -650,6 +668,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         });
                         if (ygkHit) {
                             playUrl = ygkHit.url;
+                            recordResolveHit('ygking', playUrl, ygkHit.quality);
                             logInfo('trackIndexOnline', `ygking.top 获取成功 (音质: ${ygkHit.quality}): ${songInfo.song}`);
                         }
                     }
@@ -658,6 +677,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         /* vkeys 试听链常对VIP歌不可播，须先探测再采用（用户策略核心闭环） */
                         if (vkeysUrl && await checkAudioUrlPlayable(vkeysUrl, songId, 'https://y.qq.com/')) {
                             playUrl = vkeysUrl;
+                            recordResolveHit('vkeysPrefetch', playUrl);
                             logInfo('trackIndexOnline', `vkeys 预取链接可用: ${songInfo.song}`);
                         } else if (vkeysUrl) {
                             logWarn('trackIndexOnline', 'vkeys 预取链接探测不可播(疑似失效/试听链)，走跨源');
@@ -669,6 +689,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                                 const fetchedUrl = (urlJson.code === 200 && urlJson.data && urlJson.data.url) ? urlJson.data.url : null;
                                 if (fetchedUrl && await checkAudioUrlPlayable(fetchedUrl, songId, 'https://y.qq.com/')) {
                                     playUrl = fetchedUrl;
+                                    recordResolveHit('vkeys', playUrl);
                                     logInfo('trackIndexOnline', `vkeys 获取成功: ${songInfo.song}`);
                                 } else if (fetchedUrl) {
                                     logWarn('trackIndexOnline', 'vkeys 返回链接探测不可播，走跨源');
@@ -684,17 +705,17 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     if (!playUrl) {
                         logWarn('trackIndexOnline', 'QQ源全部失败，尝试酷狗同名歌...');
                         const kgHit = await _resolveSameSong('kugou', songInfo.song, songInfo.singer, { songId, verbose: true });
-                        if (kgHit) { playUrl = kgHit.url; if (kgHit.cover && !songInfo.cover) songInfo.cover = kgHit.cover; }
+                        if (kgHit) { playUrl = kgHit.url; recordResolveHit('crossKugou', playUrl); if (kgHit.cover && !songInfo.cover) songInfo.cover = kgHit.cover; }
                     }
                     if (!playUrl) {
                         logWarn('trackIndexOnline', '酷狗也未命中，尝试网易云同名歌...');
                         const ncmHit = await _resolveSameSong('netease', songInfo.song, songInfo.singer, { songId, verbose: true });
-                        if (ncmHit) { playUrl = ncmHit.url; if (ncmHit.cover && !songInfo.cover) songInfo.cover = ncmHit.cover; }
+                        if (ncmHit) { playUrl = ncmHit.url; recordResolveHit('crossNetease', playUrl); if (ncmHit.cover && !songInfo.cover) songInfo.cover = ncmHit.cover; }
                     }
                     if (!playUrl) {
                         logWarn('trackIndexOnline', '网易云也未命中，最后尝试酷我同名歌...');
                         const kwHit = await _resolveKuwoByName(songInfo.song, songInfo.singer, { songId, verbose: true });
-                        if (kwHit) { playUrl = kwHit.url; if (kwHit.cover && !songInfo.cover) songInfo.cover = kwHit.cover; }
+                        if (kwHit) { playUrl = kwHit.url; recordResolveHit('crossKuwo', playUrl); if (kwHit.cover && !songInfo.cover) songInfo.cover = kwHit.cover; }
                     }
                 } else if (currentSource === 'netease') {
                     /* 网易云：★ 上游参考项目 对齐先试本机自建 /song/url/v1 直链（秒回），失败再走公网 byfuns 音质阶梯 */
@@ -704,6 +725,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const nmExpSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
                     if (!playUrl) {
                         playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName: songInfo.song, songId });
+                        if (playUrl) recordResolveHit('selfhostNetease', playUrl, userLevel);
                     }
                     if (!playUrl) {
                         const byfHit = await _tryByfunsLevels(songId, orderedLevels, {
@@ -711,6 +733,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         });
                         if (byfHit) {
                             playUrl = byfHit.url;
+                            recordResolveHit('byfuns', playUrl, byfHit.level);
                             logInfo('trackIndexOnline', `byfuns API 获取成功 (音质: ${byfHit.level}): ${songInfo.song}`);
                         }
                     }
@@ -718,15 +741,16 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     if (!playUrl) {
                         logWarn('trackIndexOnline', 'byfuns API 全部音质失败，回退到网易云外链');
                         playUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
+                        recordResolveHit('neteaseOuter', playUrl);
                     }
                     /* VIP 试听/外链不可播时跨源兜底：酷狗 → 酷我 */
                     if (!playUrl && songInfo.song) {
                         const kgHit = await _resolveSameSong('kugou', songInfo.song, songInfo.singer, { songId, expSec: nmExpSec });
-                        if (kgHit) playUrl = kgHit.url;
+                        if (kgHit) { playUrl = kgHit.url; recordResolveHit('crossKugou', playUrl); }
                     }
                     if (!playUrl && songInfo.song) {
                         const kwHit = await _resolveKuwoByName(songInfo.song, songInfo.singer, { songId, expSec: nmExpSec });
-                        if (kwHit) playUrl = kwHit.url;
+                        if (kwHit) { playUrl = kwHit.url; recordResolveHit('crossKuwo', playUrl); }
                     }
                 } else {
                     /* 未知音源走 vkeys 接口 */
@@ -735,6 +759,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     try {
                         const urlJson = await fetch(`${API_BASE}/${currentSource}?id=${songId}`, { signal: fetchController.signal }).then(r => r.json());
                         playUrl = (urlJson.code === 200 && urlJson.data && urlJson.data.url) ? urlJson.data.url : null;
+                        if (playUrl) recordResolveHit('unknown', playUrl);
                     } catch (fetchErr) {
                         logWarn('trackIndexOnline', '获取播放链接请求失败:', fetchErr);
                     } finally {
@@ -742,6 +767,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                 }
                 if (!playUrl) {
+                    markResolveFailed();
                     if (selectedEl) {
                         const statusEl = selectedEl.querySelector('.result-status');
                         if (statusEl) statusEl.textContent = '获取失败';

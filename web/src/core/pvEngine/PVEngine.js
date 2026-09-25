@@ -385,6 +385,11 @@ export class PVEngine {
     if (this.rendering) {
       const { activeBlockCenter, activeLineData, truckHint } = this.rendering.updateTime(timeMs);
 
+      /* 背景长弧笔触：喂演唱进度（f(播放头)，不是 f(墙钟)），暂停即停、seek 即跳 */
+      if (this.decorations && this.decorations.setProgress) {
+        this.decorations.setProgress(this.rendering.sungProgress(timeMs));
+      }
+
       if (activeBlockCenter && activeBlockCenter.worldX !== undefined && this.nodes[this.currentNodeIndex]) {
         const node = this.nodes[this.currentNodeIndex];
         /* ★ 参考实现 tempera camera：shot 内 zoom 斜坡 zoomStart→zoomEnd 随场景进度插值，

@@ -8,13 +8,14 @@
  * 数据统一走服务端 /api/rank/*（超时/UA/Referer 可控，酷狗自动剥 HTML 裹 JSON）。
  * ============================================================ */
 import { API_BASE } from '../config/constants.js';
+import { escapeHtml as esc } from '../utils/formatters.js';
 import { audio } from './20-lyrics-render.js';
 import { loadOnlineSong, fetchPlayUrlForPreload } from './175-track-index-online.js';
 import { loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
 import { setHint, getFavorites, makeSongKey, saveFavorites, toggleFavCore } from './120-search-results.js';
 import { getPlaylists, savePlaylists, renderPlaylistsView } from './130-playlists.js';
 import { dayRecommend, selfhostEnabled } from './selfhost-runtime.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { applyEqGains, buildEqBands, buildEqPresets } from './90-eq.js'; // EQ 分享码导入（90-eq 不 import 258，无环）
 
 const $ = (id) => typeof document !== 'undefined' ? document.getElementById(id) : null;
@@ -56,9 +57,9 @@ window.showGlassPrompt = function (opts) {
         'background:rgba(0,0,0,.45);backdrop-filter:saturate(180%) blur(40px);-webkit-backdrop-filter:saturate(180%) blur(40px);';
     ov.innerHTML = `
         <div class="gp-modal">
-            <div class="gp-title">${opts.title || '输入'}</div>
-            <div class="gp-sub" style="${opts.desc ? '' : 'display:none'}">${opts.desc || ''}</div>
-            <input class="gp-input" type="text" placeholder="${opts.placeholder || ''}" value="${opts.value || ''}" maxlength="60" autocomplete="off">
+            <div class="gp-title">${esc(opts.title || '输入')}</div>
+            <div class="gp-sub" style="${opts.desc ? '' : 'display:none'}">${esc(opts.desc || '')}</div>
+            <input class="gp-input" type="text" placeholder="${esc(opts.placeholder || '')}" value="${esc(opts.value || '')}" maxlength="60" autocomplete="off">
             <div class="gp-actions">
                 <button class="gp-cancel">取消</button>
                 <button class="gp-ok">确定</button>
@@ -89,8 +90,8 @@ window.showGlassPick = function (opts) {
         'background:rgba(0,0,0,.45);backdrop-filter:saturate(180%) blur(40px);-webkit-backdrop-filter:saturate(180%) blur(40px);';
     ov.innerHTML = `
         <div class="gp-modal gp-pick">
-            <div class="gp-title">${opts.title || '选择'}</div>
-            <div class="gp-pick-list">${(opts.items || []).map((it, i) => `<button class="gp-pick-item" data-i="${i}">${it.name}${it.meta ? `<span class="gp-pick-meta">${it.meta}</span>` : ''}</button>`).join('') || '<div style="padding:18px;color:rgba(255,255,255,.5);font-size:13px">没有可选项</div>'}</div>
+            <div class="gp-title">${esc(opts.title || '选择')}</div>
+            <div class="gp-pick-list">${(opts.items || []).map((it, i) => `<button class="gp-pick-item" data-i="${i}">${esc(it.name)}${it.meta ? `<span class="gp-pick-meta">${esc(it.meta)}</span>` : ''}</button>`).join('') || '<div style="padding:18px;color:rgba(255,255,255,.5);font-size:13px">没有可选项</div>'}</div>
             <div class="gp-actions"><button class="gp-cancel">取消</button></div>
         </div>`;
     const close = () => ov.remove();
@@ -223,6 +224,7 @@ async function openAggregatedDaily() {
     }
     /* ★ 三个平台都没有日推 → 回退热门榜单宫格 */
     logWarn('rankings', `[Daily] 三平台日推均不可用（${results.map(x => x.src + '=' + ((x.r && x.r.err) || (x.r && x.r.ok ? 'empty' : 'fail'))).join('，')}），回退热门榜单`);
+    if (typeof setHint === 'function') setHint('日推不可用（三平台未启用或离线）；已登录平台可在 设置 → 自建服务 开启');
     rankState.daily = false;   /* 榜单内返回键应回宫格而非关闭弹窗 */
     const rt2 = $('rankTabs');
     if (rt2) rt2.style.display = '';   /* ★ 恢复三源切换栏（聚合期间被隐藏），loadRankSource 会重建其内容 */
@@ -273,7 +275,7 @@ globalThis.Aria.__openDefaultPlaylistView = async function () {
     }
     /* ★ 三平台都没有日推 → 直接打开热门榜单 */
     logWarn('rankings', `[Daily] 歌单默认视图：三平台日推均不可用（${results.map(x => x.src + '=' + ((x.r && x.r.err) || (x.r && x.r.ok ? 'empty' : 'fail'))).join('，')}）→ 热门榜单`);
-    listEl.innerHTML = mineEntry() + `<div class="rank-error" style="margin:18px 6px;">今日日推暂时不可用（三平台未启用/离线）<br><span style="font-size:11px;opacity:.75">已自动为你打开热门榜单</span></div>`;
+    listEl.innerHTML = mineEntry() + `<div class="rank-error" style="margin:18px 6px;">今日日推暂时不可用（三平台未启用或服务离线）<br><span style="font-size:11px;opacity:.75">已自动为你打开热门榜单</span><br><span style="font-size:11px;opacity:.75">登录了却不显示？到 设置 → 自建服务 打开对应平台开关</span></div>`;
     const mineRow2 = listEl.querySelector('#dailyBackToMine');
     if (mineRow2) mineRow2.onclick = () => renderPlaylistsView();
     openRankings();   /* 榜单弹窗默认聚合→无日推→榜单宫格，与歌单弹窗同屏覆盖展示 */
@@ -409,7 +411,7 @@ async function openDailyRecommend(overSrc) {
     const rt = $('rankTabs');
     if (rt) {
         rt.style.display = '';
-        rt.innerHTML = dailySrcOrder.map(src => `<button class="source-btn${src === dailyState.src ? ' active' : ''}" data-daily="${src}">${DAILY_SRC_LABEL[src]}</button>`).join('');
+        rt.innerHTML = dailySrcOrder.map(src => `<button class="source-btn${src === dailyState.src ? ' active' : ''}" data-daily="${esc(src)}">${DAILY_SRC_LABEL[src]}</button>`).join('');
         rt.querySelectorAll('.source-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const s = btn.dataset.daily;
@@ -557,7 +559,7 @@ async function loadRankSource(src, force, silent) {
         renderBoards(!!silent);
     } catch (err) {
         if (my !== rankSeq) return;
-        listEl.innerHTML = `<div class="rank-error">${(err && err.message) || '加载失败'}<br><button class="rank-retry" onclick="Aria.__rankRetry&&Aria.__rankRetry()">重试</button></div>`;
+        listEl.innerHTML = `<div class="rank-error">${esc((err && err.message) || '加载失败')}<br><button class="rank-retry" onclick="Aria.__rankRetry&&Aria.__rankRetry()">重试</button></div>`;
     }
 }
 
@@ -836,7 +838,7 @@ function getRecentHistory() {
     try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; }
 }
 function saveRecentHistory(list) {
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch (e) {}
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch (e) { logCatch('rankings', e); }
 }
 if (typeof window !== 'undefined') {
     /* 130-playlists 历史播放子页的单条删除/清空复用 */
@@ -927,7 +929,7 @@ function defaultStats() {
     return { totalPlays: 0, totalMs: 0, firstAt: 0, songs: {}, artists: {}, days: {} };
 }
 function saveStats(s) {
-    try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch (e) {}
+    try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch (e) { logCatch('rankings', e); }
 }
 let _statAcc = 0;
 window.recordPlayStats = function (sec) {
@@ -1016,8 +1018,8 @@ function closeStats() { $('statsOverlay')?.classList.remove('visible'); }
 function b64EncodeUnicode(str) { return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUnicode(str) { return decodeURIComponent(escape(atob(str))); }
 function tip(msg) {
-    try { if (typeof setHint === 'function') { setHint(msg); return; } } catch (e) {}
-    try { if (window.setHint) window.setHint(msg); } catch (e) {}
+    try { if (typeof setHint === 'function') { setHint(msg); return; } } catch (e) { logCatch('rankings', e); }
+    try { if (window.setHint) window.setHint(msg); } catch (e) { logCatch('rankings', e); }
 }
 window.copyEqShareCode = function () {
     if (typeof eqGains === 'undefined' || typeof eqActivePreset === 'undefined') { tip('均衡器未就绪'); return; }
@@ -1117,11 +1119,6 @@ window.mergePlaylistInto = function (srcPlId) {
     });
 };
 
-/* ================= 通用转义 ================= */
-function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 /* ================= 事件挂接 ================= */
 (function initRankingsUI() {
     if (typeof document === 'undefined') return;
@@ -1164,7 +1161,7 @@ function esc(s) {
                     last = 0;
                     if (typeof audio !== 'undefined' && audio) last = audio.currentTime || 0;
                 }
-            } catch (e) {}
+            } catch (e) { logCatch('rankings', e); }
         }, 5000);
     }
 })();

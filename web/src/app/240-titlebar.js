@@ -6,6 +6,7 @@
  * 4. 三大金刚键为 SVG，默认透明，hover 时才出现方形半透明底，关闭键 hover 红
  * 5. 拖动/双击最大化仅 Tauri 环境生效；浏览器环境只负责颜色跟随
  * ============================================================ */
+import { logCatch } from '../services/log.js';
 (function () {
   if (typeof document === 'undefined') return;
 
@@ -82,19 +83,19 @@
     const ICON_MAX = '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.8" y="1.8" width="8.4" height="8.4" rx="1.2"></rect></svg>';
     const ICON_RESTORE = '<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M4.2 4.2V3.4c0-.7.5-1.2 1.2-1.2h3.2c.7 0 1.2.5 1.2 1.2v3.2c0 .7-.5 1.2-1.2 1.2H8.6"></path><rect x="2.2" y="4.6" width="5.4" height="5.4" rx="1"></rect></svg>';
 
-    if (btnMin) btnMin.addEventListener('click', () => { try { appWindow.minimize(); } catch (e) {} });
-    if (btnMax) btnMax.addEventListener('click', () => { try { appWindow.toggleMaximize(); } catch (e) {} });
-    if (btnClose) btnClose.addEventListener('click', () => { try { appWindow.close(); } catch (e) {} });
+    if (btnMin) btnMin.addEventListener('click', () => { try { appWindow.minimize(); } catch (e) { logCatch('titlebar', e); } });
+    if (btnMax) btnMax.addEventListener('click', () => { try { appWindow.toggleMaximize(); } catch (e) { logCatch('titlebar', e); } });
+    if (btnClose) btnClose.addEventListener('click', () => { try { appWindow.close(); } catch (e) { logCatch('titlebar', e); } });
 
     // 最大化/还原图标切换
     if (btnMax) {
       const syncMax = () => {
         try {
-          appWindow.isMaximized().then((m) => { btnMax.innerHTML = m ? ICON_RESTORE : ICON_MAX; }).catch(() => {});
-        } catch (e) {}
+          appWindow.isMaximized().then((m) => { btnMax.innerHTML = m ? ICON_RESTORE : ICON_MAX; }).catch((e) => logCatch('titlebar', e));
+        } catch (e) { logCatch('titlebar', e); }
       };
       syncMax();
-      try { appWindow.onResized(syncMax); } catch (e) {}
+      try { appWindow.onResized(syncMax); } catch (e) { logCatch('titlebar', e); }
     }
 
     /* 手动拖动：mousedown 即调用 startDragging（权限 core:window:allow-start-dragging）。
@@ -109,7 +110,7 @@
         } else {
           appWindow.startDragging();
         }
-      } catch (err) {}
+      } catch (err) { logCatch('titlebar', err); }
     });
   }
 

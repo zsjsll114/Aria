@@ -342,11 +342,7 @@ function applyFontFamily(font) {
                 .vis-dimension-stage *,
                 .dim-line,
                 .dim-char,
-                .dim-word,
-                .vis-polyphony-view,
-                .vis-polyphony-view *,
-                .vis-polyphony-words,
-                .vis-polyphony-word {
+                .dim-word {
                     font-family: var(--app-font-family) !important;
                 }
                 .preview-player,

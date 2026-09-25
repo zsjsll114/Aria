@@ -15,6 +15,7 @@ import { DimensionBackground } from './dimension/DimensionBackground.js';
 import { DimensionShapes } from './dimension/DimensionShapes.js';
 import { DimensionCamera } from './dimension/DimensionCamera.js';
 import { DimensionAudio } from './dimension/DimensionAudio.js';
+import { logCatch } from '../../services/log.js';
 
 // 内置情感词与专属配色字典（兜底保障所有歌曲都有丰富情感着色）
 const BUILTIN_EMOTIONS = [
@@ -118,7 +119,7 @@ export class DimensionVisualizer extends VisualizerBase {
                 for (const e of this.entities) {
                     if (e.domEl && e.domEl._dimChars) e.domEl._needMeasure = true;
                 }
-            }).catch(() => {});
+            }).catch((e) => logCatch('DimensionVisualizer', e));
         }
     }
 

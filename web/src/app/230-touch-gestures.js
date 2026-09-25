@@ -14,6 +14,7 @@ import { audio } from './20-lyrics-render.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { playerContainer } from './40-playback-state.js';
 import { mobilePageMq, syncMobilePageState } from './60-mobile-dual-page.js';
+import { logCatch } from '../services/log.js';
 
 /* ---------- 1. 双页滑动手势 ---------- */
 (function bindMobilePageSwipe() {
@@ -53,7 +54,7 @@ import { mobilePageMq, syncMobilePageState } from './60-mobile-dual-page.js';
             if (toLyrics !== playerContainer.classList.contains('mobile-page-lyrics')) {
                 playerContainer.classList.toggle('mobile-page-lyrics', toLyrics);
                 syncMobilePageState();
-                try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {}
+                try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) { logCatch('touchGestures', _); }
             }
         }
     }, { passive: true });
@@ -122,6 +123,6 @@ import { mobilePageMq, syncMobilePageState } from './60-mobile-dual-page.js';
     bindSlider(volumeTrack, volumeFill, function (pct) {
         if (typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive()) return; /* 接管只读：音量不可调 */
         if (!audio) return;
-        try { audio.volume = volumePercentToGain(pct * 100); } catch (_) {}
+        try { audio.volume = volumePercentToGain(pct * 100); } catch (_) { logCatch('touchGestures', _); }
     });
 })();

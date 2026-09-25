@@ -1,0 +1,560 @@
+/* ============================================================
+ * remote.css — 手机遥控器页（web/remote.html）专用样式（todos #17）
+ *
+ * 三条硬前提写在这里，不在 JS 里：
+ *  ① 触控目标 ≥44px（--tap），滑杆用「行高 44px + 视觉条 8px」拉开命中区；
+ *  ② 横屏＝第二屏歌词：歌词吃满高度、控件压成底部一条，靠 grid-template-areas
+ *     重排同一份 DOM（不是两套页面）；
+ *  ③ 断线是「状态」不是「事件」：is-offline / is-stale 挂在 <html> 上，
+ *     控件变灰 + 状态条常驻，不会出现「点了没反应也不知道为什么」。
+ *
+ * 动效令牌复用 motion.css（约束 15：曲线只有三条）——本页 <link> 了它，
+ * 所以这里只 var(--e-*)，不写 cubic-bezier。
+ * 毛玻璃面板复用搜索页那套配方（约束 16），并补 prefers-reduced-transparency
+ * 的实色退化：本页没有主窗的性能探测基建，拿不到 perf-low 标记。
+ * ============================================================ */
+
+:root {
+    --tap: 48px;                 /* 最小触控目标（要求 ≥44，留 4px 余量） */
+    --accent: #ffcc33;           /* 运行时由主窗 --theme-color 覆盖 */
+    --bg: #0b0d12;
+    --bg-2: #12151d;
+    --txt: #f3f5fa;
+    --dim: rgba(255, 255, 255, .62);
+    --faint: rgba(255, 255, 255, .34);
+    --line: rgba(255, 255, 255, .14);
+    --danger: #ff6b6b;
+    --warn: #ffbe55;
+    --ok: #5be08a;
+    --glass-bg: rgba(255, 255, 255, .12);
+    --glass-bd: rgba(255, 255, 255, .18);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+}
+
+body { touch-action: manipulation; }
+
+/* ---------- 骨架 ---------- */
+.rm-wrap {
+    display: grid;
+    grid-template-areas: 'head' 'hint' 'stage' 'ctl';
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 14px;
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 18px calc(12px + env(safe-area-inset-bottom));
+    max-width: 620px;
+    margin: 0 auto;
+}
+
+.rm-head {
+    grid-area: head;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--tap);
+}
+
+.rm-stage {
+    grid-area: stage;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    min-height: 0;
+}
+
+/* 控制台与舞台之间一条发丝线：遥控器的「仪表区」从这开始 */
+.rm-ctl {
+    grid-area: ctl;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 10px;
+}
+
+/* ---------- 连接状态 ---------- */
+.rm-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.rm-pill::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--faint);
+    flex: 0 0 auto;
+}
+.rm-pill.is-ok::before { background: var(--ok); }
+.rm-pill.is-warn { color: var(--warn); }
+.rm-pill.is-warn::before { background: var(--warn); }
+.rm-pill.is-bad { color: var(--danger); border-color: rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .10); }
+.rm-pill.is-bad::before { background: var(--danger); }
+
+.rm-addr {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    font-size: 12px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 队列入口在头部右缘（遥控器的标准位）；角标随载荷里的队列总数亮起 */
+.rm-queue-btn {
+    position: relative;
+    flex: 0 0 auto;
+    appearance: none;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, .07);
+    color: var(--txt);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+.rm-queue-btn svg { width: 21px; height: 21px; fill: currentColor; }
+.rm-queue-btn:active { background: rgba(255, 255, 255, .16); }
+.rm-qbadge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #14161c;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
+    font-style: normal;
+}
+
+.rm-hint {
+    grid-area: hint;   /* 之前误写成 head——与状态条叠在同一格，断线时三行字挤在一起 */
+    display: none;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--dim);
+}
+html.rm-offline .rm-hint, html.rm-stale .rm-hint { display: block; }
+
+/* ---------- 封面 ---------- */
+.rm-artwrap { position: relative; flex: 0 0 auto; }
+
+/* 播放中封面背后的氛围光：radial-gradient 直接画光晕（不用 filter:blur——
+   常驻高斯是软件光栅化设备的大头，约束 12 的教训）。color-mix 拿运行时主题色，
+   不支持该函数的浏览器干脆不亮（纯增强，缺了不伤）。 */
+.rm-glow {
+    display: none;
+    position: absolute;
+    inset: -18%;
+    border-radius: 50%;
+    pointer-events: none;
+}
+@supports (background: color-mix(in srgb, red 20%, transparent)) {
+    .rm-glow {
+        display: block;
+        background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 38%, transparent), transparent 74%);
+        opacity: 0;
+        transition: opacity var(--d-slow) var(--e-enter-soft);
+    }
+    body.is-playing .rm-glow {
+        opacity: 1;
+        animation: rm-breathe 5.2s var(--e-enter-soft) infinite alternate;
+    }
+}
+@keyframes rm-breathe {
+    from { opacity: .55; transform: scale(.97); }
+    to { opacity: 1; transform: scale(1.03); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .rm-glow { animation: none; }
+}
+
+.rm-art {
+    position: relative;
+    z-index: 1;
+    width: min(46vh, 58vw, 260px);
+    aspect-ratio: 1;
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .45);
+    flex: 0 0 auto;
+}
+.rm-art img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0;
+    transition: opacity var(--d-slow) var(--e-enter-soft);
+}
+.rm-art img.is-on { opacity: 1; }
+.rm-art-ph {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-size: 46px;
+    color: var(--faint);
+}
+
+.rm-meta { text-align: center; min-width: 0; max-width: 100%; }
+.rm-title {
+    font-size: 21px;
+    font-weight: 800;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+.rm-artist {
+    margin-top: 3px;
+    font-size: 14px;
+    color: var(--dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 空闲态的邀请（不与断线提示同时出现——断线时那条 hint 已经说明了一切） */
+.rm-idle-hint {
+    display: none;
+    margin: 0;
+    font-size: 12px;
+    color: var(--faint);
+    text-align: center;
+}
+html:not(.rm-offline) body.is-idle .rm-idle-hint { display: block; }
+/* 空闲时没有歌词可放，别让空字幕区把封面顶得偏上：整个舞台真正居中 */
+body.is-idle .rm-lines { display: none; }
+
+/* ---------- 歌词（竖屏一行字幕 / 横屏第二屏） ---------- */
+.rm-lines {
+    width: 100%;
+    max-width: 560px;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+    mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+}
+.rm-line {
+    font-size: 17px;
+    line-height: 1.4;
+    color: var(--faint);
+    transition: color var(--d-base) var(--e-enter-soft), opacity var(--d-base) var(--e-enter-soft);
+    opacity: .55;
+    padding: 0 4px;
+}
+.rm-line.is-active { color: var(--txt); opacity: 1; font-weight: 700; }
+.rm-line.is-tr { font-size: 13px; font-weight: 400; opacity: .5; }
+.rm-line.is-off { display: none; }
+
+/* 逐字扫过：与主窗手机版预览（.mlp-word）同一套结构——底字 + 裁切后的亮字 */
+.rw { position: relative; display: inline-block; }
+.rw-b { color: var(--faint); }
+.rm-line.is-active .rw-b { color: rgba(255, 255, 255, .34); }
+.rw-h {
+    position: absolute;
+    left: 0; top: 0;
+    white-space: nowrap;
+    color: var(--txt);
+    clip-path: inset(0 100% 0 0);
+}
+.rm-line.is-active .rw-h { color: var(--accent); }
+
+/* ---------- 进度 / 音量 ---------- */
+.rm-bar, .rm-vol {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--tap);
+    touch-action: none;            /* 拖拽全权交给 JS，别让浏览器当成滚动 */
+}
+.rm-time {
+    font-size: 12px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    min-width: 42px;
+    flex: 0 0 auto;
+}
+.rm-track {
+    position: relative;
+    flex: 1 1 auto;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .16);
+}
+.rm-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0;
+    background: var(--accent);
+    border-radius: 999px;
+    display: block;
+}
+/* 拖点：告诉手指「这里能拖」。贴在 fill 右端，0% 时缩在轨道起点 */
+.rm-fill::after {
+    content: '';
+    position: absolute;
+    right: -5px;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(11, 13, 18, .85);
+}
+.rm-vol .rm-track { height: 8px; }
+.rm-volnum {
+    font-size: 12px;
+    color: var(--dim);
+    min-width: 38px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 主控件 ---------- */
+.rm-transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+}
+.rm-btn {
+    appearance: none;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, .08);
+    color: var(--txt);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform var(--d-fast) var(--e-exit), background var(--d-fast) var(--e-enter-soft);
+}
+.rm-btn:active { transform: scale(.94); background: rgba(255, 255, 255, .16); }
+.rm-btn svg { width: 26px; height: 26px; fill: currentColor; }
+.rm-btn-side { width: var(--tap); height: var(--tap); }
+.rm-btn-play {
+    width: 78px; height: 78px;
+    background: var(--accent);
+    border-color: transparent;
+    color: #14161c;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+}
+.rm-btn-play svg { width: 34px; height: 34px; }
+/* 播放/暂停是同一个按钮的两态：两枚 svg 常驻 DOM，靠类切换显隐（不 innerHTML 重画） */
+.rm-btn-play .i-pause { display: none; }
+body.is-playing .rm-btn-play .i-play { display: none; }
+body.is-playing .rm-btn-play .i-pause { display: block; }
+
+.rm-mini {
+    appearance: none;
+    width: var(--tap);
+    height: var(--tap);
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .07);
+    color: var(--txt);
+    font-size: 20px;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+.rm-mini:active { background: rgba(255, 255, 255, .18); }
+
+.rm-text-btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .06);
+    color: var(--txt);
+    border-radius: 12px;
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.rm-text-btn:active { background: rgba(255, 255, 255, .16); }
+
+/* ---------- 队列面板（毛玻璃，配方见约束 16） ---------- */
+.rm-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    background: rgba(6, 8, 12, .55);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--d-fast) var(--e-exit), visibility 0s linear var(--d-fast);
+    z-index: 40;
+}
+.rm-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--d-base) var(--e-enter);
+}
+.rm-sheet {
+    width: min(620px, 100%);
+    max-height: 76dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    backdrop-filter: saturate(2) blur(40px);
+    border: 1px solid var(--glass-bd);
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .15);
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    transform: translateY(var(--dy-out));
+    transition: transform var(--d-base) var(--e-enter);
+}
+.rm-overlay.visible .rm-sheet { transform: translateY(0); }
+.rm-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 6px 10px;
+    font-size: 15px;
+    font-weight: 700;
+}
+.rm-qlist { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.rm-qitem {
+    display: grid;
+    grid-template-columns: 34px 44px 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 6px 8px;
+    border-radius: 14px;
+    cursor: pointer;
+}
+.rm-qitem + .rm-qitem { border-top: 1px solid rgba(255, 255, 255, .06); }
+.rm-qitem:active { background: rgba(255, 255, 255, .1); }
+.rm-qitem.is-now { background: rgba(255, 255, 255, .12); }
+.rm-qn { font-size: 12px; color: var(--faint); text-align: center; font-variant-numeric: tabular-nums; }
+.rm-qc { width: 44px; height: 44px; border-radius: 9px; object-fit: cover; background: var(--bg-2); }
+.rm-qi { min-width: 0; }
+.rm-qt { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-qa { display: block; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-empty { padding: 26px 10px; text-align: center; color: var(--faint); font-size: 14px; }
+
+/* ---------- 断线 / 主窗失联：状态挂在 <html>，控件常驻变灰 ---------- */
+.rm-ctl, .rm-queue-btn, .rm-bar, .rm-vol { transition: opacity var(--d-base) var(--e-enter-soft); }
+html.rm-offline .rm-ctl,
+html.rm-offline .rm-queue-btn,
+html.rm-stale .rm-ctl,
+html.rm-stale .rm-queue-btn {
+    opacity: .38;
+    pointer-events: none;
+}
+html.rm-offline .rm-art { filter: grayscale(1); }
+
+/* ---------- 横屏：第二屏歌词 ---------- */
+@media (orientation: landscape) and (max-height: 620px) {
+    .rm-wrap {
+        grid-template-areas: 'head head' 'stage ctl' 'hint ctl';
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 10px 18px;
+        padding: max(8px, env(safe-area-inset-top)) 20px max(8px, env(safe-area-inset-bottom));
+        max-width: 1100px;
+    }
+    .rm-head { grid-area: head; min-height: 34px; }
+    .rm-hint { grid-area: hint; }
+    .rm-stage { gap: 8px; align-items: stretch; justify-content: flex-start; }
+    .rm-lines {
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: left;
+        max-width: none;
+        font-size: 21px;
+        /* 横屏是「给一屏外的人看歌词」，字号放大；但列宽只有 ~480px，
+           活动行必须一行放得下，折行会把上面几行顶出屏幕 */
+    }
+    .rm-line { font-size: 21px; text-align: left; }
+    .rm-line.is-active { font-size: 27px; }
+    .rm-line.is-tr { font-size: 15px; }
+    .rm-artwrap {
+        flex: 0 0 auto;
+        align-self: flex-start;   /* stage 在横屏是 stretch，不收住的话光晕会按整列宽画 */
+        width: 74px;
+    }
+    .rm-art { width: 74px; aspect-ratio: 1; border-radius: 12px; }
+    .rm-glow { inset: -30%; }
+    .rm-art-ph { font-size: 22px; }
+    .rm-idle-hint { display: none; }
+    .rm-stage .rm-meta { display: flex; align-items: baseline; gap: 8px; text-align: left; }
+    .rm-stage .rm-title {
+        display: block;
+        font-size: 15px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    .rm-stage .rm-artist { font-size: 13px; margin-top: 0; flex: 0 0 auto; }
+    .rm-ctl { grid-area: ctl; justify-content: center; gap: 6px; }
+    .rm-transport { gap: 14px; }
+    .rm-btn-play { width: 68px; height: 68px; }
+    .rm-ctl .rm-bar { min-height: 40px; }
+}
+
+/* 极窄屏（≤340px）：封面让位给控件 */
+@media (max-width: 340px) {
+    .rm-art { width: min(38vh, 68vw); }
+    .rm-wrap { padding-left: 12px; padding-right: 12px; }
+}
+
+/* 无高斯能力的浏览器 / 用户要求减少透明：退实色（约束 16 的退化侧） */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .rm-sheet { background: #1a1e28; }
+}
+@media (prefers-reduced-transparency: reduce) {
+    .rm-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: #1a1e28; }
+}
+@media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}

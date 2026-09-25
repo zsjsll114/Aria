@@ -1,0 +1,99 @@
+/* ============================================================
+ * zen.css — 专注模式（只留歌词）
+ *
+ * 三条硬规矩（都对应 AGENTS.md 的踩坑记录）：
+ *  1. 只用 opacity / visibility / pointer-events 隐藏，不碰 display、width、transform
+ *     ——重排会把歌词列的位置算第二遍，正好毁掉「不动歌词容器」这条要求。
+ *     visibility:hidden 还顺带让元素退出 Tab 导航（110 的 kbIsVisible 走 checkVisibility）。
+ *  2. 选择器一律锚在 html#ariaRoot：纯类选择器只有 (0,1,0)，会被组件里
+ *     `.player-container.view-pv .bottom-control-bar { … !important }` 这类规则顶掉。
+ *     隐藏态一律带 !important，因为 view-* 那边全是 !important。
+ *  3. 隐藏范围是「叠加」而非「新视图模式」：由 <html data-zen-scope="top bottom …">
+ *     里的 token 逐条开关，与 .player-container 上的 view-* 完全正交。
+ * ============================================================ */
+
+html#ariaRoot {
+    --zen-fade-out: 420ms;
+    --zen-fade-in: 240ms;
+    --zen-ease: var(--e-exit);
+}
+
+/* 软件渲染设备：没有合成器，opacity 动画也是 CPU 逐帧重绘（这些容器上还挂着
+   backdrop-filter），过渡时间必须砍到几乎瞬时，否则淡出过程本身就是一次卡顿。 */
+html#ariaRoot.is-software-renderer {
+    --zen-fade-out: 120ms;
+    --zen-fade-in: 90ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html#ariaRoot {
+        --zen-fade-out: 1ms;
+        --zen-fade-in: 1ms;
+    }
+}
+
+/* ===== 静止态：只负责「淡回」的过渡声明 =====
+   这几个容器在别的样式表里都没有 transition，所以这条基础规则不会顶掉谁的动画。
+   visibility 写成 0s 是刻意的：退出专注时要立刻恢复可见，让 opacity 去渐入。
+   #plmPanel / #mobilePageToggle 自带 opacity 过渡，不在此列（重复声明反而会
+   把它们自己的 transform 动画值抄一份过来变成第二份事实源）。 */
+html#ariaRoot .player-container .top-action-buttons,
+html#ariaRoot .player-container .bottom-control-bar,
+html#ariaRoot .player-container .player-controls-wrapper,
+html#ariaRoot .player-container .lyric-offset-control,
+html#ariaRoot #appTitlebar {
+    transition: opacity var(--zen-fade-in) var(--zen-ease), visibility 0s;
+}
+
+/* ===== 隐藏态：transition 写在这里 = 进入专注时用的那一套 =====
+   visibility 延迟 fade-out 时长再翻到 hidden，才能看见淡出过程。 */
+
+/* ① 右上角图标组（默认开） */
+html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* ② 底部控制条（默认开）。view-pv/tunnel/wordcloud… 下它是 display:flex + 绝对定位，
+   这里只压 opacity/visibility，位置与显示方式仍归那些模式自己管。 */
+html#ariaRoot.is-zen[data-zen-scope~="bottom"] .player-container .bottom-control-bar {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* ③ 左侧播放信息列：封面 + 歌名歌手 + 主控制区（默认开） */
+html#ariaRoot.is-zen[data-zen-scope~="info"] .player-container .player-controls-wrapper {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* ④ 桌面端无边框标题栏（默认关：Tauri 三大金刚键也一起没了，留给用户自选） */
+html#ariaRoot.is-zen[data-zen-scope~="titlebar"] #appTitlebar {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* ⑤ 右侧歌词延时控件（默认关） */
+html#ariaRoot.is-zen[data-zen-scope~="offset"] .player-container .lyric-offset-control {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* ⑥ 右下角当前播放队列（默认关）。.plm-panel 自己已有 opacity .24s 过渡，
+   所以退出专注时的淡入沿用它，这里只在隐藏态补 visibility 的延迟。 */
+html#ariaRoot.is-zen[data-zen-scope~="queue"] #plmPanel {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: transform .16s var(--e-exit), opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}

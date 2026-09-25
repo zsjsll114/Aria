@@ -29,7 +29,7 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
             flex-shrink: 0;
-            animation: bottomBarIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            animation: bottomBarIn 0.4s var(--e-enter);
             /* 三栏布局 */
             flex-direction: row;
             align-items: center;
@@ -89,6 +89,52 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        /* 歌手 + 取链来源角标同一行（todos #15）：不新增行高，底栏高度不变 */
+        .bottom-song-meta-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .bottom-song-meta-row .bottom-song-artist {
+            flex: 0 1 auto;
+            min-width: 0;
+        }
+
+        .play-source-badge {
+            flex: 0 0 auto;
+            max-width: 118px;
+            padding: 1px 7px;
+            font-family: inherit;
+            font-size: 9.5px;
+            line-height: 1.55;
+            font-weight: 600;
+            color: rgba(255, 255, 255, .72);
+            background: rgba(255, 255, 255, .1);
+            border: 1px solid rgba(255, 255, 255, .18);
+            border-radius: 999px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            /* 刻意不用 backdrop-filter：常驻元素，纯 CPU 设备上每帧都要重新做高斯模糊 */
+        }
+
+        .play-source-badge:hover {
+            background: rgba(255, 255, 255, .2);
+            color: #fff;
+        }
+
+        /* 走公网/跨源兜底时提示性染色（用户最关心的正是这个状态） */
+        .play-source-badge.is-fallback {
+            color: rgba(255, 208, 128, .95);
+            border-color: rgba(255, 208, 128, .34);
+            background: rgba(255, 170, 60, .14);
+        }
+
+        .play-source-badge[hidden] { display: none; }
 
         /* 中间控制区域 */
         .bottom-center-area {
@@ -185,7 +231,7 @@
             padding: 8px 12px;
             font-size: 12px;
             font-weight: 600;
-            transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+            transition: var(--t-base);
             white-space: nowrap;
             position: relative;
         }
@@ -223,7 +269,7 @@
             border-radius: 50%;
             color: #1a1a1a;
             cursor: pointer;
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         }
 

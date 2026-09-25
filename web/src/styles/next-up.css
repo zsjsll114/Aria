@@ -1,0 +1,351 @@
+/* ============================================================
+ * next-up.css — 「下一首预告 + 一键否决」浮层（289-next-up.js，todos #5）
+ *
+ * 三条硬约束照抄现成机制，不另起一套：
+ *  · 显隐用 opacity + `visibility 0s linear <退场时长>`，不用 display 切换
+ *    （AGENTS 约束 15①：display 是离散属性，用它做显隐的浮层只能「出现」不能「离开」）。
+ *  · 曲线/时长/位移只用 styles/motion.css 的令牌，入场直接复用 @keyframes ariaLayerIn
+ *    （约束 15：动效只有一套令牌）。
+ *  · 毛玻璃一律照「搜索页 .search-modal」那组值（约束 16），
+ *    并配套 `html#ariaRoot.is-software-renderer` / `body.perf-low` 的实色退化
+ *    （约束 12：降级选择器必须锚 #ariaRoot，否则被组件里的 !important 顶掉）。
+ *
+ * 位置：视口底部居中、**底栏之上**。底栏在 view-pv / view-dimension / view-wordcloud
+ * 里是 absolute 居中浮层、在 view-lyrics 里是列尾元素，高度不固定，所以让 JS 在每次
+ * 浮出时量一次底栏（以及飞入/词云底部翻译区）的上沿，把结果写进 --nu-lift；
+ * 量不到就退回 --nu-bottom 的基础值。歌词视口上下 12% 本来就被 mask 羽化到透明，
+ * 这条 44px 高的提示条落在羽化带里，不遮正文歌词行。
+ * ============================================================ */
+
+.next-up-layer {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--nu-bottom, 18px) + var(--nu-lift, 0px) + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    /* 底栏 z-index 10、飞入翻译区 85、全景模式底栏 90、弹窗/遮罩 1000+：
+       取 900 —— 浮在播放器一切内容之上，但被任何弹窗压在底下（预告不该盖住设置面板） */
+    z-index: 900;
+    width: max-content;
+    max-width: min(560px, calc(100vw - 32px));
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--d-fast) var(--e-exit),
+                visibility 0s linear var(--d-fast);
+}
+
+html#ariaRoot .next-up-layer.nu-on {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--d-base) var(--e-enter),
+                visibility 0s linear 0s;
+}
+
+/* ---------- 提示条本体（毛玻璃，约束 16 的搜索页配方） ---------- */
+.next-up-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 8px 12px;
+    min-height: 46px;
+    max-width: 100%;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: saturate(2) blur(40px);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.4;
+    /* 退场：走得比来得快、幅度更小（motion.css 的非对称幅度） */
+    transform: translateY(var(--dy-out));
+    transition: transform var(--d-fast) var(--e-exit);
+}
+
+html#ariaRoot .next-up-layer.nu-on .next-up-bar {
+    transform: none;
+    animation: ariaLayerIn var(--d-layer) var(--e-enter);
+}
+
+/* 只有真的有得换（候选非空）才把手型带上，两首队列的条看着像能点其实点了没反应 */
+.next-up-bar[data-nu-clickable] { cursor: pointer; }
+
+/* 标签（下一首 / 单曲循环 / 随机播放） */
+.next-up-tag {
+    flex: none;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--theme-color, #ffcc33);
+    white-space: nowrap;
+}
+
+.next-up-cover {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.next-up-cover.nu-hidden { display: none; }
+
+.next-up-song {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.next-up-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 600;
+}
+.next-up-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+.next-up-artist.nu-empty { display: none; }
+/* 语义说明行：队列末尾 / 随机 / 重播当前 —— 三种「不报下一首」的理由 */
+.next-up-note {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+}
+.next-up-note.nu-empty { display: none; }
+
+.next-up-count {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+}
+.next-up-count-num { font-weight: 700; }
+
+/* 点击区（整条都可点，这里是它的文案 + 焦点环宿主） */
+.next-up-cta {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--d-instant) var(--e-enter-soft),
+                color var(--d-instant) var(--e-enter-soft),
+                border-color var(--d-instant) var(--e-enter-soft);
+}
+.next-up-cta:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.32); }
+.next-up-cta:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: 2px; }
+.next-up-cta.nu-empty { display: none; }
+
+.next-up-dismiss {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background var(--d-instant) var(--e-enter-soft),
+                color var(--d-instant) var(--e-enter-soft);
+}
+.next-up-dismiss:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.next-up-dismiss:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: 2px; }
+
+/* ---------- 候选面板（在提示条上方展开，绝对定位 → 不推动提示条） ---------- */
+.next-up-panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 10px);
+    width: max-content;
+    max-width: min(420px, calc(100vw - 32px));
+    max-height: min(46vh, 320px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: saturate(2) blur(40px);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(var(--dy-out-sm));
+    transition: opacity var(--d-fast) var(--e-exit),
+                transform var(--d-fast) var(--e-exit),
+                visibility 0s linear var(--d-fast);
+}
+html#ariaRoot .next-up-bar.nu-panel-open .next-up-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity var(--d-base) var(--e-enter-soft),
+                transform var(--d-base) var(--e-enter-soft),
+                visibility 0s linear 0s;
+}
+
+.next-up-panel-title {
+    padding: 2px 6px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* 白字压在亮色封面/PV 大字上会糊成一片（实测：候选后两行几乎看不见）。
+   毛玻璃配方不能改（约束 16），所以给文字本身补一层描影。 */
+.next-up-title,
+.next-up-artist,
+.next-up-note,
+.next-up-count,
+.next-up-tag,
+.next-up-panel-title,
+.next-up-item-title,
+.next-up-item-artist {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), 0 0 12px rgba(0, 0, 0, 0.28);
+}
+html#ariaRoot.is-software-renderer .next-up-title,
+html#ariaRoot.is-software-renderer .next-up-item-title,
+html#ariaRoot body.perf-low .next-up-title,
+html#ariaRoot body.perf-low .next-up-item-title {
+    text-shadow: none;
+}
+
+.next-up-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.next-up-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 12px;
+    background: none;
+    color: #fff;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--d-instant) var(--e-enter-soft);
+}
+.next-up-item:hover { background: rgba(255, 255, 255, 0.12); }
+.next-up-item:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: -2px; }
+
+.next-up-item-no {
+    flex: none;
+    width: 20px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+.next-up-item-cover {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.08);
+}
+.next-up-item-song {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.next-up-item-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+.next-up-item-artist {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.58);
+}
+
+/* ---------- 窄屏 / 触控 ---------- */
+@media (max-width: 700px) {
+    .next-up-layer { max-width: calc(100vw - 20px); }
+    .next-up-bar { gap: 8px; padding: 8px 8px 8px 10px; }
+    .next-up-count { display: none; }
+    .next-up-panel { max-width: calc(100vw - 20px); max-height: 40vh; }
+}
+@media (pointer: coarse) {
+    .next-up-bar { min-height: 52px; }
+    .next-up-cta { min-height: 40px; padding: 8px 14px; }
+    .next-up-dismiss { width: 34px; height: 34px; }
+    .next-up-item { min-height: 44px; }
+}
+
+/* ---------- 降级：软件渲染 / 低配档退成实色底（约束 12 + 16 的配套项） ---------- */
+html#ariaRoot.is-software-renderer .next-up-bar,
+html#ariaRoot.is-software-renderer .next-up-panel,
+html#ariaRoot body.perf-low .next-up-bar,
+html#ariaRoot body.perf-low .next-up-panel,
+html#ariaRoot body.perf-minimal .next-up-bar,
+html#ariaRoot body.perf-minimal .next-up-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(20, 22, 30, 0.96) !important;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+html#ariaRoot body.perf-minimal .next-up-cover,
+html#ariaRoot body.perf-minimal .next-up-item-cover {
+    box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html#ariaRoot .next-up-layer.nu-on .next-up-bar { animation: none; }
+    /* 只压时长与位移；.next-up-layer 的 translateX(-50%) 是居中用的，不是动效，不能清 */
+    .next-up-layer,
+    html#ariaRoot .next-up-layer.nu-on,
+    .next-up-bar,
+    .next-up-panel,
+    html#ariaRoot .next-up-bar.nu-panel-open .next-up-panel {
+        transition-duration: 1ms;
+    }
+    .next-up-bar,
+    .next-up-panel { transform: none; }
+    html#ariaRoot .next-up-bar.nu-panel-open .next-up-panel { transform: none; }
+}

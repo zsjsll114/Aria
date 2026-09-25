@@ -1,0 +1,426 @@
+/* ============================================================
+ * lyric-search.css — 歌词内搜索面板（288-lyric-search.js）
+ *
+ * 面板根复用 .search-overlay + .search-modal 两个类根：显隐走 motion.css 的
+ * 共享机制（opacity + visibility，不用 display:none↔flex，AGENTS 约束 15），
+ * 这里只覆盖尺寸与内部布局。
+ * 毛玻璃一律照搜索页那套配方（AGENTS 约束 16）：rgba(255,255,255,.12) +
+ * saturate(2) blur(40px) + 1px 白描边 + 内外双阴影 + 24px 圆角。
+ * 降级规则必须锚 html#ariaRoot（AGENTS 约束 12），否则会被组件里带 !important
+ * 的 backdrop-filter 按特异性顶掉。
+ * ============================================================ */
+
+.lyric-search-modal {
+    width: min(760px, 100%);
+    height: min(80vh, 680px);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: saturate(2) blur(40px);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
+
+/* ---- 头部 ---- */
+.ls-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 18px 10px;
+    flex: 0 0 auto;
+}
+.ls-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.ls-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.ls-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+/* ---- 输入行 ---- */
+.ls-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 18px 10px;
+    flex: 0 0 auto;
+}
+.ls-box input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 34px 11px 13px;
+    border-radius: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(0, 0, 0, 0.22);
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.ls-box input:focus {
+    border-color: var(--theme-color, #ffcc33);
+    background: rgba(0, 0, 0, 0.3);
+}
+.ls-box input::placeholder { color: rgba(255, 255, 255, 0.4); }
+.ls-clear {
+    position: absolute;
+    right: calc(18px + 88px + 10px);
+    top: calc(50% - 5px);
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+.ls-clear:hover { background: rgba(255, 255, 255, 0.26); }
+.ls-go {
+    flex: 0 0 auto;
+    margin: 0;
+    border-radius: 13px;
+    padding: 11px 16px;
+}
+
+/* ---- 索引状态行 ---- */
+.ls-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 0 18px 10px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.55);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    flex: 0 0 auto;
+}
+.ls-status.is-bad { color: rgba(255, 138, 138, 0.9); }
+.ls-num {
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.86);
+    font-variant-numeric: tabular-nums;
+}
+.ls-sep { opacity: 0.4; }
+.ls-state.is-ok::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+    background: rgba(120, 220, 150, 0.9);
+    vertical-align: middle;
+}
+.ls-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--theme-color, #ffcc33);
+    flex: 0 0 auto;
+    animation: ls-pulse 1.3s ease-in-out infinite;
+}
+@keyframes ls-pulse {
+    0%, 100% { opacity: 0.28; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- 结果区 ---- */
+.ls-results {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px 12px 14px;
+}
+.ls-sum {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 2px 6px 10px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.5);
+    position: sticky;
+    top: -10px;
+    background: linear-gradient(180deg, rgba(24, 26, 34, 0.66), rgba(24, 26, 34, 0));
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+.ls-inline-build {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px 8px;
+    padding: 7px 10px;
+    border-radius: 11px;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.ls-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 10px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.16s ease, border-color 0.16s ease;
+}
+.ls-row:hover,
+.ls-row.is-sel {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+.ls-row:focus-visible {
+    border-color: var(--theme-color, #ffcc33);
+}
+.ls-cover {
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.5);
+}
+.ls-body { min-width: 0; }
+.ls-top {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+}
+.ls-song {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.94);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55%;
+}
+.ls-artist {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.ls-src {
+    font-size: 10.5px;
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    flex: 0 0 auto;
+}
+.ls-line {
+    margin-top: 3px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.88);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.ls-mark {
+    color: var(--theme-color, #ffcc33);
+    background: color-mix(in srgb, var(--theme-color, #ffcc33) 18%, transparent);
+    border-radius: 3px;
+    padding: 0 1px;
+    font-weight: 700;
+}
+.ls-context {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.38);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ls-context::before { content: '… '; opacity: 0.6; }
+.ls-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+.ls-time {
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.62);
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.24);
+}
+.ls-hits {
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--theme-color, #ffcc33);
+    opacity: 0.85;
+}
+.ls-chip {
+    display: inline-block;
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.62);
+}
+.ls-chip-scope { border-color: rgba(255, 255, 255, 0.1); }
+
+/* ---- 三种状态：待输入 / 无命中 / 索引建立中 ---- */
+.ls-state-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    text-align: center;
+    padding: 44px 20px;
+    color: rgba(255, 255, 255, 0.6);
+}
+.ls-state-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.86);
+}
+.ls-state-desc,
+.ls-state-sub {
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.45);
+    max-width: 420px;
+}
+.ls-state-sub {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* ---- 页脚 ---- */
+.ls-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 18px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    flex: 0 0 auto;
+}
+.ls-scopes {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.42);
+    flex-wrap: wrap;
+}
+.ls-reindex {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.76);
+    font-size: 11.5px;
+    border-radius: 10px;
+    padding: 6px 11px;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease;
+}
+.ls-reindex:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+/* ---- 入口按钮（自建自挂：底栏或右上角） ---- */
+.lyric-search-entry .lsq-icon { flex: 0 0 auto; }
+.lyric-search-entry.is-busy { position: relative; }
+.lyric-search-entry.is-busy::after {
+    content: '';
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--theme-color, #ffcc33);
+    animation: ls-pulse 1.3s ease-in-out infinite;
+}
+.top-action-buttons .lyric-search-entry .lsq-text { display: none; }
+
+/* ---- 窄屏 / 触控 ---- */
+@media (max-width: 700px) {
+    .lyric-search-modal { width: 100%; height: min(88vh, 100%); border-radius: 18px; }
+    .ls-row { grid-template-columns: 34px 1fr auto; gap: 9px; }
+    .ls-cover { width: 34px; height: 34px; }
+    .ls-song { max-width: 100%; }
+    .ls-clear { right: calc(18px + 78px + 8px); }
+}
+@media (pointer: coarse) {
+    .ls-row { padding: 12px 10px; }
+    .ls-reindex, .ls-go { min-height: 42px; }
+    .ls-close { padding: 9px; }
+}
+
+/* ---- 降级：软件渲染/低性能档退成实色（必须锚 #ariaRoot，AGENTS 约束 12） ---- */
+html#ariaRoot.is-software-renderer .lyric-search-modal,
+html#ariaRoot body.perf-low .lyric-search-modal,
+html#ariaRoot body.perf-minimal .lyric-search-modal {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(20, 22, 30, 0.98) !important;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+html#ariaRoot.is-software-renderer .ls-sum,
+html#ariaRoot body.perf-low .ls-sum,
+html#ariaRoot body.perf-minimal .ls-sum {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: none;
+}
+html#ariaRoot.is-software-renderer .ls-dot,
+html#ariaRoot body.perf-low .ls-dot,
+html#ariaRoot body.perf-minimal .ls-dot,
+html#ariaRoot.is-software-renderer .lyric-search-entry.is-busy::after,
+html#ariaRoot body.perf-low .lyric-search-entry.is-busy::after {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ls-dot,
+    .lyric-search-entry.is-busy::after { animation: none; }
+    .ls-row, .ls-close, .ls-reindex, .ls-box input { transition: none; }
+}

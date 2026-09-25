@@ -29,10 +29,11 @@ import { applyFontFamily, applyGlassStrength, bindColorRow, openColorPicker } fr
 import { buildAdvancedFontUI, initFontUploadBindings, loadFontFace, refreshAdvancedFontDropdowns, refreshFontDropdown, renderFontManagerUI, saveCustomFont, saveFontToDB } from './215-multilang-fonts.js';
 import { downloadJSON, importData, initCustomDropdowns, initPerformanceSettings, initShortcutRecording, refreshSettingsUI, refreshShortcutUI, showSettingsHint } from './220-shortcuts-viewmode.js';
 import { initSelfhostSection } from './selfhost-settings.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { t } from '../core/i18n.js';
 import { applyLyricSetting, applySharedSetting, ensureEmotionGlowSliders, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
 import { bindToggle } from './200-settings-panel.js';  // 环引用：bindToggle 为函数声明（提升），仅在 initSettingsAI 运行时经函数体访问，TDZ 安全
+import { esc } from '../utils/formatters.js';
 
             /* 获取歌词纯文本（从 lyrics 数组中提取）
                逐字歌词：附带每行时长与高潮区间加权信息，帮助 AI 精准识别高潮/副歌 */
@@ -227,9 +228,9 @@ import { bindToggle } from './200-settings-panel.js';  // 环引用：bindToggle
             function tryParseJsonObject(str) {
                 const s = (str || '').trim();
                 if (!s) return null;
-                try { return JSON.parse(s); } catch (e) {}
+                try { return JSON.parse(s); } catch (e) { logCatch('settingsPanel', e); }
                 const m = s.match(/\{[\s\S]*\}/);
-                if (m) { try { return JSON.parse(m[0]); } catch (e) {} }
+                if (m) { try { return JSON.parse(m[0]); } catch (e) { logCatch('settingsPanel', e); } }
                 return null;
             }
 
@@ -553,7 +554,7 @@ import { bindToggle } from './200-settings-panel.js';  // 环引用：bindToggle
                         try {
                             const snippet = (errText || '').replace(/\s+/g, ' ').trim().slice(0, 120);
                             errMsg += `（HTTP ${response.status}${snippet ? '：' + snippet : ''}）`;
-                        } catch (_e) {}
+                        } catch (_e) { logCatch('settingsPanel', _e); }
                         showSettingsHint(errMsg);
                         setAiPanelError(t('ai.statusFailed', '分析失败'), errMsg);
                         if (statusText) statusText.textContent = t('ai.statusFailed', '分析失败');
@@ -1396,9 +1397,9 @@ async function triggerAiAnalysisIfNeeded() {
                   })
                 : Promise.resolve(true));
             if (!okProceed) return;
-            try { localStorage.setItem('aria_ai_proxy_notice', '1'); } catch (e2) {}
+            try { localStorage.setItem('aria_ai_proxy_notice', '1'); } catch (e2) { logCatch('settingsPanel', e2); }
         }
-    } catch (e1) {}
+    } catch (e1) { logCatch('settingsPanel', e1); }
     if (!currentSongData || (!currentSongData.title && !currentSongData.song)) return;
 
     const title = currentSongData.title || currentSongData.song || '';
@@ -2045,7 +2046,7 @@ batchAnalyzePlaylist();
                         ${latencyBadge}
                     </div>
                     <div style="background:rgba(0,0,0,0.28);border:1px solid ${isOk ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'};border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;word-break:break-word;white-space:pre-wrap;color:${isOk ? '#e2e8f0' : '#fca5a5'};line-height:1.6;">
-                        ${result.message || (isOk ? '测试成功' : '未知错误')}
+                        ${esc(result.message || (isOk ? '测试成功' : '未知错误'))}
                     </div>
                     <div style="font-size:11px;color:rgba(255,255,255,0.45);display:flex;flex-direction:column;gap:4px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;">
                         <div>服务商: <span style="color:rgba(255,255,255,0.85);">${meta.provider || 'gemini'}</span> | 目标模型: <span style="color:rgba(255,255,255,0.85);">${meta.model || 'gemini-1.5-flash'}</span></div>
@@ -2160,10 +2161,10 @@ batchAnalyzePlaylist();
                             /* 按模型名排序 */
                             models.sort((a, b) => a.id.localeCompare(b.id));
                             aiModelsList.innerHTML = models.map(m => {
-                                const tagsHtml = m.tags.map(t => `<span class="ai-model-item-tag ${t.cls}">${t.text}</span>`).join('');
-                                const descHtml = m.desc ? `<span style="font-size:11px;color:rgba(255,255,255,0.4);margin-left:4px;">${m.desc}</span>` : '';
-                                return `<div class="ai-model-item" data-model-id="${m.id}">
-                                    <span class="ai-model-item-name">${m.id}${descHtml}</span>
+                                const tagsHtml = m.tags.map(t => `<span class="ai-model-item-tag ${t.cls}">${esc(t.text)}</span>`).join('');
+                                const descHtml = m.desc ? `<span style="font-size:11px;color:rgba(255,255,255,0.4);margin-left:4px;">${esc(m.desc)}</span>` : '';
+                                return `<div class="ai-model-item" data-model-id="${esc(m.id)}">
+                                    <span class="ai-model-item-name">${esc(m.id)}${descHtml}</span>
                                     ${tagsHtml}
                                 </div>`;
                             }).join('');
@@ -2187,7 +2188,7 @@ batchAnalyzePlaylist();
                     } catch (e) {
                         const provCfg = AI_PROVIDERS[provider] || AI_PROVIDERS.openai;
                         if (Array.isArray(provCfg.models) && provCfg.models.length > 0) {
-                            aiModelsList.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:8px;padding:0 4px;">未能从服务端动态获取（${e.message}），已显示【${provCfg.name || provider}】推荐预置模型：</div>` +
+                            aiModelsList.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:8px;padding:0 4px;">未能从服务端动态获取（${esc(e.message)}），已显示【${esc(provCfg.name || provider)}】推荐预置模型：</div>` +
                             provCfg.models.map(m => `
                                     <span class="ai-model-item-tag gpt">推荐</span>
                                 </div>
@@ -2208,9 +2209,8 @@ batchAnalyzePlaylist();
                                 });
                             });
                         } else {
-                            aiModelsList.innerHTML = `<div class="ai-models-loading" style="color:#f87171;">获取失败: ${e.message}</div>`;
+                            aiModelsList.innerHTML = `<div class="ai-models-loading" style="color:#f87171;">获取失败: ${esc(e.message)}</div>`;
                         }
-                    } finally {
                     }
                 });
             }

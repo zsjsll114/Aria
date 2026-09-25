@@ -22,7 +22,7 @@
 /* 模式切换 Segment */
 /* ★ flex-wrap：窄窗口下模式按钮自动换行，避免溢出容器 */
 .appearance-mode-segment { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 16px; }
-.appearance-mode-btn { flex: 1 1 calc(20% - 4px); min-width: 96px; box-sizing: border-box; background: none; border: none; color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 4px; border-radius: 8px; white-space: nowrap; transition: all 0.2s ease; font-family: inherit; }
+.appearance-mode-btn { flex: 1 1 calc(20% - 4px); min-width: 96px; box-sizing: border-box; background: none; border: none; color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 4px; border-radius: 8px; white-space: nowrap; transition: var(--t-base); font-family: inherit; }
 .appearance-mode-btn:hover { color: rgba(255,255,255,0.85); }
 .appearance-mode-btn.active { background: rgba(var(--theme-color-rgb,255,204,51),0.2); color: var(--theme-color,#ffcc33); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 
@@ -30,7 +30,7 @@
 
 /* 字体下拉 — 毛玻璃风格（与常规设置 100% 保持一致） */
 .appearance-font-dropdown { width: 140px; min-width: 140px; max-width: 220px; }
-.appearance-font-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-family: inherit; outline: none; transition: all 0.2s ease; min-width: 120px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appearance-font-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-family: inherit; outline: none; transition: var(--t-base); min-width: 120px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appearance-font-select:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); }
 .appearance-font-select option { background: rgba(30,28,40,0.95); color: #fff; }
 

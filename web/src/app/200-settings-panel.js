@@ -27,11 +27,12 @@ import { applyFontFamily, applyGlassStrength, bindColorRow, openColorPicker } fr
 import { buildAdvancedFontUI, initFontUploadBindings, loadFontFace, refreshAdvancedFontDropdowns, refreshFontDropdown, renderFontManagerUI, saveCustomFont, saveFontToDB } from './215-multilang-fonts.js';
 import { downloadJSON, importData, initCustomDropdowns, initPerformanceSettings, initShortcutRecording, refreshSettingsUI, refreshShortcutUI, showSettingsHint } from './220-shortcuts-viewmode.js';
 import { initSelfhostSection } from './selfhost-settings.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { applyLyricSetting, applySharedSetting, ensureEmotionGlowSliders, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
 import { initSettingsAI } from './201-settings-ai.js'; // AI 域平铺绑定入口（initSettingsPanel 调用）
 import { initNowPlayingSettings } from './232-nowplaying-follow.js'; // Now Playing 接管配置绑定（initSettingsMisc 调用；232→175→180→200 属既有分片环，运行时才解引用）
 import { renderSettingsNav } from '../config/settingsNav.js'; // 设置声明式导航（分组侧栏唯一事实源）
+import { conceal } from '../utils/motion.js'; // 分区交叉退场：演完才 display:none
 
 /* ========== 全局选项卡与模式切换引擎 ========== */
 
@@ -135,46 +136,9 @@ function initSettingsPanel() {
                 }
             });
 
-            /* ★ 设置选项卡 Tab 切换（11大主设置页面无缝切换） */
-            tabsEl?.addEventListener('click', (e) => {
-                const tab = e.target.closest('.settings-tab');
-                if (!tab) return;
-                const tabName = tab.dataset.tab;
-                if (!tabName) return;
-
-                tabsEl.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                if (bodyEl) {
-                    bodyEl.querySelectorAll('.settings-section').forEach(s => {
-                        if (s.dataset.section === tabName) {
-                            s.classList.add('active');
-                            s.style.display = (tabName === 'appearance') ? 'flex' : 'block';
-                        } else {
-                            s.classList.remove('active');
-                            s.style.display = 'none';
-                        }
-                    });
-                    bodyEl.scrollTop = 0;
-                }
-
-                if (tabName === 'appearance') {
-                    try { initPreviewEngine(); } catch(e) { logWarn('settingsPanel', e); }
-                    try { buildAppearanceControls(); } catch(e) { logWarn('settingsPanel', e); }
-                } else {
-                    if (previewEngineInstance) {
-                        previewEngineInstance.isPlaying = false;
-                        previewEngineInstance.updatePlayIcon();
-                    }
-                    try { initCustomDropdowns(); } catch(e) { logWarn('settingsPanel', e); }
-                    try { refreshSettingsUI(); } catch(e) { logWarn('settingsPanel', e); }
-                }
-                /* ★ 语言包应用（2026-09-22）：每个 Tab 的 DOM 都是动态渲染的，
-                   切换后对新节点补跑一次 i18n 静态文本映射 */
-                try {
-                    import('../core/i18n.js').then(m => m.applyLanguageToDocument()).catch(() => {});
-                } catch(e) { logWarn('settingsPanel', e); }
-            });
+            /* 设置选项卡的点击委托只留上面 navReady 那一份（同一个 tabsEl 上曾挂着第二个
+               平行处理器，一次点击跑两遍 switchSettingsTab：第二遍会把正在淡出的
+               分区立刻拍成 display:none，交叉退场就没了。i18n 已并入 switchSettingsTab）。 */
 
             /* 初始化自定义下拉与外观控件（appearanceControlsEl 已随外观域迁至 202-settings-appearance.js） */
             initCustomDropdowns();
@@ -182,7 +146,7 @@ function initSettingsPanel() {
             /* ★ i18n 静态文本应用（2026-09-22）：声明式词表扫描兜底，
                面板首次渲染后立即按当前语言出英文 */
             try {
-                import('../core/i18n.js').then(m => m.applyLanguageToDocument()).catch(() => {});
+                import('../core/i18n.js').then(m => m.applyLanguageToDocument()).catch((e) => logCatch('settingsPanel', e));
             } catch(e) { logWarn('settingsPanel', e); }
             /* ★ AI 域平铺绑定入口（原模块加载即执行，收敛为函数后在此调用一次，等价于原加载时机后的首次初始化） */
             try { initSettingsAI(); } catch(e) { logWarn('settingsPanel', 'initSettingsAI:', e); }
@@ -195,7 +159,7 @@ function initSettingsPanel() {
                     /* 已存在：恢复播放 + 设置激活模式 + 重新构建控件面板 */
                     previewEngineInstance.isPlaying = true;
                     previewEngineInstance.startTime = performance.now() - (previewEngineInstance.lastTime || 0);
-                    try { previewEngineInstance.setMode(activeMode); } catch(e) {}
+                    try { previewEngineInstance.setMode(activeMode); } catch (e) { logCatch('settingsPanel', e); }
                     previewEngineInstance.updatePlayIcon();
                     previewEngineInstance.loop();
                     buildAppearanceControls();
@@ -219,10 +183,10 @@ function initSettingsPanel() {
                     logInfo('settingsPanel', 'PreviewEngine 初始化完成');
                     const curMode = document.querySelector('#lyricStyleControls .appearance-mode-btn.active')?.dataset?.mode || activeMode;
                     if (previewEngineInstance) {
-                        try { previewEngineInstance.setMode(curMode); } catch(e) {}
+                        try { previewEngineInstance.setMode(curMode); } catch (e) { logCatch('settingsPanel', e); }
                         /* ★ init 完成后重新同步控件值，确保预览 DOM 已就绪 */
-                        try { buildAppearanceControls(); } catch(e) {}
-                        try { syncModeSectionValues(curMode); } catch(e) {}
+                        try { buildAppearanceControls(); } catch (e) { logCatch('settingsPanel', e); }
+                        try { syncModeSectionValues(curMode); } catch (e) { logCatch('settingsPanel', e); }
                     }
                 }).catch((e) => {
                     logWarn('settingsPanel', 'PreviewEngine.init catch:', e);
@@ -260,15 +224,35 @@ function initSettingsPanel() {
                     });
                 }
                 if (bodyEl) {
+                    /* 交叉替换：新分区立刻显示（下面的副作用也照旧同步跑），
+                       旧分区先脱流淡出、演完再 display:none——见 motion.css .is-leaving。
+                       连点时多个分区可能同时在退，各自一条 conceal，互不影响。 */
+                    const next = bodyEl.querySelector('.settings-section[data-section="' + CSS.escape(tabName) + '"]');
+                    const prev = bodyEl.querySelector('.settings-section.active');
+                    const leaving = (prev && next && prev !== next) ? prev : null;
+                    if (next && next.classList.contains('is-leaving')) {
+                        /* 又切回正在退的那个：作废它的退场回调，否则会被藏掉 */
+                        next.classList.remove('is-leaving');
+                        if (next.__ariaConceal) next.__ariaConceal.superseded = true;
+                    }
+                    if (leaving) leaving.classList.replace('active', 'is-leaving');
                     bodyEl.querySelectorAll('.settings-section').forEach(s => {
                         if (s.dataset.section === tabName) {
                             s.classList.add('active');
                             s.style.setProperty('display', (tabName === 'appearance') ? 'flex' : 'block', 'important');
-                        } else {
+                        } else if (s !== leaving) {
                             s.classList.remove('active');
                             s.style.setProperty('display', 'none', 'important');
                         }
                     });
+                    if (leaving) {
+                        conceal(leaving, {
+                            onHidden: () => {
+                                leaving.style.setProperty('display', 'none', 'important');
+                                leaving.classList.remove('is-leaving');
+                            }
+                        });
+                    }
                     bodyEl.scrollTop = 0;
                 }
                 if (tabName === 'appearance') {
@@ -277,20 +261,26 @@ function initSettingsPanel() {
                 } else {
                     if (previewEngineInstance) {
                         previewEngineInstance.isPlaying = false;
-                        try { previewEngineInstance.updatePlayIcon(); } catch(e) {}
+                        try { previewEngineInstance.updatePlayIcon(); } catch (e) { logCatch('settingsPanel', e); }
                     }
-                    try { initCustomDropdowns(); } catch(e) {}
-                    try { refreshSettingsUI(); } catch(e) {}
+                    try { initCustomDropdowns(); } catch (e) { logCatch('settingsPanel', e); }
+                    try { refreshSettingsUI(); } catch (e) { logCatch('settingsPanel', e); }
                     if (tabName === 'selfhost') {
                         try { initSelfhostSection(); } catch(e) { logWarn('settingsPanel', e); }
                     }
                     if (tabName === 'fonts') {
-                        try { renderFontManagerUI(); } catch(e) {}
-                        try { buildAdvancedFontUI(); } catch(e) {}
-                        try { initFontUploadBindings(); } catch(e) {}
-                        try { refreshFontDropdown(); } catch(e) {}
+                        try { renderFontManagerUI(); } catch (e) { logCatch('settingsPanel', e); }
+                        try { buildAdvancedFontUI(); } catch (e) { logCatch('settingsPanel', e); }
+                        try { initFontUploadBindings(); } catch (e) { logCatch('settingsPanel', e); }
+                        try { refreshFontDropdown(); } catch (e) { logCatch('settingsPanel', e); }
                     }
                 }
+                /* ★ 语言包应用：每个 Tab 的 DOM 都是动态渲染的，切换后对新节点补跑一次
+                   静态文本映射。从原重复 Tab 处理器搬进来——放这里程序化跳转
+                   （130-playlists 直接调 switchSettingsTab('selfhost')）才同样享受到。 */
+                try {
+                    import('../core/i18n.js').then(mi => mi.applyLanguageToDocument()).catch((e) => logCatch('settingsPanel', e));
+                } catch (e) { logWarn('settingsPanel', e); }
             };
 
             /* ★ 预览设置 → 主播放器同步映射（每种视图模式完全独立隔离存储） */
@@ -390,7 +380,7 @@ function initSettingsPanel() {
                         const playerContainer = typeof document !== 'undefined' ? document.querySelector('.player-container:not(.preview-player)') : null;
                         let mainMode = 'cover';
                         if (playerContainer) {
-                            const modes = ['dimension', 'letterpress', 'neon', 'pv', 'tunnel', 'flyin', 'wordcloud', 'mist', 'aura', 'cascade', 'polyphony', 'chronos', 'artisan', 'lyrics', 'cover'];
+                            const modes = ['dimension', 'letterpress', 'neon', 'pv', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
                             for (const m of modes) {
                                 if (playerContainer.classList.contains(`view-${m}`)) {
                                     mainMode = m;

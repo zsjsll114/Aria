@@ -59,7 +59,6 @@ export class VisualizerManager {
       if (typeof this.activeInstance.setPerfConfig === 'function') {
         this.activeInstance.setPerfConfig({
           dimension: this.perfDimension,
-          polyphony: this.perfPolyphony,
           vfx: this.perfVfx,
         });
       }
@@ -98,7 +97,7 @@ export class VisualizerManager {
   }
 
   /**
-   * ★ 性能分档下发：VisualizerManager 管理的模式（浮空/和鸣）原本完全未消费
+   * ★ 性能分档下发：VisualizerManager 管理的模式（浮空/活字/霓虹）原本完全未消费
    * 性能分档，导致低性能/无 GPU 设备上粒子、阴影、发光等尺寸固定拖垮帧率。
    * 这里把档位参数缓存给后续创建的实例，并即时应用到当前实例。
    */
@@ -106,13 +105,11 @@ export class VisualizerManager {
     this.perfProfile = profile;
     this.perfTunnel = profile.tunnel || null;
     this.perfDimension = profile.dimension || null;
-    this.perfPolyphony = profile.polyphony || null;
     this.perfVfx = profile.vfx || null;
     if (this.activeInstance) {
       if (typeof this.activeInstance.setPerfConfig === 'function') {
         this.activeInstance.setPerfConfig({
           dimension: this.perfDimension,
-          polyphony: this.perfPolyphony,
           vfx: this.perfVfx,
         });
       }

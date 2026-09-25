@@ -19,95 +19,20 @@ import { addToPlaylistOverlay, playlistsOverlay, renderAddToPlaylistList, render
 import { loadOnlineSong } from './175-track-index-online.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
+import { initFadeController, fadeInVolume, fadeOutVolume } from '../core/fadeController.js';
+import { sleepFadeOwnsVolume, sleepTimerSongChanged } from '../core/sleepTimer.js';
 
 globalThis.lastLoadedSongInfo = null;
 
-function fadeOutVolume(duration, callback) {
-            /* 取消之前的淡出动画 */
-            if (fadeOutVolumeRafId) {
-                cancelAnimationFrame(fadeOutVolumeRafId);
-                fadeOutVolumeRafId = null;
-            }
-            /* 取消正在进行的淡入动画，避免两者竞争 */
-            if (fadeInVolumeRafId) {
-                cancelAnimationFrame(fadeInVolumeRafId);
-                fadeInVolumeRafId = null;
-            }
-            if (fadeOutVolumeTimeoutId) { clearTimeout(fadeOutVolumeTimeoutId); fadeOutVolumeTimeoutId = null; }
-            if (!appSettings.playback.fadeInOut) { if (callback) callback(); return; }
-            const startVol = audio.volume;
-            const startTime = performance.now();
-            function step(now) {
-                const t = Math.min(1, (now - startTime) / duration);
-                audio.volume = Math.max(0, Math.min(1, startVol * (1 - t)));
-                if (t < 1) {
-                    fadeOutVolumeRafId = requestAnimationFrame(step);
-                } else {
-                    fadeOutVolumeRafId = null;
-                    if (fadeOutVolumeTimeoutId) { clearTimeout(fadeOutVolumeTimeoutId); fadeOutVolumeTimeoutId = null; }
-                    if (callback) callback();
-                }
-            }
-            fadeOutVolumeRafId = requestAnimationFrame(step);
-            /* setTimeout 兜底：确保即使 RAF 未触发，回调也能执行 */
-            fadeOutVolumeTimeoutId = setTimeout(() => {
-                fadeOutVolumeTimeoutId = null;
-                if (fadeOutVolumeRafId) {
-                    cancelAnimationFrame(fadeOutVolumeRafId);
-                    fadeOutVolumeRafId = null;
-                    audio.volume = 0;
-                    if (callback) callback();
-                }
-            }, duration + 100);
-        }
-
-function fadeInVolume(targetVol, duration) {
-            /* 取消之前的淡入动画 */
-            if (fadeInVolumeRafId) {
-                cancelAnimationFrame(fadeInVolumeRafId);
-                fadeInVolumeRafId = null;
-            }
-            /* 取消正在进行的淡出动画，避免竞争导致音量卡在 0 */
-            if (fadeOutVolumeRafId) {
-                cancelAnimationFrame(fadeOutVolumeRafId);
-                fadeOutVolumeRafId = null;
-            }
-            if (fadeOutVolumeTimeoutId) { clearTimeout(fadeOutVolumeTimeoutId); fadeOutVolumeTimeoutId = null; }
-            if (fadeInVolumeTimeoutId) { clearTimeout(fadeInVolumeTimeoutId); fadeInVolumeTimeoutId = null; }
-            if (!appSettings.playback.fadeInOut || !duration || duration <= 0) {
-                audio.volume = Math.max(0, Math.min(1, targetVol));
-                return;
-            }
-            /* 采用平滑正弦曲线并限制淡入上限，避免人耳对低音量的对数不敏感导致前1~3秒听不到声音 */
-            const effectiveDuration = Math.min(duration, 1000);
-            const startVol = Math.min(audio.volume, targetVol * 0.35);
-            const startTime = performance.now();
-            function step(now) {
-                const linearT = Math.min(1, (now - startTime) / effectiveDuration);
-                const easeT = Math.sin(linearT * Math.PI / 2);
-                audio.volume = Math.max(0, Math.min(1, startVol + (targetVol - startVol) * easeT));
-                if (linearT < 1) {
-                    fadeInVolumeRafId = requestAnimationFrame(step);
-                } else {
-                    audio.volume = Math.max(0, Math.min(1, targetVol));
-                    fadeInVolumeRafId = null;
-                    if (fadeInVolumeTimeoutId) { clearTimeout(fadeInVolumeTimeoutId); fadeInVolumeTimeoutId = null; }
-                }
-            }
-            fadeInVolumeRafId = requestAnimationFrame(step);
-            /* setTimeout 兜底：确保即使 RAF 未触发（如标签页后台），音量也能恢复到目标值 */
-            fadeInVolumeTimeoutId = setTimeout(() => {
-                fadeInVolumeTimeoutId = null;
-                if (fadeInVolumeRafId) {
-                    cancelAnimationFrame(fadeInVolumeRafId);
-                    fadeInVolumeRafId = null;
-                    audio.volume = Math.max(0, Math.min(1, targetVol));
-                }
-            }, effectiveDuration + 50);
-        }
+/* 音量淡入淡出本体已迁到 core/fadeController.js（core 层接管第 2 个模块，2026-09-25）。
+   逻辑逐行照搬自本分片（含双向取消、setTimeout 兜底、正弦缓动与 1000ms 上限），行为不变。
+   四个 rAF/timeout 句柄改由该模块独占读写，已从 globalBridge 的桥接面移除。 */
+initFadeController(audio);
 
 /* 切歌时应用音量处理：音量标准化 + 淡入（淡入目标为对数曲线后的声压值） */
 function applyVolumeOnSongChange() {
+            /* 睡眠淡出中：音量斜坡继续接管，否则 fadeInVolume 会把淡到一半的音量顶回满值 */
+            if (sleepFadeOwnsVolume()) { sleepTimerSongChanged(); return; }
             let targetVol;
             if (appSettings.audio.volumeNorm) {
                 /* 音量标准化：重置到默认音量 */
@@ -419,4 +344,4 @@ async function maybeQueueRefill() {
 }
 Aria.__maybeQueueRefill = maybeQueueRefill;
 
-export { applyVolumeOnSongChange, closePlaylists, fadeInVolume, fadeOutVolume, handlePlayFailure, loadPlaylistTrack, openAddToPlaylist, openPlaylists };
+export { applyVolumeOnSongChange, closePlaylists, handlePlayFailure, loadPlaylistTrack, openAddToPlaylist, openPlaylists };

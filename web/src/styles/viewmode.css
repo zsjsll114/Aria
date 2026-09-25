@@ -8,22 +8,13 @@
             background: rgba(0, 0, 0, 0.45);
             backdrop-filter: saturate(180%) blur(40px);
             -webkit-backdrop-filter: saturate(180%) blur(40px);
-            display: none;
             align-items: center;
             justify-content: center;
             z-index: 1000;
             padding: 20px;
         }
 
-        .view-mode-overlay.visible {
-            display: flex;
-            animation: viewModeFadeIn 0.3s ease;
-        }
-
-        @keyframes viewModeFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+        /* display / 遮罩淡入淡出由 motion.css 的浮层机制接管 */
 
         .view-mode-modal {
             width: min(560px, 100%);
@@ -34,12 +25,6 @@
             border-radius: 24px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
             overflow: hidden;
-            animation: viewModeSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        @keyframes viewModeSlideUp {
-            from { transform: translateY(30px) scale(0.95); opacity: 0; }
-            to { transform: translateY(0) scale(1); opacity: 1; }
         }
 
         .view-mode-header {
@@ -66,7 +51,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .view-mode-close:hover {
@@ -107,7 +92,7 @@
             cursor: pointer;
             border: 2px solid rgba(255, 255, 255, 0.1);
             background: rgba(255, 255, 255, 0.05);
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
         }
 
         .view-mode-card:hover {
@@ -318,7 +303,7 @@
             justify-content: center;
             opacity: 0;
             transform: scale(0.5);
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: var(--t-base);
         }
 
         .view-mode-card.active .view-mode-check {
@@ -533,8 +518,8 @@
         .view-flyin .line.active .word {
             opacity: 0;
             transform: translateY(var(--flyin-translateY, 14px)) translateX(6px) scale(var(--flyin-scale, 0.8)) rotate(-3deg);
-            transition: opacity 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                        transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+            transition: opacity 0.45s var(--e-enter-soft),
+                        transform 0.45s var(--e-enter-soft),
                         filter 0.4s ease;
         }
         /* 唱到的字飞入原位并渐显（无发光，只有情感词发光） */
@@ -583,7 +568,7 @@
 
         /* ===== 纯文本歌词行（无逐字数据）：整行飞入 + 居中 ===== */
         .view-flyin .line.active .lrc-original:not(:has(.words-container)) {
-            animation: view-flyin-line 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            animation: view-flyin-line 0.5s var(--e-enter-soft) forwards;
             text-align: center !important;
         }
         @keyframes view-flyin-line {
@@ -878,17 +863,14 @@
 
         /* ========== PV 模式与全景视觉模式视图适配 ========== */
         .player-container.view-pv,
-        .player-container.view-dimension,
-        .player-container.view-polyphony {
+        .player-container.view-dimension {
             flex-direction: column;
             padding-bottom: 0;
         }
         .player-container.view-pv .player-controls-wrapper,
         .player-container.view-pv .lyrics-area-wrapper,
         .player-container.view-dimension .player-controls-wrapper,
-        .player-container.view-dimension .lyrics-area-wrapper,
-        .player-container.view-polyphony .player-controls-wrapper,
-        .player-container.view-polyphony .lyrics-area-wrapper {
+        .player-container.view-dimension .lyrics-area-wrapper {
             display: none !important;
         }
 
@@ -896,8 +878,7 @@
            ★ 桌面端必须叠加 --titlebar-top-offset（Tauri 标题栏高度），
              否则 !important 会顶掉 base.css 的安全距离，与三大金刚键重叠 */
         .player-container.view-pv .top-action-buttons,
-        .player-container.view-dimension .top-action-buttons,
-        .player-container.view-polyphony .top-action-buttons {
+        .player-container.view-dimension .top-action-buttons {
             display: flex !important;
             position: absolute !important;
             top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px)) !important;
@@ -909,7 +890,6 @@
         /* 底部控制栏在所有全景模式下居中浮动显示 */
         .player-container.view-pv .bottom-control-bar,
         .player-container.view-dimension .bottom-control-bar,
-        .player-container.view-polyphony .bottom-control-bar,
         .player-container.view-wordcloud .bottom-control-bar {
             display: flex !important;
             position: absolute !important;
@@ -931,8 +911,7 @@
         .player-container.view-flyin .flyin-translation-area,
         .player-container.view-wordcloud .flyin-translation-area,
         .player-container.view-pv .flyin-translation-area,
-        .player-container.view-dimension .flyin-translation-area,
-        .player-container.view-polyphony .flyin-translation-area {
+        .player-container.view-dimension .flyin-translation-area {
             display: block !important;
             position: absolute !important;
             bottom: 140px !important;
@@ -1020,30 +999,6 @@
             text-shadow: 0 0 8px rgba(255, 204, 51, 0.8);
         }
 
-        .view-mode-preview-polyphony {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 8px;
-            background: #090714;
-            padding: 10px;
-        }
-        .view-mode-mock-poly-b {
-            width: 24px; height: 24px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-        }
-        .view-mode-mock-poly-b.left { align-self: flex-start; }
-        .view-mode-mock-poly-b.right.active {
-            align-self: flex-end;
-            border: 1px solid #ffcc33;
-            box-shadow: 0 0 10px #ffcc33;
-        }
-
 
 /* ========== 网点海报 / PV 冲印 (Poster Mode) 视觉样式 ========== */
 :root {
@@ -1091,7 +1046,7 @@
     text-shadow: 0 0 16px rgba(255, 255, 255, 0.95), 0 0 4px rgba(255, 230, 100, 0.9);
     filter: drop-shadow(0 0 14px rgba(255, 220, 120, 0.85));
     transform: scale(1.08);
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: transform 0.3s var(--e-enter);
 }
 
 /* HUD 蓝图线框层 */

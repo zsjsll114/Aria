@@ -11,12 +11,13 @@
  * ============================================================ */
 const PLATFORMS = ['kugou', 'qq', 'netease'];
 import { kugouTodayStr, updateSelfHostBadge } from './selfhost-runtime.js';
+import { esc } from '../utils/formatters.js';
 const PLATFORM_LABEL = { kugou: '酷狗音乐', qq: 'QQ音乐', netease: '网易云音乐' };
 /* 官方平台图标（用户放入 src/img，已同步到 web/src/img） */
 const PLATFORM_ICON_SRC = { kugou: 'src/img/KugouMusicIcon.svg', qq: 'src/img/QQMusicIcon.svg', netease: 'src/img/NeteaseMusicIcon.svg', kuwo: 'src/img/KuwoMusicIcon.svg' };
 function platformIconImg(name, size = 18) {
   const src = PLATFORM_ICON_SRC[name];
-  return src ? `<img src="${src}" style="width:${size}px;height:${size}px;display:inline-block;vertical-align:middle;border-radius:3px;" alt="">` : '';
+  return src ? `<img src="${esc(src)}" style="width:${size}px;height:${size}px;display:inline-block;vertical-align:middle;border-radius:3px;" alt="">` : '';
 }
 const PLATFORM_ICONS = {
   kugou: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 7.5h2v5h-2v-5zm4 .5h1v4h-1zm-8 .5h1v4H7z"/></svg>',
@@ -42,6 +43,19 @@ function loadPrefs() {
 
 function savePrefs(p) {
   try { localStorage.setItem(SH_KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }
+}
+
+/* ★ 登录成功自动启用该平台（2026-09-25 用户反馈「日推没了？我明明登录了」）：
+   登录态（服务端 cookie）与启用开关（selfhost_prefs.enabled）是两套独立状态，
+   此前登录成功从不写开关 → 日推/高音质取链在 dayRecommend 的 selfhostEnabled()
+   守卫处全军覆没，用户视角「登录了却不给用」。登录本身就是使用意图，直接点亮。 */
+function enablePlatform(platform) {
+  if (!platform) return;
+  try {
+    const p = loadPrefs();
+    p.enabled = p.enabled || {};
+    if (!p.enabled[platform]) { p.enabled[platform] = true; savePrefs(p); }
+  } catch (e) { /* ignore */ }
 }
 
 async function shFetch(path, opts) {
@@ -594,6 +608,7 @@ function renderKugouPanel(wrap, mode, platform) {
       if (r && r.ok && r.loggedIn) {
         errEl.style.color = '#4cd964';
         errEl.textContent = '登录成功';
+        enablePlatform(platform);   /* ★ 登录即启用（日推/高音质取链的前置开关） */
         clearKgCountdown();
         setTimeout(() => { document.getElementById('selfhostQrOverlay').classList.remove('visible'); initSelfhostSection(); }, 600);
       } else {
@@ -683,6 +698,7 @@ function renderNeteasePanel(wrap, mode, platform, restart) {
       if (r && r.ok && r.loggedIn) {
         errEl.style.color = '#4cd964';
         errEl.textContent = '登录成功';
+        enablePlatform(platform);   /* ★ 登录即启用 */
         setTimeout(() => { document.getElementById('selfhostQrOverlay').classList.remove('visible'); initSelfhostSection(); }, 600);
       } else {
         errEl.style.color = '#ff5f57';
@@ -705,7 +721,7 @@ async function startQrCode(platform, qrType) {
   try {
     const qr = await shFetch(baseQrUrl);
     if (!qr.ok) {
-      body.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">${qr.err || '取码失败'}</div>`;
+      body.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">${esc(qr.err || '取码失败')}</div>`;
       return;
     }
     qrState.qrType = qrType;
@@ -713,7 +729,7 @@ async function startQrCode(platform, qrType) {
     renderQrBody(body, platform, qr);
     startPoll();
   } catch (e) {
-    body.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">取码失败：${e.message}</div>`;
+    body.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">取码失败：${esc(e.message)}</div>`;
   }
 }
 
@@ -721,7 +737,7 @@ async function fetchQrThen(platform, qrType, panel) {
   try {
     const qr = await shFetch(`/api/selfhost/${platform}/qr`);
     if (!qr.ok) {
-      panel.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">${qr.err || '取码失败'}</div>`;
+      panel.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">${esc(qr.err || '取码失败')}</div>`;
       return;
     }
     qrState.qrType = qrType;
@@ -729,7 +745,7 @@ async function fetchQrThen(platform, qrType, panel) {
     renderQrBody(panel, platform, qr);
     startPoll();
   } catch (e) {
-    panel.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">取码失败：${e.message}</div>`;
+    panel.innerHTML = `<div style="opacity:.7;text-align:center;padding:24px 0;">取码失败：${esc(e.message)}</div>`;
   }
 }
 
@@ -757,8 +773,8 @@ function renderQrBody(body, platform, qr) {
   body.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
       ${typeSwitch}
-      <img src="${qr.img}" title="点击刷新二维码" style="width:200px;height:200px;border-radius:10px;background:#fff;padding:6px;box-sizing:border-box;cursor:pointer;pointer-events:auto;"/>
-      <div style="font-size:12px;opacity:.8;text-align:center;" id="selfhostQrHint">${hintText}</div>
+      <img src="${esc(qr.img)}" title="点击刷新二维码" style="width:200px;height:200px;border-radius:10px;background:#fff;padding:6px;box-sizing:border-box;cursor:pointer;pointer-events:auto;"/>
+      <div style="font-size:12px;opacity:.8;text-align:center;" id="selfhostQrHint">${esc(hintText)}</div>
       <button class="setting-btn primary" id="selfhostQrRefreshBtn" style="padding:5px 14px;display:inline-flex;align-items:center;gap:5px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>刷新二维码</button>
     </div>
   `;
@@ -809,6 +825,7 @@ function startPoll() {
     if (r && r.loggedIn) {
       stopPoll();
       if (hint) hint.textContent = '登录成功';
+      enablePlatform(qrState.platform);   /* ★ 登录即启用 */
       setTimeout(() => {
         document.getElementById('selfhostQrOverlay')?.classList.remove('visible');
         initSelfhostSection();

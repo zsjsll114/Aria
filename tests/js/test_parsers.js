@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 
 import { parseLrc, cleanQQMusicMetadata } from '../../web/src/parsers/lrcParser.js';
 import { parseQrcLyric, parseQrcXml } from '../../web/src/parsers/qrcParser.js';
-import { tokenizeForKaraoke, synthesizeWords, ensureWordTiming } from '../../web/src/parsers/wordTiming.js';
+import { tokenizeForKaraoke, synthesizeWords, ensureWordTiming, hasRealWordTiming, isSyntheticWordLine, stripSyntheticWords, realWordsOf, SYNTHESIZED } from '../../web/src/parsers/wordTiming.js';
 import { parseYrc, parseNeteaseYrc } from '../../web/src/parsers/yrcParser.js';
 import { parseRoma } from '../../web/src/parsers/romaParser.js';
 import { parseKrc, decryptKrc, KRC_XOR_KEY } from '../../web/src/services/krcParser.js';
@@ -426,4 +426,101 @@ test('ensureWordTiming：少于 2 行 / 非数组 → 原样返回（与 applyEx
     assert.deepEqual(ensureWordTiming([]), []);
     const one = [{ start: 0, text: '单行' }];
     assert.equal(ensureWordTiming(one), one);
+});
+/* ---------- 合成逐字必须可区分 ----------
+   接线点是 renderLyrics：它会把合成好的 words 写进 globalThis.lyrics，桌面歌词/PV/词云
+   因此一起受益。但下游有一批代码是拿 `line.words.length` 判**真值**的——下载歌词
+   (90-eq)、"逐字歌词"标签(130-playlists)、歌词源质量打分(170/lyricMatcher)。
+   没有标记的话它们会把摊平的近似节拍当成平台给的精确逐字：下载下来的 .lrc 里
+   全是假时间戳，选源时又会优先选中合成过的那份。 */
+
+test('synthesizeWords：合成行带 wordTiming 标记', () => {
+    const out = synthesizeWords([{ start: 0, text: '你好' }, { start: 2000, text: '世界' }]);
+    assert.equal(out[0].wordTiming, SYNTHESIZED);
+    assert.equal(out[1].wordTiming, SYNTHESIZED);
+});
+
+test('ensureWordTiming：真实逐字行不打合成标记（否则真值判定会反过来被骗）', () => {
+    const real = [
+        { start: 0, text: '你好', words: [{ text: '你', start: 0, end: 300 }, { text: '好', start: 300, end: 800 }] },
+        { start: 2000, text: '世界', words: [{ text: '世界', start: 2000, end: 2600 }] },
+    ];
+    const out = ensureWordTiming(real);
+    assert.equal(out, real, '真实逐字应原样返回');
+    assert.equal(out[0].wordTiming, undefined);
+    assert.equal(isSyntheticWordLine(out[0]), false);
+});
+
+test('hasRealWordTiming：合成出来的 words 不算真实逐字', () => {
+    const synthesized = ensureWordTiming([
+        { start: 0, text: '你好', original: '你好' },
+        { start: 2000, text: '世界', original: '世界' },
+    ]);
+    assert.ok(synthesized[0].words.length, '前提：确实合成了 words');
+    assert.equal(hasRealWordTiming(synthesized), false, '摊平的近似节拍不能被当成平台精确逐字');
+});
+
+test('ensureWordTiming：对已合成的数组再调用一次，结果不变（renderLyrics 会被反复调用）', () => {
+    const once = ensureWordTiming([
+        { start: 0, text: '一二三' },
+        { start: 3000, text: '四' },
+    ], { totalMs: 6000 });
+    const twice = ensureWordTiming(once, { totalMs: 6000 });
+    assert.deepEqual(twice.map(l => l.words), once.map(l => l.words));
+    assert.deepEqual(twice.map(l => l.wordTiming), once.map(l => l.wordTiming));
+});
+
+test('isSyntheticWordLine：无 words 的行不是合成行', () => {
+    assert.equal(isSyntheticWordLine({ start: 0, text: 'x' }), false);
+    assert.equal(isSyntheticWordLine(null), false);
+    assert.equal(isSyntheticWordLine({ wordTiming: SYNTHESIZED, words: [{ text: 'x', start: 0, end: 1 }] }), true);
+});
+
+test('stripSyntheticWords：去掉合成 words、保留真实 words（下载/导出前必须过这一道）', () => {
+    const mixed = [
+        { start: 0, text: '合成行', wordTiming: SYNTHESIZED, words: [{ text: '合', start: 0, end: 10 }] },
+        { start: 5000, text: '真实行', words: [{ text: '真', start: 5000, end: 5300 }] },
+    ];
+    const out = stripSyntheticWords(mixed);
+    assert.equal(out[0].words.length, 0, '合成行不得带假时间戳出去');
+    assert.equal(out[0].wordTiming, undefined);
+    assert.equal(out[1].words[0].start, 5000, '真实逐字必须原样保留');
+    assert.equal(mixed[0].words.length, 1, '不得原地改调用方的数组');
+});
+
+test('ensureWordTiming：混合形状逐行补——带真实节拍的行不动，缺的那行合成', () => {
+    const realWord = { text: '甲', start: 0, end: 111 };
+    const lines = [
+        { start: 0, end: 1000, text: '甲乙', words: [realWord, { text: '乙', start: 111, end: 999 }] },
+        { start: 1000, end: 2000, text: '丙丁' },
+    ];
+    const out = ensureWordTiming(lines);
+    assert.equal(out[0], lines[0], '带真实逐字的行必须原引用保留');
+    assert.equal(out[0].words[0], realWord);
+    assert.equal(out[1].wordTiming, SYNTHESIZED, '缺逐字的行应被补上');
+    assert.equal(out[1].words.length, 2);
+    assert.equal(out[1].words[0].start, 1000, '补出来的区间应贴着本行 start');
+    assert.equal(out[1].words[1].end, 2000);
+});
+
+/* ---------- 导出/展示侧的真值判定 ----------
+   renderLyrics 会把合成的 words 写进 globalThis.lyrics。下载歌词的序列化
+   (_krcText)、"逐字歌词"标签、歌词源质量打分都读 line.words——不区分的话
+   摊平出来的假节拍会被当成平台精确逐字：下载出去的 .lrc 全是编造的时间戳。 */
+
+test('realWordsOf：合成行返回 null（下载时该走行级分支）', () => {
+    assert.deepEqual(realWordsOf({ wordTiming: SYNTHESIZED, words: [{ text: '甲', start: 0, end: 9 }] }), null);
+});
+
+test('realWordsOf：真实行原样给出 words', () => {
+    const ws = [{ text: '甲', start: 0, end: 300 }];
+    assert.equal(realWordsOf({ words: ws }), ws);
+});
+
+test('realWordsOf：无 words / 脏数据 → null，不抛', () => {
+    assert.equal(realWordsOf({ start: 0, text: 'x' }), null);
+    assert.equal(realWordsOf({ words: [] }), null);
+    assert.equal(realWordsOf({ words: [{ text: '甲' }] }), null, '缺 start/end 的不能算真实逐字');
+    assert.equal(realWordsOf({ words: [{ text: '甲', start: 5, end: 5 }] }), null, '零长区间不能算真实');
+    assert.equal(realWordsOf(null), null);
 });

@@ -10,7 +10,7 @@
 
 - 多源在线音乐搜索与播放（QQ 音乐、网易云、酷我、咪咕、聚合兜底、任意存量 API）
 - 逐字（卡拉OK式）歌词高亮渲染，支持原词 / 翻译 / 罗马音三行布局
-- 多种歌词可视化模式：**词云模式**（3D 螺旋词云 + 相机运镜）、**PV 模式**（上游式构图池分镜：60 版式 × 段落情绪分池 × 内容哈希轮换 + hero 竖柱）、**流光隧道模式**（Tunnel，仿《妄想感傷代償連盟》文字 PV：词级竖/横/斜独立排版 + 摄像机焦点锁定 + 3D 深度堆叠 + 蒙德里安五族版式子模式）、**浮空模式**（Dimension）、**和鸣模式**（Polyphony）、**活字模式**（Letterpress，印刷压印隐喻 + 30 版式 + 纸色随段落情绪）、**霓虹模式**（Neon Sign，街角灯牌隐喻：单线灯管 + 逐字通电 + SVG 圆角店招）
+- 多种歌词可视化模式：**词云模式**（3D 螺旋词云 + 相机运镜）、**PV 模式**（上游式构图池分镜：60 版式 × 段落情绪分池 × 内容哈希轮换 + hero 竖柱）、**流光隧道模式**（Tunnel，仿《妄想感傷代償連盟》文字 PV：词级竖/横/斜独立排版 + 摄像机焦点锁定 + 3D 深度堆叠 + 蒙德里安五族版式子模式）、**浮空模式**（Dimension）、**活字模式**（Letterpress，印刷压印隐喻 + 30 版式 + 纸色随段落情绪）、**霓虹模式**（Neon Sign，街角灯牌隐喻：单线灯管 + 逐字通电 + SVG 圆角店招）
 - 听歌识曲（Node sidecar 调用 Shazam 指纹识别；Shazam 失败时回退到 Vosk 语音转写 + 歌词反查）
 - 本地音乐管理（上传、结构化落盘、Enhanced LRC 逐字歌词生成）
 - AI 情绪分析（Gemini API，分析歌词情绪 → 生成主题色 / PV 主题）
@@ -71,7 +71,7 @@
 │       ├── core/pvEngine/       # ★ PV 模式（PVEngine + PVLyricLayout + PVCamera + WordSegmenter 等）
 │       ├── core/pvEngine_backup/# PV 引擎旧版备份（已不再使用，勿删，可对照回滚）
 │       ├── core/tunnelEngine/   # ★ 流光隧道（TunnelEngine 主时间线 + Director + Camera + DepthStack + Animations + AILyricSegmenter）
-│       ├── core/visualizers/    # 浮空/和鸣可视化：VisualizerBase + VisualizerManager + dimension/ 子模块
+│       ├── core/visualizers/    # 浮空可视化：VisualizerBase + VisualizerManager + dimension/ 子模块
 │       ├── services/            # API、AI、本地音乐、收藏/歌单/字体、歌词匹配等
 │       ├── parsers/             # LRC/YRC/罗马音/KRC/增强LRC/多源合并
 │       ├── infrastructure/      # dom / eventBus / state
@@ -306,13 +306,13 @@
 | `fadeController.js` | rAF 平滑音量淡入淡出 | `fadeOutVolume/fadeInVolume/cancelAllFades` |
 | `shortcutManager.js` | 键盘快捷键统一管理 | `initShortcutManager()` |
 | `visualizers/VisualizerBase.js` | 可视化渲染器基类：标准化生命周期（`init/setLyrics/update/start/stop/destroy`）+ 通用工具（建容器、resize、rAF 管理）；子类实现 `getModeId()/onInit()` | `VisualizerBase`（`init/update/resize`） |
-| `visualizers/VisualizerManager.js` | 可视化模式调度（dimension/polyphony 注册切换） | `switchMode/setLyrics/update/applySettings` |
+| `visualizers/VisualizerManager.js` | 可视化模式调度（dimension / letterpress / neon 注册切换） | `switchMode/setLyrics/update/applySettings` |
 | `visualizers/DimensionVisualizer.js` | 浮空模式（Dimension）：**逐字符**染色（非整词）、染色平滑渐变（0.18s 进主题色、唱过停留 0.15s 后 0.45s 变白）、零发光、独立实体空格（`.dim-space`）、摄像机实时平滑追踪唱到字符中心；组合下方四个 dimension/ 子模块 | `onInit/start/stop` |
 | `visualizers/dimension/DimensionAudio.js` | 浮空模式 - 非侵入式安全频谱/节奏分析器（不劫持媒体节点），输出 bass/mid/treble/overall/peakEnergy | `connect()`、`update()` |
 | `visualizers/dimension/DimensionBackground.js` | 浮空模式 - 3D 空间纵深背景（渐变舞台/纵深网格等） | — |
 | `visualizers/dimension/DimensionCamera.js` | 浮空模式 - 3D 位置(XYZ) + 欧拉角(Pitch/Yaw/Roll) 平滑阻尼摄像机，支持冲击震屏 | `setTarget()`、`addImpulse()`、`update()` |
 | `visualizers/dimension/DimensionShapes.js` | 浮空模式 - 纯点阵粒子几何引擎（圆柱/立方体星群，逐粒子映射频谱频段实时起伏，无棱边线条） | `createCylinderGeometry()` 等 |
-| `visualizers/PolyphonyVisualizer.js` | 和鸣模式：多声部气泡对话流、歌手徽章、主/伴唱分栏 | `onLyricsLoaded()`、`_renderBubbles()` |
+
 | `pvEngine/PVEngine.js` | ★ PV 模式主调度（编排 layout/camera/rendering/decorations/background） | `init()`、`applySettings()` |
 | `pvEngine/PVLyricLayout.js` 等 | PV 布局、相机、渲染（SVG/CSS 逐字）、装饰、AI 主题背景 | — |
 | `pvEngine/WordSegmenter.js` | PV 逐字分词（含过长单词按字符上浮的切分）；`segmentFine()` 细粒度分词（日文 ≤4 字聚合） | `segment()`、`segmentFine()` |
@@ -461,7 +461,7 @@ TunnelEngine → TunnelDirector → AILyricSegmenter（segmentBlocksByAI/multiPa
             → TunnelCameraTrack / TunnelDepthStack / TunnelAnimations
             → PVLyricLayout + WordSegmenter（复用 PV 分词）
 VisualizerManager → DimensionVisualizer → dimension/{Audio,Background,Camera,Shapes} + VisualizerBase
-                 → PolyphonyVisualizer → VisualizerBase
+
 ```
 
 ### 第三方依赖
@@ -831,7 +831,7 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
 ### 21.5 RTL 歌词方向适配（阿拉伯/希伯来等）
 
 - `VisualizerBase.setLyrics` 检测 RTL 语系（正则与 PVRendering 的 pv-is-rtl 一致）→ stage 挂 `vis-rtl` 类；逐字点亮元素按字符串序创建，bidi 重排后视觉自然从右往左点亮——**各视图高亮推进逻辑零改动**。
-- `visualizers.css`：vis-rtl 下 neon/lp/dim/polyphony 版心 `direction: rtl + unicode-bidi: plaintext`；`.vis-rtl .neon-giant-text`（SVG bidi 需显式指到 text 元素）；TunnelEngine 自挂 `tunnel-is-rtl`（不在基类继承链）。
+- `visualizers.css`：vis-rtl 下 neon/lp/dim 版心 `direction: rtl + unicode-bidi: plaintext`；`.vis-rtl .neon-giant-text`（SVG bidi 需显式指到 text 元素）；TunnelEngine 自挂 `tunnel-is-rtl`（不在基类继承链）。
 - **PV 横排词块修复**：pv.css 原 `.pv-horizontal-block { direction: ltr }` 硬编码锁死了词块内字符方向（「PV 竖排对横排错」的根因）——pv-is-rtl 下覆盖 rtl。
 - 遗留：桌面歌词 lyrics.html（独立页）未适配。
 
@@ -923,6 +923,3 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
     2. 设备与渲染性能（自动检测 / 极致画质 / 均衡表现 / 流畅优先 + 硬件信息 + AI 情感词微光开关）；
     3. 默认播放音质（无损 FLAC / 320kbps / 128kbps）与初始主题色（6 套调色板）；
     4. 自建音乐服务与扫码登录（网易云/QQ/酷狗，扫码在 OOBE 上层直接弹出，关后自动刷新状态）。
-
-
-

@@ -10,6 +10,7 @@
 import { convertToEnhancedLrc, parseEnhancedLrc } from './enhancedLrcConverter.js';
 import { calculateLyricMatchScore } from './lyricMatcher.js';
 import { logInfo, logWarn, logError } from './log.js';
+import { logCatch } from '../services/log.js';
 
 export class LocalMusicManager {
     constructor() {
@@ -353,7 +354,7 @@ export class LocalMusicManager {
                         parsedLines: res.lines
                     });
                 }
-            }).catch(() => {}));
+            }).catch((e) => logCatch('localMusicManager', e)));
         }
 
         if (fetchers.fetchNetease) {
@@ -369,7 +370,7 @@ export class LocalMusicManager {
                         parsedLines: res.lines
                     });
                 }
-            }).catch(() => {}));
+            }).catch((e) => logCatch('localMusicManager', e)));
         }
 
         if (fetchers.fetchQQ) {
@@ -385,7 +386,7 @@ export class LocalMusicManager {
                         parsedLines: res.lines
                     });
                 }
-            }).catch(() => {}));
+            }).catch((e) => logCatch('localMusicManager', e)));
         }
 
         if (fetchers.fetchLrcLib) {
@@ -401,7 +402,7 @@ export class LocalMusicManager {
                         parsedLines: res.lines
                     });
                 }
-            }).catch(() => {}));
+            }).catch((e) => logCatch('localMusicManager', e)));
         }
 
         await Promise.allSettled(tasks);

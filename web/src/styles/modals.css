@@ -6,12 +6,11 @@
             background: rgba(0, 0, 0, 0.45);
             backdrop-filter: saturate(180%) blur(40px);
             -webkit-backdrop-filter: saturate(180%) blur(40px);
-            display: none;
+            /* display 由 motion.css 的浮层机制接管，见 base.css .search-overlay 同款注释 */
             align-items: center; justify-content: center;
             z-index: 10000;
             padding: 20px;
         }
-        .settings-overlay.visible { display: flex; }
         /* ★ 全屏模式：外观设置时铺满整个窗口 */
         .settings-overlay:has(.settings-panel.fullscreen-mode) {
             padding: 0;
@@ -33,7 +32,6 @@
             grid-template-columns: 150px 1fr;
             grid-template-rows: auto 1fr;
             overflow: hidden;
-            animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .settings-header { grid-column: 1 / -1; }
         /* ★ 声明式分组侧栏（settingsNav.js 渲染） */
@@ -167,7 +165,7 @@
             color: rgba(255,255,255,0.7);
             font-size: 18px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .settings-panel.fullscreen-mode .settings-close-btn:hover {
             background: rgba(255,255,255,0.2);
@@ -200,7 +198,7 @@
             padding: 8px 18px;
             border-radius: 10px;
             white-space: nowrap;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             font-family: inherit;
         }
         .settings-tab:hover {
@@ -321,7 +319,7 @@
             width: 20px; height: 20px;
             background: #fff;
             border-radius: 50%;
-            transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            transition: transform 0.25s var(--e-enter-soft);
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .setting-toggle.on {
@@ -380,7 +378,7 @@
             font-family: inherit;
             width: 100%;
             text-align: left;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             position: relative;
             white-space: nowrap;
             overflow: hidden;
@@ -420,8 +418,8 @@
             opacity: 0;
             visibility: hidden;
             transform: scale(0.95) translateY(-4px) translateZ(0);
-            transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                        transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+            transition: opacity 0.2s var(--e-enter-soft),
+                        transform 0.2s var(--e-enter-soft),
                         visibility 0s 0.2s;
             max-height: 280px;
             overflow-y: auto;
@@ -518,7 +516,7 @@
             flex-direction: column;
             gap: 8px;
             min-width: 0;       /* ★ grid 子项防长名撑破容器（用户实测溢出） */
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             backdrop-filter: blur(8px);
         }
         .font-card:hover {
@@ -589,7 +587,7 @@
             border-radius: 6px;
             border: none;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .font-card-btn.apply-btn {
             background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.18);
@@ -613,7 +611,7 @@
             padding: 20px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             background: rgba(255, 255, 255, 0.02);
             margin-top: 8px;
         }
@@ -645,7 +643,7 @@
             border-radius: 50%;
             cursor: pointer;
             border: 2px solid rgba(255,255,255,0.2);
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .color-swatch:hover {
             transform: scale(1.12);
@@ -675,13 +673,12 @@
             background: rgba(0, 0, 0, 0.45);
             backdrop-filter: saturate(180%) blur(40px);
             -webkit-backdrop-filter: saturate(180%) blur(40px);
-            display: none;
             align-items: center;
             justify-content: center;
             z-index: 10001;
             padding: 20px;
         }
-        .color-picker-overlay.visible { display: flex; }
+        /* display 由 motion.css 的浮层机制接管 */
         .color-picker-panel {
             width: min(360px, 100%);
             background: rgba(255, 255, 255, 0.12);
@@ -691,7 +688,6 @@
             border-radius: 20px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
             padding: 20px;
-            animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .color-picker-title {
             font-size: 15px;
@@ -753,7 +749,7 @@
             font-family: var(--app-font-family);
             font-weight: 600;
             outline: none;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             text-transform: uppercase;
         }
         .color-picker-hex:focus {
@@ -774,7 +770,7 @@
             padding: 6px 12px;
             font-size: 12px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             font-family: inherit;
         }
         .setting-btn:hover {
@@ -828,7 +824,7 @@
             cursor: pointer;
             min-width: 60px;
             text-align: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .shortcut-key.recording {
             background: rgba(var(--theme-color-rgb),0.2);
@@ -996,7 +992,7 @@
         .font-cat-arrow {
             margin-left: auto;
             color: rgba(255, 255, 255, 0.4);
-            transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.32s var(--e-exit);
         }
         .font-cat-arrow.collapsed { transform: rotate(-90deg); }
         /* ★ 设置小项深搜：命中行高亮 + 跳转闪烁 + nav 命中计数徽章 */
@@ -1028,7 +1024,7 @@
         .font-cat-body-wrap {
             display: grid;
             grid-template-rows: 1fr;
-            transition: grid-template-rows 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: grid-template-rows 0.34s var(--e-exit);
         }
         .font-cat.collapsed .font-cat-body-wrap { grid-template-rows: 0fr; }
         .font-cat-body-wrap > .font-cat-body {
@@ -1063,7 +1059,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .result-action-btn:hover {
@@ -1115,7 +1111,6 @@
             background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            display: none;
             align-items: center; justify-content: center;
             z-index: 10000;
             padding: 20px;
@@ -1124,7 +1119,6 @@
         #selfhostQrOverlay {
             z-index: 2147483647 !important;
         }
-        .lyric-source-overlay.visible { display: flex; }
         .lyric-source-panel {
             width: min(380px, 100%);
             background: rgba(255, 255, 255, 0.12);
@@ -1134,7 +1128,6 @@
             border-radius: 20px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
             overflow: hidden;
-            animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .lyric-source-header {
             display: flex;
@@ -1154,7 +1147,7 @@
             cursor: pointer; padding: 4px;
             border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .lyric-source-close:hover {
             background: rgba(255, 255, 255, 0.1);
@@ -1170,7 +1163,7 @@
             border-radius: 12px;
             margin-bottom: 8px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             border: 1px solid transparent;
         }
         .lyric-source-option:hover {
@@ -1226,6 +1219,60 @@
             font-weight: 500;
             line-height: 1.4;
         }
+        /* 取链详情面板（todos #15）：概要表 + 降级轨迹列表 */
+        .ps-hint {
+            font-size: 12px;
+            opacity: .65;
+            margin: 0 0 10px;
+            line-height: 1.6;
+        }
+        .ps-rows {
+            display: grid;
+            grid-template-columns: 84px 1fr;
+            gap: 4px 10px;
+            font-size: 12.5px;
+            margin-bottom: 12px;
+        }
+        .ps-rows .k { opacity: .6; }
+        .ps-rows .v { word-break: break-all; }
+        .ps-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            opacity: .8;
+            margin: 10px 0 6px;
+        }
+        .ps-log {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-height: 320px;
+            overflow-y: auto;
+            font-family: Consolas, Menlo, monospace;
+            font-size: 11.5px;
+            line-height: 1.5;
+        }
+        .ps-log .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, .05);
+        }
+        .ps-log .row.lv-warn { background: rgba(255, 165, 2, .1); }
+        .ps-log .row.lv-error,
+        .ps-log .row.lv-catch { background: rgba(255, 99, 99, .12); }
+        .ps-log .row.lv-ok { background: rgba(46, 213, 115, .12); }
+        .ps-log .row.lv-fail { background: rgba(255, 99, 99, .1); }
+        .ps-log .err {
+            flex: 1 1 100%;
+            opacity: .62;
+            padding-left: 66px;
+            word-break: break-all;
+        }
+        .ps-log .t { opacity: .5; flex: 0 0 62px; }
+        .ps-log .tag { opacity: .6; flex: 0 0 auto; }
+        .ps-log .m { word-break: break-all; }
         .lyric-badge.score-high {
             background: rgba(46, 213, 115, 0.2);
             color: #2ed573;
@@ -1271,7 +1318,7 @@
             color: rgba(255, 255, 255, 0.85);
             font-size: 13px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .lyric-custom-upload-btn:hover {
             background: rgba(255, 255, 255, 0.15);
@@ -1282,7 +1329,7 @@
             width: 20px; height: 20px;
             border-radius: 50%;
             border: 2px solid rgba(255, 255, 255, 0.3);
-            transition: all 0.2s ease;
+            transition: var(--t-base);
             flex-shrink: 0;
         }
         .lyric-source-option.active .lyric-source-check {
@@ -1374,7 +1421,7 @@
             border-radius: 12px;
             padding: 12px 14px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
         .lyric-download-format:hover {
             background: rgba(255, 255, 255, 0.12);
@@ -1424,7 +1471,7 @@
             z-index: 999999;
             opacity: 0;
             pointer-events: none;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: var(--t-slow);
             display: flex;
             align-items: center;
             gap: 8px;
@@ -1586,74 +1633,83 @@
            ★ 纯 CPU 渲染极致优化：在无独显/虚拟机（如 VMware SVGA / VirtualBox / SwiftShader）
            环境下，CPU 软件光栅化无法承受每帧对半透明图层执行的高斯卷积。
            彻底禁用全项目 backdrop-filter、text-shadow 与连续高斯模糊，面板采用高不透明度实色保底。 */
-        body.perf-low *,
-        body.perf-minimal *,
-        .is-software-renderer * {
+        /* ★ 选择器必须锚在 #ariaRoot（<html> 的 id）上：ID 特异性 (1,0,0) 才顶得住组件里
+           .search-overlay .search-modal / .speed-submenu 这类 (0,2,0)+ 且带 !important 的
+           backdrop-filter。纯类选择器的降级规则（.is-software-renderer * 只有 (0,1,0)）
+           会被它们按「同重要度先比特异性、再比顺序」顶掉——实测残留 62 个元素仍在跑实时高斯。 */
+        html#ariaRoot body.perf-low *,
+        html#ariaRoot body.perf-minimal *,
+        html#ariaRoot.is-software-renderer * {
             text-shadow: none !important;
             box-shadow: none !important;
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
-        .is-software-renderer .player-container .bottom-control-bar,
-        .is-software-renderer .search-overlay .search-modal,
-        .is-software-renderer .settings-panel,
-        .is-software-renderer .ctx-menu,
-        .is-software-renderer .ai-status-panel,
-        .is-software-renderer .aria-dialog,
-        .is-software-renderer .lyric-source-panel {
+        html#ariaRoot.is-software-renderer .player-container .bottom-control-bar,
+        html#ariaRoot.is-software-renderer .search-overlay .search-modal,
+        html#ariaRoot.is-software-renderer .settings-panel,
+        html#ariaRoot.is-software-renderer .ctx-menu,
+        html#ariaRoot.is-software-renderer .ai-status-panel,
+        html#ariaRoot.is-software-renderer .aria-dialog,
+        html#ariaRoot.is-software-renderer .lyric-source-panel {
             background: rgba(20, 22, 30, 0.98) !important;
         }
-        body.perf-low .pv-view-container canvas,
-        body.perf-minimal .pv-view-container canvas {
+        html#ariaRoot body.perf-low .pv-view-container canvas,
+        html#ariaRoot body.perf-minimal .pv-view-container canvas {
             image-rendering: pixelated;
         }
-        /* ★ PV 图形场（folia 散点装饰）：低配/软件渲染整层隐藏 */
-        body.perf-low .pv-shape-field,
-        body.perf-minimal .pv-shape-field,
-        .is-software-renderer .pv-shape-field {
+        /* ★ PV 图形场与长弧笔触（folia 散点装饰 + 演唱进度驱动的描边）：
+           低配/软件渲染整层隐藏。弧的 dashoffset 每帧变一次，是 SVG 描边重绘，
+           无显卡设备上这个代价不该让它在跑 */
+        html#ariaRoot body.perf-low .pv-shape-field,
+        html#ariaRoot body.perf-minimal .pv-shape-field,
+        html#ariaRoot.is-software-renderer .pv-shape-field,
+        html#ariaRoot body.perf-low .pv-arc-field,
+        html#ariaRoot body.perf-minimal .pv-arc-field,
+        html#ariaRoot.is-software-renderer .pv-arc-field {
             display: none !important;
         }
         /* ★ 模糊背景在低性能/极简/无显卡虚拟机下的终极优化：
            配合预烘焙小图机制，强制消除每帧实时高斯卷积与滤镜计算；极简与无显卡下停止旋转动画 */
-        body.perf-low .blur-background,
-        body.perf-minimal .blur-background,
-        .is-software-renderer .blur-background {
+        html#ariaRoot body.perf-low .blur-background,
+        html#ariaRoot body.perf-minimal .blur-background,
+        html#ariaRoot.is-software-renderer .blur-background {
             filter: none !important;
             -webkit-filter: none !important;
         }
-        body.perf-minimal .blur-background,
-        .is-software-renderer .blur-background {
+        html#ariaRoot body.perf-minimal .blur-background,
+        html#ariaRoot.is-software-renderer .blur-background {
             animation: none !important;
             transform: none !important;
         }
         /* 进度条每 100ms 更新时的 transition 在低配下禁用，消除持续插值重绘 */
-        body.perf-low .progress-bar,
-        body.perf-minimal .progress-bar,
-        .is-software-renderer .progress-bar {
+        html#ariaRoot body.perf-low .progress-bar,
+        html#ariaRoot body.perf-minimal .progress-bar,
+        html#ariaRoot.is-software-renderer .progress-bar {
             transition: none !important;
         }
         /* 封面悬停复杂变换与大尺寸阴影在低配下禁用 */
-        body.perf-low .cover-area .song-cover,
-        body.perf-minimal .cover-area .song-cover,
-        .is-software-renderer .cover-area .song-cover {
+        html#ariaRoot body.perf-low .cover-area .song-cover,
+        html#ariaRoot body.perf-minimal .cover-area .song-cover,
+        html#ariaRoot.is-software-renderer .cover-area .song-cover {
             box-shadow: none !important;
             transition: opacity 0.2s linear !important;
         }
-        body.perf-low .cover-area:hover .song-cover,
-        body.perf-minimal .cover-area:hover .song-cover,
-        .is-software-renderer .cover-area:hover .song-cover {
+        html#ariaRoot body.perf-low .cover-area:hover .song-cover,
+        html#ariaRoot body.perf-minimal .cover-area:hover .song-cover,
+        html#ariaRoot.is-software-renderer .cover-area:hover .song-cover {
             transform: none !important;
             box-shadow: none !important;
         }
         /* 流体背景光斑（PV / 隧道）在低配/极简下全面消除 70px 巨型实时高斯模糊 */
-        body.perf-low .pv-fluid-blob,
-        body.perf-minimal .pv-fluid-blob,
-        .is-software-renderer .pv-fluid-blob {
+        html#ariaRoot body.perf-low .pv-fluid-blob,
+        html#ariaRoot body.perf-minimal .pv-fluid-blob,
+        html#ariaRoot.is-software-renderer .pv-fluid-blob {
             display: none !important;
         }
-        body.perf-low .pv-fluid-img,
-        body.perf-minimal .pv-fluid-img,
-        .is-software-renderer .pv-fluid-img {
+        html#ariaRoot body.perf-low .pv-fluid-img,
+        html#ariaRoot body.perf-minimal .pv-fluid-img,
+        html#ariaRoot.is-software-renderer .pv-fluid-img {
             filter: none !important;
             animation: none !important;
         }
@@ -1668,25 +1724,25 @@
         /* 1. 逐行模糊层真实覆盖：.line 基础 blur(5px) 与 .blur-d1~d8 全部关闭。
            未唱行只保留 opacity 暗淡，不做 GPU 模糊——低配滚动时合成器不再
            每帧混合几十个模糊位图层。will-change 常驻层同步降级。 */
-        body.perf-low .line,
-        body.perf-minimal .line {
+        html#ariaRoot body.perf-low .line,
+        html#ariaRoot body.perf-minimal .line {
             filter: none !important;
             will-change: auto !important;
             transition: opacity 0.18s linear !important;
         }
 
         /* 2. 歌词视口 mask 渐变羽化禁用（mask 采样在低配 GPU 上昂贵） */
-        body.perf-low .lyrics-container,
-        body.perf-low .lyrics-area-wrapper,
-        body.perf-minimal .lyrics-container,
-        body.perf-minimal .lyrics-area-wrapper {
+        html#ariaRoot body.perf-low .lyrics-container,
+        html#ariaRoot body.perf-low .lyrics-area-wrapper,
+        html#ariaRoot body.perf-minimal .lyrics-container,
+        html#ariaRoot body.perf-minimal .lyrics-area-wrapper {
             -webkit-mask-image: none !important;
             mask-image: none !important;
         }
 
         /* 3. 全模式底部控制栏毛玻璃关闭（旧规则只覆盖 view-lyrics） */
-        body.perf-low .player-container .bottom-control-bar,
-        body.perf-minimal .player-container .bottom-control-bar {
+        html#ariaRoot body.perf-low .player-container .bottom-control-bar,
+        html#ariaRoot body.perf-minimal .player-container .bottom-control-bar {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
             background: rgba(18, 14, 30, 0.92) !important;
@@ -1694,58 +1750,58 @@
 
         /* 4. 弹窗毛玻璃降级为实色面板（用户主动打开的面也降——低配开弹窗不卡）。
            去 backdrop-filter 后必须同步加深背景保证可读性。 */
-        body.perf-low .search-overlay .search-modal,
-        body.perf-minimal .search-overlay .search-modal {
+        html#ariaRoot body.perf-low .search-overlay .search-modal,
+        html#ariaRoot body.perf-minimal .search-overlay .search-modal {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
             background: rgba(22, 24, 32, 0.97) !important;
         }
-        body.perf-low .settings-panel,
-        body.perf-minimal .settings-panel {
+        html#ariaRoot body.perf-low .settings-panel,
+        html#ariaRoot body.perf-minimal .settings-panel {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
             background: rgba(20, 22, 30, 0.985) !important;
         }
-        body.perf-low .ctx-menu,
-        body.perf-low .ai-status-panel,
-        body.perf-low .aria-dialog-overlay .aria-dialog,
-        body.perf-minimal .ctx-menu,
-        body.perf-minimal .ai-status-panel,
-        body.perf-minimal .aria-dialog-overlay .aria-dialog {
+        html#ariaRoot body.perf-low .ctx-menu,
+        html#ariaRoot body.perf-low .ai-status-panel,
+        html#ariaRoot body.perf-low .aria-dialog-overlay .aria-dialog,
+        html#ariaRoot body.perf-minimal .ctx-menu,
+        html#ariaRoot body.perf-minimal .ai-status-panel,
+        html#ariaRoot body.perf-minimal .aria-dialog-overlay .aria-dialog {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
 
         /* 5. PV 半调网点纹理层：低档起关闭（radial-gradient 平铺背景每帧参与合成） */
-        body.perf-low .pv-view-container::before,
-        body.perf-minimal .pv-view-container::before {
+        html#ariaRoot body.perf-low .pv-view-container::before,
+        html#ariaRoot body.perf-minimal .pv-view-container::before {
             display: none !important;
         }
 
         /* 5.1 常驻悬浮控件的毛玻璃一并降级（歌词延时控制） */
-        body.perf-low .lyric-offset-control,
-        body.perf-minimal .lyric-offset-control {
+        html#ariaRoot body.perf-low .lyric-offset-control,
+        html#ariaRoot body.perf-minimal .lyric-offset-control {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
             background: rgba(18, 20, 28, 0.88) !important;
         }
 
         /* 6. PV 蓝图网格 / 巨型描边字 / 几何装饰：低档起直接隐藏（纯装饰层） */
-        body.perf-low .pv-blueprint-grid,
-        body.perf-minimal .pv-blueprint-grid {
+        html#ariaRoot body.perf-low .pv-blueprint-grid,
+        html#ariaRoot body.perf-minimal .pv-blueprint-grid {
             display: none !important;
         }
 
         /* 7. 情感词/发光 transition 削减：低配下颜色直接切换，不做 0.3s 过渡合成 */
-        body.perf-low .line.active .word.word-emotion.active > span:last-child,
-        body.perf-minimal .line.active .word.word-emotion.active > span:last-child,
-        body.perf-low .line.active .lrc-emotion-word,
-        body.perf-minimal .line.active .lrc-emotion-word {
+        html#ariaRoot body.perf-low .line.active .word.word-emotion.active > span:last-child,
+        html#ariaRoot body.perf-minimal .line.active .word.word-emotion.active > span:last-child,
+        html#ariaRoot body.perf-low .line.active .lrc-emotion-word,
+        html#ariaRoot body.perf-minimal .line.active .lrc-emotion-word {
             transition: none !important;
         }
 
         /* 8. 极简档：全局 backdrop-filter 一刀切全禁（宁可实色也要帧率） */
-        body.perf-minimal * {
+        html#ariaRoot body.perf-minimal * {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
@@ -1810,7 +1866,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1), background 0.2s ease, box-shadow 0.2s ease;
+            transition: transform 0.2s var(--e-enter-soft), background 0.2s ease, box-shadow 0.2s ease;
         }
 
         .rec-toggle-btn:hover {
@@ -2061,7 +2117,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: var(--t-base);
         }
 
         .rec-play-btn:hover {

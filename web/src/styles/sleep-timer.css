@@ -1,0 +1,181 @@
+/* ============================================================
+ * sleep-timer.css — 睡眠定时器弹层（280-sleep-timer.js）
+ * 弹层根节点复用 .search-overlay（i18n observer 的 UI 根之一 + 显隐由 .visible 控制）。
+ * ★ 毛玻璃一律照「搜索页」那套参数（用户 2026-09-25 定的口径，见 AGENTS 约束 16）：
+ *   rgba(255,255,255,.12) + saturate(2) blur(40px) + 内外双阴影。
+ *   约束 12 管的是「降级选择器要锚 #ariaRoot」，不是「禁止毛玻璃」——别拿它当不写模糊的理由。
+ * ============================================================ */
+
+.sleep-timer-panel {
+    width: min(360px, 100%);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: saturate(2) blur(40px);
+    -webkit-backdrop-filter: saturate(2) blur(40px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    color: #fff;
+    padding: 16px 18px 18px;
+    animation: sleep-panel-in 0.28s var(--e-enter);
+}
+
+/* 无显卡/低配档：模糊的代价在合成器软件光栅化，退成实色底（必须锚 #ariaRoot，见约束 12） */
+html#ariaRoot.is-software-renderer .sleep-timer-panel,
+html#ariaRoot body.perf-low .sleep-timer-panel,
+html#ariaRoot body.perf-minimal .sleep-timer-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(20, 22, 30, 0.98) !important;
+}
+@keyframes sleep-panel-in {
+    from { transform: scale(0.92) translateY(10px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.st-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.st-title {
+    font-size: 16px;
+    font-weight: 700;
+}
+.st-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+.st-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+.st-status {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 12px 2px 2px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.62);
+}
+#sleepTimerStatus {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+
+.st-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 14px 0 12px;
+}
+.st-preset {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 5px;
+    padding: 12px 6px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.st-preset:hover { background: rgba(255, 255, 255, 0.12); }
+.st-preset.active {
+    border-color: var(--theme-color, #ffcc33);
+    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
+    color: var(--theme-color, #ffcc33);
+}
+.st-preset-unit {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.55);
+}
+.st-preset.active .st-preset-unit { color: inherit; }
+
+.st-custom {
+    display: flex;
+    gap: 10px;
+}
+.st-custom-input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.16s ease;
+}
+.st-custom-input:focus { border-color: var(--theme-color, #ffcc33); }
+.st-custom-input::placeholder { color: rgba(255, 255, 255, 0.35); }
+
+.st-btn {
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.16s ease, opacity 0.16s ease;
+}
+.st-btn-ok {
+    background: var(--theme-color, #ffcc33);
+    color: #1a1a1a;
+}
+.st-btn-ok:hover { filter: brightness(1.08); }
+.st-btn-cancel {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.85);
+}
+.st-btn-cancel:hover:not(:disabled) { background: rgba(255, 82, 82, 0.22); }
+.st-btn-cancel:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.st-foot {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.st-fade-note {
+    font-size: 11px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+/* ---- 窄屏 / 触控：弹层占满宽度，命中区放大到 40px+ ---- */
+@media (max-width: 700px) {
+    .sleep-timer-panel { width: 100%; padding: 14px 14px 16px; }
+    .st-preset { min-height: 46px; }
+}
+@media (pointer: coarse) {
+    .st-preset, .st-btn, .st-custom-input { min-height: 44px; }
+    .st-close { padding: 8px; }
+}
+
+/* ---- 降级：软件渲染/低性能档去投影（选择器必须锚 #ariaRoot，AGENTS 约束 12） ---- */
+html#ariaRoot.is-software-renderer .sleep-timer-panel,
+html#ariaRoot body.perf-low .sleep-timer-panel,
+html#ariaRoot body.perf-minimal .sleep-timer-panel {
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+@media (prefers-reduced-motion: reduce) {
+    .sleep-timer-panel { animation: none; }
+}

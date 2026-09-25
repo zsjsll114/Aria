@@ -147,7 +147,7 @@
                 cursor: pointer;
                 text-align: left;
                 -webkit-tap-highlight-color: transparent;
-                transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+                transition: opacity 0.22s ease, transform 0.22s var(--e-enter);
             }
             .player-container.view-cover .mobile-lyric-preview:active { opacity: 0.7; }
 
@@ -160,7 +160,7 @@
             .player-container.view-cover .mobile-lyric-preview.mlp-fade-in {
                 opacity: 1;
                 transform: translateY(0);
-                transition: opacity 0.22s ease-in, transform 0.22s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+                transition: opacity 0.22s ease-in, transform 0.22s var(--e-enter);
             }
 
             /* 普通逐行歌词 (LRC)：线性推进渐变扫过 */

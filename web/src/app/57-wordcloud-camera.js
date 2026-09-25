@@ -554,7 +554,7 @@ function waveSetActiveFromPlayback(index, snap) {
 function amNormalLyricsMode() {
     const sc = typeof document !== 'undefined' ? document.getElementById('lyricsScroll') : null;
     if (!sc || !playerContainer) return false;
-    for (const v of ['view-wordcloud', 'view-flyin', 'view-pv', 'view-tunnel', 'view-dimension', 'view-polyphony', 'view-letterpress', 'view-neon', 'view-poster']) {
+    for (const v of ['view-wordcloud', 'view-flyin', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-poster']) {
         if (playerContainer.classList.contains(v)) return false;
     }
     return true;

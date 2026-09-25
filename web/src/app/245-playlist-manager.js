@@ -7,6 +7,7 @@ import { loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
 import { audio } from './20-lyrics-render.js';
 import { getFavorites, makeSongKey, toggleFavCore } from './120-search-results.js';
 import { setPlayMode } from './75-play-mode.js';
+import { esc } from '../utils/formatters.js';
 
 (function () {
   const toggle = document.getElementById('playlistManagerToggle');
@@ -43,9 +44,9 @@ import { setPlayMode } from './75-play-mode.js';
     let html = '';
     pl.forEach((t, i) => {
       const active = (i === cur);
-      const title = (t && (t.title || t.song || t.name)) || '未知歌曲';
-      const artist = (t && (t.artist || t.singer)) || '未知歌手';
-      const cover = (t && t.cover) || '';
+      const title = esc((t && (t.title || t.song || t.name)) || '未知歌曲');
+      const artist = esc((t && (t.artist || t.singer)) || '未知歌手');
+      const cover = esc((t && t.cover) || '');
       const fav = isFav(t);
       const n = String(i + 1).padStart(2, '0');
       html += `<div class="result-item plm-item${active ? ' now-playing-active' : ''}${drag && drag.srcIdx === i ? ' plm-source' : ''}" data-idx="${i}" data-play="${i}" title="${active ? '正在播放，拖拽可排序' : '点击播放，拖拽可排序'}">

@@ -10,6 +10,8 @@ import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { updatePlaybackPosition } from './65-playback-position.js';
 import { updateVolume } from './70-audio-engine.js';
 import { moreBtn } from './90-eq.js';
+import { logCatch } from '../services/log.js';
+import { handleShortcutKeys } from '../core/shortcutManager.js';
 
 /* ========== 全键盘导航系统 ==========
            Tab / Shift+Tab → 在功能区之间切换
@@ -420,7 +422,7 @@ if (typeof document !== "undefined") document.addEventListener('keydown', functi
                                     /* no-op */
                                 } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
                                     el.focus();
-                                    if (el.type === 'text') { try { el.select(); } catch (eSel) {} }
+                                    if (el.type === 'text') { try { el.select(); } catch (eSel) { logCatch('keyboardNav', eSel); } }
                                 } else {
                                     el.click();
                                 }
@@ -443,60 +445,19 @@ if (typeof document !== "undefined") document.addEventListener('keydown', functi
                 return;
             }
 
-            /* === 非导航模式：原有快捷键逻辑 === */
-            const sc = appSettings.shortcuts;
-
-            /* Ctrl+← / Ctrl+→ = 前进/后退 */
-            if (event.ctrlKey && !event.shiftKey && !event.altKey) {
-                if (key === 'ArrowLeft' && !inInput) {
-                    event.preventDefault();
-                    const step = (appSettings.playback.seekStep || 5) * 1000;
-                    if (audio.duration) audio.currentTime = Math.max(0, audio.currentTime - step / 1000);
-                    return;
-                } else if (key === 'ArrowRight' && !inInput) {
-                    event.preventDefault();
-                    const step = (appSettings.playback.seekStep || 5) * 1000;
-                    if (audio.duration) audio.currentTime = Math.min(audio.duration, audio.currentTime + step / 1000);
-                    return;
-                }
-            }
-
-            if (key === sc.playPause) {
-                if (inInput) return;
-                event.preventDefault();
-                playBtn.click();
-            } else if (key === sc.prev) {
-                if (inInput) return;
-                if (event.ctrlKey) return;
-                event.preventDefault();
-                prevBtn.click();
-            } else if (key === sc.next) {
-                if (inInput) return;
-                if (event.ctrlKey) return;
-                event.preventDefault();
-                nextBtn.click();
-            } else if (key === sc.volumeUp) {
-                if (inInput) return;
-                event.preventDefault();
-                updateVolume(Math.min(100, volume + 5));
-            } else if (key === sc.volumeDown) {
-                if (inInput) return;
-                event.preventDefault();
-                updateVolume(Math.max(0, volume - 5));
-            } else if (key === sc.favorite) {
-                if (inInput) return;
-                event.preventDefault();
-                favoriteBtn.click();
-            } else if (key === sc.toggleLyrics) {
-                if (inInput) return;
-                event.preventDefault();
-                const lc = typeof document !== 'undefined' ? document.querySelector('.lyrics-container') : null;
-                if (lc) lc.style.display = (lc.style.display === 'none' ? '' : 'none');
-            } else if (key === sc.more) {
-                if (inInput) return;
-                event.preventDefault();
-                moreBtn.click();
-            }
+            /* === 非导航模式：快捷键派发已迁到 core/shortcutManager.js（core 层接管第 3 个模块）。
+               逻辑逐行照搬自本分片，行为不变；DOM 引用与 updateVolume 由这里注入，
+               core 不反向 import 分片。返回 true 表示按键已被消费。 === */
+            handleShortcutKeys(event, {
+                inInput,
+                audio,
+                playBtn,
+                prevBtn,
+                nextBtn,
+                favoriteBtn,
+                moreBtn,
+                updateVolume,
+            });
         });
 
 export { KB_CLUSTER_SELECTOR, KB_INTERACTIVE_SELECTOR, getKbFocusGroups, kbAdjustSelectedSlider, kbApplySelected, kbClearSelected, kbEnterNavMode, kbExitNavMode, kbIsVisible, kbResetTimer, kbUpdateSliderAria };

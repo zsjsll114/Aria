@@ -297,6 +297,51 @@ body.perf-minimal .pv-view-container::before { display: none; }
     height: 100%;
 }
 
+/* 描边生长（商籁移植，todos #24）：每条子路径都被注入 pathLength="1" 归一化，
+   所以 dasharray:1 + dashoffset 1→0 就是「按弧长画出来」，不需要 JS 量长度。
+   动画只跑一次（forwards），之后浏览器不再重算——常驻开销为零。 */
+.pv-shape--icon svg > * {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: pv-shape-ink var(--grow, 1.6s) cubic-bezier(.25,.6,.3,1) var(--grow-delay, 0s) forwards;
+}
+
+/* 基础几何没有描边可画，用同一时间轴的「落墨」补上，保证整场是一次铺陈而非各画各的 */
+.pv-shape--circle,
+.pv-shape--square,
+.pv-shape--triangle,
+.pv-shape--cross {
+    animation:
+        pv-shape-orbit var(--dur, 40s) linear var(--delay, 0s) infinite,
+        pv-shape-ink-in var(--grow, 1.6s) cubic-bezier(.25,.6,.3,1) var(--grow-delay, 0s) both;
+}
+
+@keyframes pv-shape-ink {
+    to { stroke-dashoffset: 0; }
+}
+
+/* 只动 opacity：pv-shape-orbit 已经占了 transform，两个动画写同一属性时
+   列表里靠后的那个会全程压制前者，加 both 更是永久锁死——漂移就再也不动了 */
+@keyframes pv-shape-ink-in {
+    from { opacity: 0; }
+    to { opacity: var(--op, 0.15); }
+}
+
+/* 减少动态偏好：直接呈现终态，不做铺陈 */
+@media (prefers-reduced-motion: reduce) {
+    .pv-shape--icon svg > * {
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        animation: none;
+    }
+    .pv-shape--circle,
+    .pv-shape--square,
+    .pv-shape--triangle,
+    .pv-shape--cross {
+        animation: pv-shape-orbit var(--dur, 40s) linear var(--delay, 0s) infinite;
+    }
+}
+
 /* 基础几何：圆/方描边或实心 */
 .pv-shape--circle {
     border-radius: 50%;
@@ -330,6 +375,50 @@ body.perf-minimal .pv-view-container::before { display: none; }
     opacity: var(--op, 0.15);
     background: currentColor;
     clip-path: polygon(20% 0%, 0% 20%, 30% 50%, 0% 80%, 20% 100%, 50% 70%, 80% 100%, 100% 80%, 70% 50%, 100% 20%, 80% 0%, 50% 30%);
+}
+
+/* ============ 长弧笔触层（PVArcField.js，todos #24 重做部分） ============
+   和上一版四层场的区别全在这段 CSS 里：
+   揭示量不是 animation-delay，而是 **演唱进度 --p 的纯函数**——
+   每帧 JS 只在容器上写一个变量，浏览器按每条弧自己的时间窗算 dashoffset。
+   所以暂停会停、seek 会跟着跳，和音频对得上；而不是挂载时跑一条墙钟动画。
+   弧本身 pathLength="1" 已归一化，dashoffset 直接就是「还剩多少没画」。 */
+.pv-arc-field {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+    color: var(--pv-shape-color, rgba(255, 255, 255, 0.9));
+    --p: 0;
+}
+
+.pv-arc-field svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.pv-arc-field path {
+    stroke-width: 1.1;
+    stroke-linecap: round;
+    opacity: .5;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 1;
+    /* p ≤ a0 → 1（全藏）；p ≥ a1 → 0（全画完）；中间线性 */
+    stroke-dashoffset: calc(clamp(0, (var(--a1) - var(--p)) / (var(--a1) - var(--a0)), 1) * 1px);
+}
+
+/* 弧起点的实心点：这一层不能又是「全是线」 */
+.pv-arc-dot {
+    fill: currentColor;
+    stroke: none;
+    opacity: .5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* 减少动态偏好下直接给终态，不做逐笔揭示 */
+    .pv-arc-field { --p: 1; }
 }
 
 /* 上浮粒子：accent 小点，向上漂 100px 后淡出 */
@@ -689,6 +778,35 @@ body.perf-minimal .pv-view-container::before { display: none; }
         transform: translate(var(--tx, 1em), var(--ty, 0em)) scale(0.6) rotate(var(--tr, 0deg));
         opacity: 0;
     }
+}
+
+/* ===== 词级「星轨」（PVRendering._drawWordTrail） =====
+   一条三次贝塞尔从词外起笔画到词位，只给 hero / 情感词——上游把 guide 挂在
+   segment 而不是 glyph 上，同一取向：特殊必须是稀缺的。
+   揭示用 pathLength="1" + dashoffset，所以不测路径长度、不进每帧循环。 */
+.pv-word-trail {
+    position: absolute;
+    left: 0;
+    top: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 29;
+}
+
+.pv-word-trail path {
+    fill: none;
+    stroke: var(--pv-highlight-color, #ffcc33);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    animation: pv-word-trail-draw var(--td, 560ms) var(--e-enter, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+@keyframes pv-word-trail-draw {
+    0%   { stroke-dashoffset: 1; opacity: 0; }
+    12%  { opacity: .8; }
+    62%  { stroke-dashoffset: 0; opacity: .8; }
+    100% { stroke-dashoffset: 0; opacity: 0; }
 }
 
 /* 状态 1: waiting (未唱到：完全隐藏不可见，绝不提前显示任何虚影/暗影) */

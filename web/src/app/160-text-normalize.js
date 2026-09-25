@@ -3,6 +3,7 @@
  * 来源区间: 原第 6170-6313 行 | 单元数: 16
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
+import { logCatch } from '../services/log.js';
 
 /* ========== 听歌识曲模块 (Audio Recognition) ========== */
 /* ===== 本地化辅助：isrc 缓存 + 跨 storefront iTunes 查名（借鉴 JiBA 机制） ===== */
@@ -119,8 +120,8 @@ function getIsrcCache() {
 
 function persistIsrcCache(cache) {
             try {
-                fetch('/api/recognize/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cache) }).catch(() => {});
-            } catch (e) {}
+                fetch('/api/recognize/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cache) }).catch((e) => logCatch('textNormalize', e));
+            } catch (e) { logCatch('textNormalize', e); }
         }
 
 function setIsrcCache(cache) {
@@ -132,7 +133,7 @@ function setIsrcCache(cache) {
                 }
                 localStorage.setItem(REC_CACHE_KEY, JSON.stringify(cache));
                 persistIsrcCache(cache);
-            } catch (e) {}
+            } catch (e) { logCatch('textNormalize', e); }
         }
 
 function rememberIsrcCache(isrc, entry) {
@@ -162,7 +163,7 @@ function loadIsrcCacheFromBackend() {
                         localStorage.setItem(REC_CACHE_KEY, JSON.stringify(merged));
                     }
                 })
-                .catch(() => {});
+                .catch((e) => logCatch('textNormalize', e));
         }
 
 export { ITUNES_SEARCH, REC_CACHE_KEY, T2S_MAP, detectScript, fetchStorefrontLocalizedName, getIsrcCache, inferIsrcRegionCode, isCJK, loadIsrcCacheFromBackend, localizeRecognizedName, normLC, persistIsrcCache, pickStorefronts, rememberIsrcCache, setIsrcCache, t2s };

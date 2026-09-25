@@ -171,11 +171,12 @@ export function intervalToSec(s) {
 }
 
 /**
- * 本地解析池优先的 QQ 取链（服务端多API竞速 + VIP母带 + 防试听校验 + 15min缓存）
- * 本地服务器不在线或全源失败时返回 null，调用方落回前端原链
- * @returns {Promise<string|null>}
+ * QQ 解析池完整结果：除直链外带回 provider / quality / ext / cached / tried[]。
+ * tried[] 是服务端逐 provider 记下的「每一级为什么失败」，取链详情面板（todos #15）
+ * 直接用它，比翻控制台或猜 URL 前缀都准。
+ * @returns {Promise<{url:string,provider:string,quality:string,ext:string,cached:boolean,tried:Array,duration:number}|null>}
  */
-export async function qqResolveUrl(mid, dur, quality) {
+export async function qqResolveInfo(mid, dur, quality) {
     if (!mid) return null;
     try {
         const ctl = new AbortController();
@@ -189,13 +190,31 @@ export async function qqResolveUrl(mid, dur, quality) {
         } finally { clearTimeout(timer); }
         if (data && data.ok && data.url && data.url.startsWith('http')) {
             logInfo('musicApi', `[QQResolve] ${data.provider} 命中 (${data.quality}/${data.ext}${data.cached ? ', 缓存' : ''})`);
-            return data.url;
+            return {
+                url: data.url,
+                provider: data.provider || '',
+                quality: data.quality || '',
+                ext: data.ext || '',
+                cached: !!data.cached,
+                tried: Array.isArray(data.tried) ? data.tried : [],
+                duration: data.duration || 0,
+            };
         }
         logWarn('musicApi', '[QQResolve] 解析池未命中，落回前端原链:', data && data.err);
     } catch (e) {
         logWarn('musicApi', '[QQResolve] 本地解析池不可用，落回前端原链:', e.message);
     }
     return null;
+}
+
+/**
+ * 本地解析池优先的 QQ 取链（服务端多API竞速 + VIP母带 + 防试听校验 + 15min缓存）
+ * 本地服务器不在线或全源失败时返回 null，调用方落回前端原链
+ * @returns {Promise<string|null>}
+ */
+export async function qqResolveUrl(mid, dur, quality) {
+    const info = await qqResolveInfo(mid, dur, quality);
+    return info ? info.url : null;
 }
 
 /**

@@ -22,6 +22,40 @@ const DEFAULT_MAX_LINE_MS = 10000;
 /* 无下一行、无总时长时的兜底行长 */
 const FALLBACK_LINE_MS = 4000;
 
+/* 打在合成行上的标记。必须可区分：下游有代码拿 `line.words.length` 判**真值**——
+   下载歌词、"逐字歌词"标签、歌词源质量打分。合成的是按行时长摊平的近似节拍，
+   被当成平台精确逐字的话，下载出去的 .lrc 会带一串假时间戳。 */
+export const SYNTHESIZED = 'synthesized';
+
+/** 这一行的 words 是不是合成出来的 */
+export function isSyntheticWordLine(line) {
+    return !!(line && line.wordTiming === SYNTHESIZED);
+}
+
+/**
+ * 取一行**真实**的逐字数据；合成的或脏数据一律返回 null。
+ * 给「拿 line.words 判真值」的一侧用：下载歌词、"逐字歌词"标签、歌词源质量打分。
+ * 渲染侧不要用这个——它要的就是有就用（合成的也比整行一跳好）。
+ * @param {Object} line
+ * @returns {Array<{text:string,start:number,end:number}>|null}
+ */
+export function realWordsOf(line) {
+    return lineHasRealWords(line) ? line.words : null;
+}
+
+/**
+ * 把合成出来的 words 摘掉（真实逐字原样保留）。
+ * 导出/下载歌词前必须过这一道，否则假时间戳会写进用户的文件。
+ * @param {Array<Object>} lines
+ * @returns {Array<Object>} 新数组，不改入参
+ */
+export function stripSyntheticWords(lines) {
+    if (!Array.isArray(lines)) return lines;
+    return lines.map(l => (isSyntheticWordLine(l)
+        ? Object.assign({}, l, { words: [], wordTiming: undefined })
+        : l));
+}
+
 /**
  * 把一行文本切成「可逐字高亮的词元」：
  * - CJK 每字一个词元（真正的逐字推进）；
@@ -97,7 +131,7 @@ export function synthesizeWords(lines, opts = {}) {
         const tokens = tokenizeForKaraoke(text);
         const totalWeight = tokens.reduce((sum, t) => sum + t.weight, 0);
         if (!tokens.length || totalWeight <= 0) {
-            out.push(Object.assign({}, line, { words: [] }));
+            out.push(Object.assign({}, line, { words: [], wordTiming: undefined }));
             continue;
         }
         const dur = end - start;
@@ -110,28 +144,44 @@ export function synthesizeWords(lines, opts = {}) {
             /* 每个词元至少 1ms，避免零长区间被渲染层的除法算出 NaN/Infinity */
             words.push({ text: t.text, start: wStart, end: Math.max(wEnd, wStart + 1) });
         }
-        out.push(Object.assign({}, line, { words }));
+        out.push(Object.assign({}, line, { words, wordTiming: SYNTHESIZED }));
     }
     return out;
 }
 
-/** 判断一组行是否已带可信的真实逐字时间 */
+/** 这一行自己带不带可信的真实逐字时间（合成出来的不算） */
+function lineHasRealWords(line) {
+    return !!(line && !isSyntheticWordLine(line) && Array.isArray(line.words) && line.words.length > 0
+        && typeof line.words[0].start === 'number' && typeof line.words[0].end === 'number'
+        && line.words[0].end > line.words[0].start);
+}
+
+/**
+ * 判断一组行是否已带可信的真实逐字时间。
+ * 合成出来的 words 不算——否则「合成过一次」就会被当成「平台给了精确逐字」，
+ * 既让二次合成失效，也让真值判定（下载/标签/选源）被骗。
+ */
 export function hasRealWordTiming(lines) {
     if (!Array.isArray(lines)) return false;
-    return lines.some(l => l && Array.isArray(l.words) && l.words.length > 0
-        && typeof l.words[0].start === 'number' && typeof l.words[0].end === 'number'
-        && l.words[0].end > l.words[0].start);
+    return lines.some(lineHasRealWords);
 }
 
 /**
  * 主入口：保证每行都有逐字时间。
- * 已带真实逐字 → 原样返回（不覆盖第三方给的精确节拍）；否则按行区间均分合成。
+ * 已带真实逐字 → 原样保留（不覆盖第三方给的精确节拍）；否则按行区间均分合成。
+ *
+ * 混合形状逐行处理而非整组放行：KRC/YRC 里常有「多数行带标记、个别行没带」，
+ * 整组放行会让没带的那几行仍然整行一跳。全组都真实时返回原数组引用
+ * ——调用方（232 的 withWordTiming、单测）靠引用相等判「没动过」。
  * @param {Array<Object>} lines
  * @param {{totalMs?: number, maxLineMs?: number}} [opts] totalMs 用于末行的结束时间
  * @returns {Array<Object>}
  */
 export function ensureWordTiming(lines, opts = {}) {
     if (!Array.isArray(lines) || lines.length < 2) return lines;
-    if (hasRealWordTiming(lines)) return lines;
-    return synthesizeWords(lines, opts);
+    if (!hasRealWordTiming(lines)) return synthesizeWords(lines, opts);
+    if (lines.every(lineHasRealWords)) return lines;
+    /* 合成整组只为拿到逐行的位次区间，带真实节拍的行原样留着 */
+    const fallback = synthesizeWords(lines, opts);
+    return lines.map((line, i) => (lineHasRealWords(line) ? line : fallback[i]));
 }

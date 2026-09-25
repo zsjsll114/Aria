@@ -16,7 +16,7 @@ import { applyColorOverlay, generatePrebakedBlurBackground, getActiveBgLayer, sh
 import { saveSettings } from './180-boot-config.js';
 import { applyFontFamily, applyGlassStrength } from './210-color-multilang.js';
 import { getLanguage, setLanguage } from '../core/i18n.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 应用所有设置到播放器 */
 function applyAllSettings() {
@@ -26,7 +26,13 @@ function applyAllSettings() {
             const i = appSettings.interface;
 
             /* 播放设置 */
-            volume = p.initialVolume;
+            /* ★ 不在此重放 volume（2026-09-25 probe3 实测）：volume 是运行时可变状态
+               （滑杆/遥控器/淡入淡出都在改，persistVolume 又把它们写回 initialVolume）。
+               __reapplyFontSettings 触发的全量重放会把旧 initialVolume 打回 volume——
+               自定义字体注册完成后 ~2.5s，用户当前音量被静默覆盖（栈：
+               initCustomFonts → applyAllSettings:29）。boot 初始值由
+               10-config-state.js 的 globalThis.volume = playerConfig.initialVolume 负责，
+               「初始音量」面板滑块本身就是下次启动生效的语义，此处只同步音频节点增益。 */
             audio.volume = volumePercentToGain(volume);
             if (volumeBar) volumeBar.style.width = volume + '%';
             playMode = p.defaultPlayMode;
@@ -196,8 +202,7 @@ function applyModeSettings(mode) {
                        （错档的字号/字体设置被错误应用），与 defaults.js 保持同键 */
                     neon: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
                     letterpress: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
-                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#ffcc33', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
-                    polyphony: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#ffcc33', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 }
+                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#ffcc33', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 }
                 };
             }
             const s = appSettings.modeSettings[mode] || appSettings.modeSettings.cover;
@@ -270,7 +275,7 @@ function applyModeSettings(mode) {
                     root.style.setProperty('--emotion-glow', (parseFloat(s.emotionGlow) || 10) + 'px');
                     /* 重新应用情感词，使发光强度实时变化 */
                     if (typeof applyEmotionWordColors === 'function' && aiEmotionWords && aiEmotionWords.length > 0) {
-                        try { applyEmotionWordColors(); } catch (e) {}
+                        try { applyEmotionWordColors(); } catch (e) { logCatch('settingsFontsize', e); }
                     }
                 }
             }
@@ -329,7 +334,7 @@ function applyBackgroundSettings() {
                                 active.style.backgroundImage = `url("${baked}")`;
                                 active.style.filter = 'none';
                             }
-                        }).catch(() => {});
+                        }).catch((e) => logCatch('settingsFontsize', e));
                     }
                 }
             } else {
@@ -444,7 +449,7 @@ function setSettingValue(key, value) {
                     applyFontFamily(value);
                     /* ★ 同步到外观预览引擎，使预览页实时跟随字体切换 */
                     if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance && typeof previewEngineInstance.setModeVar === 'function') {
-                        try { previewEngineInstance.setModeVar('fontFamily', value); } catch (e) {}
+                        try { previewEngineInstance.setModeVar('fontFamily', value); } catch (e) { logCatch('settingsFontsize', e); }
                     }
                     break;
                 case 'language':

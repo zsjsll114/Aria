@@ -71,6 +71,10 @@ export const DEFAULT_SETTINGS = {
         defaultEqPreset: 'default',
         volumeNorm: false
     },
+    sleepTimer: {
+        lastMinutes: 30,
+        lastCustomMinutes: 0
+    },
     nowPlaying: {
         enabled: false,
         url: 'http://localhost:9863/api/query',

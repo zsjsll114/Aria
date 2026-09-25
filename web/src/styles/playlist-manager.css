@@ -13,7 +13,7 @@
     display: flex; align-items: center; justify-content: center;
     cursor: grab;
     box-shadow: 0 8px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
-    transition: transform .2s cubic-bezier(.34,1.56,.64,1), background .2s ease;
+    transition: transform .2s var(--e-enter), background .2s ease;
     z-index: 5050;
 }
 .plm-toggle:hover { background: rgba(255,255,255,0.2); transform: scale(1.06); }
@@ -44,10 +44,10 @@
     font-family: var(--app-font-family, 'Segoe UI', 'Microsoft YaHei', sans-serif);
     color: rgba(255,255,255,0.9);
     overflow: hidden;
-    animation: modalIn .3s cubic-bezier(.34,1.56,.64,1);
+    animation: modalIn .3s var(--e-enter);
     transform: translateY(16px) scale(0.97);
     opacity: 0; pointer-events: none;
-    transition: transform .28s cubic-bezier(.34,1.56,.64,1), opacity .24s ease;
+    transition: transform .28s var(--e-enter), opacity .24s ease;
     z-index: 5060;
 }
 .plm-panel.visible { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
@@ -102,7 +102,7 @@
 .plm-item.plm-source { opacity: .32; }
 
 /* FLIP 让位：移动时的惯性缓动 */
-.plm-item { transition: transform 220ms cubic-bezier(.22,.9,.26,1); }
+.plm-item { transition: transform 220ms var(--e-enter); }
 .plm-item.flip-no-trans { transition: none; }
 
 /* 拖拽浮层：跟随鼠标 */
@@ -120,7 +120,7 @@
 
 /* 落位“Q 弹”回弹动画 */
 .plm-item.plm-drop-spring {
-    animation: plmDropSpring .5s cubic-bezier(.34,1.56,.64,1);
+    animation: plmDropSpring .5s var(--e-enter);
     transform-origin: center;
 }
 @keyframes plmDropSpring {

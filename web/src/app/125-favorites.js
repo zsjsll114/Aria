@@ -40,9 +40,9 @@ function renderFavoritesList() {
                 const title = escapeHtml(f.title || '未知歌曲');
                 const artist = escapeHtml(f.artist || '未知歌手');
                 const cover = f.cover || '';
-                const sourceLabel = f.source === 'tencent' ? 'QQ' : (f.source === 'netease' ? '网易云' : (f.source === 'kugou' ? '酷狗' : (f.source ? f.source : '本地')));
+                const sourceLabel = f.source === 'tencent' ? 'QQ' : (f.source === 'netease' ? '网易云' : (f.source === 'kugou' ? '酷狗' : (f.source ? escapeHtml(f.source) : '本地')));
                 html += `<div class="result-item" data-idx="${idx}">
-                    <img class="result-cover" src="${cover}" alt="" onerror="this.style.visibility='hidden'">
+                    <img class="result-cover" src="${escapeHtml(cover)}" alt="" onerror="this.style.visibility='hidden'">
                     <div class="result-info">
                         <div class="result-title">${title}</div>
                         <div class="result-artist">${artist} · ${sourceLabel}</div>

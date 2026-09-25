@@ -18,13 +18,12 @@
             padding: 6px;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-                        transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+            transition: opacity 0.2s var(--e-enter-soft),
+                        transform 0.2s var(--e-enter-soft),
                         visibility 0s 0.2s;
             box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
             z-index: 999;
             min-width: 160px;
-            will-change: transform, opacity;
         }
 
         .speed-submenu.open, .volume-slider-popup.open, .more-submenu.open {
@@ -49,7 +48,7 @@
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: var(--t-fast);
         }
 
         .speed-option:hover {

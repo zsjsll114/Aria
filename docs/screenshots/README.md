@@ -15,7 +15,7 @@ README 中的注释即可展示。
 | letterpress.png | 活字 |
 | neon.png | 霓虹 |
 | dimension.png | 浮空（待补） |
-| polyphony.png | 和鸣（待补） |
+
 | desktop-lyrics.png | 桌面歌词（可选） |
 
 ## 拍摄建议

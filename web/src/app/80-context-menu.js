@@ -6,6 +6,7 @@
 import { flyinAutoScaleFont } from './56-playback-misc.js';
 import { updatePlayModeIcon } from './75-play-mode.js';
 import { moreBtn } from './90-eq.js';
+import { esc } from '../utils/formatters.js';
 
 updatePlayModeIcon();
 
@@ -49,7 +50,7 @@ function showCtxMenu(items, x, y) {
                 const danger = it.danger ? ' danger' : '';
                 const active = it.active ? ' active-rate' : '';
                 const arrow = it.submenu ? `<span class="ctx-arrow">${CTX_ICONS.arrow}</span>` : '';
-                return `<div class="ctx-item${danger}${active}" data-ctx-key="${it.key || ''}">${it.icon || ''}<span>${it.label}</span>${arrow}</div>`;
+                return `<div class="ctx-item${danger}${active}" data-ctx-key="${esc(it.key || '')}">${it.icon || ''}<span>${esc(it.label)}</span>${arrow}</div>`;
             }).join('');
             ctxMenu.innerHTML = html;
             ctxMenu.style.left = '0px';
@@ -108,7 +109,7 @@ function showCtxSubmenu(items, parentEl) {
                 const danger = it.danger ? ' danger' : '';
                 const active = it.active ? ' active-rate' : '';
                 const icon = it.active ? CTX_ICONS.check : (it.icon || '');
-                return `<div class="ctx-item${danger}${active}" data-ctx-key="${it.key || ''}">${icon}<span>${it.label}</span></div>`;
+                return `<div class="ctx-item${danger}${active}" data-ctx-key="${esc(it.key || '')}">${icon}<span>${esc(it.label)}</span></div>`;
             }).join('');
             ctxSubmenuEl.innerHTML = html;
             document.body.appendChild(ctxSubmenuEl);

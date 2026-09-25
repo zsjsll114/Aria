@@ -1,0 +1,166 @@
+/* ============================================================
+ * styles/diagnostics.css — 应用内诊断页（todos #21）
+ *
+ * 面板壳复用 .lyric-source-overlay / .lyric-source-panel（与「取链详情」同一套），
+ * 这里只加：面板宽度/滚动、段落网格、作用域徽标、语气色。
+ * ★ 所有选择器锚在 html#ariaRoot 上（AGENTS 约束 12）：纯类选择器只有 (0,1,0)，
+ *   会被 modals.css 里带 !important 的组件规则按特异性顶掉。
+ * ★ 不新增 backdrop-filter：软件渲染设备上这等于给自己加活；面板底色沿用壳的实色保底
+ *   （modals.css 的 `html#ariaRoot.is-software-renderer .lyric-source-panel`）。
+ * ★ 强调色一律走 var(--theme-color)，不写死。
+ * ============================================================ */
+
+/* 面板尺寸与滚动：诊断页段落多，必须能滚 */
+html#ariaRoot #diagnosticsOverlay .lyric-source-panel {
+    width: min(760px, 100%);
+    max-height: min(86vh, 900px);
+    display: flex;
+    flex-direction: column;
+}
+html#ariaRoot #diagnosticsOverlay .lyric-source-header {
+    flex: 0 0 auto;
+}
+html#ariaRoot #diagBody {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    max-height: calc(86vh - 70px);
+    padding: 12px 14px 16px;
+}
+
+/* 头部操作区：刷新 / 复制 / 关闭 */
+html#ariaRoot .diag-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+html#ariaRoot .diag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+html#ariaRoot .diag-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+html#ariaRoot .diag-btn:active { transform: translateY(1px); }
+html#ariaRoot .diag-btn:focus-visible {
+    outline: 2px solid var(--theme-color, #ffcc33);
+    outline-offset: 2px;
+}
+html#ariaRoot .diag-btn-primary {
+    border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.45);
+    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
+    color: var(--theme-color, #ffcc33);
+    font-weight: 600;
+}
+html#ariaRoot .diag-btn svg { flex: 0 0 auto; }
+
+/* 段落 */
+html#ariaRoot .diag-section {
+    margin: 0 0 14px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+html#ariaRoot .diag-section:last-child { border-bottom: none; }
+html#ariaRoot .diag-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0 2px 6px;
+}
+html#ariaRoot .diag-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.2px;
+}
+html#ariaRoot .diag-hint {
+    font-size: 11px;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.52);
+    margin: 0 2px 8px;
+}
+
+/* 作用域徽标：一眼分清「浏览器环境 / 本机服务 / 公网」 */
+html#ariaRoot .diag-scope {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.72);
+}
+html#ariaRoot .diag-scope.scope-vendor {
+    border-color: rgba(46, 213, 115, 0.32);
+    background: rgba(46, 213, 115, 0.14);
+    color: #7dedac;
+}
+html#ariaRoot .diag-scope.scope-mixed {
+    border-color: rgba(255, 165, 2, 0.32);
+    background: rgba(255, 165, 2, 0.12);
+    color: #ffc76b;
+}
+
+/* 行：左标签右值，值可换行（WebGL renderer 原文很长） */
+html#ariaRoot .diag-rows {
+    display: grid;
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 2px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+html#ariaRoot .diag-row {
+    display: contents;
+}
+html#ariaRoot .diag-k {
+    color: rgba(255, 255, 255, 0.55);
+    align-self: start;
+    padding-top: 1px;
+}
+html#ariaRoot .diag-v {
+    color: rgba(255, 255, 255, 0.92);
+    word-break: break-word;
+    white-space: pre-wrap;
+    font-variant-numeric: tabular-nums;
+}
+html#ariaRoot .diag-v,
+html#ariaRoot .diag-k { padding: 1px 4px; border-radius: 5px; }
+
+/* 语气色：只上色，不改变布局 */
+html#ariaRoot .diag-row.t-ok .diag-v { color: #6be49b; }
+html#ariaRoot .diag-row.t-warn .diag-k,
+html#ariaRoot .diag-row.t-warn .diag-v { color: #ffc76b; }
+html#ariaRoot .diag-row.t-bad .diag-k { color: #ff8f8f; }
+html#ariaRoot .diag-row.t-bad .diag-v {
+    color: #ffb4b4;
+    background: rgba(255, 99, 99, 0.1);
+}
+
+html#ariaRoot .diag-loading {
+    padding: 18px 4px;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.6);
+    text-align: center;
+}
+html#ariaRoot .diag-loading.t-bad { color: #ffb4b4; text-align: left; }
+
+/* 窄屏（手机/局域网访问也开得到诊断页）：标签与值改为上下排 */
+@media (max-width: 620px) {
+    html#ariaRoot .diag-rows { grid-template-columns: minmax(0, 1fr); }
+    html#ariaRoot .diag-k { margin-top: 4px; }
+    html#ariaRoot #diagnosticsOverlay .lyric-source-panel { width: 100%; max-height: 92vh; }
+}

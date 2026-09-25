@@ -1,0 +1,192 @@
+/* ============================================================
+ * motion.css — 动效令牌 + 浮层进出机制
+ *
+ * 为什么只有三条曲线：进入一律单调减速，收尾不回弹。回弹（back-out）留给
+ * PV/视觉器那些「表现力本身」的场景，界面壳层一旦回弹就显得廉价——所以这里
+ * 刻意不提供 back-out 令牌，别再加回来。
+ *
+ * 浮层机制的前提：原先 .xxx-overlay 用 display:none ↔ flex 切换。display 是离散
+ * 属性、不可过渡，所以浮层只能「出现」不能「离开」，遮罩也是硬弹。现在改成
+ * display 常驻 + opacity/visibility 控制，visibility 用 0s 延时延迟到退场播完再翻，
+ * 于是纯 CSS 就能走完退场。
+ *
+ * ⚠ 进出幅度非对称（进 16px / 出 8px）靠两段叠加实现，看着绕但缺一不可：
+ *   · 入场 = @keyframes（只在 .visible 时挂上，起点可以比 transition 的起点更远）
+ *   · 退场 = base 状态上的 transform + transition（.visible 摘掉后 animation 消失，
+ *     transition 接手）
+ * 只写 transition 的话两端幅度必然相同；只写 animation 的话没有退场。
+ * ============================================================ */
+
+:root {
+    /* ---- 缓动：三条封顶 ---- */
+    --e-enter: cubic-bezier(0.16, 1, 0.3, 1);        /* 主入场：起步果断、长尾收束 */
+    --e-enter-soft: cubic-bezier(0.22, 1, 0.36, 1);  /* 次级/小元素入场 */
+    --e-exit: cubic-bezier(0.4, 0, 1, 1);            /* 退场：ease-in，走得比来得快 */
+
+    /* ---- 时长 ---- */
+    --d-instant: 100ms;  /* 颜色/背景等微反馈 */
+    --d-fast: 160ms;     /* 退场、hover */
+    --d-base: 220ms;     /* 常规元素入场 */
+    --d-slow: 280ms;     /* 面板内切换 */
+    --d-layer: 340ms;    /* 顶层浮层入场 */
+
+    /* ---- 位移：进 > 出，差值就是「快进慢出」的错觉来源 ---- */
+    --dy-in-sm: 8px;    --dy-out-sm: 4px;
+    --dy-in: 16px;      --dy-out: 8px;
+    --dy-in-lg: 24px;   --dy-out-lg: 12px;
+
+    /* ---- 缩放：地板 0.98，不超过 1.04 ---- */
+    --s-in: 0.98;
+    --s-out: 0.992;
+}
+
+/* 交互反馈的成套过渡：按钮/卡片/输入框原先写 transition: all，
+ * 会连带过渡 display、width、border-radius 等没打算动的属性。
+ * 属性集是实测出来的——扫过这些选择器的 :hover/:focus/.active 规则，
+ * 实际只改了 background/color/border-color/box-shadow/transform/opacity/outline/fill。
+ * 新增属性前先确认真有元素在变它。 */
+:root {
+    --t-props: background, color, border-color, box-shadow, transform, opacity, outline, fill;
+    --t-fast: background var(--d-instant) var(--e-enter-soft), color var(--d-instant) var(--e-enter-soft),
+              border-color var(--d-instant) var(--e-enter-soft), box-shadow var(--d-instant) var(--e-enter-soft),
+              transform var(--d-fast) var(--e-enter-soft), opacity var(--d-instant) var(--e-enter-soft),
+              outline var(--d-instant) var(--e-enter-soft), fill var(--d-instant) var(--e-enter-soft);
+    --t-base: background var(--d-fast) var(--e-enter-soft), color var(--d-fast) var(--e-enter-soft),
+              border-color var(--d-fast) var(--e-enter-soft), box-shadow var(--d-fast) var(--e-enter-soft),
+              transform var(--d-base) var(--e-enter-soft), opacity var(--d-fast) var(--e-enter-soft),
+              outline var(--d-fast) var(--e-enter-soft), fill var(--d-fast) var(--e-enter-soft);
+    --t-slow: background var(--d-base) var(--e-enter-soft), color var(--d-base) var(--e-enter-soft),
+              border-color var(--d-base) var(--e-enter-soft), box-shadow var(--d-base) var(--e-enter-soft),
+              transform var(--d-slow) var(--e-enter-soft), opacity var(--d-base) var(--e-enter-soft),
+              outline var(--d-base) var(--e-enter-soft), fill var(--d-base) var(--e-enter-soft);
+}
+
+/* ============================================================
+ * 顶层浮层：20 个 overlay 共用下面 3 个类根（search-overlay ×8、
+ * lyric-source-overlay ×3、ai-models-overlay ×2，另加 settings /
+ * color-picker / view-mode 各自单例），所以这里一处生效、全部覆盖。
+ * ============================================================ */
+
+html#ariaRoot .search-overlay,
+html#ariaRoot .settings-overlay,
+html#ariaRoot .color-picker-overlay,
+html#ariaRoot .lyric-source-overlay,
+html#ariaRoot .view-mode-overlay,
+html#ariaRoot .ai-models-overlay {
+    display: flex;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--d-fast) var(--e-exit),
+                visibility 0s linear var(--d-fast);
+}
+
+html#ariaRoot .search-overlay.visible,
+html#ariaRoot .settings-overlay.visible,
+html#ariaRoot .color-picker-overlay.visible,
+html#ariaRoot .lyric-source-overlay.visible,
+html#ariaRoot .view-mode-overlay.visible,
+html#ariaRoot .ai-models-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--d-layer) var(--e-enter),
+                visibility 0s linear 0s;
+}
+
+/* 面板：退场走 transition（近、快、ease-in） */
+html#ariaRoot .search-overlay .search-modal,
+html#ariaRoot .settings-overlay .settings-panel,
+html#ariaRoot .color-picker-overlay .color-picker-panel,
+html#ariaRoot .lyric-source-overlay .lyric-source-panel,
+html#ariaRoot .view-mode-overlay .view-mode-modal,
+html#ariaRoot .ai-models-overlay .ai-models-modal {
+    transform: translateY(var(--dy-out)) scale(var(--s-out));
+    transition: transform var(--d-fast) var(--e-exit);
+}
+
+html#ariaRoot .search-overlay.visible .search-modal,
+html#ariaRoot .settings-overlay.visible .settings-panel,
+html#ariaRoot .color-picker-overlay.visible .color-picker-panel,
+html#ariaRoot .lyric-source-overlay.visible .lyric-source-panel,
+html#ariaRoot .view-mode-overlay.visible .view-mode-modal,
+html#ariaRoot .ai-models-overlay.visible .ai-models-modal {
+    transform: none;
+    /* 入场走 animation（远、慢、expo-out）；结束后落回 transform:none，与 transition 终值一致 */
+    animation: ariaLayerIn var(--d-layer) var(--e-enter);
+}
+
+@keyframes ariaLayerIn {
+    from {
+        opacity: 0;
+        transform: translateY(var(--dy-in)) scale(var(--s-in));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* 设置分区/外观子面板切换：原先 display:none ↔ block 直接跳，无任何过渡 */
+html#ariaRoot .settings-section.active,
+html#ariaRoot .appearance-panel.active {
+    animation: ariaSectionIn var(--d-slow) var(--e-enter-soft);
+}
+
+/* 分区交叉替换：13 个分区共用一个滚动容器，直接叠着淡出会把新分区顶下去抖一下。
+   退场那一个先脱离文档流（等位覆盖），utils/motion.js 的 conceal() 演完再 display:none。
+   .settings-body 必须 position:relative，否则绝对定位会跑到更外层去。 */
+html#ariaRoot .settings-body { position: relative; }
+html#ariaRoot .settings-section.is-leaving {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* JS 侧退场（utils/motion.js conceal）：刻意用 CSS animation 而不是 WAAPI——
+   窗口切到后台时 element.animate() 的时间轴会被冻住（playState 报 running 但
+   currentTime 一直是 0），而 CSS animation 照常推进；播放器的窗口常年被压在后面，
+   这不是边缘情况。时长/幅度经自定义属性传入，仍走同一套令牌。 */
+@keyframes ariaConcealOut {
+    from { opacity: 1; transform: none; }
+    to   { opacity: 0;
+           transform: translateY(var(--conceal-y, 8px)) scale(var(--conceal-scale, 0.992)); }
+}
+html#ariaRoot .is-concealing {
+    animation: ariaConcealOut var(--conceal-dur, 160ms) var(--e-exit) forwards;
+}
+
+@keyframes ariaSectionIn {
+    from { opacity: 0; transform: translateY(var(--dy-in-sm)); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ============================================================
+ * 降级：系统要求减少动效时全部归零。退场仍需结束，所以只压时长、
+ * 不动 visibility 机制本身。性能档位由 modals.css 的降级段负责。
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+    html#ariaRoot .search-overlay,
+    html#ariaRoot .settings-overlay,
+    html#ariaRoot .color-picker-overlay,
+    html#ariaRoot .lyric-source-overlay,
+    html#ariaRoot .view-mode-overlay,
+    html#ariaRoot .ai-models-overlay,
+    html#ariaRoot .search-overlay .search-modal,
+    html#ariaRoot .settings-overlay .settings-panel,
+    html#ariaRoot .color-picker-overlay .color-picker-panel,
+    html#ariaRoot .lyric-source-overlay .lyric-source-panel,
+    html#ariaRoot .view-mode-overlay .view-mode-modal,
+    html#ariaRoot .ai-models-overlay .ai-models-modal {
+        transition-duration: 1ms;
+        animation-duration: 1ms;
+    }
+
+    html#ariaRoot .search-overlay .search-modal,
+    html#ariaRoot .settings-overlay .settings-panel,
+    html#ariaRoot .color-picker-overlay .color-picker-panel,
+    html#ariaRoot .lyric-source-overlay .lyric-source-panel,
+    html#ariaRoot .view-mode-overlay .view-mode-modal,
+    html#ariaRoot .ai-models-overlay .ai-models-modal {
+        transform: none;
+    }
+}
