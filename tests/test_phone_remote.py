@@ -69,8 +69,55 @@ COVER = f"http://localhost:{BASE_PORT}/test-cover.png"
 TRACK = "data:audio/wav;base64," + silent_wav_b64()
 
 
+_BOOT_JS = None
+
+
+def route_boot(route):
+    """★ 把 bootApp 里的 preloadDefaultSong() 调用点禁掉（180:174）。
+    它在无歌单时加载 DEFAULT_SONG——现在虽已被替换成 fixture，但其取链/歌词
+    异步重试链（vkeys→KRC→JSONP 搜索，秒级退避循环）会在测试 seed 之后的任意
+    时刻重写 state.playlist/currentSongData/lyrics，与 seed 打时序拉锯战。
+    禁掉后 boot 完全不碰播放状态，测试 seed 独占。"""
+    global _BOOT_JS
+    if _BOOT_JS is None:
+        import pathlib
+        _BOOT_JS = pathlib.Path(ROOT, "web", "src", "app", "180-boot-config.js").read_text(encoding="utf-8")
+    patched = _BOOT_JS.replace(
+        "try { preloadDefaultSong(); } catch(e) { logError('bootConfig', 'preloadDefaultSong error:', e); }",
+        "try { logInfo('bootConfig', '[test] preloadDefaultSong disabled'); } catch(e) {}")
+    if patched == _BOOT_JS:
+        route.abort()      # 替换点失配（上游代码变了）→ 快速失败而不是静默污染
+        return
+    route.fulfill(status=200, body=patched, content_type="text/javascript")
+
+
 def route_cover(route):
     route.fulfill(status=200, body=_PNG_1PX, content_type="image/png")
+
+
+# DEFAULT_SONG 的测试替身：boot「无歌单 → 播默认曲」分支会 loadOnlineSong(DEFAULT_SONG)，
+# 同步写 currentSongData（网络拦截只能让它失败重试、反复覆盖 seed）。
+# 直接把常量换成 fixture 本身——boot 预加载的就是测试数据，seed 与之完全一致。
+_DEFAULTS_JS = None
+
+
+def route_defaults(route):
+    global _DEFAULTS_JS
+    if _DEFAULTS_JS is None:
+        import pathlib
+        _DEFAULTS_JS = pathlib.Path(ROOT, "web", "src", "config", "defaults.js").read_text(encoding="utf-8")
+    fixture = json.dumps({
+        "id": "TESTFIXTURE", "mid": "",
+        "song": "遥控器测试 A", "singer": "歌手甲",
+        "cover": COVER, "source": "local", "url": TRACK,
+    }, ensure_ascii=False)
+    patched, n = re.subn(r"export const DEFAULT_SONG = \{.*?\};",
+                         "export const DEFAULT_SONG = " + fixture + ";",
+                         _DEFAULTS_JS, count=1, flags=re.S)
+    if n != 1:
+        route.abort()
+        return
+    route.fulfill(status=200, body=patched, content_type="text/javascript")
 
 results = []
 
@@ -155,8 +202,55 @@ try:
         ctx_main.route(re.compile(r"/api/config/load"), lambda route: route.fulfill(
             status=200, body="{}", content_type="application/json"))
         ctx_main.route(re.compile(r"^https?://(?!127\.0\.0\.1|localhost)"), lambda route: route.abort())
+        # ★ 第四道闸（CI/本地双实测抓到的真凶）：boot「开篇歌单」——无用户歌单时
+        #   自动从热歌榜（/api/rank/*，258 提供）拉 30 首并播放第一首。CI 的 config
+        #   恒空必触发；本地 user_config 一旦清空也会触发。拦掉 rank 与 selfhost
+        #   （日推依赖 selfhost 登录态）后开篇歌单返回 null，走 preload 不播放。
+        ctx_main.route(re.compile(r"/api/rank/"), lambda route: route.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        ctx_main.route(re.compile(r"/api/selfhost/"), lambda route: route.abort())
+        # ★ 第五道闸：DEFAULT_SONG（config/defaults.js 写死的示例曲）boot 时会
+        #   loadOnlineSong 取链+取词+跑副歌分析，全部走 localhost 跳板
+        #   （/api/audio/stream、/proxy?url=公网），上面的外网正则拦不到。
+        #   断掉后默认曲永远取链失败，预加载缓存为空，后续切歌不会被它命中。
+        ctx_main.route(re.compile(r"/api/audio/stream"), lambda route: route.abort())
+        ctx_main.route(re.compile(r"/proxy"), lambda route: route.abort())
+        # ★ 正解：boot「开篇歌单」有官方 hook 点 Aria.__fetchHotBoardQueue（180:65）。
+        #   注入测试自己的 3 首 data URL 歌，boot 走热歌榜分支 loadPlaylistTrack(preloadOnly)
+        #   ——零网络依赖、不碰 DEFAULT_SONG（它之前每次 loadOnlineSong 都会同步写
+        #   currentSongData=示例曲，网络拦截只能让它失败重试、反复覆盖 seed）。
+        #   Aria 全局由各模块陆续挂载，用 defineProperty 包一层保证 hook 不被冲掉。
+        queue_json = json.dumps([
+            {"title": "遥控器测试 A", "artist": "歌手甲", "url": TRACK, "cover": COVER, "source": "local"},
+            {"title": "遥控器测试 B", "artist": "歌手乙", "url": TRACK, "cover": COVER, "source": "local"},
+            {"title": "遥控器测试 C", "artist": "歌手丙", "url": TRACK, "cover": COVER, "source": "local"},
+        ], ensure_ascii=False)
+        ctx_main.add_init_script(f"""
+            window.__TEST_QUEUE = {queue_json};
+            let __ariaHolder = {{
+                __fetchHotBoardQueue: async (n) => (window.__TEST_QUEUE || []).slice(0, n || 30),
+            }};
+            Object.defineProperty(window, 'Aria', {{
+                configurable: true,
+                get: () => __ariaHolder,
+                set: (v) => {{
+                    try {{ __ariaHolder = Object.assign({{}}, v, {{ __fetchHotBoardQueue: __ariaHolder.__fetchHotBoardQueue }}); }}
+                    catch (e) {{ __ariaHolder = v; }}
+                }},
+            }});
+        """)
         ctx_main.route(re.compile(r"/test-cover\.png$"), route_cover)
+        # ★ 终极兜底：boot「无歌单 → DEFAULT_SONG」分支（defaults.js 写死的示例曲）。
+        #   loadOnlineSong 每次调用都同步写 currentSongData，网络拦截只能让它失败重试。
+        #   直接把 DEFAULT_SONG 常量替换成 fixture 本身——boot 预加载的就是测试数据，
+        #   与 seed 完全一致，title/cover/dur 全部对得上，且零网络依赖。
+        ctx_main.route(re.compile(r"/src/config/defaults\.js"), route_defaults)
+        ctx_main.route(re.compile(r"/src/app/180-boot-config\.js"), route_boot)
         pm = ctx_main.new_page()
+        # ★ 诊断仪器（CI 排查「currentSongData 被换成网络真歌」加的）：主窗 console 里
+        #   各分片的 [tag] 日志直接转发到 stdout，CI 日志可读；顺带抓页面报错。
+        pm.on("console", lambda m: print("  [主窗console] " + m.text[:180]))
+        pm.on("pageerror", lambda e: print("  [主窗pageerror] " + str(e)[:180]))
         pm.goto(MAIN_URL, wait_until="domcontentloaded", timeout=40000)
         pm.wait_for_function(
             "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
@@ -177,22 +271,41 @@ try:
         }""")
         # 应用会在启动后经 /api/config/load 恢复用户队列，播种必须等它落地，
         # 否则 3 条测试队列会被真实队列覆盖（第一版就踩了：断言全灭在「队列还是 90 首」上）
-        SEED_JS = """([track, cover]) => {
+        SEED_JS = """async ([track, cover]) => {
             const a = document.getElementById('audioPlayer');
-            globalThis.playlist = [
-                { title: '遥控器测试 A', artist: '歌手甲', url: track },
-                { title: '遥控器测试 B', artist: '歌手乙', url: track },
-                { title: '遥控器测试 C', artist: '歌手丙', url: track }
+            const queue = [
+                /* ★ 队列项故意不带 cover：xss-payload-escaped-in-dom 断言
+                   「#rmQueueList 里 img 数量为 0」（rm-qitem 无封面时渲染 span），
+                   带了 cover 会让该断言因封面 img 恒红。主窗 currentSongData.cover
+                   照常保留，#rmCover 的 remote-cover-loaded 断言不受影响。 */
+                { title: '遥控器测试 A', artist: '歌手甲', url: track, source: 'local' },
+                { title: '遥控器测试 B', artist: '歌手乙', url: track, source: 'local' },
+                { title: '遥控器测试 C', artist: '歌手丙', url: track, source: 'local' }
             ];
-            globalThis.currentTrackIndex = 0;
-            globalThis.currentSongData = { title: '遥控器测试 A', artist: '歌手甲', cover: cover, source: 'local', url: track };
-            globalThis.lyrics = [
+            const lyrics = [
                 { start: 0,    original: '第一行歌词', words: [{ text: '第一行歌词', start: 0, end: 2400 }] },
                 { start: 3000, original: '第二行歌词' },
                 { start: 6000, original: '第三行歌词' },
                 { start: 9000, original: '第四行歌词' }
             ];
+            globalThis.playlist = queue;
+            globalThis.currentTrackIndex = 0;
+            globalThis.currentSongData = { title: '遥控器测试 A', artist: '歌手甲', cover: cover, source: 'local', url: track };
+            globalThis.lyrics = lyrics;
             globalThis.activeLineIndex = 0;
+            /* ★ state 双轨必须同时写：291 的 buildPayload/queueView 读的是
+               infrastructure/state.js 的 state 对象，不是 globalThis——boot 默认曲
+               加载完成回调会把 state.playlist 覆盖成单歌（qn=1），只写 globalThis
+               的话发布出去的队列就是错的（E2E 实测 state-carries-queue qn=1）。 */
+            try {
+                const st = (await import('/src/infrastructure/state.js')).state;
+                if (st) {
+                    st.playlist = queue;
+                    st.currentTrackIndex = 0;
+                    st.currentSongData = globalThis.currentSongData;
+                    st.lyrics = lyrics;
+                }
+            } catch (e) { console.warn('[test] state sync skip:', e); }
             a.src = track;
             a.load();
         }"""
@@ -204,9 +317,24 @@ try:
         pm.wait_for_timeout(2000)
         if pm.evaluate("() => (globalThis.playlist || []).length") != 3:
             seed()      # 启动期恢复晚到，补一次
+        # ★ 二次播种：boot 默认曲（已替换成 fixture）的加载完成回调会**晚于**首播
+        #   seed 落地，把 state.playlist 覆盖成单歌（qn=1）→ queue/cmd-next 连坐。
+        #   等回调落地后补一次，之后不再有 boot 写入点。
+        pm.wait_for_timeout(2500)
+        seed()
         pm.wait_for_timeout(600)
         check("seed-queue-sticks", pm.evaluate("() => (globalThis.playlist || []).length") == 3,
               pm.evaluate("() => (globalThis.playlist || []).length"))
+        # 诊断：seed 后高频采样 currentSongData，抓「谁把它换成了网络真歌」的瞬间
+        for _i in range(6):
+            snap = pm.evaluate("""() => {
+                const s = globalThis.currentSongData || {};
+                const a = document.getElementById('audioPlayer');
+                return { t: s.title, src: (a.src || '').slice(0, 46), dur: a.duration,
+                         np: (globalThis.Aria && typeof Aria.__npActive === 'function') ? Aria.__npActive() : 'n/a' };
+            }""")
+            print("  [seed监控%d] title=%r src=%r dur=%s np=%s" % (_i, snap["t"], snap["src"], snap["dur"], snap["np"]))
+            pm.wait_for_timeout(500)
         # 与「在 index.js 里 import 本分片」等价：同一 URL 的动态 import 命中同一模块实例
         pm.evaluate("() => import('/src/app/291-phone-remote.js')")
         pm.evaluate("() => document.getElementById('audioPlayer').play().catch(() => {})")
