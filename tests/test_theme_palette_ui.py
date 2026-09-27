@@ -26,7 +26,15 @@ def check(name, ok, detail=""):
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        # ★ 环境隔离（同 phone_remote/ab_loop，2026-09-27 CI 实测）：boot 配置恢复
+        #   异步晚到会把 OOBE 点 chip 后的 --theme-color 又覆盖回 config 里的旧值
+        #   （CI 实测 want=#E08576 拿到 #E8BE6A 默认金）。断掉恢复后主题色只归测试管。
+        import re as _re
+        context.route(_re.compile(r"/api/config/load"), lambda r: r.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        context.route(_re.compile(r"^https?://(?!127\.0\.0\.1|localhost)"), lambda r: r.abort())
+        page = context.new_page()
         page.goto(URL, wait_until="load")
         try:
             page.wait_for_function(
