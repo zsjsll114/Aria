@@ -15,7 +15,18 @@
   - python server.py 已在 :8001 启动（与其它回归测试一致）；
   - 本脚本自己拉起 remote_bus.py 的过渡期独立模式（:8002，其余请求转发给 8001），
     所以 server.py 还没打路由补丁时本测试照样能跑。
+
+★ 环境隔离（2026-09-27 CI 实测三连红后立的规矩）：
+  - audio/封面一律 data URL：local_music/ 不入库，CI 上 TRACK 404 →
+    duration=0 → 进度外推恒 00:00、seek 算出 NaN，5 条断言连坐全红；
+  - 主窗 context 必须拦掉 /api/config/load（回 {}）：boot 的配置恢复是异步
+    晚到的，会把 seed 的队列/歌词/currentSongData 整体覆盖成服务端 config 里
+    的真实播放状态（CI 实测歌词区直接显示了一首网络真歌）；
+  - 主窗 context 必须拦掉全部非本机 http(s)：293 行级歌词升级 / 取链兜底
+    会拿 seed 的歌名去公网搜，CI 有外网，真歌词/真封面就这么混进来了。
 """
+import base64
+import io
 import json
 import os
 import re
@@ -24,6 +35,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import wave
+
+from playwright.sync_api import sync_playwright
 
 BASE_PORT = 8002
 UPSTREAM = "http://127.0.0.1:8001"
@@ -33,8 +47,30 @@ UNWIRED_URL = "http://127.0.0.1:8001/remote.html"      # 真·未接线：8001 �
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.path.join(ROOT, "scratch", "remote-shots")
 
-TRACK = "/local_music/JVKE%20-%20golden%20hour/song.flac"
-COVER = "/local_music/JVKE%20-%20golden%20hour/cover.jpg"
+
+def silent_wav_b64(seconds=35, rate=8000):
+    """生成一段真正可解码、可 seek 的静音 WAV（同 test_ab_loop_ui.py 的做法）。
+    35 秒：state-carries-duration 断言 dur>30000，20 秒的 ab_loop 版本不够长。"""
+    buf = io.BytesIO()
+    w = wave.open(buf, 'wb')
+    w.setnchannels(1)
+    w.setsampwidth(1)
+    w.setframerate(rate)
+    w.writeframes(b'\x80' * (rate * seconds))
+    w.close()
+    return base64.b64encode(buf.getvalue()).decode()
+
+# 1x1 PNG（红点）字节：封面走 ctx 拦截的 /test-cover.png 供给。
+# ★ 不能用 data: URL 当封面——291.coverUrl 出于手机页 <img src> 安全只放行
+#   http(s)（291-phone-remote.js coverUrl 第 64 行），data: 会被剥成空串。
+_PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+COVER = f"http://localhost:{BASE_PORT}/test-cover.png"
+TRACK = "data:audio/wav;base64," + silent_wav_b64()
+
+
+def route_cover(route):
+    route.fulfill(status=200, body=_PNG_1PX, content_type="image/png")
 
 results = []
 
@@ -115,6 +151,11 @@ try:
 
         # ---------- ① 主窗：播种播放状态 + 接线发布端 ----------
         ctx_main = browser.new_context(viewport={"width": 1440, "height": 900})
+        # 环境隔离（见文件头 ★）：config 恢复与公网请求都会覆盖/污染 seed
+        ctx_main.route(re.compile(r"/api/config/load"), lambda route: route.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        ctx_main.route(re.compile(r"^https?://(?!127\.0\.0\.1|localhost)"), lambda route: route.abort())
+        ctx_main.route(re.compile(r"/test-cover\.png$"), route_cover)
         pm = ctx_main.new_page()
         pm.goto(MAIN_URL, wait_until="domcontentloaded", timeout=40000)
         pm.wait_for_function(
@@ -184,6 +225,7 @@ try:
             viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, device_scale_factor=3,
             user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
                        "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
+        ctx_ph.route(re.compile(r"/test-cover\.png$"), route_cover)
         pp = ctx_ph.new_page()
         pp.goto(REMOTE_URL, wait_until="domcontentloaded", timeout=30000)
         check("remote-syncs-title-across-origin",
