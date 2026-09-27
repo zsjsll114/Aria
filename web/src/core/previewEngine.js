@@ -97,7 +97,7 @@ function resolveFontFamilyInner(fontKey) {
             /* ★ 从主播放器 appSettings 读取初始值 */
             this.appSettings = appSettings || {};
             const s = this.appSettings;
-            const tc = (s.interface && s.interface.themeColor) || '#ffcc33';
+            const tc = (s.interface && s.interface.themeColor) || '#E8BE6A';
             const ly = s.lyrics || {};
             const bg = s.background || {};
             const intf = s.interface || {};
@@ -1063,7 +1063,9 @@ function resolveFontFamilyInner(fontKey) {
                     /* ★ 上下 -0.4em 外扩（2026-09-20 裁剪彻底修复，见 base.css .word-highlight） */
                     hl.style.clipPath = `inset(-0.4em 0 -0.4em ${100 - pct}%)`;
                 } else {
-                    hl.style.setProperty('--reveal', pct + '%');
+                    /* ★ 2026-09-27 与主画面同步（57 同一机制）：done 不切 mask，
+                       pct>=100 写 120% 让前沿出界，避免每词唱完整层重栅格 */
+                    hl.style.setProperty('--reveal', (pct >= 100 ? 120 : pct) + '%');
                 }
                 if (pct >= 100) hl.classList.add('done');
                 else hl.classList.remove('done');
@@ -1117,7 +1119,7 @@ function resolveFontFamilyInner(fontKey) {
 
                 this.visManager.switchMode(mode, this.playerEl);
                 this.visManager.setLyrics(this.lyrics, {
-                    accent_color: (this.modeVars[mode] && this.modeVars[mode].themeColor) || '#ffcc33'
+                    accent_color: (this.modeVars[mode] && this.modeVars[mode].themeColor) || '#E8BE6A'
                 });
                 this.visManager.applySettings(this.modeVars[mode] || {});
             } else if (mode === 'pv') {
@@ -1149,7 +1151,7 @@ function resolveFontFamilyInner(fontKey) {
                         this.pvEngine = new EngineClass(this.pvPreviewContainer);
                         this.pvEngine.init(this.pvPreviewContainer);
                         this.pvEngine.setLyrics(this.lyrics, {
-                            accent_color: (this.modeVars.pv && this.modeVars.pv.themeColor) || '#ffcc33',
+                            accent_color: (this.modeVars.pv && this.modeVars.pv.themeColor) || '#E8BE6A',
                             emotion_words: ['golden', 'Bad', '温柔', 'vida', 'darkness']
                         });
                     }
@@ -1189,7 +1191,7 @@ function resolveFontFamilyInner(fontKey) {
                         this.tunnelEngine = new EngineClass(this.tunnelPreviewContainer);
                         this.tunnelEngine.init(this.tunnelPreviewContainer);
                         this.tunnelEngine.setLyrics(this.lyrics, {
-                            accent_color: (this.modeVars.tunnel && this.modeVars.tunnel.themeColor) || '#ffcc33',
+                            accent_color: (this.modeVars.tunnel && this.modeVars.tunnel.themeColor) || '#E8BE6A',
                             emotion_words: ['golden', 'Bad', '温柔', 'vida', 'darkness']
                         });
                     }
@@ -1314,7 +1316,7 @@ function resolveFontFamilyInner(fontKey) {
             if (v.wcDimOpacity !== undefined) r.style.setProperty('--preview-wc-dim-opacity', v.wcDimOpacity);
 
             /* 每个模式独立的背景/图形色/字体/情感词发光设置，全局主题色控制控件与强调色 */
-            const globalThemeCol = (this.globalVars && this.globalVars.themeColor) || '#ffcc33';
+            const globalThemeCol = (this.globalVars && this.globalVars.themeColor) || '#E8BE6A';
             const highlightCol = v.highlightColor || '#ffffff';
             const graphicCol = v.graphicColor || v.themeColor || globalThemeCol;
             const bgCol = v.bgColor || v.themeColor || globalThemeCol;
@@ -1545,7 +1547,7 @@ function resolveFontFamilyInner(fontKey) {
                 this.pvEngine.applySettings(this.modeVars.pv || {});
                 if (name === 'themeColor' || name === 'graphicColor' || name === 'highlightColor') {
                     this.pvEngine.setLyrics(this.lyrics, {
-                        accent_color: (this.modeVars.pv && this.modeVars.pv.themeColor) || '#ffcc33',
+                        accent_color: (this.modeVars.pv && this.modeVars.pv.themeColor) || '#E8BE6A',
                         emotion_words: ['golden', 'Bad', '温柔', 'vida', 'darkness']
                     });
                 }
@@ -1554,7 +1556,7 @@ function resolveFontFamilyInner(fontKey) {
                 this.visManager.applySettings(this.modeVars[this.currentMode] || {});
                 if (name === 'themeColor' || name === 'highlightColor' || name === 'bgColor') {
                     this.visManager.setLyrics(this.lyrics, {
-                        accent_color: (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].bgColor) || (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].themeColor) || '#ffcc33'
+                        accent_color: (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].bgColor) || (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].themeColor) || '#E8BE6A'
                     });
                 }
             }
@@ -1584,7 +1586,7 @@ function resolveFontFamilyInner(fontKey) {
         }
 
         hexToRgb(hex) {
-            if (!hex || !hex.startsWith('#')) return '255,204,51';
+            if (!hex || !hex.startsWith('#')) return '232,190,106';
             const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
             return `${r},${g},${b}`;
         }

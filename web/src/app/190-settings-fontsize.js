@@ -195,14 +195,14 @@ function applyModeSettings(mode) {
                 appSettings.modeSettings = {
                     cover: { align: 'left', fontSize: 24, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
                     lyrics: { align: 'center', fontSize: 24, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
-                    flyin: { align: 'center', fontSize: 28, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#ffcc33', bgBlur: 80, bgBrightness: 0.12, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', flyinTranslateY: 14, flyinScale: 0.8, flyinGlow: 8, flyinTransSize: 15, flyinTransBottom: 16, emotionGlow: 10 },
+                    flyin: { align: 'center', fontSize: 28, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 80, bgBrightness: 0.12, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', flyinTranslateY: 14, flyinScale: 0.8, flyinGlow: 8, flyinTransSize: 15, flyinTransBottom: 16, emotionGlow: 10 },
                     wordcloud: { align: 'center', fontSize: 20, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', wcFontMin: 14, wcFontMax: 36, wcDensity: 20, wcDimBlur: 4, wcDimOpacity: 0.25, wcLerpFactor: 0.04, emotionGlow: 10 },
-                    pv: { align: 'center', fontSize: 36, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#ffcc33', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, emotionGlow: 10 },
+                    pv: { align: 'center', fontSize: 36, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, emotionGlow: 10 },
                     /* ★ neon/letterpress 缺席时 applyModeSettings 会 fallback 到 cover 档
                        （错档的字号/字体设置被错误应用），与 defaults.js 保持同键 */
                     neon: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
                     letterpress: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
-                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#ffcc33', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 }
+                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 }
                 };
             }
             const s = appSettings.modeSettings[mode] || appSettings.modeSettings.cover;
@@ -235,7 +235,7 @@ function applyModeSettings(mode) {
                 applyLyricFontSize(fsVal);
             }
             /* 全局主题色：控制全局控件/按钮/强调色 */
-            const effectiveThemeColor = appSettings.interface.themeColor || '#ffcc33';
+            const effectiveThemeColor = appSettings.interface.themeColor || '#E8BE6A';
             applyThemeColor(effectiveThemeColor);
             /* 背景设置（模糊度、亮度、摇摆） */
             if (s.bgBlur !== undefined) appSettings.background.blur = parseInt(s.bgBlur);
@@ -304,7 +304,11 @@ function applyThemeColor(color) {
                 const b = parseInt(hex.slice(4, 6), 16);
                 root.style.setProperty('--theme-color-rgb', `${r}, ${g}, ${b}`);
             }
-            root.style.setProperty('--dim-highlight-color', color);
+            /* ★ 不再碰 --dim-highlight-color（2026-09-26）：这是 dimension（穿行）专属的
+               文字高亮变量，应由 modeSettings.dimension.highlightColor 经
+               DimensionVisualizer.applySettings 全权管理。原先在这里强制 = 全局主题色，
+               每次改主题色/切模式都会把用户选的高亮色冲掉（用户反馈「穿行高亮颜色
+               改了没用，必须跟随背景颜色」的直接根因之一）。 */
             root.style.setProperty('--vis-theme-color', color);
             root.style.setProperty('--pv-emotion-color', color);
         }

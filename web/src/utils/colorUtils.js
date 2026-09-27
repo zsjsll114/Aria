@@ -47,6 +47,55 @@ export function hexToRgb(hex) {
     return [r, g, b];
 }
 
+/* ===================== 感知亮度（全仓唯一一份，2026-09-26） =====================
+ * 为什么不能用 (0.2126R + 0.7152G + 0.0722B) / 255：那是把 sRGB 的**编码值**当光强算，
+ * 而 sRGB 通道本身是 gamma 编码的。实测中灰 (128,128,128) 用这条式子得 0.504，
+ * 看起来"一半亮"于是判成亮背景 → 深色墨；但它真实的相对亮度只有 0.216，
+ * 背景其实偏暗，深色字直接糊在一起（标题栏三大金刚键「不变色」就是这个）。
+ * WCAG 的解码 + 加权才是和人眼对齐的量，所以这里是全仓唯一实现，别再抄第四份。
+ * ============================================================================== */
+
+/** sRGB 单通道（0~255）→ 线性光强（0~1） */
+export function srgbToLinear(channel8) {
+    const c = Math.min(255, Math.max(0, Number(channel8) || 0)) / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+/** WCAG 2.1 相对亮度（0~1，非线性）。入参 0~255 的 r/g/b */
+export function relativeLuminance(r, g, b) {
+    return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+}
+
+/** WCAG 对比度（1~21）；两个都传亮度时直接算 */
+export function contrastRatio(lumA, lumB) {
+    const hi = Math.max(lumA, lumB), lo = Math.min(lumA, lumB);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * 一块背景上该用亮墨还是暗墨。
+ * ★ 用「两个候选墨各自的对比度谁更高」判，而不是「亮度过没过某个阈值」：
+ *   阈值法在中间调会来回翻，对比度法天然单调、且能给出"其实两边都不够"的信号。
+ * ★ 迟滞（hysteresis）：只有**领先幅度反向超过 margin** 才换边，避免封面主色微动时按钮闪。
+ *   注意是"想换边时要求更明确的理由"，不是"永远偏向某一边"——写错成后者会让很亮的背景
+ *   仍然判成亮墨（第一版就踩了：`if (currentLight && lead < margin) light = true`
+ *   在 lead=-11.6 时把 light 又按回 true）。
+ * @param {number} bgLuminance 背景相对亮度（0~1）
+ * @param {boolean} [currentLight] 当前是亮墨还是暗墨（用于迟滞）
+ * @param {number} [margin] 换边所需的对比差，默认 1.6
+ * @returns {{light:boolean, lightRatio:number, darkRatio:number, lead:number}}
+ */
+export function pickInk(bgLuminance, currentLight = true, margin = 1.6) {
+    /* 亮墨取近白、暗墨取近黑，和 --titlebar-fg 的两个取值对齐 */
+    const lightRatio = contrastRatio(0.96, bgLuminance);
+    const darkRatio = contrastRatio(bgLuminance, 0.012);
+    const lead = lightRatio - darkRatio;
+    let light = lead > 0;
+    if (currentLight && lead < 0 && lead > -margin) light = true;
+    if (!currentLight && lead > 0 && lead < margin) light = false;
+    return { light, lightRatio, darkRatio, lead };
+}
+
 export function adjustColorLightness(hex, targetLightness) {
     if (!hex || !hex.startsWith('#')) return hex;
     const rgb = hexToRgb(hex);

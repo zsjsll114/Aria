@@ -6,6 +6,7 @@
 import { API_BASE } from '../config/constants.js';
 import { searchKugouSongs } from '../services/musicApi.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
+import { markResolveRetry } from '../services/playSource.js'; // 重试期间角标显示「重试中 n/m」而不是「取链失败」
 import { audio } from './20-lyrics-render.js';
 import { currentTimeEl, favoritesOverlay, progressEl, searchOverlay, songArtistEl, songTitleEl, sourceBtns, totalTimeEl, volumeBar } from './30-dom-refs.js';
 import { getLyricOffset, updateLineTimes, updateLyricOffsetUI } from './40-playback-state.js';
@@ -45,14 +46,27 @@ function applyVolumeOnSongChange() {
             fadeInVolume(targetVol, appSettings.playback.fadeDuration);
         }
 
-/* 播放失败时自动重试（改进版：强制重新获取URL + 指数退避 + 备用源搜索切换） */
-function handlePlayFailure(songInfo, isFromPlaylist) {
+/* 播放失败时自动重试（改进版：强制重新获取URL + 指数退避 + 备用源搜索切换）
+   ★ failGen（2026-09-27）：调用方必须传「失败发生那一刻自己持有的 playbackGeneration」。
+   此前只在安排重试时才捕获 gen——而失败回调可能迟到：A 的取链/加载超时可能在
+   用户已切到 B 且 B 播放数秒后才落地，此时捕获的 retryGen 是 B 的代际，校验
+   必然通过 → 重试把 B 顶掉（实测症状：「另一首歌都放出来几秒了又切回去」）。 */
+function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
             if (!appSettings.playback.retryOnFail) return false;
+            /* 失败发生时就已经切歌 → 本次失败属于旧歌，不得重试 */
+            if (typeof failGen === 'number' && failGen !== playbackGeneration) {
+                logInfo('crossfade', '播放失败回调已过期（用户已切歌），跳过重试');
+                return false;
+            }
             if (retryCount >= appSettings.playback.retryCount) {
                 retryCount = 0;
                 return false;
             }
             retryCount++;
+            /* ★ 角标要说「还在重试」而不是「取链失败」：退避是 1s/2s/4s…最长 8s，
+               这段窗口里挂"失败"会把用户骗去刷新页面（本轮反馈的第二个症状）。
+               调用点在 markResolveFailed 之后——它刚把角标写成失败，这里立刻改回重试态。 */
+            markResolveRetry(retryCount, appSettings.playback.retryCount);
             /* 指数退避：第1次1秒，第2次2秒，第3次4秒... */
             const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 8000);
             /* 捕获当前代际，防止过期重试干扰新歌 */
@@ -196,6 +210,8 @@ async function loadPlaylistTrack(index, preloadOnly) {
             } else if (track.url) {
                 /* 代际计数器递增，使上一次的异步回调过期 */
                 const gen = ++playbackGeneration;
+                /* ★ 本地直链路径同样取消进行中的 AI 分析（与 95/175 切歌入口对齐，2026-09-27） */
+                if (typeof cancelAiAnalysis === 'function') cancelAiAnalysis();
                 /* 立即暂停，取消上一次的加载 */
                 audio.pause();
 
@@ -237,7 +253,7 @@ async function loadPlaylistTrack(index, preloadOnly) {
                     if (typeof window._playLocalTrackOnReady === 'function') {
                         window._playLocalTrackOnReady(gen, {
                             onPlayFail: () => {
-                                if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false)) {
+                                if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
                                     audio.play().then(() => {
                                         if (gen !== playbackGeneration) return;
                                         applyVolumeOnSongChange();
@@ -258,7 +274,7 @@ if (typeof triggerPostLoadTasks === 'function') triggerPostLoadTasks({ gen: gen,
 }).catch(() => {
 if (gen !== playbackGeneration) return;
 handleAudioPlayError();
-                            if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false)) {
+                            if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
                                 audio.play().then(() => {
                                     if (gen !== playbackGeneration) return;
                                     applyVolumeOnSongChange();

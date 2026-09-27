@@ -235,8 +235,8 @@ import { esc } from '../utils/formatters.js';
   const refillPaint = () => {
     refillBtn.textContent = globalThis.__autoRefill ? '续推·开' : '续推';
     refillBtn.title = '队列剩余 ≤3 首时自动追加每日推荐，让列表一直续上（点击切换）';
-    refillBtn.style.color = globalThis.__autoRefill ? 'var(--theme-color, #ffcc33)' : '';
-    refillBtn.style.borderColor = globalThis.__autoRefill ? 'var(--theme-color, #ffcc33)' : '';
+    refillBtn.style.color = globalThis.__autoRefill ? 'var(--theme-color, #E8BE6A)' : '';
+    refillBtn.style.borderColor = globalThis.__autoRefill ? 'var(--theme-color, #E8BE6A)' : '';
   };
   refillPaint();
   refillBtn.addEventListener('click', (e) => {

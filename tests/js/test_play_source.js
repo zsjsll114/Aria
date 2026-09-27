@@ -14,11 +14,16 @@ import { clearLogs, getLogs, logCatch, logInfo, logWarn } from '../../web/src/se
 import {
     beginResolveTrace,
     channelMeta,
+    clearResolveTrace,
     describeBadge,
     describeDetail,
+    getResolveTrace,
     markResolveFailed,
+    markResolveRetry,
+    platformKeyOf,
     qualityLabel,
     recordResolveHit,
+    resolveSourceOf,
     sniffPlatform,
     sniffQuality,
 } from '../../web/src/services/playSource.js';
@@ -76,9 +81,47 @@ test('全链失败时角标改口，不留上一首的命中', () => {
     assert.equal(b.fallback, true);
 });
 
-test('beginResolveTrace 会重置上一首的命中', () => {
+test('beginResolveTrace 会重置上一首的命中（改成 pending 态，不是继续显示上一首）', () => {
     recordResolveHit('vkeys', 'https://stream.qqmusic.qq.com/a.mp3', '320');
     beginResolveTrace('netease:2');
+    /* 不变量还是那条：**绝不能**继续显示上一首的 vkeys。
+       但呈现方式变了（用户反馈「取链时显示取链失败而不是正在获取」）：
+       以前 pending 返回 null → 角标直接消失，用户分不清「在加载」和「没在加载」；
+       现在返回明确的 pending 文案。 */
+    const b = describeBadge();
+    assert.ok(b, 'pending 态必须有内容，不能再返回 null');
+    assert.equal(b.text, '正在获取…');
+    assert.equal(b.tier, 'pending');
+    assert.equal(b.fallback, false, '正在获取不是降级，不该染成警示色');
+    assert.ok(!/vkeys|QQ音乐/.test(b.text), '不能残留上一首的命中渠道');
+});
+
+test('重试中显示「重试中 n/m」而不是「取链失败」', () => {
+    beginResolveTrace('tencent:3');
+    markResolveRetry(2, 3);
+    const b = describeBadge();
+    assert.equal(b.text, '重试中 2/3…');
+    assert.equal(b.tier, 'retry');
+    /* 指数退避最长 8s，这段窗口里写「取链失败」会把用户骗去刷新页面 */
+    assert.notEqual(b.text, '取链失败');
+});
+
+test('markResolveFailed 清掉 retry（真放弃了才说失败）', () => {
+    beginResolveTrace('tencent:4');
+    markResolveRetry(1, 3);
+    markResolveFailed();
+    const b = describeBadge();
+    assert.equal(b.text, '取链失败');
+    assert.equal(b.tier, 'failed');
+});
+
+test('clearResolveTrace 让角标回到空白（被吞掉的点击不该挂着上一首的终态）', () => {
+    recordResolveHit('vkeys', 'https://stream.qqmusic.qq.com/c.mp3', '320');
+    clearResolveTrace();
+    assert.equal(describeBadge(), null);
+    assert.equal(getResolveTrace(), null);
+    /* 幂等：没有 trace 时再清一次不抛 */
+    clearResolveTrace();
     assert.equal(describeBadge(), null);
 });
 
@@ -180,4 +223,43 @@ test('provider 标识不是音质，不能被当成音质显示', () => {
     beginResolveTrace('tencent:1');
     recordResolveHit('qqResolve', 'http://isure6.stream.qqmusic.qq.com/C400001H4yUA2r0L08.m4a', 'song_play_url', { ext: 'm4a' });
     assert.equal(describeBadge().text, 'QQ音乐 · m4a');
+});
+
+/* ===== 平台规范名与取链分支判定（BUG「未知歌曲 / 加载慢 / 历史记两遍」） ===== */
+test('platformKeyOf：同一平台的别名收敛到一个键', () => {
+    for (const alias of ['qq', 'QQ', ' tencent ', 'yqq', 'qqmusic']) {
+        assert.equal(platformKeyOf(alias), 'tencent', alias);
+    }
+    for (const alias of ['netease', 'wangyiyun', 'ne', '163', 'NetEase']) {
+        assert.equal(platformKeyOf(alias), 'netease', alias);
+    }
+    assert.equal(platformKeyOf('kg'), 'kugou');
+    assert.equal(platformKeyOf('kw'), 'kuwo');
+});
+
+test('platformKeyOf：未登记的别名原样返回，空值给空串（不猜平台）', () => {
+    assert.equal(platformKeyOf('local'), 'local');
+    assert.equal(platformKeyOf('migu'), 'migu');
+    assert.equal(platformKeyOf(''), '');
+    assert.equal(platformKeyOf(null), '');
+    assert.equal(platformKeyOf(undefined), '');
+});
+
+test('resolveSourceOf：歌曲自带 source 优先于全局 currentSource', () => {
+    /* 这正是 bug 的形状：全局停在 tencent，而条目是网易/酷狗的 */
+    assert.equal(resolveSourceOf({ source: 'netease' }, 'tencent'), 'netease');
+    assert.equal(resolveSourceOf({ source: 'qq' }, 'kugou'), 'tencent');
+    assert.equal(resolveSourceOf({ source: 'kugou' }, 'tencent'), 'kugou');
+});
+
+test('resolveSourceOf：无 source / 非取链平台时退回全局，不会被塞进 vkeys 分支', () => {
+    assert.equal(resolveSourceOf({}, 'kugou'), 'kugou');
+    assert.equal(resolveSourceOf({ source: 'local' }, 'tencent'), 'tencent');
+    assert.equal(resolveSourceOf({ source: 'selfhost' }, 'netease'), 'netease');
+    assert.equal(resolveSourceOf(null, undefined), 'tencent');
+});
+
+test('resolveSourceOf：入参缺字段不抛（历史里可能存着半截条目）', () => {
+    assert.equal(resolveSourceOf(undefined, undefined), 'tencent');
+    assert.equal(resolveSourceOf({ source: 42 }, ''), 'tencent');
 });

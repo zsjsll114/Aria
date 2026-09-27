@@ -58,6 +58,42 @@ def ensure_vosk_model():
         print(f"[Vosk] 模型自动下载失败: {e}", file=sys.stderr)
         return None
 
+def prepare_model_dir(model_path):
+    """返回 (交给 vosk.Model 的路径, 恢复函数)。
+
+    实测：同一个模型放 ASCII 路径能加载，放含中文的目录下报
+    `Folder '...' does not contain model files`——报错完全指不到真因。
+    生产路径 `~/.cache/vosk/models/` 平时是 ASCII，但 **Windows 用户名含中文时它
+    也会变成非 ASCII**，那时 Level 2 会整级静默失效。
+
+    做法：路径非 ASCII 时把 cwd 切到父目录、只把相对目录名交给 vosk——Kaldi 的 C++
+    层看到的就是纯 ASCII 相对路径。比 8.3 短路径名可靠（本机实测卷未启用短名生成，
+    GetShortPathNameW 返回空）。ASCII 路径不做任何改动，正常机器零影响。
+    """
+    if not model_path or not isinstance(model_path, str) or model_path.isascii():
+        return model_path, (lambda: None)
+    if not os.path.isdir(model_path):
+        return model_path, (lambda: None)      # 目录本就不存在，让上层 exists 报真错
+
+    parent = os.path.dirname(os.path.abspath(model_path))
+    name = os.path.basename(os.path.abspath(model_path))
+    if not name.isascii():
+        return None, (lambda: None)            # 目录名自己带中文，切 cwd 也救不了
+    old = os.getcwd()
+    try:
+        os.chdir(parent)
+    except Exception:
+        return None, (lambda: None)
+
+    def restore():
+        try:
+            os.chdir(old)
+        except Exception:
+            pass
+
+    return name, restore
+
+
 def transcribe_audio_snippet(audio_path, model_path, start_sec=20, duration_sec=50):
     """使用 Vosk 转写音频人声片段"""
     import vosk
@@ -66,7 +102,18 @@ def transcribe_audio_snippet(audio_path, model_path, start_sec=20, duration_sec=
     if not os.path.exists(model_path):
         return {"text": "", "words": []}
 
-    model = vosk.Model(model_path)
+    openable, restore_cwd = prepare_model_dir(model_path)
+    if not openable:
+        raise RuntimeError(
+            "Vosk 打不开该模型目录：路径含非 ASCII 字符且无法安全切到相对路径"
+            "（Windows 用户名含中文时会出现）。请把模型放到纯英文路径下，"
+            "例如 C:\\Users\\<ASCII用户>\\.cache\\vosk\\models\\。当前路径: %s" % model_path)
+    # 切过 cwd 之后相对路径含义会变，所以音频必须先绝对化
+    audio_abs = os.path.abspath(audio_path)
+    try:
+        model = vosk.Model(openable)
+    finally:
+        restore_cwd()
     rec = vosk.KaldiRecognizer(model, 16000)
     rec.SetWords(True)
 
@@ -74,7 +121,7 @@ def transcribe_audio_snippet(audio_path, model_path, start_sec=20, duration_sec=
     cmd = [
         ffmpeg_bin,
         '-ss', str(start_sec),
-        '-i', audio_path,
+        '-i', audio_abs,
         '-t', str(duration_sec),
         '-ar', '16000',
         '-ac', '1',
@@ -174,12 +221,24 @@ def search_song_by_lyrics(lyric_text):
 
     return None
 
-def main():
-    if len(sys.argv) < 2:
+def main(argv=None):
+    """★ 任何失败路径都要往 stdout 吐一行可解析 JSON。
+       调用方 local_music_server 是「解析 stdout 拿结果」，一旦这里抛异常变成 traceback，
+       它就只看到空输出 → 静默退化到 ID3/文件名清洗，Level 2 坏了也没人知道。"""
+    args = argv if argv is not None else sys.argv[1:]
+    try:
+        return _main_body(args)
+    except Exception as e:
+        print(json.dumps({"success": False, "error": "Vosk 转写异常: %s" % e}, ensure_ascii=False))
+        return 1
+
+
+def _main_body(args):
+    if len(args) < 1:
         print(json.dumps({"success": False, "error": "Missing audio file path"}))
         return
 
-    audio_path = sys.argv[1]
+    audio_path = args[0]
     if not os.path.exists(audio_path):
         print(json.dumps({"success": False, "error": "Audio file does not exist"}))
         return

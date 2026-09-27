@@ -40,7 +40,7 @@ export class PVRendering {
    * @param {Object} node 海报场景节点
    * @param {string} themeColor 主题色彩
    */
-  transitionToNode(node, themeColor = '#ffcc33') {
+  transitionToNode(node, themeColor = '#E8BE6A') {
     if (!node || !this.stageLayer) return;
 
     /* ★ P3.5 handoff（上游参考项目 对齐）：依据「旧景锚点 → 新景锚点」的位移主轴向，推导
@@ -604,7 +604,7 @@ export class PVRendering {
         || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches))) {
         return;
       }
-      const host = getComputedStyle(el).getPropertyValue('--pv-highlight-color') || '#ffcc33';
+      const host = getComputedStyle(el).getPropertyValue('--pv-highlight-color') || '#E8BE6A';
       const env = wordBurstEnvelope(w.scale);
       const count = wordBurstCount(w.scale, w.isEmotion);
       for (let i = 0; i < count; i++) {

@@ -36,7 +36,7 @@ export class PVEngine {
     this.nodes = [];
     this.currentNodeIndex = -1;
     this.lastActiveLineData = null;
-    this.themeColor = '#ffcc33';
+    this.themeColor = '#E8BE6A';
     this.isRunning = false;
     this.rafId = null;
     this.aiColorSync = true; // ★ AI 情感词多色发光联动开关
@@ -256,7 +256,7 @@ export class PVEngine {
    * 装载新歌词与 AI 情感主题数据
    */
   shiftHue(hex, deg) {
-    if (!hex || hex[0] !== '#') hex = '#ffcc33';
+    if (!hex || hex[0] !== '#') hex = '#E8BE6A';
     const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0, s = 0, l = (max + min) / 2, d = max - min;
     if (d !== 0) { s = l > 0.5 ? d / (2 - max - min) : d / (max + min); if (max === r) h = (g - b) / d + (g < b ? 6 : 0); else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h /= 6; }
@@ -277,15 +277,15 @@ export class PVEngine {
       return;
     }
 
-    // 优先使用用户已配置的主题色或界面全局主题色，其次使用 AI/封面提取色，最后回退 #ffcc33
+    // 优先使用用户已配置的主题色或界面全局主题色，其次使用 AI/封面提取色，最后回退 #E8BE6A
     const globalCssColor = (typeof document !== 'undefined') ? document.documentElement.style.getPropertyValue('--theme-color') : null;
-    this.themeColor = (this.themeColor && this.themeColor !== '#ffcc33') 
+    this.themeColor = (this.themeColor && this.themeColor !== '#E8BE6A') 
       ? this.themeColor 
-      : ((this.settings && this.settings.themeColor && this.settings.themeColor !== '#ffcc33') 
+      : ((this.settings && this.settings.themeColor && this.settings.themeColor !== '#E8BE6A') 
         ? this.settings.themeColor 
-        : (globalCssColor && globalCssColor.trim() && globalCssColor.trim() !== '#ffcc33')
+        : (globalCssColor && globalCssColor.trim() && globalCssColor.trim() !== '#E8BE6A')
           ? globalCssColor.trim()
-          : (aiData && aiData.accent_color) || (typeof window !== 'undefined' && window.coverPalette ? window.coverPalette.accent : null) || this.themeColor || '#ffcc33');
+          : (aiData && aiData.accent_color) || (typeof window !== 'undefined' && window.coverPalette ? window.coverPalette.accent : null) || this.themeColor || '#E8BE6A');
 
     // ★ 主题色注入背景绸缎（上游参考项目 duo 调色板对齐：背景跟随歌曲主题又保持深底）
     if (this.background && typeof this.background.applyThemeHex === 'function') {
@@ -305,7 +305,7 @@ export class PVEngine {
 
     // ★ 预览/PV 发出的情感词若为无颜色普通字符串，依据 accent 色相偏移为其分配不同颜色，使情感词在 PV 中可见补色
     if (effectiveAiData && Array.isArray(effectiveAiData.emotion_words)) {
-      const accent = effectiveAiData.accent_color || this.themeColor || '#ffcc33';
+      const accent = effectiveAiData.accent_color || this.themeColor || '#E8BE6A';
       /* ★ 箭头函数保持 this（普通 function 在严格模式 this===undefined，
          shiftHue 访问失败 → setLyrics 中断 → 无海报 → “PV 预览只有背景没有歌词”） */
       effectiveAiData.emotion_words = effectiveAiData.emotion_words.map((item, idx) => {

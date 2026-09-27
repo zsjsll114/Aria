@@ -17,6 +17,8 @@ import { getPlaylists, savePlaylists, renderPlaylistsView } from './130-playlist
 import { dayRecommend, selfhostEnabled } from './selfhost-runtime.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { applyEqGains, buildEqBands, buildEqPresets } from './90-eq.js'; // EQ 分享码导入（90-eq 不 import 258，无环）
+import { platformKeyOf } from '../services/playSource.js'; // 平台规范名：历史去重与取链分支共用一份表
+import { titleOf, artistOf } from '../services/lyricIndex.js'; // title/song/name 与 artist/singer 字段归一
 
 const $ = (id) => typeof document !== 'undefined' ? document.getElementById(id) : null;
 
@@ -218,7 +220,7 @@ async function openAggregatedDaily() {
             .filter(x => x.r && x.r.ok && Array.isArray(x.r.list) && x.r.list.length)
             .map(x => DAILY_SRC_LABEL[x.src] || x.src);
         if ($('rankNavCount')) $('rankNavCount').textContent = `${merged.length} 首`;
-        renderSongs(merged.map(s => ({ song: s.name || '', singer: s.singer || '', cover: s.cover || '', id: s.id, source: s.source })));
+        renderSongs(merged.map(toPlayItem));
         if (typeof setHint === 'function') setHint(`每日推荐：${okSrcs.join(' + ')} 已合并`);
         return;
     }
@@ -263,7 +265,7 @@ globalThis.Aria.__openDefaultPlaylistView = async function () {
     const merged = [];
     for (const { src, r } of results) {
         if (r && r.ok && Array.isArray(r.list) && r.list.length) {
-            for (const s of r.list) merged.push({ song: s.name || '', singer: s.singer || '', cover: s.cover || '', id: s.id, source: s.source });
+            for (const s of r.list) merged.push(toPlayItem(s));
         }
     }
     if (merged.length) {
@@ -293,7 +295,9 @@ function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
         </div>`;
     let rows = '';
     songs.forEach((s, i) => {
-        const name = esc(s.song || ''), singer = esc(s.singer || '');
+        /* 标题/歌手走归一函数：自建服务返回的条目只有 name/artist，
+           原先写死 s.song 会让整行日推渲染成空标题（看起来就是「点了没反应」的前置症状）。 */
+        const name = esc(titleOf(s)), singer = esc(artistOf(s));
         const cover = s.cover || '';
         const isFav = favs.has(makeSongKey(s));
         const coverHtml = cover
@@ -318,7 +322,9 @@ function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
     const playAll = listEl.querySelector('#dailyRowPlayAll');
     if (playAll) playAll.onclick = () => playAllRankSongs(songs);
     listEl.querySelectorAll('.result-item').forEach(el => {
-        el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; loadOnlineSong(songs[Number(el.dataset.i)]).catch(err => logWarn('rankings', '[Daily] 播放失败:', err)); };
+        /* 与榜单行同一个入口：playRankSong 才会做酷狗缺标识的提示 + 记最近播放，
+           直接调 loadOnlineSong 会让日推和榜单行为不一致（日推点完不进历史）。 */
+        el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; playRankSong(songs[Number(el.dataset.i)]); };
     });
     listEl.querySelectorAll('.result-action-btn[data-action="fav-daily"]').forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); toggleRankFav(songs[Number(btn.dataset.i)], btn); };
@@ -390,7 +396,7 @@ let dailyState = { src: 'netease', loading: false, cache: {} };
 function renderDailyTracks(list) {
     if (!Array.isArray(list) || !list.length) return;
     if ($('rankNavCount')) $('rankNavCount').textContent = `${list.length} 首`;
-    renderSongs(list.map(s => ({ song: s.name || '', singer: s.singer || '', cover: s.cover || '', id: s.id, source: s.source })));
+    renderSongs(list.map(toPlayItem));
 }
 
 async function openDailyRecommend(overSrc) {
@@ -718,7 +724,7 @@ function renderSongs(songs) {
     const dlBtn = document.getElementById('rankPlayAllDl');
     if (dlBtn) dlBtn.onclick = (e) => { e.stopPropagation(); batchDownloadSongs(songs, '榜单'); };
     listEl.querySelectorAll('.result-item').forEach(el => {
-        el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; playRankSong(Number(el.dataset.i)); };
+        el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; playRankSong(songs[Number(el.dataset.i)]); };
     });
     listEl.querySelectorAll('.result-action-btn[data-action="addnow-rank"]').forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); addNowRankSong(songs[Number(btn.dataset.i)]); };
@@ -781,6 +787,25 @@ function toggleRankFav(song, btn) {
     } catch (e) { logWarn('rankings', '[Rank] 收藏失败:', e); }
 }
 
+/* ★ 自建/日推条目 → 播放条目：三处映射（榜单日推页、歌单日推大列表、日推 tab）
+   原先各写一份 `{song,name→song, id, source}`，把 mid / hash 全丢了。
+   QQ 的原生主键是 mid、酷狗是 hash，丢了以后 loadOnlineSong 只能拿 id 去反查元数据
+   （多一次网络往返 = 「加载慢」），酷狗条目更是直接缺标识（= 「点了没反应」）。
+   收敛成一个函数，别再让第四份漏字段的映射长出来。 */
+function toPlayItem(s) {
+    const out = {
+        song: s.name || s.song || s.title || '',
+        singer: s.singer || s.artist || '',
+        cover: s.cover || '',
+        id: s.id != null ? String(s.id) : '',
+        source: s.source || '',
+    };
+    if (s.mid) out.mid = String(s.mid);
+    if (s.hash) out.hash = String(s.hash);
+    if (s.interval != null) out.interval = s.interval;
+    return out;
+}
+
 function normalizeRankSong(s, src) {
     const tp = s.trans_param || s.trans_obj || {};
     const name = s.name || s.title || s.songname || '';
@@ -804,13 +829,21 @@ function normalizeRankSong(s, src) {
     }
     if (src === 'netease') out.id = String(s.id);
     if (src === 'qq') out.id = String(s.songId || s.id);
+    /* QQ 的 mid / 酷狗的 hash 必须一路带到 loadOnlineSong，否则它只能拿 id 反查元数据 */
+    if (s.mid) out.mid = String(s.mid);
+    if (s.hash) out.hash = String(s.hash);
+    if (s.interval != null) out.interval = s.interval;
     return out;
 }
 
-function playRankSong(idx) {
-    const s = rankState.boards[rankState.boardIdx]?.songs[idx];
+function playRankSong(s) {
+    /* 直接收歌曲对象：原先传下标再回查 rankState.boards[boardIdx]，而日推视图从不设
+       boardIdx（初值 -1，只有 openBoard 会赋值）→ 取到 undefined 就静默 return，
+       点卡片"没反应"；若之前开过榜，boardIdx 是残留值，还会播成另一首歌。
+       同一列表里"播放全部"和三个行内按钮本来就用闭包 songs[...]，只有这里是查表。 */
     if (!s) return;
-    if (rankState.src === 'kugou' && !s.hash && !s.id) { tip('酷狗该曲缺少播放标识'); return; }
+    const src = String(s.source || rankState.src || '');
+    if (src === 'kugou' && !s.hash && !s.id) { tip('酷狗该曲缺少播放标识'); return; }
     loadOnlineSong(s).catch(e => logWarn('rankings', '[Rank] 播放失败:', e));
     if (typeof recordRecentPlay === 'function') recordRecentPlay(s);
 }
@@ -832,7 +865,26 @@ function backToBoards() {
  * 三、最近播放历史（子歌单样式，最近 → 久远，localStorage）
  * ============================================================ */
 const RECENT_KEY = 'aria_recent_history';
-const RECENT_MAX = 60;
+/* 历史上限：原先 60 条，两周就满了、老歌直接查不到。
+   一条记录约 200B，1000 条 ≈ 200KB，仍在 localStorage 预算内。 */
+const RECENT_MAX = 1000;
+
+/* 同一首歌在不同调用点带的 id 口径不一样（QQ 有 id 也有 mid、酷狗把 hash 塞进 mid），
+   只按 `source:(id||mid||hash)` 建键会让一次加载产生两个键 → 历史里出现两遍。
+   这里按「该源的原生主键」归一，另外再叠一条标题+歌手指纹做兜底。 */
+function historyIdentity(songInfo) {
+    const src = platformKeyOf(songInfo.source);
+    const id = songInfo.id != null ? String(songInfo.id) : '';
+    const mid = songInfo.mid != null ? String(songInfo.mid) : '';
+    const hash = songInfo.hash != null ? String(songInfo.hash) : '';
+    const nativeId = src === 'tencent' ? (mid || id) : src === 'kugou' ? (hash || id) : (id || mid || hash);
+    const title = titleOf(songInfo).toLowerCase();
+    const artist = artistOf(songInfo).toLowerCase();
+    return {
+        key: nativeId ? `${src}:${nativeId}` : '',
+        sig: title ? `${title}|${artist}` : '',
+    };
+}
 
 function getRecentHistory() {
     try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; }
@@ -848,19 +900,26 @@ if (typeof window !== 'undefined') {
 
 function recordRecentPlay(songInfo) {
     if (!songInfo || !(songInfo.id || songInfo.mid || songInfo.hash)) return;
-    const key = `${songInfo.source || ''}:${songInfo.id || songInfo.mid || songInfo.hash}`;
+    const { key, sig } = historyIdentity(songInfo);
+    if (!key && !sig) return;
     const item = {
-        key,
-        title: songInfo.title || songInfo.song || '未知歌曲',
-        artist: songInfo.artist || songInfo.singer || '未知歌手',
+        key: key || sig,
+        sig,
+        title: titleOf(songInfo) || '未知歌曲',
+        artist: artistOf(songInfo) || '未知歌手',
         cover: songInfo.cover || '',
-        source: songInfo.source || '',
+        source: platformKeyOf(songInfo.source) || songInfo.source || '',
         id: songInfo.id || songInfo.mid || songInfo.hash || '',
         mid: songInfo.mid || '',
         hash: songInfo.hash || '',
         at: Date.now()
     };
-    let list = getRecentHistory().filter(it => it.key !== key);
+    /* 键或标题指纹任一命中即视为同一首歌；旧条目缺 sig 时按 key 兜底比较 */
+    let list = getRecentHistory().filter(it => {
+        if (it.key === item.key) return false;
+        if (item.sig && it.sig && it.sig === item.sig) return false;
+        return true;
+    });
     list.unshift(item);
     saveRecentHistory(list);
     renderRecentWidget();

@@ -54,13 +54,13 @@ html#ariaRoot .diag-btn:hover {
 }
 html#ariaRoot .diag-btn:active { transform: translateY(1px); }
 html#ariaRoot .diag-btn:focus-visible {
-    outline: 2px solid var(--theme-color, #ffcc33);
+    outline: 2px solid var(--theme-color, #E8BE6A);
     outline-offset: 2px;
 }
 html#ariaRoot .diag-btn-primary {
-    border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.45);
-    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
-    color: var(--theme-color, #ffcc33);
+    border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.45);
+    background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
+    color: var(--theme-color, #E8BE6A);
     font-weight: 600;
 }
 html#ariaRoot .diag-btn svg { flex: 0 0 auto; }

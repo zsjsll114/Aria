@@ -58,7 +58,7 @@ export class TunnelEngine {
     this._lastTransKey = null;
     this._mosaicPatterns = this._generateMosaicPatterns();
 
-    this.themeColor = '#ffcc33';
+    this.themeColor = '#E8BE6A';
     this.aiColorSync = true;
     this.isRunning = false;
     this.rafId = null;
@@ -591,7 +591,7 @@ export class TunnelEngine {
   _renderMosaicDecoration(pattern, seed) {
     if (!this._mosaicDecoEl) return;
     const blocks = (pattern && Array.isArray(pattern.blocks)) ? pattern.blocks : [];
-    const accent = (pattern && pattern.accentColor) || '#ffcc33';
+    const accent = (pattern && pattern.accentColor) || '#E8BE6A';
     const baseColor = (pattern && pattern.background) || '#8A9BAF';
 
     // 伪随机（固定 seed → 同组分镜装饰稳定）
@@ -953,7 +953,7 @@ export class TunnelEngine {
     // ★ 横平竖直模式整镜角度归零（活泼模式才用 L.angle 倾斜分镜）
     shotEl.style.setProperty('--shot-angle', `${(this.allowTilt ? (L.angle || 0) : 0).toFixed(1)}deg`);
     shotEl.style.setProperty('--shot-scale', ((Math.max(L.scale || 1, 0.8)) * (shot.__fitScale || 1)).toFixed(3));
-    shotEl.style.setProperty('--mosaic-accent-var', this.mosaicLayer ? getComputedStyle(this.mosaicLayer).getPropertyValue('--mosaic-accent') || '#ffcc33' : '#ffcc33');
+    shotEl.style.setProperty('--mosaic-accent-var', this.mosaicLayer ? getComputedStyle(this.mosaicLayer).getPropertyValue('--mosaic-accent') || '#E8BE6A' : '#E8BE6A');
 
     this.chars = [];
     const blocks = (shot.line && shot.line.blocks) || [];

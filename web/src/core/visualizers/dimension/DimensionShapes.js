@@ -128,7 +128,7 @@ export class DimensionShapes {
     /**
      * 渲染各歌词实体对应的所有小巧点阵几何体
      */
-    render(ctx, width, height, dt, audioData = {}, entities = [], camera = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }, themeColor = '#ffcc33') {
+    render(ctx, width, height, dt, audioData = {}, entities = [], camera = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }, themeColor = '#E8BE6A') {
         const cx = width * 0.5;
         const cy = height * 0.5;
         const fov = this.fov;
@@ -203,8 +203,8 @@ export class DimensionShapes {
             ctx.arc(dot.sx, dot.sy, Math.max(0.6, dot.size), 0, Math.PI * 2);
 
             if (dot.isAccent) {
-                ctx.fillStyle = themeColor || '#ffcc33';
-                ctx.shadowColor = themeColor || '#ffcc33';
+                ctx.fillStyle = themeColor || '#E8BE6A';
+                ctx.shadowColor = themeColor || '#E8BE6A';
                 ctx.shadowBlur = this._shadowBlur || 0;
             } else {
                 ctx.fillStyle = `rgba(235, 245, 255, ${dot.alpha})`;

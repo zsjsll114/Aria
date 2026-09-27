@@ -720,25 +720,41 @@ function bindOverlay(root) {
 
 /* ---------- 入口按钮（自建自挂，同 285 的做法） ---------- */
 
-const BTN_HTML = '<svg class="lsq-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" '
+const BTN_HTML = '<svg class="lsq-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" '
     + 'stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.5" y1="15.5" x2="20" y2="20"></line>'
     + '<line x1="7.8" y1="9" x2="13.2" y2="9"></line><line x1="7.8" y1="12" x2="11.4" y2="12"></line></svg>'
     + `<span class="lsq-text bottom-mode-text">${esc(T.title)}</span>`;
 
 function buildEntry(d2) {
-    const row = d2.querySelector('#bottomControlBar .bottom-controls-row');
+    /* ★ 入口必须挂顶栏，不能挂底栏（2026-09-26 逐模式实测）：
+       #bottomControlBar 在 cover（默认）模式下整条隐藏——只有 view-lyrics/pv/
+       dimension/tunnel + neon/letterpress 有 display:flex 规则——挂在那儿等于
+       默认模式下这个功能没有入口（元素存在但 0×0，与约束 14 的角标坑同源）。
+       .top-action-buttons 九个模式全部可见，所以优先它，底栏只作兜底。 */
     const top = d2.querySelector('.top-action-buttons');
-    const host = row || top;
+    const row = d2.querySelector('#bottomControlBar .bottom-controls-row');
+    const host = top || row;
     if (!host) return null;
     const btn = d2.createElement('button');
     btn.type = 'button';
     btn.id = BTN_ID;
-    btn.className = row ? 'bottom-btn lyric-search-entry' : 'icon-action-btn lyric-search-entry';
+    btn.className = top ? 'icon-action-btn lyric-search-entry' : 'bottom-btn lyric-search-entry';
     btn.innerHTML = BTN_HTML;
-    const more = row && row.querySelector('.more-menu-wrapper');
-    if (more) host.insertBefore(btn, more);
-    else host.appendChild(btn);
+    if (top) {
+        /* 顶栏是图标按钮区：去掉底栏样式的文字标签，说明交给 data-tooltip */
+        const label = btn.querySelector('.lsq-text');
+        if (label) label.remove();
+    }
+    /* 位置：紧跟在「搜索」按钮右边（用户明确要求），而不是排在整排最末。
+       找不到锚点才退回原来的「更多之前 / 追加末尾」。 */
+    const anchor = host.querySelector('#openSearchBtn') || d2.getElementById('openSearchBtn');
+    if (anchor && anchor.parentElement === host) host.insertBefore(btn, anchor.nextSibling);
+    else {
+        const more = host.querySelector('.more-menu-wrapper');
+        if (more) host.insertBefore(btn, more);
+        else host.appendChild(btn);
+    }
     return btn;
 }
 

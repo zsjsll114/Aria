@@ -2,18 +2,20 @@
  * services/aiCache.js — AI 分析结果 IndexedDB 持久化缓存
  * 解决 localStorage 5MB 限制
  * 本文件是 LyricsPlayerDB（AI_DB_NAME）唯一属主：upgrade 阶段幂等创建
- * aiThemeCache + chorusCache 双 store。★勿再在其它模块内另开 indexedDB.open，
- * 否则并发 open 竞争会漏建 store（历史上 chorusCache 缺失即由此而来）。
+ * aiThemeCache + chorusCache + wordTimingCache 三 store。★勿再在其它模块内另开
+ * indexedDB.open，否则并发 open 竞争会漏建 store（历史上 chorusCache 缺失即由此而来）。
  */
 import { AI_DB_NAME, AI_DB_VERSION, AI_STORE_NAME } from '../config/constants.js';
 import { logInfo, logWarn, logError } from './log.js';
 
 /* 高潮检测缓存 store（v4 起统一在本文件创建，不再由 200-settings-panel 私建） */
 const CHORUS_STORE_NAME = 'chorusCache';
+/* 频谱逐字对齐结果缓存 store（v5 起）：一首歌 × 一份歌词只算一次 */
+const WORD_TIMING_STORE_NAME = 'wordTimingCache';
 
 let aiDbReady = null;
 
-/** 获取 IndexedDB 连接（懒初始化，幂等建库：两个 store 缺哪个补哪个） */
+/** 获取 IndexedDB 连接（懒初始化，幂等建库：哪个 store 缺就补哪个） */
 function getAiDb() {
     if (aiDbReady) return aiDbReady;
     aiDbReady = new Promise((resolve, reject) => {
@@ -31,6 +33,9 @@ function getAiDb() {
             }
             if (!db.objectStoreNames.contains(CHORUS_STORE_NAME)) {
                 db.createObjectStore(CHORUS_STORE_NAME, { keyPath: 'key' });
+            }
+            if (!db.objectStoreNames.contains(WORD_TIMING_STORE_NAME)) {
+                db.createObjectStore(WORD_TIMING_STORE_NAME, { keyPath: 'key' });
             }
         };
     });
@@ -174,6 +179,62 @@ export async function chorusCacheCount() {
         return new Promise((resolve) => {
             const tx = db.transaction(CHORUS_STORE_NAME, 'readonly');
             const req = tx.objectStore(CHORUS_STORE_NAME).count();
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+    } catch (e) { return 0; }
+}
+
+/* ========== 频谱逐字对齐缓存（v5 起）：一首歌 × 一份歌词只算一次 ==========
+   key 里必须带歌词文本签名——同一首歌换歌词源（170-switchLyricSource）时
+   行级时间戳会变，只按歌曲键缓存会把上一份歌词的对齐结果贴到这一份上。 */
+
+/** 读取单条逐字对齐缓存 */
+export async function wordTimingCacheGet(key) {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(WORD_TIMING_STORE_NAME, 'readonly');
+            const req = tx.objectStore(WORD_TIMING_STORE_NAME).get(key);
+            req.onsuccess = () => resolve(req.result ? req.result.data : null);
+            req.onerror = () => resolve(null);
+        });
+    } catch (e) { return null; }
+}
+
+/** 写入单条逐字对齐缓存 */
+export async function wordTimingCacheSet(key, data) {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(WORD_TIMING_STORE_NAME, 'readwrite');
+            tx.objectStore(WORD_TIMING_STORE_NAME).put({ key, data, ts: Date.now() });
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
+    } catch (e) { return false; }
+}
+
+/** 清空逐字对齐缓存 */
+export async function wordTimingCacheClear() {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(WORD_TIMING_STORE_NAME, 'readwrite');
+            tx.objectStore(WORD_TIMING_STORE_NAME).clear();
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
+    } catch (e) { return false; }
+}
+
+/** 获取逐字对齐缓存条数 */
+export async function wordTimingCacheCount() {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(WORD_TIMING_STORE_NAME, 'readonly');
+            const req = tx.objectStore(WORD_TIMING_STORE_NAME).count();
             req.onsuccess = () => resolve(req.result || 0);
             req.onerror = () => resolve(0);
         });

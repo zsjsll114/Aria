@@ -5,35 +5,152 @@
  * ============================================================ */
 import { FONT_FAMILY_MAP } from './10-config-state.js';
 import { applyAdvancedFonts, removeAdvancedFontFaces } from './215-multilang-fonts.js';
+import { CUSTOM_SWATCH_SVG, PALETTES } from '../config/themePalette.js';
+import { logCatch } from '../services/log.js';
 
-function bindColorRow(containerId, currentColor, onChange) {
-            const container = typeof document !== 'undefined' ? document.getElementById(containerId) : null;
-            if (!container) return;
-            const swatches = container.querySelectorAll('.color-swatch');
-            let customColor = currentColor;
-            let matched = false;
-            swatches.forEach(sw => {
-                if (sw.dataset.color === currentColor) { sw.classList.add('active'); matched = true; }
-                sw?.addEventListener('click', () => {
-                    if (sw.dataset.color === '__custom__') {
-                        openColorPicker(customColor, (color) => {
-                            customColor = color;
-                            swatches.forEach(s => s.classList.remove('active'));
-                            sw.classList.add('active');
-                            onChange(color);
-                        });
-                    } else {
-                        swatches.forEach(s => s.classList.remove('active'));
-                        sw.classList.add('active');
-                        onChange(sw.dataset.color);
-                    }
-                });
+/* ============================================================
+ * 色板行水合：index.html 里只写 <div class="setting-color-row"
+ * data-var="highlightColor" data-palette="accent+white" data-active="#ffffff">，
+ * 色值一颗都不出现在 HTML。
+ *
+ * 原先 17 行各自内联 5~7 颗 .color-swatch + 同一个 12 路径彩虹 SVG（那份 SVG
+ * 复制了 15 遍，index.html 因此多出约 60KB），改一个颜色要动 17 处。
+ *
+ * ★ active 只是「JS 还没跑时的默认显示」：真正的选中态由 syncModeSectionValues /
+ *   syncColorRowActive / syncGlobalThemeSwatches 从 appSettings 反推，会覆盖这里。
+ * ★ 水合会整体替换 row.innerHTML ⇒ 绑在旧节点上的监听全灭，所以下面的点击
+ *   一律走 document 级委托，绝不回到「拿节点挂 click」。
+ * ============================================================ */
+export function hydrateColorRows(root = (typeof document !== 'undefined' ? document : null)) {
+    if (!root || typeof document === 'undefined') return 0;
+    const rows = root.querySelectorAll('.setting-color-row[data-palette]');
+    let n = 0;
+    rows.forEach(row => {
+        try {
+            const kind = row.dataset.palette;
+            const colors = PALETTES[kind];
+            if (!colors) { logCatch('colorMultilang', new Error(`未知 data-palette="${kind}"`)); return; }
+            if (row.dataset.hydrated === '1') return;   /* 幂等：重开面板不重复插 */
+            row.dataset.hydrated = '1';
+            const varName = row.dataset.var || '';
+            const active = row.dataset.active || '';
+            const sw = (color, extraClass) => '<div class="color-swatch' + (extraClass || '')
+                + '" data-var="' + varName + '" data-color="' + color
+                + '" style="background:' + color + '"></div>';
+            row.innerHTML = colors.map(c => sw(c, c === active ? ' active' : '')).join('')
+                + '<div class="color-swatch custom' + (active === '__custom__' ? ' active' : '')
+                + '" data-var="' + varName + '" data-color="__custom__" title="自定义颜色">'
+                + CUSTOM_SWATCH_SVG + '</div>';
+            n++;
+        } catch (e) { logCatch('colorMultilang', e); }
+    });
+    return n;
+}
+hydrateColorRows();
+
+/* ============================================================
+ * 预设色块：全仓唯一一处 .color-swatch 点击委托
+ *
+ * 为什么是委托（2026-09-26 修「设置→外观里 17/18 预设色块点了没反应」）：
+ * 旧写法是 `document.getElementById(containerId)` 找容器再给每颗色块挂 click。
+ * 约束 22 的色板重构把 index.html 那些行的外层 id 换成了
+ * `<div class="setting-color-row" data-var="…" data-palette="…">`，容器 id 全没了，
+ * bindColorRow 四次调用里三次当场静默 return（`if (!container) return;`）——
+ * 症状不是报错而是「点了没反应」，正是约束 9 要禁的那类静默失败。
+ * 委托之后：写入目标由**行自己声明**的 data-var + 是否处在 [data-mode-section]
+ * 里决定，水合、重渲染、新增行都不需要重新绑，也不存在「改个 id 整行失效」的死角。
+ *
+ * 解析不出写入目标时一律 logCatch（约束 9），不再静默。
+ * ============================================================ */
+
+/** 由 200-settings-panel.js 注入的读写通道：mode 为 null 表示全局设置 */
+let colorChannel = null;
+
+/**
+ * 注册色块的读写目标。
+ * @param {{read:(field:string, mode:string|null)=>string,
+ *          write:(field:string, mode:string|null, value:string)=>void}} channel
+ */
+export function setColorSwatchChannel(channel) {
+    colorChannel = (channel && typeof channel.write === 'function') ? channel : null;
+    if (!colorChannel) logCatch('colorMultilang', new Error('setColorSwatchChannel 收到无效的写入通道'));
+}
+
+/** 把一行里「哪颗色块算当前值」的 active 态摆正；值不在预设里就点亮「自定义」那颗 */
+function applyRowActive(row, currentColor) {
+    let matched = false;
+    row.querySelectorAll('.color-swatch').forEach(sw => {
+        const isMatch = sw.dataset.color === currentColor;
+        sw.classList.toggle('active', isMatch);
+        if (isMatch) matched = true;
+    });
+    if (!matched) {
+        const customSw = row.querySelector('.color-swatch.custom');
+        if (customSw) customSw.classList.add('active');
+    }
+}
+
+/**
+ * 同步某字段所有色板行的选中态（原 bindColorRow 留下的那半行为，容器 id 已不再需要）。
+ * @param field  写入字段名（data-var）
+ * @param mode   所属视图模式；null = 全局（不在 [data-mode-section] 内的行）
+ * @param currentColor 当前值
+ */
+export function syncColorRowActive(field, mode, currentColor) {
+    if (typeof document === 'undefined' || !field) return 0;
+    const wantMode = mode || null;
+    let n = 0;
+    document.querySelectorAll('.setting-color-row[data-var="' + field + '"]').forEach(row => {
+        const sec = row.closest('[data-mode-section]');
+        const rowMode = sec ? (sec.dataset.modeSection || null) : null;
+        if (rowMode !== wantMode) return;
+        applyRowActive(row, currentColor);
+        n++;
+    });
+    return n;
+}
+
+/** 从被点的色块反推「该写哪儿」：字段名 + 模式。解析不出来就抛，交给调用方留痕。 */
+function resolveSwatchTarget(swatch) {
+    const row = swatch.closest('.setting-color-row');
+    if (!row) throw new Error('色块不在 .setting-color-row 内: ' + (swatch.dataset.color || ''));
+    const field = row.dataset.var || swatch.dataset.var || '';
+    if (!field) {
+        throw new Error('色板行缺 data-var，无法确定写入字段: ' + (row.id || row.className));
+    }
+    const sec = row.closest('[data-mode-section]');
+    return { row, field, mode: sec ? (sec.dataset.modeSection || null) : null };
+}
+
+function commitSwatch(row, field, mode, color) {
+    /* 先写再亮：写入抛错时 active 留在原来那颗上，界面不会比配置更乐观 */
+    colorChannel.write(field, mode, color);
+    applyRowActive(row, color);
+}
+
+function onColorSwatchClick(e) {
+    const swatch = e.target && typeof e.target.closest === 'function'
+        ? e.target.closest('.color-swatch') : null;
+    if (!swatch) return;
+    try {
+        if (!colorChannel) throw new Error('颜色写入通道未注册（setColorSwatchChannel 没被调用）');
+        const { row, field, mode } = resolveSwatchTarget(swatch);
+        if (swatch.dataset.color === '__custom__') {
+            const cur = String(colorChannel.read ? (colorChannel.read(field, mode) || '') : '');
+            const init = cur.startsWith('#') && cur.length === 7 ? cur : '#ffffff';
+            openColorPicker(init, (color) => {
+                try { commitSwatch(row, field, mode, color); }
+                catch (err) { logCatch('colorMultilang', err); }
             });
-            if (!matched) {
-                const customSw = container.querySelector('.color-swatch.custom');
-                if (customSw) { customSw.classList.add('active'); customColor = currentColor; }
-            }
+            return;
         }
+        commitSwatch(row, field, mode, swatch.dataset.color);
+    } catch (err) { logCatch('colorMultilang', err); }
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('click', onColorSwatchClick);
+}
 
 /* ========== 调色板弹出框（自绘 HSV 取色器） ========== */
 globalThis.colorPickerCallback = null;
@@ -372,4 +489,4 @@ function applyFontFamily(font) {
             `;
         }
 
-export { applyFontFamily, applyGlassStrength, bindColorRow, hexToHsv, hsvToRgb, openColorPicker, resolveFontFamily, rgbToHex };
+export { applyFontFamily, applyGlassStrength, hexToHsv, hsvToRgb, openColorPicker, resolveFontFamily, rgbToHex };

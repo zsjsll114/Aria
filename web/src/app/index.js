@@ -60,6 +60,12 @@ import './284-diagnostics.js';  /* 应用内诊断页（todos #21） */
 import './285-bilingual-cycle.js';  /* 双语排版一键循环（todos #4） */
 import './286-tempo-boost.js';  /* 长按临时加速（todos #13） */
 import './287-bg-throttle.js';  /* 窗口不可见时自动轻量（todos #18） */
+import './288-lyric-search.js';  /* 歌词内搜索（todos #2）：一句歌词定位到哪首歌哪一句 */
 import './289-next-up.js';  /* 下一首预告 + 一键否决（todos #5）：自挂载浮层 + 自挂载设置组 */
+import './290-vfx-recipe.js';  /* 视觉配方（todos #9）：保存/命名/分享码，覆盖九个模式的观感参数 */
 import './291-phone-remote.js';  /* 手机遥控器总线（todos #17）：主窗 → /api/remote 推状态 + 取指令 */
+import './292-toolbar.js';  /* 可自定义界面控件：右上角按钮增删/排序，隐藏项收进「更多」菜单 */
+import './293-word-upgrade.js';  /* 行级歌词自动升级真逐字（todos #12 开关2）：跨音源找 >90% 匹配的逐字版 */
+import './294-ab-loop.js';  /* 单句 / A-B 循环（todos #3）：学唱歌，边界在 core/abLoop.js */
+import './295-vfx-intensity.js';  /* 动效强度滑杆（todos #6）：一根 0~100 代替四档，实时说明这一档给了什么 */
 import './999-global-audit.js';

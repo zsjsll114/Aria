@@ -102,8 +102,8 @@
         }
 
         .view-mode-card.active {
-            border-color: var(--theme-color, #ffcc33);
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.08);
+            border-color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.08);
         }
 
         .view-mode-preview {
@@ -263,7 +263,7 @@
         .view-mode-mock-lyrics-full .view-mode-mock-line:nth-child(5) { width: 45%; }
         .view-mode-mock-lyrics-full .view-mode-mock-line:nth-child(6) { width: 55%; }
         .view-mode-mock-line.active {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.6);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.6);
             width: 85% !important;
         }
 
@@ -296,7 +296,7 @@
             width: 26px;
             height: 26px;
             border-radius: 50%;
-            background: var(--theme-color, #ffcc33);
+            background: var(--theme-color, #E8BE6A);
             color: #1a1a1a;
             display: flex;
             align-items: center;
@@ -351,8 +351,8 @@
             margin: 0 1px;
         }
         .view-mode-mock-flyin-char.active {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.8);
-            box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 255, 204, 51), 0.5);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
+            box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
         }
         .view-mode-preview-flyin .view-mode-mock-lyrics-full {
             flex: 1;
@@ -403,6 +403,16 @@
         .player-container.view-flyin ~ .view-flyin-wireframes,
         body:has(.player-container.view-flyin) .view-flyin-wireframes {
             display: block;
+        }
+
+        /* ★ 飞入模式底栏（2026-09-27 用户反馈「飞入的底栏是透明的」）：其余视觉模式
+           （pv/dimension/wordcloud/tunnel/neon/letterpress）都有各自的深色毛玻璃底栏
+           覆盖，唯独飞入裸用通用 rgba(30,30,35,0.75)——全屏线框 + 模糊封面从底栏后
+           透出来，观感就是「透明」。补上与 viewmode.css 891 那批同规格的深色配方。 */
+        .player-container.view-flyin .bottom-control-bar {
+            background: rgba(18, 14, 30, 0.85) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
         }
 
         /* ========== 飞入模式：居中不滚动布局 ========== */
@@ -539,7 +549,7 @@
         .view-flyin .line.active .word.word-emotion.active > span:last-child {
             color: var(--emotion-color) !important;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85),
-                         0 0 var(--emotion-glow, 10px) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 255, 204, 51), 0.8)) 40%, transparent) !important;
+                         0 0 var(--emotion-glow, 10px) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 232, 190, 106), 0.8)) 40%, transparent) !important;
         }
         .view-flyin .line.active .word.word-emotion.active .word-highlight {
             color: var(--emotion-color) !important;
@@ -549,7 +559,7 @@
         /* 唱完的情感词：超微柔和光 */
         .view-flyin .line.active .word.word-emotion.active:has(.word-highlight.done) > span:last-child {
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85),
-                         0 0 calc(var(--emotion-glow, 10px) * 0.6) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 255, 204, 51), 0.8)) 25%, transparent) !important;
+                         0 0 calc(var(--emotion-glow, 10px) * 0.6) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 232, 190, 106), 0.8)) 25%, transparent) !important;
         }
         .view-flyin .line.active .word.word-emotion.active:has(.word-highlight.done) .word-highlight {
             color: var(--emotion-color) !important;
@@ -638,13 +648,13 @@
             transition: opacity 0.4s ease, filter 0.4s ease;
         }
         .view-mode-mock-wc-item.active {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.8);
-            box-shadow: 0 0 10px rgba(var(--theme-color-rgb, 255, 204, 51), 0.5), 0 0 4px rgba(var(--theme-color-rgb, 255, 204, 51), 0.8);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
+            box-shadow: 0 0 10px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5), 0 0 4px rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
             animation: view-wc-pulse 2.5s ease-in-out infinite;
         }
         @keyframes view-wc-pulse {
-            0%, 100% { box-shadow: 0 0 8px rgba(var(--theme-color-rgb, 255, 204, 51), 0.4); }
-            50% { box-shadow: 0 0 14px rgba(var(--theme-color-rgb, 255, 204, 51), 0.7); }
+            0%, 100% { box-shadow: 0 0 8px rgba(var(--theme-color-rgb, 232, 190, 106), 0.4); }
+            50% { box-shadow: 0 0 14px rgba(var(--theme-color-rgb, 232, 190, 106), 0.7); }
         }
         .view-mode-mock-wc-item.blur {
             opacity: 0.12;
@@ -656,7 +666,7 @@
             position: absolute;
             top: 38%; left: 32%;
             width: 56px; height: 18px;
-            border: 1.5px solid rgba(var(--theme-color-rgb, 255, 204, 51), 0.35);
+            border: 1.5px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.35);
             border-radius: 4px;
             pointer-events: none;
             animation: view-wc-focus 3s ease-in-out infinite;
@@ -697,7 +707,7 @@
         .view-mode-mock-pv-box {
             position: relative;
             padding: 6px 14px;
-            border: 1px dashed rgba(255, 204, 51, 0.65);
+            border: 1px dashed rgba(232, 190, 106, 0.65);
             border-radius: 4px;
             background: rgba(0, 0, 0, 0.35);
             backdrop-filter: blur(4px);
@@ -707,7 +717,7 @@
             font-size: 13px;
             font-weight: 800;
             color: #ffffff;
-            text-shadow: 0 0 10px rgba(255, 204, 51, 0.9), 0 0 4px #ffffff;
+            text-shadow: 0 0 10px rgba(232, 190, 106, 0.9), 0 0 4px #ffffff;
             letter-spacing: 0.5px;
         }
         .view-mode-mock-pv-star {
@@ -716,7 +726,7 @@
             right: 18px;
             font-size: 13px;
             color: #ffffff;
-            text-shadow: 0 0 8px #ffffff, 0 0 14px rgba(255, 204, 51, 0.8);
+            text-shadow: 0 0 8px #ffffff, 0 0 14px rgba(232, 190, 106, 0.8);
             animation: view-pv-star-twinkle 1.8s ease-in-out infinite alternate;
             z-index: 3;
         }
@@ -952,12 +962,12 @@
             position: absolute;
             inset: 0;
             background-image: 
-                radial-gradient(1.5px 1.5px at 20% 25%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.4), transparent),
-                radial-gradient(1px 1px at 55% 15%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.3), transparent),
-                radial-gradient(1.5px 1.5px at 75% 60%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.35), transparent),
-                radial-gradient(1px 1px at 30% 80%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.25), transparent),
+                radial-gradient(1.5px 1.5px at 20% 25%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.4), transparent),
+                radial-gradient(1px 1px at 55% 15%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.3), transparent),
+                radial-gradient(1.5px 1.5px at 75% 60%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.35), transparent),
+                radial-gradient(1px 1px at 30% 80%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.25), transparent),
                 radial-gradient(1px 1px at 85% 35%, rgba(255, 255, 255, 0.15), transparent),
-                radial-gradient(1.5px 1.5px at 15% 65%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.2), transparent);
+                radial-gradient(1.5px 1.5px at 15% 65%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.2), transparent);
             pointer-events: none;
             animation: view-dim-drift 8s ease-in-out infinite alternate;
         }
@@ -968,9 +978,9 @@
         .view-mode-mock-dim-cube {
             width: 40px;
             height: 40px;
-            border: 1.5px solid rgba(var(--theme-color-rgb, 255, 204, 51), 0.7);
+            border: 1.5px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.7);
             border-radius: 5px;
-            box-shadow: 0 0 18px rgba(var(--theme-color-rgb, 255, 204, 51), 0.35), inset 0 0 14px rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
+            box-shadow: 0 0 18px rgba(var(--theme-color-rgb, 232, 190, 106), 0.35), inset 0 0 14px rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
             transform: rotateX(25deg) rotateY(35deg);
             animation: view-dim-cube-rot 6s linear infinite;
             position: relative;
@@ -981,9 +991,9 @@
             position: absolute;
             inset: 6px;
             background-image: 
-                radial-gradient(1px 1px at 30% 30%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.6), transparent),
-                radial-gradient(1px 1px at 70% 50%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.4), transparent),
-                radial-gradient(1px 1px at 40% 75%, rgba(var(--theme-color-rgb, 255, 204, 51), 0.5), transparent);
+                radial-gradient(1px 1px at 30% 30%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.6), transparent),
+                radial-gradient(1px 1px at 70% 50%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.4), transparent),
+                radial-gradient(1px 1px at 40% 75%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.5), transparent);
             border-radius: 3px;
         }
         @keyframes view-dim-cube-rot {
@@ -996,7 +1006,7 @@
             font-weight: 800;
             color: #ffffff;
             letter-spacing: 1px;
-            text-shadow: 0 0 8px rgba(255, 204, 51, 0.8);
+            text-shadow: 0 0 8px rgba(232, 190, 106, 0.8);
         }
 
 
@@ -1116,7 +1126,7 @@
 }
 .vm-card-cloud .wcw.w1 { left: 22%; top: 26%; font-size: 22px; color: rgba(255,255,255,0.32); }
 .vm-card-cloud .wcw.w2 { left: 70%; top: 20%; font-size: 15px; color: rgba(255,255,255,0.42); }
-.vm-card-cloud .wcw.w3 { left: 48%; top: 46%; font-size: 30px; color: var(--theme-color, #ffcc33); text-shadow: 0 0 16px rgba(255, 204, 51, 0.45); }
+.vm-card-cloud .wcw.w3 { left: 48%; top: 46%; font-size: 30px; color: var(--theme-color, #E8BE6A); text-shadow: 0 0 16px rgba(232, 190, 106, 0.45); }
 .vm-card-cloud .wcw.w4 { left: 20%; top: 62%; font-size: 16px; color: rgba(255,255,255,0.45); }
 .vm-card-cloud .wcw.w5 { left: 76%; top: 55%; font-size: 13px; color: rgba(255,255,255,0.35); }
 .vm-card-cloud .wcw.w6 { left: 34%; top: 78%; font-size: 12px; color: rgba(255,255,255,0.3); }
@@ -1158,8 +1168,8 @@
 }
 .view-mode-mock-dim-line.near {
     top: 58%;
-    background: var(--theme-color, #ffcc33);
-    box-shadow: 0 0 18px color-mix(in srgb, var(--theme-color, #ffcc33) 45%, transparent);
+    background: var(--theme-color, #E8BE6A);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--theme-color, #E8BE6A) 45%, transparent);
     transform: rotateX(10deg) scale(1.02);
 }
 .view-mode-mock-dim-line.floor {

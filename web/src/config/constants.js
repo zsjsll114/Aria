@@ -39,7 +39,8 @@ export const AI_DB_NAME = 'LyricsPlayerDB';
 // ★ v4：aiCache.js 成为该库唯一属主，upgrade 幂等补齐 aiThemeCache+chorusCache 双 store。
 //   v3 时代曾出现「双 getAiDb 竞争建库导致 chorusCache 缺失」——提升版本强制触发 onupgradeneeded，
 //   让存量（可能缺 store 的）库就地补齐，避免运行时 db.transaction('chorusCache') 抛 NotFoundError。
-export const AI_DB_VERSION = 4;
+// ★ v5：新增 wordTimingCache store（频谱逐字对齐结果缓存），同样靠提升版本让存量库就地补齐。
+export const AI_DB_VERSION = 5;
 export const AI_STORE_NAME = 'aiThemeCache';
 
 // 字体 IndexedDB

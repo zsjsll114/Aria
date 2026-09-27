@@ -8,11 +8,12 @@ import { renderLyrics } from './20-lyrics-render.js';
 import { aiThemeCache } from './40-playback-state.js';
 import { saveSettings } from './180-boot-config.js';
 import { applyBackgroundSettings, applyHighlightColor, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor } from './190-settings-fontsize.js';
-import { applyFontFamily, applyGlassStrength, bindColorRow, openColorPicker } from './210-color-multilang.js';
+import { applyFontFamily, applyGlassStrength } from './210-color-multilang.js';
 import { saveCustomFont } from './215-multilang-fonts.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { aiCacheGetAll } from '../services/aiCache.js';
 import { DEFAULT_SETTINGS } from '../config/defaults.js'; // 模式设置默认值兜底
+import { isPresetAccent } from '../config/themePalette.js'; // 预设色唯一登记处
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 外观面板容器引用（原为 initSettingsPanel 内局部，重构提升到本模块共享） */
@@ -69,6 +70,15 @@ function applyLyricSetting(name, value) {
                             }
                         }
                         applyThemeColor(value);
+                        /* ★ 同步预览引擎缓存的主题色（2026-09-26）：applyModeVars 在预览容器
+                           上显式设置了 --preview-theme-color/--theme-color，会遮蔽 root 级的
+                           更新——只调 applyThemeColor 的话预览框进度条永远停在旧主题色。
+                           setGlobalVar 会更新 globalVars 并重跑 applyAllVars。 */
+                        try {
+                            if (previewEngineInstance && typeof previewEngineInstance.setGlobalVar === 'function') {
+                                previewEngineInstance.setGlobalVar('themeColor', value);
+                            }
+                        } catch (e) { logCatch('settingsPanel', e); }
                         saveSettings();
                         break;
                     case 'bgBlur':
@@ -257,58 +267,11 @@ function applyLyricSetting(name, value) {
                     });
                 });
 
-                /* 色块 — 使用 .color-swatch + openColorPicker */
-                controls.querySelectorAll('.setting-color-row').forEach(row => {
-                    if (row._hasAppEvent) return;
-                    row._hasAppEvent = true;
-                    const varName = row.dataset.var;
-                    const isGlobal = row.dataset.scope === 'global' || varName === 'themeColor';
-                    const swatches = row.querySelectorAll('.color-swatch');
-                    let customColor = null;
-                    swatches.forEach(sw => {
-                        sw.addEventListener('click', () => {
-                            if (sw.dataset.color === '__custom__') {
-                                if (isGlobal) {
-                                    customColor = appSettings.interface.themeColor || '#ffcc33';
-                                } else if (previewEngineInstance) {
-                                    const curM = previewEngineInstance.currentMode || 'cover';
-                                    const mv = previewEngineInstance.modeVars?.[curM];
-                                    if (mv && mv[varName]) customColor = mv[varName];
-                                }
-                                const initColor = (customColor && customColor.startsWith('#')) ? customColor : '#ffffff';
-                                if (typeof openColorPicker === 'function') {
-                                    openColorPicker(initColor, (color) => {
-                                        customColor = color;
-                                        swatches.forEach(s => s.classList.remove('active'));
-                                        sw.classList.add('active');
-                                        if (isGlobal) {
-                                            if (previewEngineInstance) previewEngineInstance.setGlobalVar('themeColor', color);
-                                            appSettings.interface.themeColor = color;
-                                            applyThemeColor(color);
-                                            saveSettings();
-                                            syncGlobalThemeSwatches(color);
-                                        } else if (previewEngineInstance) {
-                                            previewEngineInstance.setModeVar(varName, color);
-                                        }
-                                    });
-                                }
-                            } else {
-                                swatches.forEach(s => s.classList.remove('active'));
-                                sw.classList.add('active');
-                                const col = sw.dataset.color;
-                                if (isGlobal) {
-                                    if (previewEngineInstance) previewEngineInstance.setGlobalVar('themeColor', col);
-                                    appSettings.interface.themeColor = col;
-                                    applyThemeColor(col);
-                                    saveSettings();
-                                    syncGlobalThemeSwatches(col);
-                                } else if (previewEngineInstance) {
-                                    previewEngineInstance.setModeVar(varName, col);
-                                }
-                            }
-                        });
-                    });
-                });
+                /* 色块 — 由 210 的 document 级委托统一接管（2026-09-26）：
+                   这里原先自己遍历 .setting-color-row 给每颗 .color-swatch 挂 click，
+                   于是同一行上有两份平行处理器（另一份是 bindColorRow），且
+                   hydrateColorRows 重灌 innerHTML 后节点级监听就没了。
+                   写入目标与选中态现在都归 210 + 200 的 writeColorField。 */
 
                 /* 开关 — 使用 .setting-toggle */
                 controls.querySelectorAll('.setting-toggle[data-var]').forEach(toggle => {
@@ -368,13 +331,14 @@ function applyLyricSetting(name, value) {
 
             /* ★ 同步全局主题色色块 */
             function syncGlobalThemeSwatches(color) {
-                const targetColor = color || (appSettings.interface && appSettings.interface.themeColor) || '#ffcc33';
+                const targetColor = color || (appSettings.interface && appSettings.interface.themeColor) || '#E8BE6A';
                 const controls = appearanceControlsEl || (typeof document !== 'undefined' ? document.getElementById('lyricStyleControls') : null);
                 if (!controls) return;
                 controls.querySelectorAll('.appearance-global-section .color-swatch[data-var="themeColor"]').forEach(sw => {
                     if (sw.dataset.color === '__custom__') {
-                        const isPreset = ['#ffcc33', '#ff6b6b', '#51d0ff', '#a8ff51', '#ff8aff', '#ff9540'].includes(targetColor);
-                        sw.classList.toggle('active', !isPreset);
+                        /* 这行原先是把 6 个预设色又抄了一遍数组来判断——色板一改就静默失配
+                           （用户选了新预设，「自定义」那颗却跟着亮）。改成查唯一登记处。 */
+                        sw.classList.toggle('active', !isPresetAccent(targetColor));
                     } else {
                         sw.classList.toggle('active', sw.dataset.color === targetColor);
                     }

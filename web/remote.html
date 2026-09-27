@@ -206,7 +206,7 @@ function applyState(p) {
     el.volNum.textContent = p.vol == null ? '—' : String(Math.round(p.vol));
     /* 主题色只接受 #rgb/#rrggbb 形状：它来自总线，属于外部数据，不能直接进 CSS 变量 */
     const th = String(p.th || '');
-    document.documentElement.style.setProperty('--accent', /^#[0-9a-fA-F]{3,8}$/.test(th) ? th : '#ffcc33');
+    document.documentElement.style.setProperty('--accent', /^#[0-9a-fA-F]{3,8}$/.test(th) ? th : '#E8BE6A');
     setCover(p.c);
     renderQueue(p);
     document.title = p.t ? (p.playing ? '▶ ' : '⏸ ') + p.t : document.title;

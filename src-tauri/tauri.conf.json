@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.lyrics.player",
   "build": {
-    "frontendDist": "../web"
+    "frontendDist": "dist-stub"
   },
   "app": {
     "withGlobalTauri": true,

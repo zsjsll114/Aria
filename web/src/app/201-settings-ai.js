@@ -25,7 +25,7 @@ import { getFavorites } from './120-search-results.js';
 import { getPlaylists, playlistsHintEl } from './130-playlists.js';
 import { saveSettings } from './180-boot-config.js';
 import { applyBackgroundSettings, applyHighlightColor, applyInterfaceSettings, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor, setSettingValue } from './190-settings-fontsize.js';
-import { applyFontFamily, applyGlassStrength, bindColorRow, openColorPicker } from './210-color-multilang.js';
+import { applyFontFamily, applyGlassStrength } from './210-color-multilang.js';
 import { buildAdvancedFontUI, initFontUploadBindings, loadFontFace, refreshAdvancedFontDropdowns, refreshFontDropdown, renderFontManagerUI, saveCustomFont, saveFontToDB } from './215-multilang-fonts.js';
 import { downloadJSON, importData, initCustomDropdowns, initPerformanceSettings, initShortcutRecording, refreshSettingsUI, refreshShortcutUI, showSettingsHint } from './220-shortcuts-viewmode.js';
 import { initSelfhostSection } from './selfhost-settings.js';
@@ -1379,17 +1379,39 @@ function ensureEmotionWordStyle() {
                 logInfo('settingsPanel', 'AI 主题已清除，恢复手动设置');
             }
 
-/* 自动触发：歌曲播放成功后调用 AI 分析 */
-async function triggerAiAnalysisIfNeeded() {
+/* 页面是否已经有过用户手势（click / keydown / touchstart 这类「激活事件」；
+   指针移动和滚轮不算）。重载后归 false，所以开机预加载阶段一定拿到 false。
+   宿主不支持该 API 时退回「视为有手势」= 原行为，此时仍靠调用点的 silent 标志兜底。 */
+function userActivated() {
+    const ua = typeof navigator !== 'undefined' ? navigator.userActivation : null;
+    return ua ? !!ua.hasBeenActive : true;
+}
+
+/* 自动触发：歌曲播放成功后调用 AI 分析
+   opts.silent：声明「这条路径永远不该问」——175 的 preloadOnly 分支（开机 6~8s 后的
+   预加载预热，见 180-boot-config）就是它，那次调用只是提前填缓存，不是用户要听的歌。
+   ★ 隐私确认框 await 的是一次用户点击，而这两类路径**都没有手势**：弹窗会自己杵在屏幕
+   中央拦住整页（2026-09-26 实测）。所以判据分两层——调用点自己声明 silent，
+   外加一层「没有用户手势就不弹」的机制兜底，新增的自动触发路径（手机遥控 / 交叉淡入
+   预载 / 以后的定时器）默认就是静默的，不必逐个补标志。
+   跳过只丢这一次分析，不丢功能：用户点「进入」或点任何一首歌都会重新触发并正常弹一次。 */
+async function triggerAiAnalysisIfNeeded(opts) {
     const ai = appSettings.ai;
     /* ★ 设置里关闭「启用智能分析」后禁止自动调用 AI（此前开关无效，播放仍会触发分析） */
     if (!ai || ai.enabled === false) return;
+    const silent = !!(opts && opts.silent);
     /* ★ 隐私确认：Gemini 走第三方反代时，首次实际分析前明示 Key/歌词经其中转
        （localStorage 确认一次；缓存命中不会走到这里，改回官方接口后条件自动失效）。 */
     try {
         if (ai.provider === 'gemini'
             && (!ai.apiBase || ai.apiBase.indexOf('de5.net') >= 0)
             && !localStorage.getItem('aria_ai_proxy_notice')) {
+            if (silent || !userActivated()) {
+                logWarn('settingsPanel', silent
+                    ? 'AI 反代隐私确认：预加载路径不弹窗，等用户主动播放时再确认'
+                    : 'AI 反代隐私确认：页面还没有用户手势，本次跳过（不发送任何数据），等首次交互后再确认');
+                return;
+            }
             const okProceed = await (typeof window.showGlassConfirm === 'function'
                 ? window.showGlassConfirm({
                     title: t('ai.proxyConfirmTitle', 'AI 分析经反代接口中转'),

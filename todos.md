@@ -6,8 +6,9 @@
 > `docs/模块化重构方案.md`）。
 >
 > 文中「已有基础」的文件路径与「某功能不存在」的判断，均经 2026-09-25 实际 grep 核实
-> （已排除 `web/src/vendor/`）。核实为**不存在**的能力：睡眠定时器、gapless、
-> 专注模式、歌词屏保、歌词内搜索、单句/A-B 循环。
+> （已排除 `web/src/vendor/`）。当时核实为**不存在**的能力：睡眠定时器、gapless、
+> 专注模式、歌词屏保、歌词内搜索、单句/A-B 循环——**其中除 gapless 与歌词屏保外，
+> 到 2026-09-26 都已落地**（见各条 ✅ 与代码路径）。
 > 注意：本仓库文档存在过期先例（曾发现 README 引用不存在的 .bat、CODE_WIKI 描述已删除的
 > 模块），所以真要动手前请再确认一次现状。
 
@@ -31,7 +32,16 @@
 - **已知取舍**（未改，需要时再定）：定时期间手动暂停歌曲**不冻结**计时；
   顶栏按钮在 PV/隧道/词云等视图下随 `.top-action-buttons` 一起隐藏（与桌面歌词按钮同命）。
 
-### 2. 歌词内搜索（当前歌 + 收藏 + 歌单）· 成本 S · ★★★★★
+### 2. 歌词内搜索（当前歌 + 收藏 + 歌单）· ✅ 已完成（2026-09-26）
+- **落地**：`app/288-lyric-search.js`（取词/排期/渲染/跳转）+ `services/lyricIndex.js`
+  （IndexedDB 独立库，匹配/排序/增量算法，纯函数）+ `styles/lyric-search.css`；
+  行为测试 `tests/js/test_lyric_index.js`。范围实际为「当前歌 + 收藏 + 自建歌单 + 最近播放」，
+  索引确实没进 `user_config.json`（下面那条注意已按建议实现）。
+- **2026-09-27 统计条改样式**（用户圈的图一）：`.ls-sum` 原来是「`position: sticky` + 自带一层
+  深色渐变底 + `blur(6px)`」，三样叠起来是一条**浮在列表上的半透明带**——列表滚到它下面那一行时
+  两边文字各透出一半，谁都读不了，而且那块灰底和毛玻璃面板不是一个材质。
+  现在随流、透明、只留一根分隔线（实测 `background: rgba(0,0,0,0)`、`position: static`、
+  与首行重叠 -2px），降级段里那条针对它的规则一起删了。
 - **用户感知**：「那句『我在调节器里听见你的心跳』是哪首歌」——一句歌词直接定位并跳过去。
   这是所有音乐软件里最常被想起又最常被忽略的功能。
 - **已有基础**：歌词已在内存里（`state.lyrics`、`app/20-lyrics-render.js`），收藏与歌单
@@ -40,10 +50,17 @@
 - **注意**：歌词全文索引需要落盘（`user_config.json` 已经 161KB，别塞进去），
   建议 IndexedDB，复用 `services/fontService.js` 那套 DB 打开方式。
 
-### 3. 单句 / A-B 循环（学唱歌）· 成本 S-M · ★★★★
-- **用户感知**：一句反复唱到准为止。跟唱场景里这是"有没有"级别的差异。
-- **已有基础**：逐字时间戳（`wordElementsByLine` / `wordHighlightElementsByLine`）、
-  行点击跳转、`state.lyricOffset`。
+### 3. 单句 / A-B 循环（学唱歌）· ✅ 已完成（2026-09-26）
+- **落地形态**：「更多 → 单句循环 / A-B 循环」两项 + `L` 键（单句循环）；底栏
+  `#abLoopStatus` 实时显示当前态（`A-B 24.3s→31.8s` 一类），A-B 走「先按 A 再按 B」的
+  边界标记。代码 `core/abLoop.js`（纯逻辑：行区间、尾部偏置、seek 取消判定）+
+  `app/294-ab-loop.js`（接线，只挂 `timeupdate`/`seeked`，未改 57/70 的逐帧循环）。
+- **两个必须知道的决定**：① 单句区间取**真实逐字**行界（`realWordsOf`，约束 17），
+  合成节拍的行只按行级时间戳，尾音拖腔给 `TAIL_SKEW_MS = 1500` 的余量，否则每句都被截尾；
+  ② 用户**手动拖动进度**即退出循环——锁着区间会让「想听下一句」变成「必须先找开关」。
+- **已验证**：`tests/js/test_ab_loop.js`（11 例，含 `lineRangeMs(L, null)` 不得当成第 0 首，
+  因为 `Number(null) === 0`）+ `tests/test_ab_loop_ui.py`（13 例真音频 E2E：循环回卷、
+  seek 取消、切歌清态）。变异测过——把 seek 取消摘掉后 E2E 立刻红。
 - **注意**：`isLyricsLoopRunning` 是 rAF 循环的内部标志，**不是** A-B 重复，别误用。
 
 ### 4. 双语排版预设，一键循环 · ✅ 已完成（2026-09-25）
@@ -61,29 +78,69 @@
 - **未接的可选接线**（需要时再做）：飞入模式底部翻译区不读这两个键（`56-playback-misc.js:29-30`）；
   `T` 还没进可配置快捷键表（`config/defaults.js` 的 `DEFAULT_SHORTCUTS` + 设置面板一行）。
 
-### 5. 下一首预告 + 一键否决 · 成本 S · ★★★★
-- **用户感知**：交叉淡化已经会自动切歌，但用户不知道接下来放什么，也不方便临时改主意。
-  切歌前 5 秒浮出"下一首：XXX · 点击换一首"，不点就照常播。
-- **已有基础**：`app/135-crossfade.js`（切歌时机）、`app/245-playlist-manager.js`
-  （队列与当前索引 `state.currentTrackIndex`）、`app/95-track-loading.js`（预加载下一首）。
+### 5. 下一首预告 + 一键否决 · ✅ 已完成（2026-09-26）
+- **落地形态**：切歌前约 5 秒在底栏上方浮出「下一首：XXX · 点击换一首」，点它从**确定的候选
+  列表**里换一首（不是随机），不点自动消失、照常播。代码 `core/nextUp.js`（纯判定）+
+  `app/289-next-up.js`（读状态 → 判定 → 渲染 → 撤销），偏好藏 `appSettings.interface.nextUp`。
+- **撤销可靠性**：`timeupdate` 每帧用「代际 + 队列索引 + `audio.src`」三要素签名比对，任一变化
+  即隐藏；play/pause/seeking/seeked/ended/loadstart/durationchange/emptied 各再触发一次。
+  随机模式压根不报名（报了就是谎）。行为测试 `tests/js/test_next_up.js`。
 
-### 6. 动效强度滑杆（替代只有四档）· 成本 S-M · ★★★★
-- **用户感知**：低配设备用户看到"高/中/低/极简"四档时不知道该选哪个，也不知道选了会损失什么。
-  给一根 0~100 的"动效强度"滑杆 + 实时说明（"0 = 只保留逐字高亮，不做背景模糊与粒子"），
-  比四档更容易理解，也让他们能自己找到能跑的档位。
-- **已有基础**：`config/performance.js` 四档就是天然的插值端点；
-  `appSettings` 里 vfx 覆盖已有 `setVfxOverride` / `getVfxOverrides`；
-  `markSoftwareRenderer()` 与档位解耦（见 AGENTS.md 约束 12）。
+### 6. 动效强度滑杆（替代只有四档）· ✅ 已完成（2026-09-27）
+- **落地形态**：设置 → 性能 →「视觉开销」组第一行是一根 0~100 的 `#vfxIntensity` 滑杆，
+  旁边实时说明**逐项报出这一档给了什么**（背景模糊几 px / 毛玻璃几 px / 歌词模糊 /
+  渲染分辨率% / 五个特效开关的开通）。四档按钮保留，但滑杆默认是「跟随等级」态：
+  指针停在当前档位的等效位置、数值栏写 `跟随 67`，不覆盖任何键。
+- **代码**：`core/vfxIntensity.js`（纯映射：四档 vfx 当插值端点，无 DOM 无 localStorage）+
+  `app/295-vfx-intensity.js`（接线）+ `config/defaults.js` 的 `interface.vfxIntensity`（约束 11
+  的安全落位）+ `180-boot-config.js` 的 `getVfxOverrides()` 叠加点。
+- **★ 叠加顺序是这件功能的全部难点**：生效值 = 档位 vfx ⊕ 滑杆 ⊕ 手动单项微调，
+  **手动在最上层**。反过来（滑杆覆盖手调）等于用户拖一次滑杆就无声丢掉他调过的开关——
+  那是数据丢失不是重置。配套两个坑：
+  ① `setVfxOverride` 的基底必须读**原样手调表** `getManualVfxOverrides()`，不能读合并视图，
+    否则每点一次单项开关就把滑杆当时的 10 个推导值冻结进表里，滑杆从此失效（E2E 实测复现过）；
+  ② 两个「恢复推荐/出厂配置」按钮必须同时清 `interface.vfxIntensity`（走
+    `Aria.__resetVfxIntensity`），不然按钮撒了谎。
+- **为什么不写进 `perf_vfx_overrides_v1`**：滑杆值与手调各自存、读取时叠加，
+  才能保住 ① 的语义；代价是「拉满但某个开关仍关着」需要解释，已写进行说明里。
+- **为什么独立成分片**：i18n 门禁把「文件里出现 `translatePhrase()`」判成整份自译、
+  要求全部中文登记；220 是热文件且有 6 条历史漏登，所以滑杆自成一页，220 只留两个钩子调用点。
+- **已验证**：`tests/js/test_vfx_intensity.js` 11 例（端点还原档位原值、单调不越界、
+  **未设定 ≠ 0**（`Number(null) === 0` 那个坑）、开关权重过半才点亮、0.05 网格吸附）+
+  `tests/test_vfx_intensity_ui.py` 23 例浏览器接线（拖到 0/100 后 `getPerfVfx()` 真等于
+  minimal/high、说明行文案、手动优先、跨刷新持久化、跟随按钮与两个重置按钮）。
+  变异测过：摘掉叠加 → 4 条红；`setVfxOverride` 用合并视图当基底 → `manual-table-stays-minimal` 红；
+  摘掉重置钩子 → `factory-reset-clears-intensity` 红。
+- **顺手修掉的门禁假阳性**：`module-reachability` 的 import 正则用 `[\s\S]*?` 会把
+  **副作用 import 整条吃掉**（`import 'x.js';` 后面紧跟一条 `from` import 时懒匹配越界），
+  于是 `utils/numberStepper.js` 被误报成影子模块、不可达数 4→5。已抽成
+  `scripts/audits/lib/import-scan.mjs` 并补 `tests/js/test_module_reachability.js` 6 例钉住。
 
 ---
 
 ## 二、观感与个性化
 
-### 7. 专注模式（只留歌词）· 成本 S-M · ★★★★
-- **用户感知**：一个键（或鼠标静止 3 秒）把控制条、侧栏、标题栏全部淡出，只剩歌词和背景，
-  动一下鼠标回来。听歌场景里这是"氛围感"的最大单次提升。
-- **已有基础**：视图模式切换体系（`app/220-shortcuts-viewmode.js` 的 `view-*` 类名机制）
-  天然适合再加一个 `is-zen` 类；CSS 集中在 `styles/viewmode.css`。
+### 7. 专注模式（只留歌词）· ✅ 已完成（2026-09-26）
+- **落地形态**：一个键把顶栏图标组、底栏控制条、播放信息列全部淡出，只剩歌词和背景；
+  鼠标/按键静止 N 秒（默认 4，1~60 可调）自动进入，动一下回来。代码
+  `app/282-zen-mode.js` + `styles/zen.css`，隐藏范围是 token 化的
+  `<html data-zen-scope="top bottom info …">`，逐 token 一条 CSS 规则。
+- **设计上最重要的两点**：① 与视图模式**正交**——专注态是 `#ariaRoot` 上的 `is-zen`，
+  不新增 `view-*`、不改 220 的 `switchView`，所以「PV 模式 + 专注」这种组合天然成立；
+  ② 静止判定用「活动事件 + 单发 setTimeout」而非常驻 interval，退出后立即重新武装。
+- **偏好与键位落位**：`appSettings.interface.zen`（约束 11 的规避法：只有 `interface` 全量展开）；
+  开关键存 `appSettings.shortcuts.zen`，但**不在** `DEFAULT_SHORTCUTS` 里声明——默认值 `'z'` 是
+  分片内常量兜底，重绑时按 220 同款策略「撞键就拒绝写入、不改任何已有绑定」。
+  所以 220 那张可配置快捷键表里**看不到** zen，设置面板里改键走 282 自己的 chip。
+- **2026-09-27 修掉的「功能看起来不存在」**（用户实测：开了也不会隐藏任何控件）。两个原因叠在
+  一起，少修一个都还是坏的：
+  ① 开关显示的是 `enabled` **偏好**而不是**当前是否专注**，而 `enabled` 默认 true（为了让 Z 键
+    开箱可用）→ 一开机开关就是亮的，用户点它 = 关掉 = 屏幕什么都不变；
+  ② 就算改成「点亮就进入」也没用：**设置面板本身**在 `MODAL_SELECTOR`（有弹窗开着就不进入）里，
+    于是 `enterZen` 当场拒绝，而关掉面板后又没有任何东西再触发（自动进入默认是关的）。
+  现在：开关 = 「进入 / 退出专注」（显示 `_zen`，任何入口都回写显示），被弹窗挡住时记下待进入
+  意图、用 MutationObserver 等面板关掉再进。回归 `tests/test_zen_mode_ui.py` 13 例
+  （含「设置面板开着时点开关 → 关掉面板后自动进入」这条主链路；变异验证：摘掉进入逻辑 → 3 条红）。
 
 ### 8. 视觉模式自动导演 · 成本 M · ★★★★
 - **用户感知**：不再需要手动切模式——按段落情绪或每 N 首自动换视觉模式（副歌进 PV、
@@ -93,12 +150,16 @@
   `core/themeEngine.js`。缺的只是一个"导演"策略层 + 一个开关。
 - **风险**：切换时机与淡入淡出要克制，否则像电视购物。建议默认只在"用户 30 秒无操作"时切。
 
-### 9. 视觉配方：保存 / 命名 / 分享码 · 成本 S-M · ★★★★
-- **用户感知**：把当前所有视觉参数（模式、字号、模糊、摇摆、高亮色、版式偏好）存成一个
-  命名预设，或复制成一段分享码发给朋友。
-- **已有基础**：EQ 分享码已经把"编解码 + 复制 + 导入"这条路走通
-  （`app/90-eq.js` 的 `copyEqShareCode` / `importEqShareCode`），参数也全都集中在
-  `appSettings` 里，序列化入口现成。基本是复用一套模式。
+### 9. 视觉配方：保存 / 命名 / 分享码 · ✅ 已完成（2026-09-26）
+- **落地形态**：右上角入口按钮 + 自建毛玻璃面板（列表 / 重命名 / 覆盖 / 删除 / 应用 /
+  分享码 / 导入分享码）。编解码 + 白名单 + 校验在 `core/vfxRecipe.js`（纯逻辑，
+  `tests/js/test_vfx_recipe.js` 覆盖），UI 在 `app/290-vfx-recipe.js`。
+  2026-09-26 按用户要求精简过一轮：顶部两按钮与「配方包含哪些设置」说明区移除，
+  「当前外观」分享码常显，创建配方只剩「导入分享码」一条路，已有配方用「覆盖」更新。
+- **两个踩过的点**（写在分片头，动这块前必读）：① 应用配方**不能**调 `applyAllSettings`——
+  它会顺带把音量拉回 `initialVolume`、把播放模式/倍速拉回默认，用户点一下音量跳了是事故；
+  ② 换视觉模式没有导出函数（220 的 `switchView` 关在 IIFE 里），走的是「点 `.view-mode-card`」
+  这条与人手点完全相同的路，连带引擎装配、localStorage 记忆、设置分段一起带上。
 
 ### 10. 全局主题跟随当前封面 · 成本 S-M · ★★★
 - **用户感知**：换歌时整个界面（控制条描边、歌单卡、进度条、高亮色）平滑过渡到这张封面的
@@ -133,10 +194,19 @@
 - **风险**：跨域音频的精确时长与 `AudioContext` 解码路径要对齐；建议先做"同专辑内
   关闭淡入淡出 + 预加载下一首"这个简化版，收益就已经很明显。
 
-### 13. 长按 2× 临时加速 · 成本 S · ★★★
-- **用户感知**：按住空格（或某个键）临时快进，松手回到原速——听长内容时的肌肉记忆。
-- **已有基础**：倍速链路完整（`currentPlaybackRate`、`preservesPitch`、
-  `app/85-rate-download.js`、右键菜单里的倍速子菜单 `buildSpeedSubmenu`）。
+### 13. 长按 2× 临时加速 · ✅ 已完成（2026-09-26）
+- **落地形态**：长按**空格键位置的播放按钮**或 `x` 键临时提速，松手回原速；反馈复用现有
+  提示条（`setHint` + `showSettingsHint`），并在 `html#ariaRoot` 挂 `is-tempo-boost` 供样式消费，
+  **没有新造浮层**。代码 `core/tempoBoost.js`（状态机 + 所有「恢复原速」的路径）+
+  `app/286-tempo-boost.js`（只做接线，注入 85 的 `applyPlaybackRate` / `applyPreservesPitch`）。
+- **两个决定**：① 长按结束后**吃掉那一次 click**，否则「长按完顺手把歌暂停了」；
+  ② 默认键选 `x` 是因为 Space/方向/F2/F3/f/l/m 已绑，Shift 属歌单多选、Ctrl 属逐段跳转、
+  T 属双语循环（键位冲突检测本身在 220 的快捷键体系里，不在下面的测试里）。
+- **已验证**：`tests/js/test_tempo_boost.js` 16 例钉的是「恢复原速的**每一条**路径」——
+  `window blur`、`visibilitychange`、`audio pause`、切歌三事件、`pagehide`，以及事件一个都没
+  发出来时靠 `document.hasFocus()` 现值的看门狗兜底；外加「与手动倍速是**乘法**叠加」
+  「封顶在 maxRate」「切歌后手还按着也不会被后续 keyup 反吊回加速态」。
+- **分层**：`core` 不 import `app/*`，倍速能力由分片注入给 core——这是项目分层约定，不是绕弯。
 
 ### 14. 音量与进度的浮层反馈（OSD）· ✅ 已完成（2026-09-25）
 - **落地形态**：`core/osd.js`（纯逻辑：语义 API + 同类合并 / 同向累计 / 1.2s 驻留）+
@@ -163,6 +233,13 @@
   `[QQResolve] OK …(q=flac) <- tang(song_play_url,m4a)` 说明「用户要 flac、实际给了 m4a」
   这类信息本来就有，只是没往上传。现在 `qqResolveInfo` 保留完整负载，面板直接展示
   `tried[]`（每一级 provider + 耗时 + 失败原因），比抓日志行准。
+- **2026-09-26 补的角标状态机**（用户反馈「取链时显示的是取链失败，而不是正在获取」）：
+  `describeBadge()` 从不完整的 trace 变成四态——`正在获取…`（begin 了但还没命中）/
+  `重试中 n/m…`（`markResolveRetry`）/ `取链失败` / 命中详情；且 `loadOnlineSong` 的两条
+  early-return 必须调 `clearResolveTrace()`，否则角标会一直挂着**上一首**的终态。
+  同轮把「走哪个平台」的判定收进 `services/playSource.js` 的一张别名表 +
+  `resolveSourceOf(songInfo, fallbackSource)`，修掉「用全局 `currentSource` 决定分支」
+  导致的「未知歌曲 / 加载慢 / 记两遍历史」（AGENTS.md 约束 19）。
 - **踩过的三个坑**（写进 AGENTS.md 约束 14）：① 主信息列 `.player-controls-wrapper` 在
   `view-lyrics` 等模式下整列 `display:none`，角标挂那里等于不显示；② 解析池的 `quality`
   字段实际是 provider 的档位标识（见过 `'song_play_url'`），不能当音质直显；
@@ -179,22 +256,38 @@
 
 ## 四、场景与设备
 
-### 17. 手机遥控器视图 · 成本 M · ★★★★
-- **用户感知**：手机连局域网后不是"缩小版的完整界面"，而是一个专为手掌做的遥控页：
-  大封面、大进度、上下曲、音量、队列，横屏时当第二屏歌词显示。
-- **已有基础**：`--lan` 启动开关、`app/60-mobile-dual-page.js`、`app/230-touch-gestures.js`
-  都已存在，说明移动端与手势这条路已经趟过一半。
-- **注意**：`/proxy` 的 Origin 白名单需要显式加入局域网地址（AGENTS.md 关键约定里已写明），
+### 17. 手机遥控器视图 · ✅ 已完成（2026-09-26）
+- **落地形态**：`web/remote.html` 是专为手掌做的遥控页（大封面、大进度、上下曲、音量、队列），
+  主界面**看不出有这个功能**——刻意如此，入口只在手机页。服务端侧 `app/291-phone-remote.js`
+  推状态 / 取指令，总线是 `remote_bus.py`（纯标准库），`server.py` 把 `/api/remote/*` 转给它。
+- **★ 为什么是 HTTP 总线而不是照抄桌面歌词的 localStorage 通道**：桌面歌词窗口与主窗同源，
+  `localStorage + storage` 事件天然可达；手机是另一台设备上的另一个浏览器
+  （origin `http://<局域网IP>:8001`），与 `http://localhost:8001` **不共享任何 web storage**——
+  跨设备用 storage 物理上不成立。总线契约（谁写谁读、只在变化时推、接收端本地外推进度、字段命名）
+  仍与 `250-desktop-lyrics.js` 保持一致。
+- **已验证**：`tests/test_phone_remote.py` 33 例，**故意用两个不同 origin**（主窗 localhost、
+  手机页 127.0.0.1）——哪天有人把同步改回 storage 方案会立刻红。覆盖状态同步、逐条控制生效、
+  断线可见（「主窗未响应」/「已断开」+ 控件置灰，不静默失效）、队列渲染走 `esc()`。
+- **注意**：`/proxy` 的 Origin 白名单需要显式加入局域网地址（AGENTS.md 关键约定），
   否则手机上 AI 与部分接口会 403。
 
-### 18. 窗口不可见时自动轻量 · 成本 S-M · ★★★★
-- **用户感知**：切到别的窗口/最小化时，视觉引擎自动降到"只维持音频与歌词状态"，
-  回到前台再恢复。对 VM 与笔记本发热是立刻能感觉到的差别。
-- **已有基础**：`document.hidden` 判断已在卡死检测与部分引擎里使用（AGENTS.md 约束 12
-  提到过后台节流保护），但 `PVEngine` / `NeonVisualizer` / `DimensionVisualizer`
-  未见门控（2026-09-25 实测：这三个文件里 `hidden` 命中数为 0）。
-- **补充**：浏览器对后台标签页的 rAF 本身有节流，但 Tauri 窗口**被遮挡/最小化**不等于
-  标签页 hidden，所以这条在桌面壳里是真需求。
+### 18. 窗口不可见时自动轻量 · ✅ 已完成（2026-09-26，有已知缺口）
+- **落地形态**：`core/backgroundThrottle.js`（分级判定 + 协调：`TIER_HIDDEN` / `TIER_IDLE`，
+  信号源是 `visibilitychange` + `window blur/focus` + `document.hasFocus()`）+
+  `app/287-bg-throttle.js`（把每条绘制循环翻译成 `get/isBusy/pause/resume` 注册进去）。
+  **一行业务逻辑都没写进引擎文件**，共享 rAF 闸（#22）属侵入式重构，本轮刻意不撞车。
+- **实测过的外部可停性**（这条是本项目第一次逐条量「能不能从外面停下来」）：
+  ✓ 主歌词 rAF（70 导出 `startLyricsLoop/stopLyricsLoop`）、✓ `PVEngine` 摄像机 rAF、
+  ✓ `VisualizerManager.activeInstance`（`VisualizerBase` 统一 start/stop）、✓ `previewEngine`。
+- **三个已知缺口，动手前必读**：
+  ① **桌面歌词开着时主歌词循环不降档**（`skipWhen: desktopLyricsOn`）——`activeLineIndex`/
+    `currentTime` 由它推进，停它等于把另一个**可见**窗口冻住；
+  ② 两条循环**目前停不了**：`57-wordcloud-camera` 的常驻弹簧 rAF、`60-mobile-dual-page` 的
+    逐字进度 rAF，开关都是模块内 `let` / 未导出的 `_mlpRafId`，外面读不到，要等分片补导出；
+  ③ `PVBackground` 丝绸 canvas **没有公开停口**，只能掐它自持的 `animId/_silkTimer` 再用私有
+    `_startSilkLoop` 重开——已按「缺任一即不动」写，将来它加公开 API 只需替换那两个函数。
+- **还缺测试**：`core/backgroundThrottle.js` 目前没有单测（全仓 grep `backgroundThrottle` 在
+  `tests/` 命中 0）。分级判定与「恢复时不要复活本来就没跑的循环」这两条最值得钉住。
 
 ### 19. 歌词屏保 / 氛围模式 · 成本 M · ★★
 - **用户感知**：没有播放时，屏幕上缓慢浮现常听歌曲的歌词金句，把播放器变成房间的一部分。
@@ -205,13 +298,49 @@
 
 ## 五、需要你先决策的（不是纯加法）
 
-### 20. 逐字兜底：没有时间戳也做逐字 · 成本 L · ★★★★（2026-09-25 用户认可，优先级上调）
-- **用户感知**：没有 krc/yrc/qrc 时间戳的歌也能逐字高亮（按字数均分 + 语速自适应，
-  或复用音频分析做人声 onset 粗对齐）。
-- **为什么单列**：这个项目的核心卖点就是逐字，"没有逐字幕"直接落到卖点上。
-  但它是**质量风险**功能——均分错了会被明显察觉，比"没有逐字"更糟。
-  建议做成显式开关（默认关），并允许 `lyricOffset` 那样的微调。
-- **已有基础**：`core/chorusDetector.js` 已经会下载音频、解码、算能量与 BPM。
+### 20. 逐字兜底：没有时间戳也做逐字 · ✅ 已完成（2026-09-26，两级方案）
+- **落地形态**（两层，都不在各加载点分别接）：
+  ① **摊平**：`parsers/wordTiming.js` 按行时长把只有行级时间戳的歌词合成 `words`，接线点
+    唯一——`app/20-lyrics-render.js` 的 `renderLyrics` 入口，23 个调用点一次覆盖，
+    `globalThis.lyrics` 一起补齐（桌面歌词/PV/词云/手机远端全部受益）；
+  ② **频谱对齐**：`core/wordAligner.js`（纯函数）用音频包络把每个字起点拉到真实发声处，
+    `services/wordAlign.js` 负责 WebAudio 解码 + 缓存 + 回填，结果按「歌曲 × 歌词签名」缓存
+    （AGENTS.md 约束 18）。退化路径是设计的一部分：`alignLine` 信息不足时返回 `evenSplit`，
+    所以任何情况下都不会比①更差——这条有专门测试钉住。
+- **与最初建议的差异**：原写「默认关」，2026-09-26 用户改口径为**默认开**，并做成两个开关
+  （`config/wordPerChar.js`）：开关 1「行级歌词按逐字显示」默认开、只对 歌词/默认/词云
+  三档生效；开关 2「自动替换为更匹配的逐字歌词」默认关，一开就**压过**开关 1（互锁写在
+  `200-settings-panel.js`，判定层 `perCharSynthesisWanted` 也照样成立），门槛是
+  `WORD_UPGRADE_MIN_RATE = 0.9` 的**达标行数**而不是均值——均值会被一行错歌词拖过去，
+  把一份对不上的词贴上去（`tests/js/test_word_per_char.js` 里有专门一条钉这个选择）。
+- **★ 代价必须知道**（AGENTS.md 约束 17）：`line.words.length` 从此**不再能证明真实性**。
+  合成行带 `wordTiming:'synthesized'`，任何拿 `words` 判**真值**的代码必须走
+  `realWordsOf(line)` / `hasRealWordTiming(lines)`。已收口三处：下载 `.krc`、AI 喂词的
+  时长权重、导出前 `stripSyntheticWords`。对齐成功的行反过来要**清掉**合成标记，否则
+  ①② 的成果下载和喂 AI 都拿不到。
+- **2026-09-27 用户实测三处失效，已修**：
+  ① **自动替换从来不触发**——根因在 `lyricMatchRate` 用「按位置逐行比」。同一首《晴天》
+    网易云行级版 55 行、酷狗 KRC 版 63 行，开头制作信息条数与顺序都不同，正文整体错一行
+    后面**全部**对不上 → 实测只有 0.048 分，永远过不了 0.9 门槛。
+    现在改成「先滤掉制作信息行，再做顺序保持的 LCS 配对」，同一对实测 0.962，
+    浏览器里真的换上了（`[WordUpgrade] kugou 命中，匹配率 94%`）。
+    负例一起钉住：别的歌、只覆盖一段、整份倒序——都仍在门槛下
+    （fixture 是真实取样：`tests/fixtures/lyric_pair_qingtian.mjs`）。
+  ② **候选源优先序改成「本机自建 vendor 优先」**（用户：不一定是酷狗，QQ 的歌词也很优质），
+    `orderWordCandidateSources(candidates, selfhostEnabled)` 纯函数可单测，没自建服务的源不许插队。
+  ③ **互锁只做一个方向**：先开自动替换、再开行级逐字，能两个都亮。现在双向互斥
+    （`perChar` 的 handler 也会把 `autoUpgrade` 按下去），且判定层口径不变。
+  ④ **开关切换要切歌才生效**：`renderLyrics` 会把合成的 words 写回 `globalThis.lyrics`
+    （约束 17 的同一份数组），所以「关掉后再渲染一次」数据里仍然全是逐字。
+    现在关闭路径先 `stripSyntheticWords()` 再渲染。★ 原来的 E2E 测不到，是因为它每次都
+    **重新播种**一份行级歌词——把被污染的数据换掉了；新增的 `toggle_off_clears_words_immediately`
+    故意不重播种，用当前这份已被改过的数组测（实测 29 → 0 个 `.word`）。
+- **已验证**：`tests/js/test_parsers.js`、`test_word_per_char.js`（18 例，含真实取样回归 3 例）、
+  `test_word_aligner.js`（12 例，合成 PCM 用 LCG 保证可复现）、`test_word_align_service.js`、
+  `tests/test_word_fallback.py`（15 例）、`tests/test_word_align.py`、`tests/test_word_per_char_ui.py`。
+- **为什么不用 stable-whisper/强制对齐**：约束 1 要求后端纯标准库（绿色包，用户机器没有
+  Python/Node），而 whisper 要拖 torch + GB 级模型。精度说清楚：**只能定位能量起始、
+  认不出音素**，拖腔内部仍按权重摊。
 
 ### 21. 应用内诊断页 · ✅ 已完成（2026-09-25）
 - **落地形态**：「更多 → 应用诊断」→ `#diagnosticsOverlay`（复用 `.lyric-source-*` 壳），
@@ -229,10 +358,10 @@
   `TTFB 395ms / DOM 完成 8405ms / 总传输 41.8MB / 脚本 128 个 6.2MB`，
   而**最大的 5 个资源全是自定义字体 ttf（7.1 / 6.6 / 4.8 / 4.7 / 3.8 MB）**
   —— 比 #13 已经处理掉的分词库（21MB→3.7MB）还大，是启动期的头号成本。
-- **未完成的接线**：帧时段的**按引擎分组目前是空的**——需要在 8 个既有循环里埋
-  `probeFrame()`（`70-audio-engine.js` 歌词循环、`57-wordcloud-camera.js` 弹簧、`PVEngine.js`、
-  `PVBackground.js`、`DimensionVisualizer.js`、`previewEngine.js`、`60-mobile-dual-page.js`、
-  可选 fade/sleep 瞬态）。流光隧道**不需要**埋（它的 rAF 已删、改 CSS 动画驱动）。
+- **未完成的接线**（2026-09-26 复扫 `grep -rln probeFrame web/src`）：帧时段的**按引擎分组仍不全**——
+  已埋 `70-audio-engine.js`（歌词循环）、`57-wordcloud-camera.js`（弹簧）、`60-mobile-dual-page.js`
+  （逐字进度）三处；还缺 `PVEngine.js`、`PVBackground.js`、`DimensionVisualizer.js`、
+  `previewEngine.js` 四处。流光隧道**不需要**埋（它的 rAF 已删、改 CSS 动画驱动）。
 - **待你拍板**：① 内置心跳常开会让 VM 上的页面永不进入 rAF-idle，可改成「开面板才 start」；
   ② 公网上游（vkeys/ygking/byfuns）**不做主动存活探测**（失联时是整体超时，会把面板卡住数秒），
   现在只显示实际走了哪一级；要「公网红绿灯」需加 2s `AbortController` 并行探测。
@@ -354,9 +483,16 @@
 
 ## 如果只做 5 个
 
+> 2026-09-26 更新：原五条里 #1 睡眠定时器、#2 歌词内搜索、#7 专注模式、#21 诊断页
+> 都已落地，剩下的名额按「剩余项里性价比」重排。
+
 1. **共享 rAF 闸 + 后台停帧**（#22）——虚拟机 <10fps 的直接对症药，且是调研结论里唯一
-   一条「我们比它差」的性能项。
-2. **睡眠定时器**（#1）——刚需，几乎白送。
-3. **歌词内搜索**（#2）——每天会用很多次，且别人都没有。
-4. **专注模式**（#7）——单次改动带来的氛围提升最大。
-5. **诊断页**（#21）——让后面所有性能优化有据可依（#15 的日志环形缓冲已经给它打好底）。
+   一条「我们比它差」的性能项。#18 已经把「外面能不能停」量完，缺的是把 5 条循环
+   收到一条闸上（含 #18 缺口①②那两条还没导出的）。
+2. **renderScale 吸附到 2 次幂面积桶**（#23）——S-M 成本，换的是显存/合成器 tile 的
+   台阶式浪费，无显卡设备上收益最直接。
+3. **补齐 #18 的测试与两条停不掉的循环**——分级判定目前没有单测，等于给将来留了个
+   「改了不生效」的口子。
+4. **无缝专辑简化版**（#12：同专辑内关淡入淡出 + 预加载）——不做真 gapless 也有明显收益。
+5. **视觉模式插件契约**（#25）——抽 `VisualModeEntry` 之后，#8 自动导演和 #9 配方
+   都从 if/else 变成查表，是三条里唯一的「做一次解锁三次」的结构项。

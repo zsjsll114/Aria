@@ -37,13 +37,21 @@ const CTX_ICONS = {
             check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
             arrow: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>',
             eq: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>',
-            settings: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>'
+            settings: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+            /* 默认（cover）模式没有 .bottom-control-bar 的 display:flex 规则，整条底栏隐藏，
+               双语排版 / 取链详情 / 应用诊断 三个面板的唯一入口因此挂在「更多」菜单上。 */
+            bilingual: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="4" y1="8.5" x2="20" y2="8.5"></line><line x1="4" y1="15.5" x2="16" y2="15.5" stroke-opacity=".6"></line></svg>',
+            link: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+            pulse: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
+            loop: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>'
         };
 
 globalThis.submenuHideTimer = null;
 
-/* 显示一级菜单 */
-function showCtxMenu(items, x, y) {
+/* 显示一级菜单
+   opts.columns：>1 时排成多列网格。「更多」菜单在默认模式下已经堆到 10 项，
+   单列会在小窗口/低分辨率下溢出屏幕底（用户反馈），分隔线跨整行。 */
+function showCtxMenu(items, x, y, opts = {}) {
             hideCtxMenu();
             const html = items.map(it => {
                 if (it.separator) return '<div class="ctx-separator"></div>';
@@ -53,16 +61,23 @@ function showCtxMenu(items, x, y) {
                 return `<div class="ctx-item${danger}${active}" data-ctx-key="${esc(it.key || '')}">${it.icon || ''}<span>${esc(it.label)}</span>${arrow}</div>`;
             }).join('');
             ctxMenu.innerHTML = html;
+            const cols = Math.max(1, Math.min(3, Number(opts.columns) || 1));
+            ctxMenu.classList.toggle('is-multi', cols > 1);
+            ctxMenu.style.setProperty('--ctx-cols', String(cols));
             ctxMenu.style.left = '0px';
             ctxMenu.style.top = '0px';
             ctxMenu.classList.add('visible');
 
-            /* 修正位置防止溢出 */
-            const rect = ctxMenu.getBoundingClientRect();
+            /* ★ 尺寸必须读 offsetWidth/offsetHeight，不能读 getBoundingClientRect()：
+               .ctx-menu 的进场是 transform: scale(0.95)→1，而这一行紧跟在 classList.add('visible')
+               之后，transition 还没跑，getBoundingClientRect() 拿到的是**缩放后**的盒子，
+               比真实尺寸小 5% → 夹不准，菜单底部照样溢出屏幕（默认模式 10 项时实测 bottom=521 > vh=520）。
+               offset* 是布局盒，不受 transform 影响。 */
+            const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight;
             const winW = window.innerWidth, winH = window.innerHeight;
             let px = x, py = y;
-            if (px + rect.width > winW - 8) px = winW - rect.width - 8;
-            if (py + rect.height > winH - 8) py = winH - rect.height - 8;
+            if (px + w > winW - 8) px = winW - w - 8;
+            if (py + h > winH - 8) py = winH - h - 8;
             ctxMenu.style.left = Math.max(8, px) + 'px';
             ctxMenu.style.top = Math.max(8, py) + 'px';
 
@@ -117,14 +132,16 @@ function showCtxSubmenu(items, parentEl) {
             const parentRect = parentEl.getBoundingClientRect();
             ctxSubmenuEl.style.left = '0px';
             ctxSubmenuEl.style.top = '0px';
-            const subRect = ctxSubmenuEl.getBoundingClientRect();
+            /* 同 showCtxMenu：测量发生在 classList.add('visible') 之前，
+               基态的 transform: scale(0.95) 会让 getBoundingClientRect() 小 5%，夹不准。 */
+            const subW = ctxSubmenuEl.offsetWidth, subH = ctxSubmenuEl.offsetHeight;
             let px = parentRect.right - 4;
             let py = parentRect.top - 5;
-            if (px + subRect.width > window.innerWidth - 8) {
-                px = parentRect.left - subRect.width + 4;
+            if (px + subW > window.innerWidth - 8) {
+                px = parentRect.left - subW + 4;
             }
-            if (py + subRect.height > window.innerHeight - 8) {
-                py = window.innerHeight - subRect.height - 8;
+            if (py + subH > window.innerHeight - 8) {
+                py = window.innerHeight - subH - 8;
             }
             ctxSubmenuEl.style.left = Math.max(8, px) + 'px';
             ctxSubmenuEl.style.top = Math.max(8, py) + 'px';

@@ -80,9 +80,12 @@
 
 ## 绿色版打包（便携免安装，方案 B，已落地）
 
-- 交付物：`dist/AriaPortable/` + `dist/Aria-Portable.zip`；双入口 `Aria.exe`（Tauri 桌面窗口）与 `启动Aria.bat`（网页版）。
+- 交付物：`dist/AriaPortable/` + `dist/Aria-Portable.zip`；双入口 `Aria.exe`（Tauri 桌面窗口）与 `StartAria.bat`（网页版）。
 - 重打包步骤与踩坑清单见 `docs/打包分发方案.md` §0（frozen 路径 / _find_node 三级解析 / QQ 去 npx / vendor 复制必校验 / bat 纯 ASCII / 目录名必须 ASCII）。
 - 复现：`pyinstaller --onefile --console --name server --paths . server.py` + `cargo build --release`（src-tauri）→ 组装 → `tar -a -c -f`。
+- ⚠ **`src-tauri/tauri.conf.json` 的 `build.frontendDist` 必须是 `dist-stub`，别「优化」回 `../web`**（2026-09-26 实测）：两个窗口的 URL 都是 `http://localhost:8001/...`，前端由 server.exe 提供，内嵌那份从未被加载；指回 `../web` = 把 145MB 静态资源（含 120MB 字体）压缩塞进二进制，Aria.exe 从 9.8MB 涨回 96MB。
+- ⚠ **`web/src/font/` 里被 `.gitignore` 掉的是作者本机私人字体（实测 89.4MB），不属于应用**：`build_portable.bat` 默认只把 git 跟踪的那批放进主包，其余单独打成 `dist/AriaFonts-Extra.zip`（两包合起来 = 磁盘上的全部字体，零丢失）。肥包模式：`build_portable.bat --with-local-fonts`。字体选择列表就是扫这个目录（`215-multilang-fonts.js`），所以「包里有 = 界面里可选」。
+- ⚠ 该脚本必须在**纯 cmd/资源管理器**环境跑：从 git-bash 里调 `cmd //c build_portable.bat` 时 PATH 会抢走 `find.exe`/`timeout.exe`（实测 `timeout: invalid time interval '/t'` + GNU find 扫整盘），计数类判断会失真。
 
 ## 约束速查（硬性）
 
@@ -90,9 +93,18 @@
 2. 前端只维护 `web/src/app/*.js` 分片；原单文件 `web/src/app.js` 已删除，勿恢复、勿按旧行号定位。
 3. 端口固定：8001(server) 3100/3200/3201(vendors) 18089(shazam)。其中 **8001 默认只绑
    `127.0.0.1`**，`--lan` 才绑 `0.0.0.0`（见上方「关键约定」）。
-   ⚠ 已知残留：三个 vendor（3100/3200/3201）由第三方代码自行 `app.listen(port)`（未传 host
-   参数，也不读 `HOST` 环境变量，见 `qq-music-api-node/src/server.ts:59`），**即使不开 --lan
-   仍绑 0.0.0.0**。要彻底收口需经 `patches/` 给三个 vendor 打 host 补丁，属未完成项。
+   ✅ 三个 vendor 的监听收口（2026-09-26 已修，别再写「未完成项」）：第三方代码自行
+   `app.listen(port)`，不传 host 也不读 `HOST`。**实测默认绑的是 `::`（IPv6 任意地址），
+   比原先记的「绑 0.0.0.0」更宽**。做法是 `selfhost_service.py` 在 spawn 时注入
+   `NODE_OPTIONS=--require scripts/vendor-loopback-guard.cjs`，把「只给端口」和
+   显式 `0.0.0.0` 两种形态改到 `127.0.0.1`；显式给了别的 host 一律尊重。
+   ⚠ **不要改成 `patches/*.patch`**：那需要精确上下文行号，而 `_eval/` 是 clone 来的
+   第三方仓库，上游一改行号补丁就**静默不生效**——安全修复以这种方式失效比不修更糟。
+   因此配套了一个黑盒探针 `selfhost_service.probe_vendor_exposed()`：拿本机非回环 IPv4
+   去连 vendor 端口，连得上就是还在裸奔，结果进 `status_all()` 的 `exposed` 字段。
+   回归 `python -m unittest tests.python.test_vendor_loopback_guard`（已进 CI）——
+   它同时测「不加守卫必须报暴露」，否则探针恒 False 时后面所有结论都没意义。
+   要故意对局域网开放：设 `ARIA_VENDOR_HOST=0.0.0.0`（或 `off` 完全跳过注入）。
 4. 歌词/榜单/收藏滚动容器为共享元素时，视图切换必须重置 scrollTop。
 5. 情感词着色：桌面歌词只允许「扫过/进度层」上色；主界面保持渐变填充从左到右。
 6. 全局字体/主题：`--theme-color`、`--dtk-hl` 等变量，busy 控件不得写死主题色。
@@ -132,7 +144,11 @@
       分片关注点的门面，还重复定义了 PLAY/PAUSE_ICON_PATH；接管=重写播放主链路，
       而主链路活路径目前无测试覆盖，理由写在其文件头）。
     门禁 A（`no-restricted-imports`）禁止存活模块 import 未解冻的那些。复扫：
-    `node scripts/audits/module-reachability.mjs`（当前 123 模块 / 不可达 4）。
+    `node scripts/audits/module-reachability.mjs`（2026-09-27 实测 161 模块 / 不可达 4）。
+    ⚠ 它的 import 抽取曾把**副作用 import 整条吃掉**（`[\s\S]*?` 越界撞到下一条 `from`），
+    于是只被 `import 'x.js';` 引用的模块（实测 `utils/numberStepper.js`）被误报成影子模块，
+    不可达数 4→5。现已抽成 `scripts/audits/lib/import-scan.mjs` 并由
+    `tests/js/test_module_reachability.js` 钉住——**门禁报假阳性比漏报更糟**：人会照着它删代码。
     ⚠ **嵌套目录模块的 import 深度**（2026-09-25 实测）：`core/pvEngine/` 这类二级目录里
     引 `services/log.js` 必须写 `../../services/`——写错深度不会报控制台错误，而是整条
     静态 import 链**静默死亡**（PVRendering 曾因此把 PV 全家 + 291-phone-remote 一起带死，
@@ -201,11 +217,16 @@
    「更多 → 取链详情」全靠它。复扫（两个计数必须相等，注意函数边界——同文件另一个
    `fetchPlayUrlForPreload` 也有 14 处 `playUrl =`，那是**预加载下一首**的链，故意不埋点，
    埋了角标会显示成还没播的那首）：
-   `awk 'NR>=404 && NR<=800 && /playUrl =/{a++} NR>=404 && NR<=800 && /recordResolveHit/{b++} END{print a,b}' web/src/app/175-track-index-online.js`
-   （2026-09-25 基线：19 19）。
-   三个实测坑：① **不要挂 `.player-controls-wrapper`**——`view-lyrics`/`view-pv` 等模式下整列
-   `display:none`，元素存在但尺寸 0×0，`getBoundingClientRect()` 才发现的；常显面只有底栏
-   `.bottom-control-bar`，且它自己在 `view-pv` 等模式也有样式分支，所以详情必须另留菜单入口。
+   `awk 'NR>=411 && NR<=1100 && /playUrl =/{a++} NR>=411 && NR<=1100 && /recordResolveHit/{b++} END{print a,b}' web/src/app/175-track-index-online.js`
+   （2026-09-26 基线：19 19；区间 = `loadOnlineSong` 起于 411 行，改过本分片后记得同步行号）。
+   三个实测坑：① **两面都不常显，必须各挂一份**——`view-lyrics`/`view-pv`/`view-dimension`/
+   `view-tunnel` 下 `.player-controls-wrapper` 整列 `display:none`（元素存在但尺寸 0×0，
+   `getBoundingClientRect()` 才发现的），而 **默认（cover）模式下反过来**：`.bottom-control-bar`
+   只有那四个视觉模式 + neon/letterpress 有 `display:flex` 规则，**cover 没有对应规则 → 整条底栏隐藏**
+   （此前这里写的「常显面只有底栏」是反的，2026-09-26 实测纠正）。所以角标有两枚
+   （底栏 `#playSourceBadge` + 主信息列 `[data-play-source-badge]`，由 `275-play-source.js`
+   按属性一次刷新，主信息列那枚用 `.song-source-badge-slot` 只在 view-cover 显示以免重复），
+   入口也有两处（底栏 + 「更多 → 取链详情」）。
    ② **解析池的 `quality` 不是音质**，它是 provider 的档位标识（实测值 `'song_play_url'`），
    `qualityLabel()` 用 `QUALITY_TOKEN_RE` 白名单挡掉，挡不住就退回容器名 `ext`，宁可保守。
    ③ **从 URL 猜音质只能匹配 pathname**：QQ 直链的 `vkey` 是 hex 签名，实测出现过以
@@ -271,3 +292,232 @@
     「合成行不得进下载」「dtk 窗口出 fill」）。
     另：`ensureWordTiming` 是**逐行**补的（混合形状里带真实节拍的行原引用保留），
     全组都真实时才返回原数组引用——调用方靠引用相等判「没动过」，别改成总是新建。
+
+18. **频谱逐字对齐在前端做，结果按「歌曲 × 歌词签名」缓存（2026-09-26 确立）。**
+    约束 17 的摊平只是近似节拍；`core/wordAligner.js`（纯函数）用音频包络把每个字起点
+    拉到真实发声处，`services/wordAlign.js` 负责 WebAudio 解码 + 缓存 + 回填。
+    **为什么不用 stable-whisper/强制对齐**：约束 1 要求后端纯标准库（PyInstaller 绿色包，
+    用户机器没有 Python/Node），而 stable-whisper 要拖 torch + 模型（GB 级）；
+    WebAudio `decodeAudioData` 已能解本工程实际用到的 FLAC（`chorusDetector.js:693` 早就在这么干）。
+    代价说清楚：**只能定位能量起始、认不出音素**，精度低于强制对齐；拖腔内部仍按权重摊。
+    三个要点：
+    ① 触发点仍锚在 `renderLyrics`（`maybeAlignLyrics`），**不要**回到各加载点分别接。
+    必须有 `_alignTried` 键集：音频没给出信息时 `applyAlignment` 会把那几行标回
+    `synthesized`，`needsAlign` 于是仍为真，不记就会「重渲染→再对齐」死循环（实测靠它收敛到 2 次渲染）。
+    ② 缓存键必须含**歌词签名**（`lyricSignature` 把行级 start 也进哈希）：播放直链是短时签名的
+    （QQ vkey 几分钟失效）不能当键；而同一首歌换歌词源时文本可能一样、行时间戳不一样，
+    只按歌曲键会把上一份歌词的对齐结果贴到这一份上。store 走 `aiCache.js` 的
+    `wordTimingCache`（`LyricsPlayerDB` v5，该文件是唯一属主，别处不得再 `indexedDB.open`）。
+    ③ 对齐成功的行要**清掉** `wordTiming` 标记（`applyAlignment` 里按
+    `maxDeviationFromEvenSplit >= 60ms` 判"音频确实给出了信息"），否则 `realWordsOf`
+    仍当它是假的，下载歌词和 AI 喂词两条路都拿不到对齐成果（与约束 17 互为反向）。
+    退化是设计的一部分：`alignLine` 在帧数不足或包络全 0 时返回 `evenSplit`，
+    所以任何情况下都不会比约束 17 的摊平更差——这条有专门的测试钉住。
+    复扫 + 回归：`node --test tests/js/test_word_aligner.js`（12 条，合成 PCM 用 LCG 保证可复现）、
+    `tests/js/test_word_align_service.js`（6 条）、`python tests/test_word_align.py`（15 条 E2E，
+    含「FLAC 真能解」「起点明显偏离等分」「二次命中缓存且条数不涨」「UI 路径不死循环」；
+    `local_music/` 在 .gitignore 里，无音频时整脚本 SKIP 不报红）。
+19. **音源标识只有一张别名表，取链分支按歌曲判定不按全局（2026-09-26 确立）。**
+    同一平台在各处的字段值不一样：搜索页签用 `'tencent'`、自建 QQ 服务返回 `'qq'`、网易有
+    `'wangyiyun'/'ne'/'163'`、酷狗有 `'kg'`。`services/playSource.js` 的 `platformKeyOf()` 是唯一
+    登记处，`resolveSourceOf(songInfo, currentSource)` 是取链分支的唯一判据。
+    起因是三个用户反馈同一个根因：`loadOnlineSong` 的 kugou/kuwo 分支写成
+    `currentSource === X || songInfo.source === X`，而 **tencent/netease 两个分支只查全局**，
+    全局默认停在 `'tencent'` → 网易/酷狗的歌被塞进 QQ 分支，拿网易 id 去查 QQ mid，
+    整条链空转（= 加载慢），标题又因为读 `songInfo.song`（自建条目只有 `name`）显示「未知歌曲」，
+    历史再按 `source:id` 建键于是记成两遍。四条硬约定：
+    ① **分支判据用 `resolveSourceOf`，不要写回 `currentSource ===`**：`currentSource` 会被搜索页签
+    和预加载并发改写（175 里 12 处赋值点），拿它判分支等于拿"上一个界面"决定"这一首歌"。
+    ② **只认 `RESOLVE_SOURCES` 那四个**：`'local'/'selfhost'`/拼写错的值必须退回全局而不是硬用，
+    否则会掉进末尾的 `else`（未知音源 → vkeys）——比原来的错法更糟。`preloadNextSong` 反过来：
+    它只做别名归一（`platformKeyOf`）不做兜底替换，因为 `source:'local'` 原样传下去才是"不去抢在线直链"。
+    ③ **标题/歌手一律走 `lyricIndex.js` 的 `titleOf()`/`artistOf()`**（该模块零 import，无环）。
+    `loadOnlineSong` 入口已把 `songInfo.song`/`singer` 就地补齐一次，所以函数体内那二十多处
+    `songInfo.song` 是安全的——**新增字段名不同的平台时改这两个归一函数，不要改调用点**。
+    ④ **自建条目必须带 `mid`（QQ）/ `hash`（酷狗）**，不能只塞进 `id`：`258-rankings.js` 三处
+    「日推条目 → 播放条目」的映射原先各写一份且把它们全丢了，`loadOnlineSong` 只能拿 mid 当
+    数字 id 去 `_fetchQQMeta` 反查（多一次往返），酷狗条目更是直接缺标识（= 点了没反应）。
+    现在收敛成 `toPlayItem()` 一个函数。复扫：
+    `grep -rn "source: s.source }" web/src/app` 应为空、
+    `grep -rn "currentSource === '" web/src/app/175-track-index-online.js` 只许出现在注释里。
+    回归：`node --test tests/js/test_play_source.js`（22 条，含别名表与分支判定 5 条）、
+    `python tests/test_source_routing.py`（17 条，含「trace.songKey 证明走了哪条分支」）、
+    `python tests/test_daily_recommend_click.py`（8 条，用假日推接口喂，不依赖登录与网络）。
+20. **背景自适应一律用感知亮度，且必须算「实际合成出来的那一层」（2026-09-26 确立）。**
+    `utils/colorUtils.js` 的 `srgbToLinear` / `relativeLuminance` / `contrastRatio` / `pickInk`
+    是全仓**唯一**一份亮度实现。起因是「右上角三大金刚键不随背景变色」：旧 `updateBrandColor`
+    写的是 `(0.2126R+0.7152G+0.0722B)/255` 再比阈值 `0.48`，两个错叠在一起——
+    ① 那是把 **sRGB 编码值当光强**加权，没有 gamma 解码：中灰 128 算出 0.504 判成"亮"，
+       真实相对亮度只有 0.216（`tunnelEngine/TunnelEngine.js:107`、`283-readability.js:129`
+       是同一份错公式的另外两个副本，改它们要先重调各自阈值，本次没动）；
+    ② 完全忽略 `.blur-background` 的 `brightness(0.35)`——按钮底下的实际颜色比封面主色暗得多，
+       于是白封面被判成亮背景 → 深色墨 → 正是用户看到的"黑按钮贴在暗背景上看不见"。
+    四条硬约定：
+    ① **算亮度要按 z 序自下而上合成**：`body::before` 不透明 #000 地板 → `.blur-background`
+       （主色 × brightness）→ `.color-overlay`（未压暗的主色，alpha 写在 backgroundColor 里）。
+       只算主色 × brightness 会漏掉叠色那一档。
+    ② **brightness 一律读 `getComputedStyle(...).filter`，不要抄第二份"各模式亮度表"**：
+       `view-letterpress/neon/tunnel/dimension/pv/flyin/wordcloud` 全用 `!important` 把自己钉死
+       （`viewmode.css:369` 钉 .12、`:730` 钉 .1），抄表必漏（旧版就漏了 flyin/wordcloud），
+       而且设置页拖滑块后就不一致了。**computed 是 `none` 时退回 `appSettings.background.brightness`**
+       ——软件渲染设备上 `modals.css:1677` 会把 filter 打成 `none !important`，
+       压暗改由预烘焙图承担（`shouldUsePrebakedBlur()` 与那条降级同一组条件），
+       而预烘焙用的正是 appSettings 那对值，所以这个退回口径和屏幕上是同一件事。
+    ③ **层的可见性读 `.visible` 类，不要读 computed opacity**：
+       两层都有 `transition: opacity .8s/.5s`，交叉淡入中途读到 0.0x 会把背景算成纯黑，
+       而且淡入完成时没有任何属性变更再触发观察器，会**永久**停在错的那一边
+       （第一版测试假失败就是这么找出来的）。
+    ④ **取墨用 `pickInk()` 的两墨对比度比较，不用阈值**；迟滞的写法只有一个对的：
+       `if (currentLight && lead < 0 && lead > -margin)`——写成 `if (currentLight && lead < margin)`
+       会让"很亮的背景"仍被判成亮墨（第一版就写错了）。转场必须走动效令牌
+       （`.tb-btn` 用 `--t-base`、品牌字用 `--t-slow`），硬切会看着"跳一下"而不是"适应了"。
+    复扫（`0.2126` 的副本数只许减不许增）：
+    `grep -rn "0\.2126" web/src --include=*.js` → 除 `utils/colorUtils.js` 外只剩
+    `TunnelEngine.js:107` 与 `283-readability.js:129` 两处历史副本。
+    回归：`node --test tests/js/test_color_contrast.js`（7 条，含"中灰 128→0.216 不是 0.502"
+    与迟滞边界）、`python tests/test_titlebar_contrast.py`（23 条 E2E，覆盖白封面默认档必须
+    保持亮墨、拉满亮度必须翻暗墨、七个自暗舞台、降级退回 appSettings、无主色兜底）。
+21. **弹层定位测量一律用 `offsetWidth/offsetHeight`，长菜单要能变列（2026-09-26 确立）。**
+    `80-context-menu.js` 的溢出夹取原先读 `getBoundingClientRect()`，而这一行紧跟在
+    `classList.add('visible')` 之后——`.ctx-menu` 基态是 `transform: scale(0.95)`，transition 还没跑，
+    量到的是**缩放后**的盒子，比真实尺寸小 5% → 夹不准，菜单底部照样顶出屏幕
+    （默认模式「更多」补到 10 项后实测 bottom=521 > vh=520）。`offset*` 是布局盒，不受 transform 影响。
+    同一条测量规则也修了二级菜单（它在 add('visible') 之前测量）。
+    列数走 `showCtxMenu(items, x, y, { columns: 2 })` + `.ctx-menu.is-multi`（CSS 网格，
+    分隔线 `grid-column: 1/-1` 跨整行，≤560px 退回单列 + 滚动），**不要在调用方手抄 grid 样式**。
+    回归：`python tests/test_cover_mode_entries.py`（逐项判 `getBoundingClientRect()` 是否完整落在视口内，
+    而不是只看容器——容器有 `overflow:auto` 时"看起来没溢出"但底下的项要点开滚动才点得到）。
+22. **预设色板只有一份，且"丑"是可以量出来的（2026-09-26 确立）。**
+    `web/src/config/themePalette.js` 是唯一登记处：`ACCENT_PRESETS`（key/zh/en/hex）、
+    `DEFAULT_ACCENT`、`PALETTES`（accent / accent+white / text / dim 四种 `data-palette`）、
+    `isPresetAccent()`、`CUSTOM_SWATCH_SVG`。起因是用户「预设主题色好丑」。
+    两个维度一起处理：
+    ① **收口**——同一串 6 个色值原先在 `index.html` 手抄 17 份（每份还内联同一个 12 路径彩虹
+       SVG，那玩意儿复制了 15 遍），`202-settings-appearance.js` 里为判断"是不是预设色"又抄第
+       18 份，首跑向导 `000-tooltip.js` 更有第 19 份**且 6 个色值完全不同**——用户在向导里选
+       「晴空蓝」，进设置页那颗亮的是「自定义」且再也点不回预设。现在 HTML 只写
+       `<div class="setting-color-row" data-var="…" data-palette="accent" data-active="…">`，
+       色值一颗都不出现在 HTML，由 `210-color-multilang.js` 的 `hydrateColorRows()` 在模块
+       import 时生成（deferred module，DOM 已解析）。
+       ★ 点击**只有 210 里那一颗 document 级委托**：目标由行的 `data-var` + 是否处在
+       `[data-mode-section]` 里决定（模式行 → `appSettings.modeSettings[mode].<field>`，
+       否则全局），写入再统一落到 `200` 的 `writeColorField` → `syncPreviewToMain`。
+       **不要再给 `.color-swatch` 挂节点级 click**——`hydrateColorRows` 会整体重写
+       `row.innerHTML`，绑在旧节点上的监听当场蒸发，而且旧写法靠 `getElementById(容器 id)`
+       找容器，重构把 id 换掉时是**静默**失效（约束 22 的第一版就静默丢了 17/18 行）。
+       解析不出落点时必须 `logCatch('colorMultilang', …)`，不许 `if (!container) return`。
+       收益：index.html 从 242KB 降到 199KB。
+    ② **可测的设计契约**——旧 6 颗全是 `S=1.00` 的纯色（`#a8ff51` 荧光绿、`#ff8aff` 桃红），
+       且金色 45° 与橙色 27° 只差 18°，六颗里两颗几乎同色。新色板按三条硬指标挑：
+       饱和度 ≤ 0.75、对面板底 `#20222e` 对比度 ≥ 5.4:1（强调色要当文字用）、
+       色相两两间隔 ≥ 28°。`tests/js/test_theme_palette.js` 的 B1–B5 钉住这三条，
+       B5 还反向验证旧色板确实过不了——**下次改色板不用投票，跑不过契约就是不合格**。
+    三个踩过的坑：
+    ① 主题色有**两种写法**：十六进制和 `rgba(var(--theme-color-rgb, 255,204,51), α)`。
+       只换十六进制会在同一条规则里留下两个金色（`pv-tunnel.css:545` 实测就是
+       `color:#E8BE6A` 配 `text-shadow:rgba(255,204,51,.85)`）。`base.css:3` 的
+       `--theme-color-rgb` 声明也必须跟着改。复扫：
+       `grep -rn "255, *204, *51" web/src --include=*.css --include=*.js`
+       只许剩 `201-settings-ai.js`（高亮笔 marker）与 `DimensionBackground.js`（视觉器自己的能量光）
+       两处装饰色，`#ffcc33` 只许剩 `PVEngine.js:138`（dream 预设的 accent，和 `#ff3366`/`#00ffcc` 并列）。
+    ② **别把装饰色当主题色改**：视觉器/PV 预设自己 palette 里的金色是作品的一部分，不跟主题走。
+    ③ 用脚本批量改写 HTML 结构时，**闭合标签**是头号事故点：第一版 18 行全少了 `</div>`，
+       症状完全不在色板上——后面每个元素嵌套深一层，`#sleepTimerOverlay` 掉进 `.settings-group`
+       变成 0×0，睡眠定时器面板整个看不见，而"水合出色块了吗"这类断言照样全绿。
+       现在两侧各有一道不变量：Node 侧数 `<div>`/`</div>` 是否配对，
+       浏览器侧断言所有 overlay 仍是 `document.body` 的直接子元素且面板宽度 > 200px。
+    回归：`node --test tests/js/test_theme_palette.js`（12 条）、
+    `python tests/test_theme_palette_ui.py`（40 条，含水合/幂等/点击生效/结构完整性，
+    以及**逐行**点一遍 18 个 `[data-palette]` 行断言各自落点真的变了——第 4 节那种
+    「只点还留着 id 的那一行」的写法等于没测）。
+23. **会 await 用户点击的确认框，不得挂在没有手势的自动路径上（2026-09-26 用户确立）。**
+    开机预加载（`180-boot-config` → `175 loadOnlineSong(preloadOnly)` → `triggerAiAnalysisIfNeeded`）
+    在页面加载后几秒自己调到 AI，而 Gemini 走反代时那条路上挂着一个 `await showGlassConfirm`
+    的隐私确认框——用户什么都没点，弹窗就杵在屏幕中央拦住整页。判据两层，别只做一层：
+    ① 调用点自己声明「这条路径永远不该问」：`triggerAiAnalysisIfNeeded({ silent: true })`；
+    ② 机制兜底：`201-settings-ai.js` 的 `userActivated()` 读
+    `navigator.userActivation.hasBeenActive`，false 就不弹、只留一条 `logWarn`，**且不发任何数据**。
+    有了 ② 之后，新增自动触发路径（手机遥控 `291`、交叉淡入预载、以后的定时器）默认静默，
+    不必逐个补标志。宿主不支持该 API 时 `userActivated()` 退回 true，此时只剩 ①。
+    跳过只丢这一次分析，不丢功能：用户点「进入」或点任何一首歌都会重新触发并正常弹一次。
+    ★ 两个反直觉点：**Playwright/CDP 的 `evaluate` 自带 userGesture**，跑第一行脚本时页面就已经
+    「有手势」了（实测首读 `hasBeenActive === true`），所以测试里必须用 `add_init_script` 把它
+    桩成可控值，否则等于没测无手势分支；**Tab/keydown 算激活事件，mousemove 与 wheel 不算**。
+    回归：`python tests/test_ai_privacy_boot.py`（5 条：无手势静默且确实走到闸门 / 有手势必须弹 /
+    取消不留 consent 标记 / 无手势时也不许偷写标记 / silent 调用点有手势也不弹）。
+24. **「更多」菜单的条目名只取 `aria-label`，开关态必须画出来（2026-09-26 用户确立）。**
+    右上角按钮被藏进「更多」后，条目文案由 `292-toolbar.js` 的 `labelOf()` 决定：
+    **只读 `aria-label`（短名）**。`data-tooltip` 是给人看的长说明（会带
+    「（跟播其它播放器）」「· 已开启（点击关闭）」这类从句），照它取名就撑出一整行
+    ——用户圈出来的正是这条。所以开关类按钮的分工从此固定：长说明进 `data-tooltip`、
+    短名进 `aria-label`、状态走 `.on` + `aria-pressed`（283 / 285 已按此改回去，
+    原先它们把整句 tip 也写进 aria-label，读屏还会把「已开启（点击关闭）」重念一遍）。
+    选中态全仓只有一份声明：`menus.css` 的 `.ctx-item.active-rate, .ctx-item.is-on,
+    .more-item.is-on`（主题色底 + 主题色字，和倍速那颗同一条规则），勾是**内联 SVG**
+    （`292` 的 `CHECK_ICON`）。★ 不要用 ✓ 这类 unicode 字符当图标或选中标记（用户明确要求：
+    字体缺字就掉豆腐块，线宽永远对不齐旁边的图标）。新增开关按钮请复用 `.on`，
+    别再引入第五个类名（现状：`.on` / `.is-active` / `.active-dl` / `aria-pressed` 已由
+    `isOnOf()` 一处收口）。
+    回归：`python tests/test_toolbar_customization.py` 第 6 节（短名 / 长说明改挂悬停 /
+    开与关两种态各断言一次）。
+    把 `201` 的闸门条件改成 `if (false && …)` 跑一遍确认它真的报红——这个测试文件是这么验证过的。
+
+
+24. **「动效强度」滑杆只叠一层，且写入侧读原样表（2026-09-27 确立）。**
+    生效值 = 档位 vfx ⊕ 滑杆 ⊕ 手动单项微调，顺序写在 `app/180-boot-config.js` 的
+    `getVfxOverrides()` 一处（数学在 `core/vfxIntensity.js`，纯函数）。两条硬约束：
+    ① **手动在最上层**——滑杆不得覆盖用户手调过的开关（那是数据丢失不是重置），所以滑杆值
+      存 `appSettings.interface.vfxIntensity` 而**不写进** `perf_vfx_overrides_v1`；
+    ② `setVfxOverride` 的基底必须是 `getManualVfxOverrides()`（原样表），不能是合并视图——
+      用错就会把滑杆的 10 个推导值冻结进手调表，滑杆当场失效（E2E 实测复现过）。
+    两个「恢复推荐/出厂配置」按钮必须同时调 `Aria.__resetVfxIntensity()`，否则按钮撒了谎。
+    未设定的语义是 **null 而不是 0**（`Number(null) === 0`，混同等于每次启动把用户拖到极简档）。
+    回归：`node --test tests/js/test_vfx_intensity.js`（11 例）+ `python tests/test_vfx_intensity_ui.py`
+    （23 例，含变异验证：摘叠加→4 条红、基底取错→`manual-table-stays-minimal` 红、摘重置钩子→`factory-reset-clears-intensity` 红）。
+
+25. **逐字高亮渲染的性能与形态铁律（2026-09-27 用户确立，两轮实测教训）。**
+    默认/歌词模式英文歌卡顿，两轮修复史与硬边界：
+    ① **NaN 双端钳位（2026-09-26）**：短词/单字符词 `duration < charCount ms` 时
+      `20-lyrics-render.js` 词内切字符 `Math.round` 产生 charStart==charEnd →
+      `57-wordcloud-camera.js` 除零 pct=NaN → lastWordProgress(Map) 以 NaN 为值永 miss
+      （NaN!==NaN）→ 每帧无条件重写 mask。修法双端：渲染端 charEnd 钳到 charStart+1；
+      消费端 end==start 兜底 pct 0/100。**动切字符时间轴的代码必须保持这两处钳位**。
+    ② **整词渲染被用户否决（2026-09-27）**：曾把词云的拉丁整词上采样（`isLatinWholeMode`）
+      扩到歌词/默认三模式治卡顿（DOM 572→120，headless 实测 max 485→85ms），但
+      **逐字符上浮与情感词逐字符高亮是刻意设计**，整词上浮/整词直显不可接受——已撤回，
+      整词路径仍仅限 view-wordcloud。不要再提。
+    ③ **`.done` 不得切 mask（2026-09-27）**：每词唱完瞬间把 `mask-image` 切成 none 会触发
+      整层重栅格化（英文每秒唱完 2-4 词）。现行做法：mask 常驻，pct>=100 时 JS 写
+      `--reveal: 120%` 让前沿完全出界（渐变起点 106% 已超元素宽），视觉等价零切换。
+      主画面（57 + base.css）与预览（previewEngine + appearance.css）同机制。
+    ④ **切行不得逐词重置旧行（2026-09-27）**：旧实现切行瞬间对旧行全部字符写
+      `--reveal:0%` + 移除 done/delete 缓存——英文一行 40-60 元素同帧几十次 mask 写入，
+      是切行巨刺（实测 485ms）的直接来源。现行做法：旧行只摘 active class，
+      **保留满高亮**（Apple Music 风格）；该行再次成为活动行时主循环第一帧按当前 t
+      计算 pct，残留值与新值不同必然写入，无停留风险。
+    ⑤ **headless 测量有两坑**：playwright 无 GPU，mask 栅格化瓶颈测不出来（EN≈ZH 是假象，
+      只能测 JS 侧）；headless 页面 boot 会恢复上次播放并异步加载**真歌词**覆盖测试注入
+      （`globalThis.lyrics` 变别人家数据，DOM 词元数对不上），必须先预热耗尽恢复任务
+      或用 `globalThis.lyrics === myLines` 守卫校验。测量脚本模板：`scratch/prof_modes.py`。
+    ⑥ **现场诊断手段**：诊断页「帧时（实时采样）」的 `lyricsFx` 行
+      （57 registerLoop FX_PROBE_SOURCE）= 默认/歌词模式滚动循环帧时中位/p95/max；
+      与内置心跳对照可区分「本循环 JS 瓶颈」与「合成器瓶颈」。
+
+26. **切歌竞态守卫：迟到回调必须带「失败时刻的代际」（2026-09-27 用户确立）。**
+    `playbackGeneration` 在三个切歌入口递增（95 loadTrack / 135 loadPlaylistTrack 本地
+    分支 / 175 loadOnlineSong），此后所有异步回调凭 `gen === playbackGeneration`
+    判定自己是否过期。两条硬规则：
+    ① **失败重试的代际必须在「失败发生点」捕获，不能在安排重试时捕获**。
+      `135 handlePlayFailure(songInfo, isFromPlaylist, failGen)` 的第三参由调用方传
+      自己作用域里的 gen（175:802/1023 取链失败与加载失败、135:245/266 本地分支）。
+      此前 handlePlayFailure 内部才捕获 gen——A 的失败回调可能在用户已切到 B 且
+      B 播放数秒后才落地（取链多源探测/加载超时迟到），捕获到的是 B 的代际，
+      重试校验必然通过 → loadOnlineSong(A 重试) gen++ 把 B 顶掉。实测症状：
+      「另一首歌都放出来几秒了，结果又切回去了」。新增任何失败/超时驱动的
+      自动动作，一律传失败时刻的代际，禁止「回调落地时再读当前值」。
+    ② **切歌必须取消进行中的 AI 分析**：统一调 `globalThis.cancelAiAnalysis()`
+      （定义在 95-track-loading.js，abort + `_manualCancel` 标记 + 复位
+      isAiAnalyzing/currentAiAbortController；操作对象是 201-settings-ai 的
+      裸全局分析套件）。三个 gen++ 入口都要调——此前只有 175 有内联取消，
+      本地路径切歌后旧歌的 AI 分析会一直跑到出结果，用户得手动停止。
+      新增切歌入口（遥测/远控/定时器等）时，gen++ 与 cancelAiAnalysis 必须成对出现。

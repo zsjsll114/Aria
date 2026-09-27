@@ -16,6 +16,7 @@ import { showToast } from './155-random-toast-match.js';
 import { saveSettings } from './180-boot-config.js';
 import { renderLyrics } from './20-lyrics-render.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
+import { updateFlyinTranslation } from './56-playback-misc.js';
 import { state } from '../infrastructure/state.js';
 import { logCatch } from '../services/log.js';
 
@@ -45,6 +46,8 @@ const ICONS = [
 
 /* 动态拼串的 i18n observer 翻不到（底栏不在 UI_ROOT_SELECTOR 内），按 280 的做法自组 */
 const STR = {
+    /* 短名：只给 aria-label 用（词条已登记进 STATIC_PHRASE_MAP） */
+    name: ['双语排版', 'Bilingual layout'],
     tip: ['双语排版 · 当前：{l}（按 {k} 循环，Shift+{k} 反向）', 'Bilingual layout · {l} (press {k} to cycle, Shift+{k} backwards)'],
     label: [
         ['原文', 'Original'],
@@ -166,6 +169,13 @@ function applyLayout(index) {
         if (Array.isArray(list) && list.length > 0) {
             renderLyrics(list);
             updateLyricsHighlight();
+            /* ★ 2026-09-27：底栏上方的飞入/词云翻译区即时刷新——updateLyricsHighlight
+               只在活动行变化时才调 updateFlyinTranslation（57:1246），切开关不切行时
+               底部区要等到下一行才反映新排版，用户观感就是「按钮没用」。 */
+            try {
+                const ai = globalThis.activeLineIndex;
+                if (typeof ai === 'number' && ai >= 0) updateFlyinTranslation(ai);
+            } catch (e2) { logCatch(TAG, e2); }
         }
     } catch (e) { logCatch(TAG, e); }
     try { saveSettings(); } catch (e) { logCatch(TAG, e); }
@@ -224,7 +234,9 @@ function refreshUI() {
     const tip = tipText(index);
     btn.setAttribute('data-tooltip', tip);
     btn.setAttribute('title', tip);
-    btn.setAttribute('aria-label', tip);
+    /* aria-label 用短名：当前排版已经写在按钮自己的文字里（.bc-text），
+       「更多」菜单条目按 aria-label 取名，整句 tip 会撑出一行（见 292 labelOf）。 */
+    btn.setAttribute('aria-label', fmt(STR.name));
     /* 这首歌既没译文也没音译时，四个态里只有第 0 个可达 —— 按钮按下去不可能有任何变化，
        就该整个收起。原先只查「能不能跳过去」（cycleBilingualLayout 里 skipNone），
        没收尾可见性，于是大量中文歌上摆着一个永远不变化的「原文」，看着就是坏了。
@@ -240,9 +252,9 @@ const BTN_HTML = '<svg class="bc-icon" viewBox="0 0 24 24" width="15" height="15
 
 const STYLE_CSS = [
     'html#ariaRoot .bilingual-cycle-btn .bc-icon{flex:0 0 auto;}',
-    'html#ariaRoot .bilingual-cycle-btn.is-active{color:var(--theme-color,#ffcc33);'
-        + 'border-color:color-mix(in srgb,var(--theme-color,#ffcc33) 40%,transparent);'
-        + 'background:color-mix(in srgb,var(--theme-color,#ffcc33) 13%,transparent);}',
+    'html#ariaRoot .bilingual-cycle-btn.is-active{color:var(--theme-color,#E8BE6A);'
+        + 'border-color:color-mix(in srgb,var(--theme-color,#E8BE6A) 40%,transparent);'
+        + 'background:color-mix(in srgb,var(--theme-color,#E8BE6A) 13%,transparent);}',
     'html#ariaRoot .top-action-buttons .bilingual-cycle-btn .bc-text{display:none;}',
 ].join('\n');
 

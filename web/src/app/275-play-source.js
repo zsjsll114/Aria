@@ -12,21 +12,25 @@ import { logCatch } from '../services/log.js';
 /* 日志等级白名单：等级要拼进 class，不能直接信缓冲里的值 */
 const LV_CLASSES = new Set(['info', 'warn', 'error', 'catch']);
 
-function badgeEl() { return document.getElementById('playSourceBadge'); }
+/* 同一首歌的角标可能有两枚（底栏 + 默认模式主信息列），按属性一次刷新，
+   免得两份渲染逻辑各写一半、切歌后其中一枚停在上一首的来源。 */
+function badgeEls() { return Array.from(document.querySelectorAll('[data-play-source-badge]')); }
 
 function renderBadge() {
-    const el = badgeEl();
-    if (!el) return;
+    const els = badgeEls();
+    if (!els.length) return;
     const info = describeBadge();
-    if (!info) {
-        el.hidden = true;
-        el.textContent = '';
-        return;
+    for (const el of els) {
+        if (!info) {
+            el.hidden = true;
+            el.textContent = '';
+            continue;
+        }
+        el.hidden = false;
+        el.textContent = info.text;
+        el.classList.toggle('is-fallback', !!info.fallback);
+        el.setAttribute('aria-label', info.text);
     }
-    el.hidden = false;
-    el.textContent = info.text;
-    el.classList.toggle('is-fallback', !!info.fallback);
-    el.setAttribute('aria-label', info.text);
 }
 
 /** 打开取链详情面板 */
@@ -92,8 +96,10 @@ export function initPlaySourceUI() {
         try { renderBadge(); } catch (e) { logCatch('playSource', e); }
     });
 
-    badgeEl()?.addEventListener('click', () => {
-        try { showPlaySourceModal(); } catch (e) { logCatch('playSource', e); }
+    badgeEls().forEach(el => {
+        el.addEventListener('click', () => {
+            try { showPlaySourceModal(); } catch (e) { logCatch('playSource', e); }
+        });
     });
     document.getElementById('playSourceCloseBtn')?.addEventListener('click', closePlaySourceModal);
     document.getElementById('playSourceOverlay')?.addEventListener('click', (e) => {

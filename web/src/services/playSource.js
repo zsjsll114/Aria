@@ -56,6 +56,45 @@ export function channelMeta(id) {
     return CHANNELS[id] || CHANNELS.unknown;
 }
 
+/* ★ 平台规范名（todos #15 / BUG「未知歌曲 + 加载慢」）：同一平台在各处的字段值不统一——
+   搜索按钮用 'tencent'，自建 QQ 服务返回 'qq'，网易有 'wangyiyun'/'ne'/'163'，酷狗有 'kg'。
+   取链分支（175）和历史去重（258）都靠它归类，所以只留这一份表。
+   未登记的别名原样返回：新音源接进来时宁可走「未知音源」分支，也不要被错认成 QQ。 */
+const PLATFORM_ALIAS = {
+    tencent: 'tencent', qq: 'tencent', yqq: 'tencent', qqmusic: 'tencent',
+    netease: 'netease', wangyiyun: 'netease', ne: 'netease', '163': 'netease',
+    kugou: 'kugou', kg: 'kugou',
+    kuwo: 'kuwo', kw: 'kuwo',
+    migu: 'migu', mg: 'migu',
+    local: 'local',
+};
+
+/** 任意来源标识 → 规范平台键（'' 表示未知） */
+export function platformKeyOf(source) {
+    const raw = String(source == null ? '' : source).trim().toLowerCase();
+    if (!raw) return '';
+    return PLATFORM_ALIAS[raw] || raw;
+}
+
+/* 有专门取链分支的四个平台。'local' / 'selfhost' / 拼写错的值都不在这里——
+   把它们也当成一个平台，会被 175 末尾的 else 塞进「未知音源 → vkeys」，比按全局判定更糟。 */
+export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo']);
+
+/**
+ * 这首歌该走哪条取链分支。
+ * ★ 必须优先看歌曲自带的 source：全局 currentSource 会被搜索页签、预加载并发改写，
+ *   拿它判分支就把网易的歌塞进 QQ 分支（用网易 id 去查 QQ mid → 全链失败 → 走同名歌兜底 → 慢）。
+ * ★ 歌曲 source 不在 RESOLVE_SOURCES 里时退回 fallback（而不是硬用歌曲值），
+ *   否则 'local' / 拼写错的值会掉进「未知音源 → vkeys」分支。
+ * @param {Object} songInfo
+ * @param {string} [fallbackSource] 一般是模块级 currentSource
+ */
+export function resolveSourceOf(songInfo, fallbackSource) {
+    const fromSong = platformKeyOf(songInfo && songInfo.source);
+    if (RESOLVE_SOURCES.has(fromSong)) return fromSong;
+    return platformKeyOf(fallbackSource) || 'tencent';
+}
+
 /* 解析池的 quality 字段其实是 provider 的档位标识，实测见过 'song_play_url'（API 字段名）。
    所以只认已知档位或纯数字 kbps，其余一律不当音质显示——宁可显示容器格式也不要编造。 */
 const QUALITY_TOKEN_RE = /^(master|atmos|flac|mflac|hires|lossless|exhigh|higher|standard|\d{2,4})$/i;
@@ -87,9 +126,34 @@ export function beginResolveTrace(songKey) {
         hitSeq: 0,
         hit: null,
         failed: false,
+        /* 第几次重试（1 起）与上限；null = 还没重试。角标靠它区分
+           「正在重试」和「彻底失败」——以前这两种情况都写「取链失败」，
+           而重试是指数退避（最长 8s），用户就在这几秒里看到"失败"然后以为没救了。 */
+        retry: null,
     };
     notify();
     return trace;
+}
+
+/**
+ * 清掉本次取链记录，让角标回到「什么都没有」。
+ * ★ 用在 loadOnlineSong 的两个 early-return 上：那两条路径根本没开始取链，
+ *   如果不动 trace，角标就会一直挂着**上一首**的终态（实测：上一首失败后
+ *   点多少首都写着「取链失败」）。宁可空白，也不要指错方向。
+ */
+export function clearResolveTrace() {
+    if (!trace) return;
+    trace = null;
+    notify();
+}
+
+/** 安排了一次重试（还没放弃）——角标该说「重试中」而不是「失败」 */
+export function markResolveRetry(attempt, total) {
+    if (!trace) beginResolveTrace('');
+    trace.failed = true;
+    trace.hit = null;
+    trace.retry = { attempt: Number(attempt) || 0, total: Number(total) || 0 };
+    notify();
 }
 
 /**
@@ -125,6 +189,8 @@ export function markResolveFailed() {
     if (!trace) beginResolveTrace('');
     trace.failed = true;
     trace.hit = null;
+    /* 走到这里说明不再重试了；还在重试中应该调 markResolveRetry */
+    trace.retry = null;
     notify();
 }
 
@@ -187,8 +253,13 @@ function bestQuality(hit) {
  */
 export function describeBadge() {
     if (!trace) return null;
+    /* ★ 三种「还没有结果」的状态要分开说，别一律甩一个「取链失败」：
+       正在取 / 在退避重试 / 彻底失败。用户原先的困惑正是把「正在取」读成了「失败」。 */
+    if (trace.retry) {
+        return { text: `重试中 ${trace.retry.attempt}/${trace.retry.total}…`, tier: 'retry', fallback: true };
+    }
     if (trace.failed) return { text: '取链失败', tier: 'failed', fallback: true };
-    if (!trace.hit) return null;
+    if (!trace.hit) return { text: '正在获取…', tier: 'pending', fallback: false };
     const meta = channelMeta(trace.hit.channelId);
     const platform = meta.platform || sniffPlatform(trace.hit.url);
     const quality = bestQuality(trace.hit);

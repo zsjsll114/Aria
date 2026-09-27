@@ -112,3 +112,7 @@ musicdl_outputs/
 web/src/font/思源*
 web/src/font/*Minecraft*
 web/src/font/宋体*
+
+# ---------- 本地挽救/AI 协作产物（2026-09-27 提交时补） ----------
+.workbuddy-ai/
+aria-salvaged-history.bundle

@@ -253,6 +253,212 @@ test('mergeLyrics：罗马音按行对齐并携带逐词', () => {
     assert.equal(r[0].romajiWords.length, 2);
 });
 
+/* ==================== mergeLyrics 对齐 v2：系统性偏移 ====================
+ * 现场事故（2026-09-26 用户报告）：单调对齐只认「|行时间-译文字间| ≤ 3s」这个**绝对**窗口，
+ * 而真实翻译轨往往带一个**整体偏移**（译文轨重新打点 / 原轨多一条前缀行 / 两份词由不同工具产出）。
+ * 偏移一超过窗口就整片掉覆盖（实测掉到约一半），偏移卡在行距之间时又会让每一行拿到
+ * **上一行**的译文（岔开）。下面这批钉全部针对这两条。 */
+
+/* 造一组「原轨 + 翻译轨」：原轨等距，翻译轨按 offsetOf(i) 相对整体偏移 */
+function makeOffsetCase(rowCount, { spacing = 3000, first = 1000, offsetOf = () => 0, skip = [] } = {}) {
+    const originals = [];
+    const translations = [];
+    for (let i = 0; i < rowCount; i++) {
+        const start = first + i * spacing;
+        originals.push({ start, original: `L${i}` });
+        if (skip.includes(i)) continue;
+        translations.push({ time: start + offsetOf(i), text: `T${i}` });
+    }
+    return { originals, translations };
+}
+
+/* 逐行核对：每行拿到的必须是「自己的」那句译文（T{i}），错配与丢失都算失败 */
+function assertInOrder(r, expected) {
+    assert.deepEqual(r.map(l => l.translation), expected);
+}
+
+test('mergeLyrics：翻译轨整体偏移 +4000ms → 每行拿到自己的译文（旧绝对窗会整体岔开一行）', () => {
+    const { originals, translations } = makeOffsetCase(7, { offsetOf: () => 4000 });
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6']);
+});
+
+test('mergeLyrics：行距 10s + 翻译轨偏移 +5000ms → 覆盖率不再整片归零', () => {
+    const originals = [0, 10000, 20000, 30000, 40000].map(t => ({ start: t, original: `L${t}` }));
+    const translations = [5000, 15000, 25000, 35000, 45000].map((t, i) => ({ time: t, text: `T${i}` }));
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, ['T0', 'T1', 'T2', 'T3', 'T4']);
+});
+
+test('mergeLyrics：原轨多一条开头行（翻译轨没有）→ 后续配对不得整体错开一行', () => {
+    const originals = [
+        { start: 0, original: 'intro' },                        // 前缀旁白，翻译轨里根本没有
+        { start: 3000, original: 'A' }, { start: 6000, original: 'B' },
+        { start: 9000, original: 'C' }, { start: 12000, original: 'D' }
+    ];
+    const translations = [
+        { time: 7000, text: 'TA' }, { time: 10000, text: 'TB' }, { time: 13000, text: 'TC' }
+    ];
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, ['', 'TA', 'TB', 'TC', '']);
+});
+
+test('mergeLyrics：中间一行真的没有译文 → 该行留空，邻居照常（叠加 +3500ms 整体偏移）', () => {
+    const originals = [1000, 4000, 7000, 10000].map(t => ({ start: t, original: `L${t}` }));
+    const translations = [
+        { time: 4500, text: 'T0' },     // 属于 1000
+        { time: 7500, text: 'T1' },     // 属于 4000
+        { time: 13500, text: 'T3' }     // 属于 10000；7000 那句翻译轨里就是没有
+    ];
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, ['T0', 'T1', '', 'T3']);
+});
+
+test('mergeLyrics：偏移逐行递增（漂移 0→+6000ms）→ 仍能逐行对号', () => {
+    const { originals, translations } = makeOffsetCase(7, {
+        spacing: 16500, first: 1000, offsetOf: i => i * 1000
+    });
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6']);
+});
+
+test('mergeLyrics：40 行 + 偏移 6500ms + 翻译轨漏 4 句 → 覆盖率 ≥90% 且零错配', () => {
+    const skip = [5, 13, 27, 33];
+    const { originals, translations } = makeOffsetCase(40, {
+        spacing: 4000, first: 1200, offsetOf: () => 6500, skip
+    });
+    const r = mergeLyrics(originals, translations);
+    const expected = Array.from({ length: 40 }, (_, i) => (skip.includes(i) ? '' : `T${i}`));
+    assertInOrder(r, expected);
+    assert.ok(r.filter(l => l.translation).length >= 36, '译文覆盖率掉了');
+});
+
+test('mergeLyrics：翻译轨远短于原轨（12 行里只有 2 句）→ 零偏移优先，两句各归各行', () => {
+    const originals = Array.from({ length: 12 }, (_, i) => ({ start: 1000 + i * 3000, original: `L${i}` }));
+    const translations = [
+        { time: 7000, text: 'T2' },        // 与原轨 start=7000 那行严格对齐
+        { time: 28000, text: 'T9' }        // 与 start=28000 那行严格对齐
+    ];
+    const r = mergeLyrics(originals, translations);
+    /* 证据只有两句时，"偏移 3000ms 也能配上两句"的巧合假设必须让位于零偏移 */
+    assertInOrder(r, ['', '', 'T2', '', '', '', '', '', '', 'T9', '', '']);
+});
+
+test('mergeLyrics：时间戳全为 0 / 非数字的垃圾轨 → 一律不配对（宁缺勿错），且不抛', () => {
+    const r = mergeLyrics(
+        [{ start: 0, original: 'a' }, { start: 0, original: 'b' }, { start: 0, original: 'c' }],
+        [{ time: 0, text: 'T0' }, { time: 0, text: 'T1' }, { time: 0, text: 'T2' }]
+    );
+    assertInOrder(r, ['', '', '']);
+    // 原轨时间戳全 0、翻译轨正常：同样不得凭顺序硬塞
+    assertInOrder(mergeLyrics(
+        [{ start: 0, original: 'a' }, { start: 0, original: 'b' }],
+        [{ time: 1000, text: 'T0' }, { time: 4000, text: 'T1' }]
+    ), ['', '']);
+    // 单行时间戳非数字 → 该行不进对齐（拿不到译文），但行本身保留
+    const r2 = mergeLyrics([{ start: NaN, original: 'x' }, { start: 1000, original: 'y' }],
+        [{ time: 1000, text: 'T' }]);
+    assertInOrder(r2, ['', 'T']);
+});
+
+test('mergeLyrics：孤零零一条译文 + 巨大偏移 → 证据不足，宁可不配', () => {
+    const originals = Array.from({ length: 12 }, (_, i) => ({ start: 1000 + i * 3000, original: `L${i}` }));
+    const r = mergeLyrics(originals, [{ time: 90000, text: 'LONE' }]);
+    assert.equal(r.filter(l => l.translation).length, 0);
+});
+
+test('mergeLyrics：罗马音轨带整体偏移时同样对齐（逐词一起带上）', () => {
+    const originals = [1000, 4000, 7000].map(t => ({ start: t, original: `L${t}` }));
+    const romaji = [5000, 8000, 11000].map((t, i) => ({
+        start: t, original: `r${i}`, words: [{ text: `w${i}a` }, { text: `w${i}b` }]
+    }));
+    const r = mergeLyrics(originals, [], romaji);
+    assert.deepEqual(r.map(l => l.romaji), ['r0', 'r1', 'r2']);
+    assert.deepEqual(r.map(l => l.romajiWords.length), [2, 2, 2]);
+});
+
+/* 可复现噪声：LCG，不依赖 Math.random（与 test_word_aligner.js 同一手法） */
+function lcg01(seed) {
+    let s = seed >>> 0;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+function medianOf(nums) {
+    const s = nums.slice().sort((a, b) => a - b);
+    const mid = s.length >> 1;
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+test('mergeLyrics：不变量——抖动行距 + 偏移 6000ms + 15% 缺行，每条译文各归其行且不复用/不交叉', () => {
+    const rnd = lcg01(20260926);
+    const originals = [];
+    let t = 1000;
+    for (let i = 0; i < 40; i++) {
+        originals.push({ start: t, original: `L${i}` });
+        t += 2500 + Math.round(rnd() * 1500);            // 行距 2500~4000ms，逐行抖动
+    }
+    const present = [];
+    const translations = [];
+    for (let i = 0; i < originals.length; i++) {
+        const has = rnd() >= 0.15;                        // 翻译轨约每 7 句漏 1 句
+        present.push(has);
+        if (!has) continue;
+        translations.push({
+            time: originals[i].start + 6000 + Math.round((rnd() - 0.5) * 600),
+            text: `T${i}`
+        });
+    }
+    const r = mergeLyrics(originals, translations);
+    assertInOrder(r, present.map((has, i) => (has ? `T${i}` : '')));
+
+    /* 三条不变量单独复核（不依赖上面那条逐行对号刚好命中）。
+       注意必须在「扣掉整体偏移」之后的坐标系里比距离——直接比原始时间会把
+       偏移 6000ms 的正常配对判成"更属于下一行"。 */
+    const timeOfText = text => translations.find(x => x.text === text).time;
+    const paired = r.filter(l => l.translation);
+    const off = medianOf(paired.map(l => timeOfText(l.translation) - l.start));
+    const seen = new Set();
+    let lastTime = -Infinity;
+    for (const line of paired) {
+        assert.equal(seen.has(line.translation), false, '一条译文被两行共用了');
+        seen.add(line.translation);
+        const tt = timeOfText(line.translation);
+        assert.ok(tt > lastTime, '两行拿到的译文时间倒挂（配对交叉）');
+        lastTime = tt;
+        const mine = Math.abs(tt - (line.start + off));
+        assert.ok(mine <= 1600, `残差过大（${mine}ms）：这一对是牵强附会出来的`);
+        for (const other of originals) {
+            if (other.start === line.start) continue;
+            assert.ok(mine <= Math.abs(tt - (other.start + off)),
+                `${line.translation} 明显更属于 start=${other.start} 那一行`);
+        }
+    }
+});
+
+test('mergeLyrics：两道守卫在新对齐下依旧生效（偏移版）', () => {
+    // 中文原轨 + 整体偏移 +4000ms 的中文"翻译"轨（源站错发另一首歌）→ 逐行丢弃
+    const originals = [
+        { start: 1000, original: '岁月难得沉默秋风厌倦漂泊' },
+        { start: 5000, original: '夕阳赖着不走挂在墙头舍不得我' },
+        { start: 9000, original: '出品：昌禾文化' },
+        { start: 13000, original: '[该版本已获词曲正式授权]' }
+    ];
+    const translations = [
+        { time: 5000, text: '我想拥抱你' },
+        { time: 9000, text: '我想留在你身边' },
+        { time: 17000, text: '翻译：某某' }
+    ];
+    const r = mergeLyrics(originals, translations);
+    assert.equal(r.length, 2, '制作信息/版权行必须整行剔除');
+    assertInOrder(r, ['', '']);
+    // 日文行（含假名）配偏移后的中文翻译属正常日→中，不得被守卫误伤
+    const ja = mergeLyrics(
+        [{ start: 1000, original: '夜に駆ける' }, { start: 4000, original: '君と見た空' }],
+        [{ time: 5000, text: '奔向夜空' }, { time: 8000, text: '与你同看的天空' }]
+    );
+    assertInOrder(ja, ['奔向夜空', '与你同看的天空']);
+});
+
 /* ==================== detectAndParseLyrics ==================== */
 test('detectAndParseLyrics：自动识别 QQ/网易 YRC 与字符串入参', () => {
     const qq = detectAndParseLyrics({ yrc: '[0,3750]编(6750,375)曲(7125,375)' });

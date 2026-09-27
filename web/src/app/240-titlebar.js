@@ -7,6 +7,7 @@
  * 5. 拖动/双击最大化仅 Tauri 环境生效；浏览器环境只负责颜色跟随
  * ============================================================ */
 import { logCatch } from '../services/log.js';
+import { pickInk, relativeLuminance } from '../utils/colorUtils.js'; // 感知亮度：全仓唯一一份实现
 (function () {
   if (typeof document === 'undefined') return;
 
@@ -25,26 +26,107 @@ import { logCatch } from '../services/log.js';
   if (IS_TAURI_NOW) markDesktop();
 
   /* ★★ 颜色跟随：浏览器 / Tauri 都需要，放在最顶层 IIFE 里保证两端都启动 */
-  function updateBrandColor() {
-    const d = window.dominantColor;
-    let light = true; // 默认浅色文字（白色）
-    if (d && typeof d.r === 'number' && typeof d.g === 'number' && typeof d.b === 'number') {
-      const L = (0.2126 * d.r + 0.7152 * d.g + 0.0722 * d.b) / 255;
-      light = L < 0.48; // 背景偏暗→白字，偏亮→黑字
-    }
-    /* ★ 深色舞台的视觉模式（活字/霓虹/隧道/浮空/PV）不随封面主色翻转：
-       它们的舞台底色恒为深色，标题栏必须保持浅色文字（用户反馈活字暗底下
-       标题栏仍是深色文字、看不见） */
-    const pcCls = (document.querySelector('.player-container') || {}).className || '';
-    if (/view-(letterpress|neon|tunnel|dimension|pv)\b/.test(pcCls)) light = true;
-    /* ★ 性能（2026-09-20）：CSS 自定义属性重复写同值会触发全树 style recalc——
-       值不变时跳过写入（该函数被 700ms 定时器反复调用，恒定值 = 纯浪费） */
-    const fg = light ? 'rgba(255,255,255,0.92)' : 'rgba(20,20,24,0.92)';
-    if (fg !== updateBrandColor._last) {
-      updateBrandColor._last = fg;
-      document.documentElement.style.setProperty('--titlebar-fg', fg);
-    }
+  const INK_LIGHT = 'rgba(255,255,255,0.92)';
+  const INK_DARK = 'rgba(20,20,24,0.92)';
+
+  /* CSS filter: brightness(b) 是对**编码后**的 sRGB 通道做线性乘法（规范如此），
+     所以先按编码值乘，再交给 relativeLuminance 去 gamma——顺序反了就白算。 */
+  function readFilterBrightness(el, fallback) {
+    try {
+      const f = el ? getComputedStyle(el).filter : '';
+      const m = f && /brightness\(\s*([\d.]+)/.exec(f);
+      if (m) { const v = Number(m[1]); if (Number.isFinite(v)) return v; }
+    } catch (e) { logCatch('titlebar', e); }
+    return fallback;
   }
+
+  /** 叠在 .blur-background 之上的 .color-overlay 的 rgba（拿不到返回 null） */
+  function readOverlayTint(el) {
+    try {
+      const bg = el ? getComputedStyle(el).backgroundColor : '';
+      const m = bg && /rgba?\(([^)]+)\)/.exec(bg);
+      if (!m) return null;
+      const parts = m[1].split(',').map(s => Number(s.trim()));
+      if (parts.length < 3 || parts.some(n => !Number.isFinite(n))) return null;
+      const a = parts.length >= 4 ? parts[3] : 1;
+      return a > 0 ? { r: parts[0], g: parts[1], b: parts[2], a } : null;
+    } catch (e) { logCatch('titlebar', e); return null; }
+  }
+
+  /** 背景层当前有没有参与合成。
+   *  ★ 读 .visible 类而不是 computed opacity：两层都有 `transition: opacity .8s/.5s`，
+   *    交叉淡入中途读到的是 0.0x，会把背景算成纯黑→判成亮墨，而且淡入完成时
+   *    没有任何属性变更再触发观察器，就永久停在错的那一边（实测假失败就是这么来的）。 */
+  function layerAlpha(el) {
+    if (!el) return 0;
+    try {
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return 0;
+      return el.classList.contains('visible') ? 1 : 0;
+    } catch (e) { logCatch('titlebar', e); return 0; }
+  }
+
+  /**
+   * 标题栏底下那一层**实际合成出来**的颜色的相对亮度（0~1，非线性）；拿不到封面主色返回 null。
+   * 自下而上：body::before 的不透明 #000 地板 → .blur-background（封面色 × brightness）
+   * → .color-overlay（未压暗的封面色，alpha 由 JS 写进 backgroundColor）。
+   * ★ 刻意去读这两层的计算样式，而不是把各视觉模式的 brightness 抄第二份表：
+   *   view-letterpress/neon/tunnel/dimension/pv/flyin/wordcloud 全用 !important 把自己的
+   *   亮度钉死（viewmode.css:369 钉 .12、:730 钉 .1），抄表必漏——旧版就漏了 flyin/wordcloud，
+   *   而且设置页里拖 blur/brightness 滑块立刻不同步。读样式则天然跟着级联走。
+   * ★ 每层都要乘它自己的 opacity：双层交叉淡入中途 <1，不乘会在切歌瞬间判错亮暗。
+   */
+  function backdropLuminance() {
+    const d = window.dominantColor;
+    if (!d || !Number.isFinite(Number(d.r)) || !Number.isFinite(Number(d.g)) || !Number.isFinite(Number(d.b))) return null;
+    /* body::before 是不透明 #000 地板（见 base.css 里那段注释），所以从 0 起算 */
+    let r = 0, g = 0, b = 0;
+    const blur = document.querySelector('.blur-background.visible')
+      || document.getElementById('blurBackground')
+      || document.querySelector('.blur-background');
+    if (blur) {
+      let s = null;
+      try { s = (window.appSettings && window.appSettings.background) || null; } catch (e) { logCatch('titlebar', e); }
+      const dim = readFilterBrightness(blur, s && Number.isFinite(Number(s.brightness)) ? Number(s.brightness) : 0.35);
+      const a = layerAlpha(blur);
+      r += Number(d.r) * dim * a; g += Number(d.g) * dim * a; b += Number(d.b) * dim * a;
+    }
+    const ov = document.querySelector('.color-overlay');
+    const tint = readOverlayTint(ov);
+    if (tint) {
+      const a = tint.a * layerAlpha(ov);
+      r = r * (1 - a) + tint.r * a;
+      g = g * (1 - a) + tint.g * a;
+      b = b * (1 - a) + tint.b * a;
+    }
+    return relativeLuminance(r, g, b);
+  }
+
+  function updateBrandColor() {
+    const root = document.documentElement;
+    /* 拿不到封面主色（首帧、CORS 污染的封面）时保持浅色——界面底色本来就是深的 */
+    const L = backdropLuminance();
+    let light = true;
+    if (L !== null) {
+      light = pickInk(L, updateBrandColor._lastLight !== false).light;
+    }
+    /* ★ 深色舞台的视觉模式不随封面主色翻转：它们的舞台底色恒为深色。
+       名单与 283-readability.js 的 SELF_DARK_STAGES 对齐（旧版漏了 flyin/wordcloud）。 */
+    const pc = document.querySelector('.player-container:not(.preview-player)');
+    const pcCls = (pc && pc.className) || '';
+    if (/view-(letterpress|neon|tunnel|dimension|pv|flyin|wordcloud)\b/.test(pcCls)) light = true;
+
+    /* ★ 只在真的换边时写变量；值不变就跳过（CSS 自定义属性重复写同值会触发全树 style recalc） */
+    if (updateBrandColor._lastLight === light) return;
+    updateBrandColor._lastLight = light;
+    /* 三件套一起换：前景墨、hover 底、logo 底。
+       hover 原先在 CSS 里写死 rgba(255,255,255,.15)——亮墨（深背景）没问题，
+       暗墨（浅背景）时白色 hover 等于没有，按钮点了看不见。 */
+    root.style.setProperty('--titlebar-fg', light ? INK_LIGHT : INK_DARK);
+    root.style.setProperty('--titlebar-hover-bg', light ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)');
+    root.style.setProperty('--titlebar-veil-bg', light ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
+  }
+  updateBrandColor._lastLight = null;
   updateBrandColor();
   /* ★ 性能（2026-09-23）：原 setInterval(700ms) 常驻轮询（含 querySelector）改事件驱动——
      dominantColor 赋值点（100-cover-background）与 .player-container 视觉模式类切换
@@ -52,15 +134,29 @@ import { logCatch } from '../services/log.js';
      开销仅在切模式瞬间，恒定状态零开销。 */
   globalThis.__updateBrandColor = updateBrandColor;
   try {
-    const pcEl = document.querySelector('.player-container');
-    if (pcEl && typeof MutationObserver !== 'undefined') {
-      let _bcTimer = null;
-      new MutationObserver(() => {
-        if (_bcTimer) return;
-        _bcTimer = setTimeout(() => { _bcTimer = null; updateBrandColor(); }, 120);
-      }).observe(pcEl, { attributes: true, attributeFilter: ['class'] });
+    /* 同一份 120ms 合并的 debounce 复用给两类信号：
+       ① .player-container 的 class（视觉模式切换）；
+       ② 背景层的 style（applyBackgroundSettings 改 blur/brightness、换封面写
+          backgroundImage、applyColorOverlay 改 rgba）——这些都不经过 ①，
+          不观察就还是会在设置里拖完滑块后标题栏停在旧墨色。 */
+    let _bcTimer = null;
+    const schedule = () => {
+      if (_bcTimer) return;
+      _bcTimer = setTimeout(() => { _bcTimer = null; updateBrandColor(); }, 120);
+    };
+    if (typeof MutationObserver !== 'undefined') {
+      const pcEl = document.querySelector('.player-container:not(.preview-player)')
+        || document.querySelector('.player-container');
+      if (pcEl) new MutationObserver(schedule).observe(pcEl, { attributes: true, attributeFilter: ['class'] });
+      const bg = document.getElementById('blurBackground');
+      const bg2 = document.getElementById('blurBackground2');
+      const ov = document.getElementById('colorOverlay');
+      const styleObs = new MutationObserver(schedule);
+      [bg, bg2, ov].forEach(el => {
+        if (el) styleObs.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+      });
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) { logCatch('titlebar', e); }
 
   /* ========== Tauri 桌面端专属：拖动 / 最小化 / 最大化 / 关闭 ========== */
   function initDesktop() {

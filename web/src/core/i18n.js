@@ -179,7 +179,8 @@ export const DICTIONARY = {
     'perf.showTrans': 'Show Translation',
     'perf.showRomaji': 'Show Romaji',
     'perf.glass': 'Glass Blur',
-    'perf.compact': 'Compact Mode'
+    'perf.compact': 'Compact Mode',
+    'vfx.intensity': 'Motion Intensity'
   }
 };
 
@@ -211,6 +212,14 @@ const STATIC_PHRASE_MAP = {
   '主题强调色': 'Accent Color',
   '主色调（影响按钮、高亮等）': 'Primary color (buttons, highlights, etc.)',
   '毛玻璃强度': 'Glass Blur',
+  /* 歌词逐字显示（todos #12，界面设置组） */
+  '歌词逐字显示': 'Karaoke Word Timing',
+  '行级歌词也按逐字显示': 'Show line-level lyrics per word',
+  '自动替换为真逐字歌词': 'Auto-upgrade to real word timing',
+  '只有整行时间戳的歌词（普通 LRC、多数外部源）按行时长摊平成逐字高亮；关闭则整行一起跳。仅对 歌词 / 默认 / 词云 三个模式生效':
+    'Spread line-only timestamps (plain LRC, most external sources) into per-word highlighting; off = the whole line jumps at once. Applies to the Lyrics / Default / Word-cloud modes only',
+  '当前是行级歌词时，去其它音源找一份匹配度 >90% 的逐字歌词换上（酷狗 KRC 优先）。开启后不再摊平假逐字，所以会关闭上面那个开关':
+    'When the current lyrics are line-only, look for a word-level copy matching >90% from another source (KuGou KRC first). Turns off the fake spreading above',
   '界面磨砂模糊半径 (px)': 'Frosted blur radius (px)',
   '动态背景': 'Dynamic Background',
   '专辑封面模糊渐变背景': 'Album-cover blurred gradient background',
@@ -553,11 +562,30 @@ const STATIC_PHRASE_MAP = {
   '极简': 'Minimal',
   '性能配置': 'Performance Config',
   '视觉开销': 'Visual Cost',
+  '专注模式 · 已开启（点击退出，控件立即唤回）': 'Focus mode on — click to bring the controls back',
+  '专注模式（只留歌词，其余控件淡出）': 'Focus mode: hide everything but the lyrics',
   '在所选性能等级基础上手动微调各模式特效开销，立即生效': 'Fine-tune per-mode effects on top of the selected tier, effective immediately',
   '选择适合您电脑配置的预设': 'Pick a preset that fits your hardware',
   '重置性能配置': 'Reset Performance Config',
   '降低时以更低分辨率渲染 3D 视觉效果': 'Render 3D visuals at lower resolution when lowered',
   '降低时以更低分辨率渲染 3D 视觉效果（浮空/PV/隧道 Canvas）': 'Lower-res 3D rendering (aurora / PV / tunnel canvas)',
+  // 动效强度滑杆（todos #6）：core/vfxIntensity.js 的说明行 + 设置页这一行
+  '动效强度': 'Motion Intensity',
+  '一根滑杆代替四档：0 = 只保留逐字高亮，不做背景模糊与粒子；100 = 全部特效。下面的单项开关优先于本滑杆。': 'One slider instead of four tiers: 0 = per-character highlight only, no background blur or particles; 100 = every effect. The per-item switches below take precedence over this slider.',
+  '当前跟随档位': 'Following tier',
+  '当前跟随档位「中性能」': 'Currently following the Medium tier',
+  '等效': 'equivalent to',
+  '跟随': 'Follow',
+  '跟随等级': 'Follow Tier',
+  '已改为跟随性能等级': 'Now following the performance tier',
+  '只保留逐字高亮，不做背景模糊与粒子': 'per-character highlight only, no background blur or particles',
+  '渲染分辨率': 'Render Resolution',
+  '歌词模糊': 'Lyric Blur',
+  'PV 发光': 'PV Bloom',
+  '飞入光晕': 'Fly-in Glow',
+  '词云跟焦': 'Word-cloud Focus',
+  '隧道粒子': 'Tunnel Particles',
+  '浮空粒子': 'Aurora Particles',
   '发光阴影强度': 'Glow Shadow Intensity',
   '情感词发光强度': 'Emotion Glow Strength',
   '情感词唱响时的强调色': 'Accent color when emotion words sing',
@@ -588,7 +616,23 @@ const STATIC_PHRASE_MAP = {
   '解析池逐源尝试': 'Resolve-pool attempts',
   // 睡眠定时器（todos #1，280-sleep-timer.js）
   '睡眠定时器': 'Sleep timer',
+  /* 单句 / A-B 循环（todos #3，294-ab-loop.js）。提示走 setHint，
+     而 hint 条不在 UI_ROOT_SELECTOR 内，所以这些键由 t() 在 JS 侧直接查。 */
+  '单句循环': 'Loop line',
+  'A-B 循环': 'A-B loop',
+  '单句循环已开启': 'Line loop on',
+  'A-B 循环已开启': 'A-B loop on',
+  '已取消循环': 'Loop cleared',
+  '当前没有可循环的歌词行': 'No lyric line to loop',
+  '循环区间无效': 'Invalid loop range',
+  'A 点已标记，再按一次标记 B': 'A set — press again to set B',
+  'B 必须晚于 A，已重置': 'B must come after A',
+  '单句循环中': 'Line looping',
+  'A-B 循环中': 'A-B looping',
+  '已标记 A，等待 B': 'A marked',
   '自定义分钟数': 'Custom minutes',
+  '减少一分钟': 'One minute less',
+  '增加一分钟': 'One minute more',
   '启动': 'Start',
   '取消定时': 'Cancel timer',
   '未设置': 'Not set',
@@ -817,6 +861,7 @@ const STATIC_PHRASE_MAP = {
   '点击按键后按下新键，Esc 取消': 'Click the chip, then press a new key; Esc cancels',
   '该按键已被其它功能占用': 'That key is already bound to another action',
   // 双语排版一键循环（todos #4，285-bilingual-cycle.js）
+  '双语排版': 'Bilingual layout',
   '原文': 'Original',
   '原文+译文': 'Orig + Trans',
   '原文+音译': 'Orig + Romaji',
@@ -843,6 +888,12 @@ const STATIC_PHRASE_MAP = {
   '全部渠道失败': 'All sources failed',
   '尚未取链': 'Not resolved yet',
   '取链失败': 'Resolution failed',
+  /* 角标的三种「还没有结果」状态（services/playSource.js describeBadge）。
+   ★ 角标在底栏 .bottom-song-meta-row 里，而底栏不在 UI_ROOT_SELECTOR 内，
+     所以这三条不会被 observer 自动翻——登记是为了「取链详情」弹窗里复用同样的词，
+     以及不欠账（约束 7）。 */
+  '正在获取…': 'Resolving…',
+  '重试中': 'Retrying',
   '兜底': 'fallback',
   '本机自建 QQ 服务': 'Self-hosted QQ',
   '本机自建网易服务': 'Self-hosted Netease',
@@ -1064,12 +1115,14 @@ const STATIC_PHRASE_MAP = {
   '简化毛玻璃模糊与粒子特效，适合低配或集显设备': 'Simplify glass & particles for low-end devices',
   '第三步 · 初始主题色': 'Step 3 · Theme Color',
   '主界面与歌词高亮主题色，点击即时预览': 'Theme color for UI & lyric highlight, instant preview',
-  '曜石金': 'Obsidian Gold',
-  '珊瑚红': 'Coral Red',
-  '极光绿': 'Aurora Green',
-  '晴空蓝': 'Sky Blue',
-  '梦幻紫': 'Dream Purple',
-  '霓虹粉': 'Neon Pink',
+  /* 预设主题色名（唯一登记处：config/themePalette.js 的 ACCENT_PRESETS）。
+     首跑向导把这 6 个名字画成色块，所以必须在这里有英文对照。 */
+  '曜金': 'Obsidian Gold',
+  '丹霞': 'Terracotta',
+  '松雨': 'Sage Green',
+  '石青': 'Stone Teal',
+  '远黛': 'Dusty Indigo',
+  '暮紫': 'Muted Violet',
   '第四步 · 自建音乐服务': 'Step 4 · Self-Hosted Services',
   '启用后扫码登录即可享受最高音质与完整官方歌单': 'Scan to login for hi-fi & official playlists',
   '已开启': 'On',
@@ -1583,21 +1636,17 @@ const STATIC_PHRASE_MAP = {
      的动态正则翻译 —— */
   '视觉配方': 'Visual Recipes',
   '保存 / 分享当前所有视觉参数': 'Save / share all visual parameters',
-  '把当前外观存为配方': 'Save Current Look as Recipe',
   '把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API Key、登录态、本地路径、语言与快捷键都不在内。': 'Save mode, font size, blur, sway, highlight colors and per-mode layout preferences as named presets, or copy a share code for friends. API keys, login sessions, local paths, language and shortcuts are never included.',
-  '配方包含哪些设置、绝不包含哪些': 'What recipes include — and never include',
-  '会带走': 'Included',
-  '绝不带走（敏感或本机专属）': 'Never included (sensitive or machine-specific)',
   '管理配方': 'Manage Recipes',
-  '复制当前分享码': 'Copy Share Code',
+  '复制': 'Copy',
+  '当前外观': 'Current Look',
+  '还没有配方，可粘贴分享码导入创建。': 'No recipes yet — paste a share code below to create one.',
   '导入分享码': 'Import Share Code',
   '校验并导入': 'Validate & Import',
   '导入前会逐条校验版本、校验和与每个参数的取值范围；有任何一项不合格就整份拒绝，不会只导入一半。': 'Before import, version, checksum and every parameter range are validated; any failure rejects the whole recipe — never a partial import.',
   '输入弹窗未就绪': 'Input dialog not ready',
   '设置未就绪': 'Settings not ready',
   '名字不能为空': 'Name cannot be empty',
-  '配方数量已达上限': 'Recipe limit reached',
-  '保存失败：配方内容不合法': 'Save failed: recipe content invalid',
   '保存失败': 'Save failed',
   '已经有同名配方了': 'A recipe with this name already exists',
   '重命名失败': 'Rename failed',
@@ -1620,6 +1669,17 @@ const STATIC_PHRASE_MAP = {
   '粘贴以': 'Paste a share code starting with ',
   '粘贴以 ': 'Paste a share code starting with ',
   '开头的分享码': 'share code',
+  /* 292 可自定义工具栏（设置 → 界面 → 界面控件 / 「更多」菜单溢出条目） */
+  '界面控件': 'Interface Controls',
+  '自定义工具栏': 'Customize Toolbar',
+  '调整右上角按钮的顺序，或隐藏不常用的。隐藏的按钮不会消失，会收进「更多」菜单，点它等于点原按钮。': 'Reorder the top-right buttons or hide the ones you rarely use. Hidden buttons do not disappear: they move into the More menu, where activating them is the same as pressing the original button.',
+  '恢复默认': 'Restore Defaults',
+  '显示': 'Show',
+  '隐藏': 'Hide',
+  '上移': 'Move Up',
+  '下移': 'Move Down',
+  '固定显示': 'Pinned',
+  '当前没有可设置的按钮': 'No configurable buttons available',
 };
 
 /* ===== i18n key 词条（JS 源码 t('key') 直调用，双语对象形态） ===== */
@@ -1913,32 +1973,85 @@ const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, .ctx-co
   '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay, #plmPanel, #favoritesOverlay, #rankTabs, ' +
   '.lyric-source-overlay';
 
+/* ★ 轮转游标（2026-09-26 修「英文模式下 OOBE 永远是中文」）：预算原本是**一整轮共享**
+   的 6ms，而 .settings-overlay 一个容器就能把它吃光（实测单轮 15ms）。原先每轮都从
+   选择器列表的第 1 个容器开始 → 排在后面的 #ariaOobeOverlay / #welcomeOverlay /
+   #plmPanel / #favoritesOverlay / .lyric-source-overlay **永远扫不到**：词条在表里、
+   类名在名单里，就是没人去翻（实测连扫 12 轮 OOBE 仍是中文，而排在前面的
+   .settings-tab 早已翻成英文）。改成从上次停下的位置继续，容器之间互相公平。 */
+let _uiScanCursor = 0;
+
 /** ★ 性能路径（2026-09-22）：只扫描 UI 弹层容器，绝不进入歌词区/播放器主 DOM。
     二级弹窗都是这些固定容器内的动态渲染，observer 触发后只扫几百节点而非全文档
     数千节点（此前全文档扫描 5 组 querySelectorAll 在大 DOM 上单轮 10ms+，
-    播放时每次歌词重渲染都会触发 → 可感卡顿）。 */
-export function applyLanguageToUiRoots() {
+    播放时每次歌词重渲染都会触发 → 可感卡顿）。
+    @param {string} [scopeSelector] 只翻某一个容器（通常是刚渲染完的那一个）：
+      不与他人抢预算、也不会被饿到，比全表扫一遍便宜得多。 */
+export function applyLanguageToUiRoots(scopeSelector) {
   if (typeof document === 'undefined') return;
-  const roots = document.querySelectorAll(UI_ROOT_SELECTOR);
+  if (scopeSelector) {
+    document.querySelectorAll(scopeSelector).forEach(root => {
+      try { _scanI18n(root); } catch (e) { logCatch('i18n', e); }
+    });
+    return;
+  }
+  const roots = Array.prototype.slice.call(document.querySelectorAll(UI_ROOT_SELECTOR));
+  if (!roots.length) return;
   const deadline = performance.now() + 6; /* 单轮 6ms 预算 */
   let completed = true;
-  roots.forEach(root => {
-    if (performance.now() > deadline) { completed = false; return; }
-    try { _scanI18n(root, deadline); } catch (e) { /* 单容器异常不拖垮整体 */ }
-  });
+  for (let i = 0; i < roots.length; i++) {
+    const idx = (_uiScanCursor + i) % roots.length;
+    /* 第一个容器无条件扫（保证有进展），之后每个都要先看预算 */
+    if (i && performance.now() > deadline) { completed = false; break; }
+    try {
+      _scanI18n(roots[idx], deadline);
+    } catch (e) {
+      logCatch('i18n', e);
+    }
+    /* 这个容器没扫完（内部撞到 deadline）就把游标留在它身上，下一轮接着扫 */
+    const done = performance.now() <= deadline;
+    _uiScanCursor = done ? (idx + 1) % roots.length : idx;
+    if (!done) { completed = false; break; }
+  }
   /* ★ 续扫兜底（用户反馈：弹窗内容翻一半就停）：预算耗尽时若当轮没扫完，
      50ms 后再跑一轮——弹窗渲染后若再无 mutation，此前没人触发二轮，
      残余节点永远停在中文。 */
   if (!completed && currentLang !== 'zh-CN') {
-    setTimeout(() => { try { applyLanguageToUiRoots(); } catch (e) { /* 静默 */ } }, 50);
+    setTimeout(() => { try { applyLanguageToUiRoots(); } catch (e) { logCatch('i18n', e); } }, 50);
   }
 }
 
 /** 全量应用（语言手动切换等一次性场景）：整个文档 */
+/* ★ 全文档扫描必须挪出「点击语言」那一个任务（2026-09-27 实测：OOBE 里切英文
+   产生 359ms 长任务，300Hz 屏上等于白掉约 100 帧——就是用户说的「切英文之后这么卡」。
+   卡的是这一段：约 50 组 querySelectorAll 打在 3300+ 节点的全文档上）。
+   做法：看得见的弹层容器**同步**翻（几百节点），其余排到 idle 分片补齐。
+   正确性不丢：aria:languagechange 仍在同一帧派发，各分片自译照旧；
+   兜底扫描最迟 2 秒后一定跑完（requestIdleCallback 的 timeout）。 */
+let _fullScanIdle = null;
+
+function _scheduleFullScan(root) {
+  const clear = () => {
+    if (_fullScanIdle === null) return;
+    if (typeof cancelIdleCallback === 'function') cancelIdleCallback(_fullScanIdle);
+    else clearTimeout(_fullScanIdle);
+    _fullScanIdle = null;
+  };
+  clear();
+  const run = () => { _fullScanIdle = null; try { _scanI18n(root); } catch (e) { logCatch('i18n', e); } };
+  _fullScanIdle = (typeof requestIdleCallback === 'function')
+    ? requestIdleCallback(run, { timeout: 2000 })
+    : setTimeout(run, 0);
+}
+
 export function applyLanguageToDocument(root = (typeof document !== 'undefined' ? document : null)) {
   if (!root) return;
-  const isEn = (currentLang === 'en-US');
-  _scanI18n(root);
+  if (typeof document !== 'undefined' && root !== document) {
+    _scanI18n(root);            // 指定容器：调用方在等这一块变语言，同步做完
+  } else {
+    applyLanguageToUiRoots();   // 看得见的弹层先翻（几百节点）
+    _scheduleFullScan(root);    // 播放器主 DOM 等剩下的排 idle
+  }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('aria:languagechange', { detail: { lang: currentLang } }));
   }
@@ -1966,13 +2079,29 @@ if (typeof window !== 'undefined') {
      closest 过滤挡掉，不产生扫描。 */
   try {
     let _i18nTimer = null;
+    /* ★ 「这个节点在不在弹层里」按节点缓存（2026-09-27 用户实测：切英文后
+       **整页动画持续卡**，中文不卡）。原因就在这段：observer 对每次 DOM 变更都调
+       `closest(UI_ROOT_SELECTOR)`，而播放时逐字高亮每帧要写几百个文本节点，
+       等于把这笔查询按帧交一遍；中文分支在上一行就 return 了，所以只有英文卡。
+       歌词节点是复用的（同一批 .word / fill 反复变更），缓存命中率接近 100%。 */
+    const _inUiRoot = new WeakMap();
+    const inUiRoot = (node) => {
+      if (!node || !(node.nodeType === 1 ? node.closest : null)) return false;
+      const el = node.nodeType === 1 ? node : node.parentElement;
+      if (!el) return false;
+      let hit = _inUiRoot.get(el);
+      if (hit === undefined) {
+        hit = !!el.closest(UI_ROOT_SELECTOR);
+        _inUiRoot.set(el, hit);
+      }
+      return hit;
+    };
     const _mutationRelevant = (muts) => {
       for (const m of muts) {
-        const t = m.target;
-        if (t && t.closest && t.closest(UI_ROOT_SELECTOR)) return true;
+        if (inUiRoot(m.target)) return true;
         if (m.addedNodes) {
           for (const n of m.addedNodes) {
-            if (n.nodeType === 1 && n.closest && n.closest(UI_ROOT_SELECTOR)) return true;
+            if (inUiRoot(n)) return true;
           }
         }
       }

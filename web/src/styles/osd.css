@@ -99,7 +99,7 @@
     width: 0;
     height: 100%;
     border-radius: 2px;
-    background: var(--theme-color, #ffcc33);
+    background: var(--theme-color, #E8BE6A);
     transition: width 0.18s ease-out;
 }
 

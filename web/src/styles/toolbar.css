@@ -1,0 +1,152 @@
+/* ============================================================
+ * toolbar.css — 可自定义工具栏（292-toolbar.js）
+ *
+ * 只有四类东西：① 隐藏态（那颗按钮仍在 DOM 里，只是不占位、不可聚焦）；
+ * ② 设置页「界面控件」那一组的行；③ 溢出条目塞进「更多」菜单后的容器上限；
+ * ④ 溢出条目的短名排版与开关状态标记。
+ *
+ * 刻意**不写** backdrop-filter：本功能没有新面板——设置行住在既有的
+ * .settings-overlay 里，溢出条目住在既有的 .ctx-menu / .more-submenu 里
+ * （它们已经按 AGENTS 约束 16 的配方调好玻璃），自建第二份毛玻璃只会不一致。
+ * 同理动效全部取 motion.css 的令牌（--t-fast / --d-fast），不新增曲线。
+ *
+ * ⚠ 选择器一律锚在 html#ariaRoot 上（约束 12）：纯类规则的特异性只有
+ *   (0,1,0)，顶得过组件里带 !important 的 display 规则才不算白写。
+ * ============================================================ */
+
+/* ---------- ① 隐藏态 ---------- */
+/* 292 只加这个类，绝不搬走节点、绝不 cloneNode：这些按钮的监听器是别的分片绑的。
+   display:none 同时把它移出布局与 Tab 序列（键盘导航 110 的簇就是 .top-action-buttons）。 */
+html#ariaRoot .tb-ctl-hidden {
+    display: none !important;
+}
+
+/* ---------- ② 设置页：界面控件 ---------- */
+html#ariaRoot #toolbarCtlRows {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+html#ariaRoot .tb-ctl-row {
+    padding: 6px 8px;
+    border-radius: 12px;
+    transition: var(--t-fast);
+}
+
+html#ariaRoot .tb-ctl-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* 已隐藏的：整行压暗，一眼看出哪几颗不在工具条上 */
+html#ariaRoot .tb-ctl-row.is-hidden {
+    opacity: 0.55;
+}
+
+html#ariaRoot .tb-ctl-row.is-hidden:hover {
+    opacity: 0.85;
+}
+
+html#ariaRoot .tb-ctl-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+html#ariaRoot .tb-ctl-name .setting-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 图标是按钮本体里那份 svg 的克隆（只克隆图标，按钮没被复制） */
+html#ariaRoot .tb-ctl-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+html#ariaRoot .tb-ctl-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+html#ariaRoot .tb-ctl-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+html#ariaRoot .tb-move-btn {
+    min-width: 34px;
+    padding: 4px 8px;
+    line-height: 1;
+    font-size: 14px;
+}
+
+html#ariaRoot .setting-toggle[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ---------- ③ 「更多」菜单里的溢出条目 ---------- */
+/* 底栏那颗「更多」是向上弹出的静态 .more-submenu：条目数量由用户决定，
+   全藏掉时能长到十几行，必须能滚（否则顶出屏幕外的那几条永远点不到）。 */
+html#ariaRoot .more-submenu.has-toolbar-items {
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
+}
+
+html#ariaRoot .more-submenu.has-toolbar-items .tb-overflow-item,
+html#ariaRoot .ctx-menu .tb-overflow-item {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* 我加的第一条与既有 .more-item 之间留一条同色分隔线（.ctx-separator 由 menus.css 负责，
+   那边 80 分片已经在用；这边是静态菜单，只能自己画一条）。
+   ★ 不能用 :first-of-type——菜单里所有条目都是 div，第一个 div 是「均衡器」。 */
+html#ariaRoot .more-submenu .tb-overflow-item.tb-overflow-first {
+    margin-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0 0 8px 8px;
+    padding-top: 12px;
+}
+
+/* ---------- ④ 溢出条目的短名与「开没开」 ---------- */
+/* 条目名取按钮的 aria-label（短名），那句长说明改挂到悬停提示上；
+   开关态 = menus.css 里那份选中底色（与倍速那颗同一条规则）+ 一枚内联 SVG 勾。 */
+html#ariaRoot .tb-overflow-item {
+    min-width: 0;
+}
+
+html#ariaRoot .tb-overflow-item .tb-overflow-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html#ariaRoot .tb-overflow-check {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    padding-left: 10px;
+    color: var(--theme-color);
+    flex-shrink: 0;
+}
+
+/* 软件渲染 / 低性能档：本文件唯一带代价的只有 hover 背景，无需专项退化；
+   这条只是保证退化时行高不塌（modals.css 的降级段会剥掉 transition）。 */
+html#ariaRoot.is-software-renderer .tb-ctl-row,
+html#ariaRoot body.perf-low .tb-ctl-row {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html#ariaRoot .tb-ctl-row {
+        transition-duration: 1ms;
+    }
+}

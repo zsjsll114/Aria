@@ -13,7 +13,7 @@ import { makeSongKey, updateFavoriteBtn } from './120-search-results.js';
 import { applyVolumeOnSongChange, loadPlaylistTrack } from './135-crossfade.js';
 import { fetchAndPlayRandomSong } from './155-random-toast-match.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* ========== 歌曲开播后的统一收尾任务 ========== */
 /* ★ 消除 95/135/130/125/180/175 六处重复的「AI 分析 + 高潮检测」触发块：
@@ -39,6 +39,24 @@ const _postLoadTasks = (opts) => {
     }
 };
 globalThis.triggerPostLoadTasks = _postLoadTasks;
+
+/* ========== 切歌时统一取消进行中的 AI 分析（2026-09-27）==========
+   ★ 此前只有 175 的 loadOnlineSong 内联了取消逻辑，95 loadTrack（本地）/
+   135 loadPlaylistTrack（本地直链）两条切歌路径不取消——用户切走后旧歌的
+   AI 分析继续跑，必须手动停止。所有切歌入口（gen++ 处）统一调本函数。
+   操作对象是 201-settings-ai 那套裸全局分析（isAiAnalyzing/currentAiAbortController，
+   与 175 原内联实现同一目标）；abort 的 catch 分支自己会复位标志与 UI。 */
+globalThis.cancelAiAnalysis = function () {
+    try {
+        if (typeof isAiAnalyzing !== 'undefined' && isAiAnalyzing
+            && typeof currentAiAbortController !== 'undefined' && currentAiAbortController) {
+            currentAiAbortController._manualCancel = true;   /* 标记取消语义，防旧请求的 catch 走重试/报错提示 */
+            currentAiAbortController.abort();
+            currentAiAbortController = null;
+            isAiAnalyzing = false;
+        }
+    } catch (e) { logCatch('trackLoading', e); }
+};
 
 /* ========== 本地直链歌曲播放收尾（loadTrack 与 loadPlaylistTrack 本地分支共用）==========
    ★ 合并两处镜像分支：waitForAudioReady → play → 成功收尾（retryCount 复位 / 音量 /
@@ -84,6 +102,8 @@ function loadTrack(index) {
             const track = playlist[currentTrackIndex];
             /* 代际计数器递增，使上一次的异步回调过期 */
             const gen = ++playbackGeneration;
+            /* ★ 本地路径同样取消进行中的 AI 分析（此前只有在线路径取消，2026-09-27） */
+            if (typeof cancelAiAnalysis === 'function') cancelAiAnalysis();
             /* 先暂停并重置 audio，避免上一首歌的 readyState 干扰 */
             audio.pause();
             audio.removeAttribute('src');

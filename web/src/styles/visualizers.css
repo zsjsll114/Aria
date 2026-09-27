@@ -13,7 +13,7 @@
   pointer-events: none;
   display: none;
   z-index: 10;
-  --vis-theme-color: #ffcc33;
+  --vis-theme-color: #E8BE6A;
   --vis-font-size: 32px;
   --vis-font-family: inherit;
 }
@@ -183,7 +183,7 @@
 /* 1. 当前唱到的单个字符（染色渐变：0.16s 快速平滑进入主题色/高亮色） */
 .dim-line-active .dim-char.active,
 .dim-line-active .dim-word.active {
-  color: var(--dim-highlight-color, var(--vis-theme-color, #ffcc33)) !important;
+  color: var(--dim-highlight-color, var(--vis-theme-color, #E8BE6A)) !important;
   transform: none !important;
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.7) !important;
   transition: color 0.16s ease-out; /* 快速平滑染色 */

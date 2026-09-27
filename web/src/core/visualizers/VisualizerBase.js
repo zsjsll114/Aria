@@ -16,7 +16,7 @@ export class VisualizerBase {
     this.activeLineIndex = -1;
     this.aiData = {};
     this.settings = {};
-    this.themeColor = '#ffcc33';
+    this.themeColor = '#E8BE6A';
     this.isRunning = false;
     this.rafId = null;
   }
@@ -68,7 +68,7 @@ export class VisualizerBase {
     this.lines = Array.isArray(lines) ? lines : [];
     this.aiData = aiData || {};
     this.activeLineIndex = -1;
-    this.themeColor = aiData.accent_color || this.settings.themeColor || '#ffcc33';
+    this.themeColor = aiData.accent_color || this.settings.themeColor || '#E8BE6A';
     /* ★ RTL 检测（阿拉伯/希伯来语系歌词）：容器挂 vis-rtl 类，由 CSS 把各视图
        版心 direction 翻为 rtl——逐字点亮元素按字符串序创建，bidi 重排后视觉上
        自然「从右往左」点亮，无需改各视图的高亮推进逻辑（PV 同款思路）。

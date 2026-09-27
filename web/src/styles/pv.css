@@ -76,7 +76,7 @@
     z-index: 15;
     background:
         radial-gradient(62% 48% at 50% 44%, rgba(255, 255, 255, .17), transparent 70%),
-        radial-gradient(42% 30% at 50% 42%, color-mix(in srgb, var(--pv-emotion-color, #ffcc33) 24%, transparent), transparent 68%);
+        radial-gradient(42% 30% at 50% 42%, color-mix(in srgb, var(--pv-emotion-color, #E8BE6A) 24%, transparent), transparent 68%);
     animation: pv-bridge-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes pv-bridge-pulse {
@@ -465,7 +465,7 @@ body.perf-minimal .pv-view-container::before { display: none; }
     padding: 24px 36px;
     user-select: none;
     pointer-events: none;
-    --pv-emotion-color: #ffcc33;
+    --pv-emotion-color: #E8BE6A;
     --halftone-size: 6px;
     transform-style: preserve-3d;
 }
@@ -730,9 +730,9 @@ body.perf-minimal .pv-view-container::before { display: none; }
     pointer-events: none;
     z-index: 30;
     will-change: transform, opacity; /* 一次性飞行：合成层只在这 1s 内存在，结束时 JS 移除 */
-    background: var(--pc, #ffcc33);
-    box-shadow: 0 0 var(--pg, 8px) var(--pc, #ffcc33),
-                0 0 calc(var(--pg, 8px) * 2) var(--pc, #ffcc33);
+    background: var(--pc, #E8BE6A);
+    box-shadow: 0 0 var(--pg, 8px) var(--pc, #E8BE6A),
+                0 0 calc(var(--pg, 8px) * 2) var(--pc, #E8BE6A);
     animation: pv-burst-fly var(--bd, 1.1s) cubic-bezier(0.22, 1, 0.36, 1) var(--bl, 0s) forwards;
 }
 /* 形状：dot 尘点 / square 圆角小方块 / dia 菱形 / cross 双线十字（参考实现 sonnet 四种随机） */
@@ -748,8 +748,8 @@ body.perf-minimal .pv-view-container::before { display: none; }
 .pv-char-burst-p.kind-cross::after {
     content: '';
     position: absolute;
-    background: var(--pc, #ffcc33);
-    box-shadow: 0 0 var(--pg, 8px) var(--pc, #ffcc33);
+    background: var(--pc, #E8BE6A);
+    box-shadow: 0 0 var(--pg, 8px) var(--pc, #E8BE6A);
 }
 .pv-char-burst-p.kind-cross::before {
     left: 0;
@@ -795,7 +795,7 @@ body.perf-minimal .pv-view-container::before { display: none; }
 
 .pv-word-trail path {
     fill: none;
-    stroke: var(--pv-highlight-color, #ffcc33);
+    stroke: var(--pv-highlight-color, #E8BE6A);
     stroke-width: 1.2;
     stroke-linecap: round;
     stroke-dasharray: 1;
@@ -826,13 +826,13 @@ body.perf-minimal .pv-view-container::before { display: none; }
 .pv-char.active {
     visibility: visible !important;
     opacity: 1 !important;
-    filter: drop-shadow(0 0 16px var(--pv-highlight-color, var(--pv-emotion-color, #ffcc33))) !important;
+    filter: drop-shadow(0 0 16px var(--pv-highlight-color, var(--pv-emotion-color, #E8BE6A))) !important;
     transform: translateY(0px) scale(1.12) !important;
     background: none !important;
     -webkit-background-clip: unset !important;
     background-clip: unset !important;
     color: var(--pv-highlight-color, #ffffff) !important;
-    text-shadow: 0 0 14px var(--pv-highlight-color, #ffffff), 0 0 28px var(--pv-highlight-color, var(--pv-emotion-color, #ffcc33)) !important;
+    text-shadow: 0 0 14px var(--pv-highlight-color, #ffffff), 0 0 28px var(--pv-highlight-color, var(--pv-emotion-color, #E8BE6A)) !important;
     z-index: 20 !important;
 }
 
@@ -1302,7 +1302,7 @@ body.perf-minimal .pv-shape-field * {
 .view-mode-mock-pv-box {
     position: relative;
     padding: 6px 16px;
-    border: 1px dashed rgba(255, 204, 51, 0.6);
+    border: 1px dashed rgba(232, 190, 106, 0.6);
     border-radius: 4px;
     background: rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(4px);
@@ -1310,8 +1310,8 @@ body.perf-minimal .pv-shape-field * {
 .view-mode-mock-pv-text {
     font-size: 14px;
     font-weight: 800;
-    color: #ffcc33;
-    text-shadow: 0 0 10px rgba(255, 204, 51, 0.9);
+    color: #E8BE6A;
+    text-shadow: 0 0 10px rgba(232, 190, 106, 0.9);
 }
 .view-mode-mock-pv-star {
     position: absolute;

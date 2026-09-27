@@ -23,6 +23,10 @@ Aria 歌词播放器（绿色便携版）使用说明
   - 便携 Node：runtime/node.exe，识曲侧车与三个自建平台副进程共用，无需安装 Node.js。
 
 四、注意事项
+  - 字体：包内自带仓库内置字体（霞鹜新晰黑 / ArkPixel / FusionPixel / Cubic11 / AGENCY 等，
+    在「设置 → 字体」里可选）。若另外收到「AriaFonts-Extra.zip」（打包者本机收藏的思源系列等，
+    不属于仓库内容），把其中的 web\src\font\ 下文件复制进本包的 web\src\font\ 即可选用，
+    删掉这些文件就恢复原状。也可以在界面里直接上传自己的字体（.ttf/.otf/.woff/.woff2）。
   - 端口占用：8001（主服务）/ 18089（识曲）/ 3100（酷狗）/ 3200（QQ）/ 3201（网易云）。
     若端口被占用，server.exe 会自动清理旧进程残留。
   - 登录态：登录后保存在 cache/selfhost_login.json，下次启动自动恢复，扫码一次长期有效。

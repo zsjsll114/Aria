@@ -499,7 +499,7 @@ export function pickDecorationCombo(seed, count) {
  * @param {number} variantIndex shot 序号（同组变体微调）
  * @returns {string} SVG 标记
  */
-export function buildDecorationComboSVG(combo, seed, color = '#ffcc33', variantIndex = 0) {
+export function buildDecorationComboSVG(combo, seed, color = '#E8BE6A', variantIndex = 0) {
   const rng = seededRandom(((seed >>> 0) + variantIndex * 977) || 23);
   const defs = `<defs><filter id="tunnel-blur-deco" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter></defs>`;
   const parts = combo.map((name, i) => {
@@ -520,7 +520,7 @@ export function buildDecorationComboSVG(combo, seed, color = '#ffcc33', variantI
 }
 
 /* 兼容旧接口 */
-export function buildDecorationSVG(familyName, seed, variantIndex, color = '#ffcc33') {
+export function buildDecorationSVG(familyName, seed, variantIndex, color = '#E8BE6A') {
   const map = {
     'concentric-lines': 'concentric',
     'brackets': 'brackets',

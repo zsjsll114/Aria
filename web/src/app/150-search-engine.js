@@ -106,7 +106,16 @@ async function fetchSourcePage(source, word, page) {
         json = await res.json().catch(() => ({ code: 0 }));
     } catch (_) { /* 见下方统一报错 */ }
     const okList = (json.code === 200 && json.data) ? (Array.isArray(json.data) ? json.data : [json.data]) : [];
-    if (okList.length) return okList;
+    if (okList.length) {
+        /* ★ vkeys 网易云封面是 http://pX.music.126.net → 统一升 https，
+           否则 https/tauri 页面 mixed-content 拦图（CDN https 已实测 200） */
+        if (source === 'netease') {
+            for (const it of okList) {
+                if (it && typeof it.cover === 'string') it.cover = it.cover.replace(/^http:\/\//, 'https://');
+            }
+        }
+        return okList;
+    }
     const srcName = source === 'tencent' ? 'QQ音乐' : '网易云';
     logWarn('searchEngine', `[Search] ${source} vkeys 无结果(code=${json.code})，不自动切换到其它源`);
     throw new Error(`${srcName}搜索${json.code === 503 ? '服务暂时不可用(503)' : '暂无结果'}，可尝试点击顶部音源切换`);
@@ -121,7 +130,9 @@ async function fetchVendorSearchPage(source, word, page, want) {
         if (source === 'tencent') {
             path = `/getSearchByKey?key=${encodeURIComponent(word)}&num=${want}&page=${page}`;
         } else if (source === 'netease') {
-            path = `/search?keywords=${encodeURIComponent(word)}&limit=${want}&offset=${(page - 1) * want}&type=1`;
+            /* ★ /cloudsearch 而非 /search（2026-09-26）：旧 /search 的 album 只有 picId 没有
+               picUrl → 封面恒空；/cloudsearch 的 songs[].al.picUrl 才带封面 URL */
+            path = `/cloudsearch?keywords=${encodeURIComponent(word)}&limit=${want}&offset=${(page - 1) * want}&type=1`;
         } else {
             return null;
         }
@@ -145,16 +156,23 @@ async function fetchVendorSearchPage(source, word, page, want) {
                 source: 'tencent'
             }));
         } else {
+            /* ★ /cloudsearch 新结构 al/ar/dt；兼容旧 /search 的 album/artists/duration。
+               picUrl 是 http://pX.music.126.net → 统一升 https（https/tauri 页面下
+               http 图会被 mixed-content 拦掉 → onerror 隐藏 → 用户看到无封面） */
             const raw = ((j.result || {}).songs) || [];
-            list = raw.map(it => ({
-                id: String(it.id),
-                song: it.name || '',
-                singer: Array.isArray(it.artists) ? it.artists.map(a => a.name).join('/') : '',
-                album: (it.album && it.album.name) || '',
-                cover: (it.album && it.album.picUrl) || '',
-                interval: Math.round((it.duration || 0) / 1000),
-                source: 'netease'
-            }));
+            list = raw.map(it => {
+                const al = it.al || it.album || {};
+                const pic = al.picUrl || '';
+                return {
+                    id: String(it.id),
+                    song: it.name || '',
+                    singer: (Array.isArray(it.ar) ? it.ar : (Array.isArray(it.artists) ? it.artists : [])).map(a => a.name).join('/'),
+                    album: al.name || '',
+                    cover: pic ? pic.replace(/^http:\/\//, 'https://') : '',
+                    interval: Math.round((it.dt || it.duration || 0) / 1000),
+                    source: 'netease'
+                };
+            });
         }
         return list.length ? list : null;
     } catch (e) {

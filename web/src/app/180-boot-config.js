@@ -20,6 +20,7 @@ import { initSettingsPanel, initAboutLinks } from './200-settings-panel.js';
 import { initCustomFonts } from './215-multilang-fonts.js';
 import { wordcloudApplyPerf } from './57-wordcloud-camera.js';
 import { setLanguage } from '../core/i18n.js';
+import { vfxFromIntensity } from '../core/vfxIntensity.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { esc } from '../utils/formatters.js';
 
@@ -436,7 +437,8 @@ function savePerformanceSettings(settings) {
 /* ========== 「视觉开销」手动覆盖（设置面板微调项，在所选档位 vfx 矩阵上叠加） ========== */
 const PERF_VFX_KEY = 'perf_vfx_overrides_v1';
 
-function getVfxOverrides() {
+/* 手调表的原样读写（不含滑杆推导值）——写入侧必须用它，见 setVfxOverride */
+function getManualVfxOverrides() {
             try {
                 const raw = localStorage.getItem(PERF_VFX_KEY);
                 if (raw) return JSON.parse(raw) || {};
@@ -444,8 +446,21 @@ function getVfxOverrides() {
             return {};
         }
 
+function getVfxOverrides() {
+            /* ★ 「动效强度」滑杆（todos #6）在这里叠加，而不是写进 perf_vfx_overrides_v1：
+               滑杆在下、手动微调在上。反过来（滑杆覆盖手调）会让用户拖一次滑杆就
+               无声丢掉他调过的 4 个特效开关——那是数据丢失，不是「重置」。
+               未设定时 vfxFromIntensity 返回 {}，等于今天的行为（跟随档位）。 */
+            const fromSlider = vfxFromIntensity(((globalThis.appSettings || {}).interface || {}).vfxIntensity);
+            return Object.assign({}, fromSlider, getManualVfxOverrides());
+        }
+
 function setVfxOverride(key, value) {
-            const cur = getVfxOverrides();
+            /* ★ 基底必须是**原样手调表**，不能是 getVfxOverrides() 的合并视图：
+               后者含滑杆推导出的 10 个键，拿它当基底写盘 = 每点一次单项开关就把滑杆
+               当时的值冻结进手调表，从此这些键永远「手动优先」于滑杆——滑杆直接失效。
+               （E2E 实测到过一次：stored 里出现完整 10 键。） */
+            const cur = getManualVfxOverrides();
             cur[key] = value;
             try {
                 localStorage.setItem(PERF_VFX_KEY, JSON.stringify(cur));
@@ -735,8 +750,17 @@ function loadSettings() {
                 const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
                 if (raw) {
                     const saved = JSON.parse(raw);
+                    /* ★ 音量必须读成整数：#setInitialVolume 是 step=1 的 range，浏览器会把
+                       68.041 显示成 68，于是「滑块值」和「appSettings 值」永久对不上
+                       （user_config.json 里存的是点音量条算出来的浮点，跨设备共享）。
+                       写入侧 70-audio-engine.js 的 persistVolume 已改成 Math.round，
+                       这里是把历史上已经存进去的浮点一次性治好。 */
+                    const savedPlayback = Object.assign({}, saved.playback || {});
+                    if (savedPlayback.initialVolume != null) {
+                        savedPlayback.initialVolume = Math.round(Number(savedPlayback.initialVolume)) || 0;
+                    }
                     appSettings = {
-                        playback: { ...DEFAULT_SETTINGS.playback, ...(saved.playback || {}) },
+                        playback: { ...DEFAULT_SETTINGS.playback, ...savedPlayback },
                         lyrics: { ...DEFAULT_SETTINGS.lyrics, ...(saved.lyrics || {}) },
                         background: { ...DEFAULT_SETTINGS.background, ...(saved.background || {}) },
                         interface: {

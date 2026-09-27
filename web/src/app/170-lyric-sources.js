@@ -16,6 +16,7 @@ import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { calculateSongMatchScore, showToast } from './155-random-toast-match.js';
 import { audioRecognizeOverlay, closeAudioRecognizeModal } from './165-audio-recognize.js';
 import { logWarn, logInfo, logError, logCatch } from '../services/log.js';
+import { bindSourceAccessors } from './293-word-upgrade.js';
 audioRecognizeOverlay?.addEventListener('click', (e) => {
             if (e.target === audioRecognizeOverlay) {
                 closeAudioRecognizeModal();
@@ -549,31 +550,53 @@ async function fetchLyricLinesFromSource(targetSource) {
         }
 
 /* 极速并行切换歌词来源（返回 boolean 表示是否成功） */
+/**
+ * 把某个来源抓到的歌词装进界面——唯一入口。
+ * ★ 原先这段只存在于 switchLyricSource 内部，而「跨音源逐字自动替换」
+ *   （services/wordLyricUpgrade.js）要做一模一样的事：自己抄一遍就会漏掉
+ *   lyricSourceOverride / activeLineIndex 重置 / AI 情感词重分析这些副作用，
+ *   表现为"自动升级后歌词来源角标还写着旧来源"或"高亮停在上一首的行号"。
+ * @param {string} targetSource
+ * @param {{originals:Array, translations:Array, romaji:Array}} parts
+ * @param {{silent?:boolean, toastText?:string}} [opts] silent=不弹提示（自动升级用）
+ */
+function applyLyricSourceResult(targetSource, parts, opts = {}) {
+            const originals = (parts && parts.originals) || [];
+            if (!originals.length) return false;
+            lyrics = mergeLyrics(originals, (parts && parts.translations) || [], (parts && parts.romaji) || []);
+            activeLineIndex = -1;
+            aiEmotionWords = [];
+            renderLyrics(lyrics);
+            updateLyricsHighlight();
+            lyricSourceOverride = targetSource;
+            /* 自动升级（293）走这条：文案要有「匹配率」，且来源显示名只在这里有一份。
+               293 反过来 import 本分片会成环（本分片要给它注入取词/应用两个能力）。 */
+            if (!opts.silent) {
+                showToast(opts.toastText || (opts.upgradeRate != null
+                    ? `已自动升级为逐字歌词（${SOURCE_NAMES[targetSource] || targetSource}，匹配 ${Math.round((opts.upgradeRate || 0) * 100)}%）`
+                    : `已切换到 ${(SOURCE_NAMES[targetSource] || targetSource)} 歌词`));
+            }
+            /* 切换歌词源后自动触发 AI 情感词分析 */
+            if (typeof triggerAiAnalysisIfNeeded === 'function') {
+                triggerAiAnalysisIfNeeded();
+            }
+            return true;
+        }
+
+/* 来源显示名（切换提示与自动升级提示共用，别再各写一份） */
+const SOURCE_NAMES = { tencent: 'QQ音乐', netease: '网易云音乐', kuwo: '酷我音乐', kugou: '酷狗音乐 (KRC)', amll: 'AMLL', lrclib: 'LRCLIB' };
+
 async function switchLyricSource(targetSource) {
             if (!targetSource) { showLyricSourceModal(); return false; }
             if (!currentSongData || !currentSongData.title) { showToast('请先播放歌曲'); return false; }
-            const sourceNames = { tencent: 'QQ音乐', netease: '网易云音乐', kuwo: '酷我音乐', kugou: '酷狗音乐 (KRC)', amll: 'AMLL', lrclib: 'LRCLIB' };
-            const sourceName = sourceNames[targetSource] || targetSource;
+            const sourceName = SOURCE_NAMES[targetSource] || targetSource;
             try {
-                const { originals, translations, romaji } = await fetchLyricLinesFromSource(targetSource);
-                if (!originals || originals.length === 0) {
+                const parts = await fetchLyricLinesFromSource(targetSource);
+                if (!parts.originals || parts.originals.length === 0) {
                     showToast(`切换失败：未从${sourceName}获取到有效歌词`);
                     return false;
                 }
-                lyrics = mergeLyrics(originals, translations, romaji);
-                activeLineIndex = -1;
-                aiEmotionWords = [];
-                renderLyrics(lyrics);
-                updateLyricsHighlight();
-                lyricSourceOverride = targetSource;
-                showToast(`已切换到 ${sourceName} 歌词`);
-
-                /* 切换歌词源后自动触发 AI 情感词分析 */
-                if (typeof triggerAiAnalysisIfNeeded === 'function') {
-                    triggerAiAnalysisIfNeeded();
-                }
-                return true;
-
+                return applyLyricSourceResult(targetSource, parts);
             } catch (err) {
                 logError('lyricSources', '切换歌词来源失败:', err);
                 showToast(`切换歌词失败: ${err.message || '网络超时'}`);
@@ -598,4 +621,8 @@ if (typeof window !== 'undefined') {
             };
         }
 
-export { fetchLyricLinesFromSource, lyricSourceProbeCache, probeLyricSourcesAvailability, renderSourceBadges, showLyricSourceModal, switchLyricSource };
+/* ★ 把「抓某来源的歌词」和「把某来源的歌词装上界面」交给自动升级分片（293）。
+   方向刻意是 170→293：反过来会成环（20→293→170→20）。 */
+bindSourceAccessors(fetchLyricLinesFromSource, applyLyricSourceResult);
+
+export { applyLyricSourceResult, fetchLyricLinesFromSource, lyricSourceProbeCache, probeLyricSourcesAvailability, renderSourceBadges, showLyricSourceModal, switchLyricSource };

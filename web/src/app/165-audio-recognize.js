@@ -238,7 +238,7 @@ function startSpectrumVisualization() {
 
                 const barCount = dataArray.length;
                 const barWidth = (w / barCount) - 3;
-                const themeColor = (appSettings && appSettings.interface && appSettings.interface.themeColor) || '#ffcc33';
+                const themeColor = (appSettings && appSettings.interface && appSettings.interface.themeColor) || '#E8BE6A';
 
                 for (let i = 0; i < barCount; i++) {
                     const val = dataArray[i];

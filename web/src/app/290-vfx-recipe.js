@@ -1,9 +1,12 @@
 /* ============================================================
- * 290-vfx-recipe.js — 视觉配方：保存 / 命名 / 分享码（todos #9）
+ * 290-vfx-recipe.js — 视觉配方：命名 / 分享码（todos #9）
  *
- * 形态：右上角一个入口按钮 + 一套自建的毛玻璃面板（列表 / 新建 / 重命名 / 覆盖 /
- * 删除 / 应用 / 复制分享码 / 导入分享码），并在「设置 → 视觉模式」底部自挂一个
- * 说明组，把「哪些进配方、哪些绝不进」写在用户看得见的地方。
+ * 形态：右上角一个入口按钮 + 一套自建的毛玻璃面板（列表 / 重命名 / 覆盖 /
+ * 删除 / 应用 / 分享码 / 导入分享码）。
+ * 2026-09-26 按用户要求精简：顶部「存为配方/复制当前分享码」两按钮移除，
+ * 「当前外观」分享码常显（行内分享码草稿临时顶替，收起即回），底部
+ * 「配方包含哪些设置」说明区移除。创建配方只剩「导入分享码」一条路，
+ * 已有配方用「覆盖」更新。
  * 本分片不新增 index.html 的 DOM，也不改任何既有分片：按钮与设置组都是自建自挂
  * （和 282/283 同一套路），所以「只 import 分片」的中间状态下功能也是完整的。
  *
@@ -40,15 +43,13 @@ import {
 import { renderLyrics } from './20-lyrics-render.js';
 import { showToast } from './155-random-toast-match.js';
 import {
-    BUILTIN_FONTS, CODE_PREFIX, ERROR_TEXT, FORBIDDEN_KEYS, MAX_PRESETS, MODE_FIELDS_BY_MODE,
-    RECIPE_GROUPS, SCHEMA_VERSION, VIEW_MODES,
+    CODE_PREFIX, ERROR_TEXT, MAX_PRESETS, RECIPE_GROUPS, SCHEMA_VERSION, VIEW_MODES,
     applyRecipeToSettings, canonicalJSON, collectRecipe, decodeRecipe, encodeRecipe,
     newPresetId, normalizePresetList, removePreset, renamePreset, sanitizeRecipeName,
     summarizeRecipe, upsertPreset,
 } from '../core/vfxRecipe.js';
 
 const TAG = 'vfxRecipe';
-const BTN_ID = 'vfxRecipeBtn';
 const OVERLAY_ID = 'vfxRecipeOverlay';
 const SETTINGS_GROUP_ID = 'vfxRecipeSettingsGroup';
 const STYLE_ID = 'vfxRecipeStyles';
@@ -231,14 +232,12 @@ function openPanel() {
     renderPanel();
     /* 先入 DOM 再加 .visible：否则 opacity 没有起始值，motion.css 那套入场不跑 */
     requestAnimationFrame(() => panel.classList.add('visible'));
-    syncButton();
 }
 
 function closePanel() {
     if (!panel) return;
     panel.classList.remove('visible');
     draft = { shareCode: '', shareTitle: '', importErrors: [], importText: '' };
-    syncButton();
 }
 
 function isPanelOpen() { return !!panel && panel.classList.contains('visible'); }
@@ -284,17 +283,6 @@ function noteItemHTML(key, text) {
     return `<li class="vr-li"><code class="vr-li-key">${esc(key)}</code><span class="setting-desc">${esc(text)}</span></li>`;
 }
 
-function includedNoteHTML() {
-    return RECIPE_GROUPS.map(g => {
-        const tail = g.key === 'modeSettings' ? '（' + Object.keys(MODE_FIELDS_BY_MODE).length + ' 个模式各自一套）' : '';
-        return noteItemHTML(g.label, g.desc + tail);
-    }).join('');
-}
-
-function forbiddenNoteHTML() {
-    return FORBIDDEN_KEYS.map(f => noteItemHTML(f.key, f.reason)).join('');
-}
-
 function importResultHTML() {
     if (!draft.importErrors.length) return '';
     const rows = draft.importErrors.slice(0, 12).map(err => {
@@ -316,10 +304,22 @@ function renderPanel() {
     const list = readPresets();
     const active = captureCurrent();
     const codeHint = CODE_PREFIX + SCHEMA_VERSION + '.';
+    /* 「当前外观」分享码常显（2026-09-26 用户要求）：没有行内草稿时始终展示
+       当前外观的分享码；行内「分享码」产生的草稿临时顶替显示，「收起」后回到当前外观。 */
+    let shareTitle = '当前外观';
+    let shareCode = '';
+    if (draft.shareCode) {
+        shareTitle = draft.shareTitle;
+        shareCode = draft.shareCode;
+    } else {
+        const enc = encodeForShare(active);
+        if (enc.ok) shareCode = enc.code;
+    }
     panel.innerHTML = `
     <div class="vfx-recipe-modal" role="dialog" aria-modal="true" aria-labelledby="vfxRecipeTitleText">
         <div class="vr-head">
             <span class="vr-title setting-label" id="vfxRecipeTitleText">视觉配方</span>
+            <span class="vr-count">${list.length} / ${MAX_PRESETS}</span>
             <button type="button" class="vr-close" data-act="close" title="关闭">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                     <line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line>
@@ -327,14 +327,9 @@ function renderPanel() {
             </button>
         </div>
         <div class="vr-scroll">
-            <div class="vr-toolbar">
-                <button type="button" class="setting-btn primary" data-act="create">把当前外观存为配方</button>
-                <button type="button" class="setting-btn" data-act="share-current">复制当前分享码</button>
-                <span class="vr-count">${list.length} / ${MAX_PRESETS}</span>
-            </div>
             <div class="vr-list-wrap">${list.length
                 ? list.map(p => presetRowHTML(p, active)).join('')
-                : '<div class="empty-hint">还没有配方。调好一套观感后点上面第一个按钮。</div>'}</div>
+                : '<div class="empty-hint">还没有配方，可粘贴分享码导入创建。</div>'}</div>
             <div class="vr-block">
                 <div class="vr-block-title setting-label">导入分享码</div>
                 <textarea class="vr-input vr-textarea" id="vrImportBox" spellcheck="false"
@@ -345,23 +340,14 @@ function renderPanel() {
                 ${importResultHTML()}
                 <div class="setting-desc vr-note">导入前会逐条校验版本、校验和与每个参数的取值范围；有任何一项不合格就整份拒绝，不会只导入一半。</div>
             </div>
-            ${draft.shareCode ? `
             <div class="vr-block">
-                <div class="vr-block-title setting-label">${esc(draft.shareTitle)}</div>
-                <textarea class="vr-input vr-textarea" id="vrShareBox" readonly spellcheck="false">${esc(draft.shareCode)}</textarea>
+                <div class="vr-block-title setting-label">${esc(shareTitle)}</div>
+                <textarea class="vr-input vr-textarea" id="vrShareBox" readonly spellcheck="false">${esc(shareCode)}</textarea>
                 <div class="vr-toolbar">
                     <button type="button" class="setting-btn primary" data-act="copy-share">复制</button>
-                    <button type="button" class="setting-btn" data-act="clear-share">收起</button>
+                    ${draft.shareCode ? '<button type="button" class="setting-btn" data-act="clear-share">收起</button>' : ''}
                 </div>
-            </div>` : ''}
-            <details class="vr-details">
-                <summary class="setting-label">配方包含哪些设置、绝不包含哪些</summary>
-                <div class="vr-block-title setting-label">会带走</div>
-                <ul class="vr-list">${includedNoteHTML()}</ul>
-                <div class="vr-block-title setting-label">绝不带走（敏感或本机专属）</div>
-                <ul class="vr-list vr-list-forbid">${forbiddenNoteHTML()}</ul>
-                <div class="setting-desc vr-note">${esc('字体只支持内置的 ' + BUILTIN_FONTS.join(' / ') + '；自定义字体文件与整条 CSS 字体栈不进分享码，导入后会保留你机器上原有的字体设置。')}</div>
-            </details>
+            </div>
         </div>
     </div>`;
 }
@@ -384,15 +370,14 @@ function handlePanelClick(e) {
 function runAction(act, id) {
     switch (act) {
         case 'close': closePanel(); break;
-        case 'create': promptCreate(); break;
-        case 'share-current': showShare('当前外观', captureCurrent()); break;
         case 'share': sharePreset(id); break;
         case 'apply': applyPreset(id); break;
         case 'overwrite': overwritePreset(id); break;
         case 'rename': promptRename(id); break;
         case 'delete': confirmDelete(id); break;
         case 'import': doImport(); break;
-        case 'copy-share': copyText(draft.shareCode); break;
+        /* 复制的是区块里实际显示的那串（当前外观常显码 或 行内分享码草稿） */
+        case 'copy-share': copyText((byId('vrShareBox') || {}).value || ''); break;
         case 'clear-share': draft.shareCode = ''; draft.shareTitle = ''; renderPanel(); break;
         /* 点进了行内但不是动作按钮（比如选文本复制）：什么都不做 */
         default: break;
@@ -409,21 +394,6 @@ function askText(title, placeholder, value, cb) {
         return;
     }
     window.showGlassPrompt({ title, placeholder, value: value || '', onSubmit: cb });
-}
-
-function promptCreate() {
-    askText('保存为视觉配方', '给这套观感起个名字', '', (raw) => {
-        const name = sanitizeRecipeName(raw);
-        if (!name) { showToast('名字不能为空'); return; }
-        const res = upsertPreset(readPresets(), { id: newPresetId(), name, recipe: captureCurrent() });
-        if (res.action === 'rejected') {
-            showToast(res.reason === 'too-many' ? '配方数量已达上限' : '保存失败：配方内容不合法');
-            return;
-        }
-        writePresets(res.list);
-        showToast('已保存配方「' + name + '」');
-        renderPanel();
-    });
 }
 
 function promptRename(id) {
@@ -548,39 +518,6 @@ function doImport() {
 
 /* ==================== 入口按钮 / 设置组（自建自挂） ==================== */
 
-const BTN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    + '<path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H13a2 2 0 0 1 0-4h2a5 5 0 0 0 5-5v-1z"></path>'
-    + '<circle cx="8" cy="9.5" r="1.1" fill="currentColor" stroke="none"></circle>'
-    + '<circle cx="12" cy="7" r="1.1" fill="currentColor" stroke="none"></circle>'
-    + '<circle cx="16" cy="9.5" r="1.1" fill="currentColor" stroke="none"></circle></svg>';
-
-function syncButton() {
-    const btn = byId(BTN_ID);
-    if (!btn) return;
-    btn.classList.toggle('on', isPanelOpen());
-    btn.setAttribute('aria-pressed', isPanelOpen() ? 'true' : 'false');
-}
-
-function ensureButton() {
-    const d = doc();
-    if (!d) return;
-    if (byId(BTN_ID)) return;
-    const host = q('.top-action-buttons');
-    /* 顶栏不在（手机版双页/别的宿主页）就只丢入口，不影响设置页那条路 */
-    if (!host) return;
-    const btn = d.createElement('button');
-    btn.type = 'button';
-    btn.id = BTN_ID;
-    btn.className = 'icon-action-btn';
-    btn.setAttribute('data-tooltip', '视觉配方');
-    btn.setAttribute('aria-label', '视觉配方');
-    btn.innerHTML = BTN_ICON;
-    /* 排在「切换样式」之后：两个都是改观感的入口，摆一起才找得到 */
-    const anchor = byId('openViewModeBtn');
-    host.insertBefore(btn, anchor && anchor.nextSibling ? anchor.nextSibling : null);
-    btn.addEventListener('click', () => { if (isPanelOpen()) closePanel(); else openPanel(); });
-}
-
 function ensureStylesheet() {
     const d = doc();
     if (!d || !d.head) return;
@@ -600,7 +537,10 @@ function ensureStylesheet() {
 function mountSettingsGroup() {
     const d = doc();
     if (!d || byId(SETTINGS_GROUP_ID)) return;
-    const host = q('[data-section="appearance"]') || q('#settingsBody');
+    /* 挂「数据」页而不是「视觉模式」：配方本质是保存/导出/导入一组预设，与
+       数据备份迁移同类；挂在视觉模式里会把该页右侧撑出一整片空白（2026-09-26 用户反馈）。
+       数据页不存在时才退回原处，最后兜底 settingsBody。 */
+    const host = q('[data-section="data"]') || q('[data-section="appearance"]') || q('#settingsBody');
     if (!host) return;
     try {
         const group = d.createElement('div');
@@ -641,7 +581,6 @@ function watchSettingsPanel() {
 function boot() {
     try {
         ensureStylesheet();
-        ensureButton();
         mountSettingsGroup();
         watchSettingsPanel();
         /* 语言切换后把开着的panel重画一遍：静态中文靠 i18n observer 扫，

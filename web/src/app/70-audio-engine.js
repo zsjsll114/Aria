@@ -16,6 +16,9 @@ import { nextTrack } from './95-track-loading.js';
 import { fadeInVolume } from '../core/fadeController.js';
 import { logError } from '../services/log.js';
 import { initStallDetector, startStallCheck, stopStallCheck, setBuffering } from '../core/stallDetector.js';
+/* ★ 帧时埋点（todos #21）：逐字高亮 rAF 是播放期间每帧都要跑的循环，
+   滚动卡顿时它与 57 的弹簧循环谁是瓶颈，只能靠设备自己回传帧时区分。 */
+import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
 
 audio?.addEventListener('play', () => {
             isPlaying = true;
@@ -121,8 +124,14 @@ globalThis.lyricsRafId = null;
 
 globalThis.isLyricsLoopRunning = false;
 
-function lyricsAnimationLoop() {
+/* ★ 帧时埋点源名：诊断页「帧时（实时采样）」段。源名 'lyricsLoop' 取自
+   core/frameProbe 文档示例；标签用 core/i18n 词表已登记的原文。 */
+const HL_PROBE_SOURCE = 'lyricsLoop';
+registerLoop(HL_PROBE_SOURCE, '歌词逐字高亮循环');
+
+function lyricsAnimationLoop(ts) {
             if (!isLyricsLoopRunning) return;
+            probeFrame(HL_PROBE_SOURCE, ts);
 
             /* ★ 接管只读显示模式：NPS 虚拟时钟驱动歌词高亮/进度（audio 未加载歌曲） */
             const np = (typeof window !== 'undefined' && window.Aria) ? window.Aria.get('__npDisplay') : null;
@@ -236,7 +245,11 @@ let _volSaveTimer = null;
 function persistVolume(v) {
             try {
                 if (typeof appSettings !== 'undefined' && appSettings.playback) {
-                    appSettings.playback.initialVolume = v;
+                    /* ★ 存整数：#setInitialVolume 是 step=1 的 range，点音量条会算出
+                       68.041237… 这种浮点，存进去后设置面板显示 68 而 appSettings 是 68.04，
+                       两边对不上（settings smoke 的 initSettingsMisc-vol-synced 就是钉这个）。
+                       实时增益仍用浮点 volume，只有持久化的这个旋钮取整。 */
+                    appSettings.playback.initialVolume = Math.round(v);
                 }
                 if (_volSaveTimer) clearTimeout(_volSaveTimer);
                 _volSaveTimer = setTimeout(() => { saveSettings(); }, 600);

@@ -25,11 +25,11 @@
     transition: var(--t-fast);
     white-space: nowrap;
 }
-.rank-chip:hover { border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.5); color: #fff; }
+.rank-chip:hover { border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.5); color: #fff; }
 .rank-chip.active {
-    border-color: var(--theme-color, #ffcc33);
-    background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.16);
-    color: var(--theme-color, #ffcc33);
+    border-color: var(--theme-color, #E8BE6A);
+    background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
+    color: var(--theme-color, #E8BE6A);
 }
 
 /* ---- 歌曲封面宫格：圆角正方形封面 + 左下角名称（与搜索弹窗同框架） ---- */
@@ -55,7 +55,7 @@
     transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 .rank-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
-.rank-card.np { box-shadow: 0 0 0 2px var(--theme-color, #ffcc33), 0 8px 24px rgba(0, 0, 0, 0.4); }
+.rank-card.np { box-shadow: 0 0 0 2px var(--theme-color, #E8BE6A), 0 8px 24px rgba(0, 0, 0, 0.4); }
 .rank-card-bg {
     position: absolute;
     inset: 0;
@@ -155,8 +155,8 @@
 }
 .view-toggle-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
 .view-toggle-btn.active {
-    border-color: var(--theme-color, #ffcc33);
-    color: var(--theme-color, #ffcc33);
+    border-color: var(--theme-color, #E8BE6A);
+    color: var(--theme-color, #E8BE6A);
 }
 .cards-head {
     display: flex;
@@ -375,7 +375,7 @@ body.perf-minimal .sk::after { animation: none; }
 .stats-kpi .v {
     font-size: 18px;
     font-weight: 800;
-    color: var(--theme-color, #ffcc33);
+    color: var(--theme-color, #E8BE6A);
 }
 .stats-kpi .l {
     font-size: 11px;
@@ -422,7 +422,7 @@ body.perf-minimal .sk::after { animation: none; }
 .stats-bar-fill {
     height: 100%;
     border-radius: 3px;
-    background: var(--theme-color, #ffcc33);
+    background: var(--theme-color, #E8BE6A);
     opacity: 0.85;
 }
 .stats-bar-val {
@@ -584,7 +584,7 @@ body.perf-minimal .sk::after { animation: none; }
     outline: none;
     transition: border-color 0.16s ease;
 }
-.gp-input:focus { border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.7); }
+.gp-input:focus { border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.7); }
 .gp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .gp-cancel, .gp-ok {
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -597,8 +597,8 @@ body.perf-minimal .sk::after { animation: none; }
     transition: var(--t-fast);
 }
 .gp-cancel:hover { background: rgba(255, 255, 255, 0.16); }
-.gp-ok { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.18); border-color: transparent; color: var(--theme-color, #ffcc33); font-weight: 600; }
-.gp-ok:hover { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.3); }
+.gp-ok { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.18); border-color: transparent; color: var(--theme-color, #E8BE6A); font-weight: 600; }
+.gp-ok:hover { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.3); }
 .gp-pick-list { margin-top: 10px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .gp-pick-item {
     display: flex;
@@ -637,11 +637,11 @@ body.perf-minimal .sk::after { animation: none; }
     position: relative;
     transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
-.pl-multi-cb:hover { border-color: var(--theme-color, #ffcc33); }
+.pl-multi-cb:hover { border-color: var(--theme-color, #E8BE6A); }
 .pl-multi-cb:checked {
-    background: var(--theme-color, #ffcc33);
-    border-color: var(--theme-color, #ffcc33);
-    box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 255, 204, 51), 0.45);
+    background: var(--theme-color, #E8BE6A);
+    border-color: var(--theme-color, #E8BE6A);
+    box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 232, 190, 106), 0.45);
 }
 .pl-multi-cb:checked::after {
     content: '';
@@ -654,7 +654,7 @@ body.perf-minimal .sk::after { animation: none; }
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
-.pl-multi-cb:focus-visible { outline: 1px solid var(--theme-color, #ffcc33); outline-offset: 1px; }
+.pl-multi-cb:focus-visible { outline: 1px solid var(--theme-color, #E8BE6A); outline-offset: 1px; }
 
 /* 编辑模式工具栏「全选/全不选」 */
 .pl-batch-all {

@@ -66,7 +66,7 @@ function coverUrl(raw) {
 
 /* 主题色（手机页强调色跟随主窗）。与桌面歌词同样按 TTL 缓存：
    getComputedStyle 会强制 style recalc，不能进每 2s 的常态路径 */
-let _th = { v: '#ffcc33', at: 0 };
+let _th = { v: '#E8BE6A', at: 0 };
 function themeColor() {
     const now = Date.now();
     if (now - _th.at < 5000) return _th.v;

@@ -19,6 +19,7 @@ selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易
 import atexit
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -152,6 +153,42 @@ def _restore_login():
 _restore_login()
 
 
+def _local_non_loopback_ip():
+    """取本机局域网 IPv4（UDP connect 不真的发包，只是让内核选出出口地址）。"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        return ''
+
+
+def probe_vendor_exposed(name):
+    """
+    黑盒判定 vendor 是否仍绑在任意地址上。
+
+    做法：拿本机**非回环** IPv4 去连 vendor 端口。绑 127.0.0.1 时这个连接必然失败，
+    绑 0.0.0.0/:: 时会成功 —— 所以 exposed=True 是可信的阳性证据，
+    它测的是实际绑定结果，而不是「守卫有没有自报加载成功」。
+
+    局限（宁可留注释不要留错觉）：本机没有局域网地址、或防火墙拦了自发连接时，
+    会返回 False。所以 False 的含义是「没测到暴露」，不等于「已证明收口」；
+    要确认收口请看 exposed 与 vendor 进程是否真在跑（alive）一起判断。
+    """
+    port = _SERVICES[name]['port']
+    ip = _local_non_loopback_ip()
+    if not ip or ip.startswith('127.'):
+        return False
+    try:
+        with socket.create_connection((ip, port), timeout=0.4):
+            return True
+    except Exception:
+        return False
+
+
 def _probe_alive(name):
     """轻量探测副进程端口是否在监听（最多 1s，不拉起进程）"""
     try:
@@ -188,6 +225,21 @@ def ensure_running(name):
             return False
         env = dict(os.environ)
         env.update(cfg.get('env', {}))
+        # ★ 三个 vendor 是第三方代码，自己 app.listen(port) 时不传 host 也不读 HOST，
+        #   实测默认绑到 `::`（IPv6 任意地址，比 0.0.0.0 还宽）——即使 server.py 没开
+        #   --lan 也等于把带登录态的接口开给整个网段。
+        #   这里用 NODE_OPTIONS 预加载一个 listen 守卫把默认值收到回环，
+        #   不走 patches/*.patch：补丁依赖精确上下文行号，上游一漂移就静默不生效。
+        #   要故意对局域网开放时显式设 ARIA_VENDOR_HOST=0.0.0.0 即可放行。
+        # ★ guard 路径必须用「相对路径 + 正斜杠」（2026-09-27 实测）：NODE_OPTIONS 会被
+        #   cmd(shell=True)→node 两层解析，带引号的中文绝对路径（如 D:\旧电脑\...）
+        #   被剥掉引号和反斜杠变成乱码路径 → preload MODULE_NOT_FOUND → 三个 vendor
+        #   冷启动全体秒崩（症状：设置页一直「自建服务未启动」+「已登录 uid 为空」）。
+        #   spawn 的 cwd 已是 vendor 目录（_eval/<vendor>/），上两级即项目根 scripts/。
+        _guard_abs = os.path.join(PROJECT_DIR, 'scripts', 'vendor-loopback-guard.cjs')
+        if os.path.isfile(_guard_abs) and env.get('ARIA_VENDOR_HOST', '127.0.0.1') != 'off':
+            _prev = env.get('NODE_OPTIONS', '')
+            env['NODE_OPTIONS'] = f'{_prev} --require ../../scripts/vendor-loopback-guard.cjs'.strip()
         try:
             _STATE[name].proc = subprocess.Popen(
                 cfg['start'], cwd=cfg['dir'], shell=True,
@@ -979,8 +1031,28 @@ def status_all():
             'loggedIn': logged_in,
             'hasSource': has_source,
             'uid': uid,
+            # 暴露面黑盒探针（带缓存，见 _exposed_cached）：True 表示该 vendor 仍可从
+            # 本机局域网地址连上，即回环收口没生效。前端/诊断页据此报警。
+            'exposed': _exposed_cached(name) if alive else False,
         }
     return out
+
+
+# 探针结果缓存：name -> (pid, at, exposed)。进程没换就 5 分钟内不重复探。
+_EXPOSE_CACHE = {}
+
+
+def _exposed_cached(name):
+    """status_all 会被前端轮询，探针最坏 0.4s×3 不能每次都跑，故按进程缓存。"""
+    svc = _STATE[name]
+    pid = getattr(svc.proc, 'pid', None)
+    now = time.time()
+    hit = _EXPOSE_CACHE.get(name)
+    if hit and hit[0] == pid and now - hit[1] < 300:
+        return hit[2]
+    val = probe_vendor_exposed(name)
+    _EXPOSE_CACHE[name] = (pid, now, val)
+    return val
 
 
 def login_state(name):

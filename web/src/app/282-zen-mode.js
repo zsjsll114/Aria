@@ -56,8 +56,6 @@ const STR = {
     groupTitle: ['专注模式', 'Focus Mode'],
     enableLabel: ['启用专注模式', 'Enable Focus Mode'],
     enableDesc: ['只留歌词与背景，其余控件淡出', 'Fade everything out but the lyrics and the background'],
-    autoLabel: ['鼠标静止后自动进入', 'Enter automatically when idle'],
-    autoDesc: ['停止操作若干秒后淡出控件，动一下鼠标立即唤回', 'Fades the controls out after a few idle seconds; any pointer motion brings them back'],
     idleLabel: ['静止判定时长', 'Idle delay'],
     idleDesc: ['多少秒无操作后进入专注模式（1~60 秒）', 'Seconds of no activity before entering (1-60s)'],
     idleValue: ['静止 {n} 秒', 'Idle {n}s'],
@@ -68,7 +66,10 @@ const STR = {
     keyRecording: ['按下按键...', 'Press a key...'],
     keyConflict: ['该按键已被其它功能占用', 'That key is already bound to another action'],
     toastOn: ['专注模式：动一下鼠标即可唤回控件', 'Focus mode: move the pointer to bring the controls back'],
-    toastOff: ['已关闭专注模式', 'Focus mode is off']
+    toastOff: ['已关闭专注模式', 'Focus mode is off'],
+    btnLabel: ['专注模式', 'Focus mode'],
+    tipOn: ['专注模式 · 已开启（点击退出，控件立即唤回）', 'Focus mode on — click to bring the controls back'],
+    tipOff: ['专注模式（只留歌词，其余控件淡出）', 'Focus mode: hide everything but the lyrics']
 };
 
 function langIsEn() {
@@ -116,12 +117,10 @@ export function getZenSettings() {
             ? scopePrefs[item.token] : item.defaultOn;
     });
     return {
-        enabled: stored.enabled !== false,
-        /* ★ 自动进入默认**关**。原先写成 `!== false`（未配置即 false→取反=开），
-           结果是：没人开过这个功能的人，静止 4 秒后底栏和右上角图标自己淡出去了，
-           看起来就是「控件栏无故消失」。实测 zenPref 为 null 时 is-zen 已经挂上。
-           功能本身保留：Z 键（manual）与设置里的开关照旧，只是不再自动触发。 */
-        autoEnter: stored.autoEnter === true,
+        /* ★ 默认**关**。这个功能会自己把控件淡出去，没开过的人不该被它吓到
+           （历史上正是 `!== false` 让 zenPref 为空时也算开，静止 4 秒控件自己没了）。
+           开了之后「静止 N 秒自动隐藏」就是它的核心行为，所以不再另设 autoEnter 一层。 */
+        enabled: stored.enabled === true,
         idleSeconds: clampNumber(stored.idleSeconds, MIN_IDLE_SECONDS, MAX_IDLE_SECONDS, DEFAULT_IDLE_SECONDS),
         scopes
     };
@@ -246,7 +245,7 @@ function clearIdleTimer() {
 /* 当前配置下的静止时长；自动进入关掉或总开关关掉时为 0 */
 function idleDelayMs() {
     const cfg = getZenSettings();
-    if (!cfg.enabled || !cfg.autoEnter) return 0;
+    if (!cfg.enabled) return 0;
     return Math.max(MIN_IDLE_SECONDS, cfg.idleSeconds) * 1000;
 }
 
@@ -285,6 +284,10 @@ export function enterZen(reason) {
     d.documentElement.classList.add(ZEN_CLASS);
     _zen = true;
     clearIdleTimer();
+    /* 任何入口（Z 键 / 静止自动 / 按钮）都要回写一次面板与按钮，
+       否则会出现「屏幕已经专注了，开关还写着关」。 */
+    persistZen({ enabled: true });
+    syncZenSettingsUI();
     if (reason === 'manual') toast(STR.toastOn);
     return true;
 }
@@ -295,6 +298,8 @@ export function exitZen() {
     if (!_zen || !d || !d.documentElement) return false;
     d.documentElement.classList.remove(ZEN_CLASS);
     _zen = false;
+    /* 只回写开关显示，**不**改 enabled：动一下鼠标退出专注，不该顺手把 Z 键也禁掉 */
+    syncZenSettingsUI();
     armIdleTimer();
     return true;
 }
@@ -303,6 +308,9 @@ export function toggleZen(reason) {
     return _zen ? exitZen() : enterZen(reason || 'manual');
 }
 
+/* 一次性提示（Z 键/按钮进入时给一句「动一下鼠标就回来」）。
+   刻意不 import 155 的 showToast：那个分片在本分片之后加载，反向依赖会成环，
+   所以走 globalThis 上已经挂好的实现，取不到就当没提示。 */
 function toast(entry) {
     try {
         const fn = (typeof globalThis !== 'undefined' && globalThis.showToast) || null;
@@ -310,7 +318,37 @@ function toast(entry) {
     } catch (e) { logCatch(TAG, e); }
 }
 
+/* ---------- 「先记下意图，等浮层关掉再进」 ----------
+   启用开关长在设置面板里，而设置面板本身就是 MODAL_SELECTOR 的一条：
+   「有弹窗开着就不进入」这条规则会把自己绊倒——用户在设置里点亮开关，
+   enterZen 当场拒绝，关掉面板后又没有任何东西再触发一次（自动进入默认是关的），
+   于是看到的就是「开了也不隐藏任何控件」。所以开关点下去时要留一次待进入意图。 */
+
 /* ---------- 活动侦测 ---------- */
+/* ★ 两类活动分开（用户定的语义）：
+     点击/按键 = 真在用软件 → 重置倒计时 + 退出专注；
+     鼠标移动/滚轮 = 只是路过 → 在专注态里把控件唤回，但**不重置**进入倒计时；
+       唤回之后进入「再进入要连移动都算活动」的严格窗口，避免鼠标一直在动却突然淡出。 */
+let _reentryStrict = false;
+
+function onClickActivity() {
+    _reentryStrict = false;
+    if (_zen) { exitZen(); return; }
+    armIdleTimer();
+}
+
+function onMoveActivity() {
+    if (_zen) {
+        exitZen();
+        _reentryStrict = true;
+        armIdleTimer();
+        return;
+    }
+    /* 非严格窗口里移动不重置倒计时——用户要的是「一段时间没点击就自动隐藏」，
+       而不是「必须一动不动」。 */
+    if (_reentryStrict) armIdleTimer();
+}
+
 function onActivity() {
     if (_zen) { exitZen(); return; }
     /* 秒数被改过（设置面板、或后端配置异步落回）时不能受节流保护，
@@ -420,8 +458,6 @@ export function mountZenSettingsUI() {
             <div class="settings-group-title">${esc(title)}</div>
             ${rowHTML(STR.enableLabel, STR.enableDesc,
                 '<button type="button" class="setting-toggle" id="zenEnabledToggle"></button>')}
-            ${rowHTML(STR.autoLabel, STR.autoDesc,
-                '<button type="button" class="setting-toggle" id="zenAutoToggle"></button>')}
             ${rowHTML(STR.idleLabel, STR.idleDesc,
                 `<input type="range" class="setting-slider" id="zenIdleSlider" min="${MIN_IDLE_SECONDS}" max="${MAX_IDLE_SECONDS}" step="1">
                  <span class="setting-value" id="zenIdleVal"></span>`)}
@@ -432,17 +468,18 @@ export function mountZenSettingsUI() {
         host.appendChild(group);
 
         group.querySelector('#zenEnabledToggle')?.addEventListener('click', () => {
+            /* 开关只管「这个功能开不开」，**不**立刻进入界面。
+               历史上有两版错法：① 只写偏好、点完什么都没发生（用户报「开了也不隐藏任何控件」，
+               其实还要再按一次 Z）；② 点完立刻淡出全部控件——设置面板还开着就当场清空界面，
+               像坏了。现在：点亮 = 开始按「静止 N 秒」自动进入；要立刻进用按钮或 Z 键。 */
             const next = !getZenSettings().enabled;
             persistZen({ enabled: next });
+            /* ★ 点亮开关不等于「立刻进入」：用户要的是「开之后，一段时间没点击就自动隐藏」。
+               立刻进入会把界面突然清空，反而像坏了；要马上进有按钮和 Z 键。 */
+            if (!next) exitZen();
+            _reentryStrict = false;
             syncZenSettingsUI();
             applyScopeAttr();
-            armIdleTimer();
-            if (!next && _zen) exitZen();
-            if (!next) toast(STR.toastOff);
-        });
-        group.querySelector('#zenAutoToggle')?.addEventListener('click', () => {
-            persistZen({ autoEnter: !getZenSettings().autoEnter });
-            syncZenSettingsUI();
             armIdleTimer();
         });
         const slider = group.querySelector('#zenIdleSlider');
@@ -483,8 +520,12 @@ export function mountZenSettingsUI() {
 export function syncZenSettingsUI() {
     const cfg = getZenSettings();
     const on = (el, v) => { if (el) el.classList.toggle('on', !!v); };
+    /* ★ 这颗开关显示的是「现在是不是专注态」，不是「enabled 偏好」。
+       enabled 默认是 true（为了让 Z 键开箱可用），于是旧写法一开机就把开关点亮，
+       用户点它 = 关掉 = 什么都不发生，再点一次才进入——这就是「开了也不隐藏任何控件」
+       里最迷惑的那一半。开关既然叫「专注模式」，它就该等于屏幕上有没有在专注。 */
     on(q('#zenEnabledToggle'), cfg.enabled);
-    on(q('#zenAutoToggle'), cfg.autoEnter);
+    syncButtonState();
     qsa('[data-zen-scope]').forEach(el => on(el, cfg.scopes[el.getAttribute('data-zen-scope')]));
     const slider = q('#zenIdleSlider');
     /* 用户正在拖这根滑条时不回写 value，否则拖动会被自己的同步打断 */
@@ -496,6 +537,57 @@ export function syncZenSettingsUI() {
     if (chip && !chip.classList.contains('recording')) chip.textContent = keyDisplay(getZenKey());
 }
 
+
+/* ---------- 顶栏按钮（用户要求：可进「自定义按钮栏」，隐藏后收进「更多」） ---------- */
+const BTN_ID = 'zenModeBtn';
+/* 取景框四角 + 中心点：「只剩内容」的隐喻。线宽与其它顶栏图标一致，
+   不用任何 unicode 字符当图标（缺字会掉豆腐块，线宽也对不齐）。 */
+const BTN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+    + '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"></path>'
+    + '<path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"></path>'
+    + '<path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"></path>'
+    + '<path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"></path>'
+    + '<circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"></circle></svg>';
+
+function ensureButton() {
+    const d = doc();
+    if (!d) return null;
+    const existing = d.getElementById(BTN_ID);
+    if (existing) return existing;
+    const host = d.querySelector('.top-action-buttons');
+    if (!host) return null;
+    const btn = d.createElement('button');
+    btn.type = 'button';
+    btn.id = BTN_ID;
+    btn.className = 'icon-action-btn';
+    btn.innerHTML = BTN_ICON;
+    btn.addEventListener('click', (e) => {
+        /* 按钮是「手动立刻切换」，与开关的偏好语义不同；
+           按完之后把静止倒计时重新武装，避免刚退出又马上自动进去。 */
+        e.preventDefault();
+        e.stopPropagation();
+        toggleZen('manual');
+        /* 不能再调 onClickActivity()：它看到「已经在专注态」会立刻退出，
+           于是按钮变成「按一下没反应」。只在退出的那条路上重新武装倒计时。 */
+        if (!_zen) { _reentryStrict = false; armIdleTimer(); }
+    });
+    /* 排在「 readabilityBtn / 切换样式」之前：同属外观一族。
+       两个都可能在或都不在，所以逐个兜底。 */
+    const anchor = d.getElementById('readabilityBtn') || d.getElementById('openViewModeBtn');
+    host.insertBefore(btn, anchor && anchor.parentNode === host ? anchor : null);
+    return btn;
+}
+
+function syncButtonState() {
+    const btn = ensureButton();
+    if (!btn) return;
+    const active = isZenActive();
+    btn.classList.toggle('on', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.setAttribute('aria-label', fmt(STR.btnLabel));
+    btn.setAttribute('data-tooltip', fmt(active ? STR.tipOn : STR.tipOff));
+}
+
 /* ---------- 装配 ---------- */
 let _inited = false;
 
@@ -505,10 +597,10 @@ export function initZenMode() {
     _inited = true;
     ensureStylesheet();
     mountZenSettingsUI();
+    ensureButton();
 
-    ['mousemove', 'mousedown', 'wheel', 'touchstart', 'pointerdown'].forEach(type => {
-        d.addEventListener(type, onActivity, { passive: true });
-    });
+    ['mousemove', 'wheel'].forEach(type => d.addEventListener(type, onMoveActivity, { passive: true }));
+    ['mousedown', 'touchstart', 'pointerdown'].forEach(type => d.addEventListener(type, onClickActivity, { passive: true }));
     d.addEventListener('keydown', onKeydown);
     d.addEventListener('keydown', onRecordKey);
     bindViewModeGuard();

@@ -11,8 +11,11 @@ import { getCoverLayers } from '../infrastructure/dom.js';
 import { playerContainer } from './40-playback-state.js';
 import { layoutWordCloud } from './56-playback-misc.js';
 import { updateWordcloudCamera } from './57-wordcloud-camera.js';
-import { logInfo, logWarn, logError } from '../services/log.js';
+import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { ensureWordTiming } from '../parsers/wordTiming.js'; // 行级歌词 → 逐字时间补全
+import { alignLyrics, needsAlign, wordAlignKey } from '../services/wordAlign.js'; // 频谱逐字对齐
+import { perCharSynthesisWanted } from '../config/wordPerChar.js'; // 开关1：要不要摊平（纯函数判定）
+import { maybeUpgradeToWordLyrics } from './293-word-upgrade.js'; // 开关2：去别的音源换真逐字
 
 /* 全景视觉模式调度器 */
 if (typeof window !== 'undefined') { window.currentViewMode = 'cover'; }
@@ -100,7 +103,10 @@ function buildWordsInto(wordsContainer, line, lineIndex, opts) {
                             const isWsOnly = coreText.length === 0;
                             const charCount = Math.max(1, coreText.length);
                             const charDuration = duration / charCount;
-                            /* ★ 词云模式：拉丁英文整词上采样；飞入模式必须逐字符飞入（用户需求：按"字符"而非按"词"） */
+                            /* ★ 词云模式：拉丁英文整词上采样；飞入模式必须逐字符飞入（用户需求：按"字符"而非按"词"）。
+                               ★ 2026-09-27 曾扩到歌词/默认三模式（治英文卡顿），用户实测否决：
+                               逐字符上浮动画与情感词逐字符高亮是刻意设计，整词上浮/整词直显不可接受。
+                               卡顿另按字符路径实测修（见 57 消费端 NaN 兜底与 20 渲染端 charEnd 钳位）。 */
                             const isLatinWholeMode = playerContainer.classList.contains('view-wordcloud') && isLatin && !isRTL && !isWsOnly;
                             const wordCore = isLatinWholeMode ? coreText : '';
                             const hasGap = isLatinWholeMode && (leadingWs || trailingWs);
@@ -173,7 +179,12 @@ function buildWordsInto(wordsContainer, line, lineIndex, opts) {
                             }
                             for (let c = 0; c < charCount; c++) {
                                 const charStart = Math.round(word.start + c * charDuration);
-                                const charEnd = Math.round(word.start + (c + 1) * charDuration);
+                                /* ★ 英文歌卡顿根因（2026-09-26）：短词/单字符词 duration < charCount ms
+                                   时 round 后 charEnd == charStart → 消费端 (t-start)/(end-start) 除零
+                                   → pct=NaN → lastWordProgress 缓存永 miss（NaN!==NaN）→ 该字符每帧
+                                   无条件重写 --reveal 触发整层 mask 重绘，滚动/高亮 rAF 预算被吃光。
+                                   词内零长区间一律钳到 1ms；消费端另有兜底（57 updateLyricsHighlight）。 */
+                                const charEnd = Math.max(Math.round(word.start + (c + 1) * charDuration), charStart + 1);
                                 const wordEl = document.createElement('span');
                                 wordEl.className = 'word';
                                 if (isLatin) { wordEl.classList.add('word-latin'); }
@@ -226,17 +237,63 @@ function buildWordsInto(wordsContainer, line, lineIndex, opts) {
     return lineHasRTL;
 }
 
+/* ========== 频谱逐字对齐的触发（renderLyrics 是唯一接线点，见 AGENTS 约束 17/18） ==========
+   已尝试过的 (歌曲 × 歌词) 键。必须记：音频没给出信息时 applyAlignment 会把那几行
+   标回 synthesized，needsAlign 于是仍为真——不记就会「重渲染→再对齐」无限循环。 */
+const _alignTried = new Set();
+const _ALIGN_TRIED_MAX = 200;
+/* 与 _postLoadTasks 同一套错峰思路：别和首屏、切歌、高潮检测抢主线程与带宽 */
+const _ALIGN_DELAY_MS = 4000;
+
+function maybeAlignLyrics(lines) {
+            try {
+                if (typeof window === 'undefined' || !audio || !audio.currentSrc) return;
+                if (!needsAlign(lines)) return;
+                /* 默认关闭，需显式开启：实测精度不足以冒充真实逐字（对拍真值平均误差
+                   547ms、±100ms 命中 36%，仅比均分基线好 11%），却要为一首歌整首下载+解码。
+                   约束 17 的摊平已能满足「没有时间戳也做逐字」的观感需求。
+                   偏好挂 interface 下：loadSettings 对它全量展开，不必改 180 的合并白名单。 */
+                const iface = (globalThis.appSettings && globalThis.appSettings.interface) || {};
+                if (iface.wordAlign !== true) return;
+                const song = globalThis.currentSongData;
+                const key = wordAlignKey(song, lines);
+                if (_alignTried.has(key)) return;
+                if (_alignTried.size > _ALIGN_TRIED_MAX) _alignTried.clear();
+                _alignTried.add(key);
+                setTimeout(() => {
+                    /* 期间切了歌/换了源，globalThis.lyrics 就不再是我们对齐的这份 */
+                    const isStale = () => globalThis.lyrics !== lines;
+                    alignLyrics({ lines, audioUrl: audio.currentSrc, song, isStale })
+                        .then(res => {
+                            if (!res || !res.aligned || isStale()) return;
+                            logInfo('lyricsRender', `[逐字对齐] ${res.fromCache ? '命中缓存' : '已计算'} ${res.aligned} 行`);
+                            renderLyrics(res.lines);
+                        })
+                        .catch(e => logCatch('wordAlign', e));
+                }, _ALIGN_DELAY_MS);
+            } catch (e) {
+                logCatch('wordAlign', e);
+            }
+        }
+
 function renderLyrics(lyrics) {
             /* ★ 逐字兜底：只有行级时间戳的歌词（普通 LRC、多数外部源）按行时长摊平出
                逐字时间，否则下面 `line.words.length` 分支不成立、整行一跳。
                已有真实逐字会原样返回（不覆盖平台给的精确节拍）；合成行带
                wordTiming='synthesized'，下载/标签/选源三处真值判定靠它区分假时间戳。
                放在这个函数入口而不是各加载点：23 个 renderLyrics 调用点一次覆盖，
-               且 globalThis.lyrics 一起被补齐，桌面歌词/PV/词云/手机远端都受益。 */
-            lyrics = ensureWordTiming(lyrics, {
-                totalMs: (typeof audio !== 'undefined' && audio && Number.isFinite(audio.duration))
-                    ? Math.round(audio.duration * 1000) : 0
-            });
+               且 globalThis.lyrics 一起被补齐，桌面歌词/PV/词云/手机远端都受益。
+             ★ todos #12 开关1：这一步现在是**可选**的。判定收在
+               config/wordPerChar.js（纯函数）里——关掉开关、或当前模式不在
+               PER_CHAR_MODES（歌词/默认/词云）里、或开了开关2（要去找真逐字），
+               都不摊平，退回整行一跳。跳过合成不影响平台自带的真逐字：
+               那些 words 本来就在数据里，不经过这一步。 */
+            if (perCharSynthesisWanted(globalThis.appSettings, currentViewMode)) {
+                lyrics = ensureWordTiming(lyrics, {
+                    totalMs: (typeof audio !== 'undefined' && audio && Number.isFinite(audio.duration))
+                        ? Math.round(audio.duration * 1000) : 0
+                });
+            }
             /* ★ 当前歌词全局缓存：供"下载歌词"(90-eq.js)读取即时数据 */
             if (typeof window !== 'undefined') { Aria.__ariaLyrics = lyrics; }
             /* ★ 同步 globalThis.lyrics：形参 lyrics 会遮蔽全局名，
@@ -362,7 +419,17 @@ function cacheLyricElements() {
             lineElements.forEach(line => {
                 const words = Array.from(line.querySelectorAll('.word'));
                 wordElementsByLine.push(words);
-                wordHighlightElementsByLine.push(words.map(w => w.querySelector('.word-highlight')));
+                /* ★ 性能（2026-09-26）：原实现对每个字再发一次 querySelector('.word-highlight')——
+                   一首 400 行 × 约 15 字的歌就是约 6000 次选择器匹配，全部发生在切歌/重渲染的
+                   同步路径上，直接体现为「刚进歌那一下卡、这时滚不动」。
+                   buildWordsInto 的三个分支（RTL 整词 / 空白占位 / 逐字）都是
+                   `appendChild(highlightEl); appendChild(textEl);`，所以 .word-highlight
+                   恒为 .word 的第一个元素子节点 —— 直接读 firstElementChild 即可。
+                   结构万一变了（有人插了别的前置节点）就回落到原来的 querySelector，行为不变。 */
+                wordHighlightElementsByLine.push(words.map(w => {
+                    const h = w.firstElementChild;
+                    return (h && h.classList.contains('word-highlight')) ? h : w.querySelector('.word-highlight');
+                }));
             });
             lastWordProgress.clear();
             activeLineIndex = -1;
@@ -476,6 +543,13 @@ function cacheLyricElements() {
                     mainVisManager.update(audio ? audio.currentTime : 0);
                 }
             }
+
+            /* ★ 频谱逐字对齐：把 ensureWordTiming 摊平出来的近似节拍换成音频实测点。
+               放在渲染之后——它可能触发一次重渲染，渲染中途调用会自我重入。 */
+            maybeAlignLyrics(lyrics);
+            /* ★ todos #12 开关2：行级歌词去别的音源换一份真逐字回来。
+               同样放在渲染之后，理由和上面一样（它会再触发一次 renderLyrics）。 */
+            maybeUpgradeToWordLyrics(lyrics);
         }
 
 /* 虚拟滚动：根据当前活动行更新渲染范围 */

@@ -76,7 +76,7 @@
     transition: border-color 0.2s ease, background 0.2s ease;
 }
 .ls-box input:focus {
-    border-color: var(--theme-color, #ffcc33);
+    border-color: var(--theme-color, #E8BE6A);
     background: rgba(0, 0, 0, 0.3);
 }
 .ls-box input::placeholder { color: rgba(255, 255, 255, 0.4); }
@@ -138,7 +138,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--theme-color, #ffcc33);
+    background: var(--theme-color, #E8BE6A);
     flex: 0 0 auto;
     animation: ls-pulse 1.3s ease-in-out infinite;
 }
@@ -160,14 +160,15 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 5px;
-    padding: 2px 6px 10px;
+    padding: 0 6px 9px;
+    margin-bottom: 2px;
     font-size: 11.5px;
     color: rgba(255, 255, 255, 0.5);
-    position: sticky;
-    top: -10px;
-    background: linear-gradient(180deg, rgba(24, 26, 34, 0.66), rgba(24, 26, 34, 0));
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    /* ★ 这里原来是一条「浮在列表上的半透明带」：position: sticky + 自己涂的深色渐变底
+       + blur(6px)。三者叠起来正好造出用户圈出来的那个问题——列表滚到它下面那一行时，
+       统计文字和歌词文字各透出一半，两边都读不了；那块灰底也和毛玻璃面板不是一个材质。
+       统计行是面板内容的一部分，就不该自带底：改成随流、透明、只留一根分隔线。 */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .ls-inline-build {
     display: flex;
@@ -200,7 +201,7 @@
     border-color: rgba(255, 255, 255, 0.14);
 }
 .ls-row:focus-visible {
-    border-color: var(--theme-color, #ffcc33);
+    border-color: var(--theme-color, #E8BE6A);
 }
 .ls-cover {
     width: 40px;
@@ -256,8 +257,8 @@
     word-break: break-word;
 }
 .ls-mark {
-    color: var(--theme-color, #ffcc33);
-    background: color-mix(in srgb, var(--theme-color, #ffcc33) 18%, transparent);
+    color: var(--theme-color, #E8BE6A);
+    background: color-mix(in srgb, var(--theme-color, #E8BE6A) 18%, transparent);
     border-radius: 3px;
     padding: 0 1px;
     font-weight: 700;
@@ -289,7 +290,7 @@
 .ls-hits {
     font-size: 10.5px;
     font-variant-numeric: tabular-nums;
-    color: var(--theme-color, #ffcc33);
+    color: var(--theme-color, #E8BE6A);
     opacity: 0.85;
 }
 .ls-chip {
@@ -375,7 +376,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--theme-color, #ffcc33);
+    background: var(--theme-color, #E8BE6A);
     animation: ls-pulse 1.3s ease-in-out infinite;
 }
 .top-action-buttons .lyric-search-entry .lsq-text { display: none; }
@@ -403,13 +404,6 @@ html#ariaRoot body.perf-minimal .lyric-search-modal {
     background: rgba(20, 22, 30, 0.98) !important;
     box-shadow: none !important;
     border-color: rgba(255, 255, 255, 0.22);
-}
-html#ariaRoot.is-software-renderer .ls-sum,
-html#ariaRoot body.perf-low .ls-sum,
-html#ariaRoot body.perf-minimal .ls-sum {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: none;
 }
 html#ariaRoot.is-software-renderer .ls-dot,
 html#ariaRoot body.perf-low .ls-dot,

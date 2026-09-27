@@ -9,6 +9,7 @@ import { audio } from './20-lyrics-render.js';
 import { setHint } from './120-search-results.js';
 import { saveSettings } from './180-boot-config.js';
 import { esc, formatTime } from '../utils/formatters.js';
+import '../utils/numberStepper.js'; // 自定义分钟数的 ± 步进：模块自带全局委托，import 即生效
 import { logCatch } from '../services/log.js';
 import {
     SLEEP_FADE_MS,

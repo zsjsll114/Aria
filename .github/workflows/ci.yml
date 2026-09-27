@@ -47,23 +47,10 @@ jobs:
           done
           echo "server failed to start, log:"; tail -50 server.log; exit 1
 
-      - name: Run JS unit tests (parsers / particles / music fallback / nowplaying / escape-gate rule / stall detector)
-        run: |
-          node --test tests/js/test_parsers.js
-          node --test tests/js/test_particles.js
-          node --test tests/js/test_music_api_fallback.js
-          node --test tests/js/test_nowplaying.js
-          node --test tests/js/test_html_escape_rule.js
-          node --test tests/js/test_stall_detector.js
-          node --test tests/js/test_fade_controller.js
-          node --test tests/js/test_shortcut_manager.js
-          node --test tests/js/test_equalizer.js
-          node --test tests/js/test_play_source.js
-          node --test tests/js/test_shape_field.js
-          node --test tests/js/test_pv_arc_field.js
-          node --test tests/js/test_motion.js
-          node --test tests/js/test_ai_lyrics_word_fallback.js
-          node --test tests/js/test_i18n_coverage.js
+      # ★ 跑整个 glob，不是一行行手抄：手抄的名单会让「新写的测试没登记」静默变成绿色 CI。
+      #   新增 tests/js/test_*.js 自动进门禁，无需改这个文件。
+      - name: Run JS unit tests (all of tests/js/test_*.js)
+        run: node --test tests/js/test_*.js
 
       - name: Motion discipline ratchet (easing curves / bounce / transition:all / will-change)
         run: node scripts/audits/motion-audit.mjs --check
@@ -71,9 +58,24 @@ jobs:
       - name: i18n phrase-registry ratchet (中文 UI 文本必须登记进 STATIC_PHRASE_MAP)
         run: node scripts/audits/i18n-coverage.mjs --check
 
+      - name: Resolve instrumentation gate (每个 playUrl 赋值点必须埋 recordResolveHit)
+        run: node scripts/audits/resolve-instrumentation.mjs --check
+
+      - name: Resolve instrumentation gate self-test (门禁本身必须会响)
+        run: node --test tests/js/test_resolve_instrumentation.js
+
+      # ★ 新增测试文件不得「写了但没进 CI」（本仓库真漏过 15 个，全靠人肉发现）
+      - name: Test registry gate (每个 tests/**/test_*.?(js|py) 必须在 ci.yml 里跑到)
+        run: node scripts/audits/test-registry.mjs --check
+
       - name: Run Python unit tests (audio stream proxy / MIME)
         run: |
           python -m unittest tests.python.test_audio_stream
+          python -m unittest tests.python.test_vosk_model_path
+          python -m unittest tests.python.test_vendor_loopback_guard
+          python -m unittest tests.python.test_cache_lock
+          python -m unittest tests.python.test_kugou_cellphone
+          python -m unittest tests.python.test_verify_login
 
       - name: Run PV regression tests
         run: |
@@ -85,3 +87,25 @@ jobs:
         run: |
           python tests/test_settings_smoke.py
           python tests/test_word_fallback.py
+          python tests/test_word_align.py
+
+      # 2026-09-26 这批修复各自的回归钉：默认模式入口/取链音源判定/日推点击/数字步进器
+      - name: Cover-mode entries, source routing, daily-recommend & stepper smoke
+        run: |
+          python tests/test_cover_mode_entries.py
+          python tests/test_source_routing.py
+          python tests/test_daily_recommend_click.py
+          python tests/test_number_stepper.py
+          python tests/test_titlebar_contrast.py
+          python tests/test_theme_palette_ui.py
+          python tests/test_word_per_char_ui.py
+          python tests/test_ab_loop_ui.py
+          # 2026-09-26 AI 反代隐私确认：开机无手势不得弹窗（本机未走反代时整体 SKIP）
+          python tests/test_ai_privacy_boot.py
+          # 2026-09-26 首跑向导：标准毛玻璃 + 英文模式真的翻译 + 主题色写全两个变量
+          python tests/test_oobe_settings_polish.py
+          # 这两份早就写好且本地全绿（49/49、33/33），一直没进 CI —— 正是登记门禁要挡的情形
+          python tests/test_toolbar_customization.py
+          python tests/test_phone_remote.py
+          python tests/test_vfx_intensity_ui.py
+          python tests/test_zen_mode_ui.py

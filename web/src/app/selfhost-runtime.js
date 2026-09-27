@@ -318,7 +318,7 @@ function normKugou(d) {
     if (Array.isArray(si)) singer = si.map(a => (typeof a === 'string' ? a : (a.name || a.author_name || ''))).filter(Boolean).join(' / ');
     if (!singer) singer = (it.singername || it.author_name || it.author || '').replace(/<[^>]+>/g, '');
     list.push({
-      id: it.hash, name: it.songname || it.filename || it.name, singer,
+      id: it.hash, hash: it.hash, name: it.songname || it.filename || it.name, singer,
       album: it.album_name || it.albumname, source: 'kugou',
       cover: _cov(it.sizable_cover) || _cov(it.img) || _cov(it.cover),
     });
@@ -349,7 +349,9 @@ function normQQ(d) {
     if (Array.isArray(sg)) singer = sg.map(x => (typeof x === 'string' ? x : (x.name || x.title || ''))).filter(Boolean).join(' / ');
     else singer = song.singerName || song.singername || '';
     list.push({
-      id: mid, name: song.title || song.name || song.songname,
+      /* ★ mid 必须单独给：QQ 取链的原生主键是 mid，只塞进 id 会让下游
+         （258 日推 → loadOnlineSong）拿 mid 当数字 id 去反查元数据，多一次网络往返。 */
+      id: mid, mid, name: song.title || song.name || song.songname,
       singer, album: song.album && (song.album.name || song.album.mid || ''), source: 'qq',
       cover: (song.album && (song.album.pmid || song.album.mid)) ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.album.pmid || song.album.mid}.jpg` : (song.cover || null),
     });
@@ -380,7 +382,7 @@ function normQQTracks(d) {
       ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${album.pmid || album.mid}.jpg`
       : null;
     return {
-      id: song.mid, name: song.title || song.name || it.songname || '', singer,
+      id: song.mid, mid: song.mid, name: song.title || song.name || it.songname || '', singer,
       album: album ? (album.name || '') : '', cover, source: 'qq',
     };
   }).filter(Boolean);
@@ -623,7 +625,7 @@ async function kugouSongs(item, title) {
     }
     const _cov = (u) => (u ? String(u).replace('{size}', '300') : '');
     return {
-      id: it.hash, name, singer,
+      id: it.hash, hash: it.hash, name, singer,
       album: it.album_name || (it.albuminfo && it.albuminfo.album_name) || it.albumname,
       cover: _cov(it.cover) || _cov(it.img) || _cov(it.album_audio_cover)
           || _cov(it.album_img) || _cov(it.sizable_cover) || _cov(it.pic), source: 'kugou',

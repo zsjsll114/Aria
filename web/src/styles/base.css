@@ -1,6 +1,6 @@
         :root {
-            --theme-color: #ffcc33;
-            --theme-color-rgb: 255, 204, 51;
+            --theme-color: #E8BE6A;
+            --theme-color-rgb: 232, 190, 106;
         }
 
         * {
@@ -75,11 +75,11 @@
             animation: modalIn 0.4s var(--e-enter);
         }
         .welcome-icon {
-            color: var(--theme-color, #ffcc33);
+            color: var(--theme-color, #E8BE6A);
             margin-bottom: 20px;
             display: flex;
             justify-content: center;
-            filter: drop-shadow(0 0 20px rgba(var(--theme-color-rgb, 255, 204, 51), 0.4));
+            filter: drop-shadow(0 0 20px rgba(var(--theme-color-rgb, 232, 190, 106), 0.4));
         }
         .welcome-title {
             font-size: 24px;
@@ -92,7 +92,7 @@
             margin-bottom: 28px;
         }
         .welcome-btn {
-            background: var(--theme-color, #ffcc33);
+            background: var(--theme-color, #E8BE6A);
             color: #1a1a1a;
             border: none;
             border-radius: 24px;
@@ -102,11 +102,11 @@
             cursor: pointer;
             font-family: inherit;
             transition: var(--t-base);
-            box-shadow: 0 4px 20px rgba(var(--theme-color-rgb, 255, 204, 51), 0.35);
+            box-shadow: 0 4px 20px rgba(var(--theme-color-rgb, 232, 190, 106), 0.35);
         }
         .welcome-btn:hover {
             transform: scale(1.05);
-            box-shadow: 0 6px 28px rgba(var(--theme-color-rgb, 255, 204, 51), 0.5);
+            box-shadow: 0 6px 28px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
         }
 
         /* 模糊背景效果 - 左右缓慢摇摆（双层交叉淡入淡出） */
@@ -269,6 +269,28 @@
         /* 标题行允许收藏按钮溢出显示 */
         .song-info-wrapper.title-wrapper {
             overflow: visible;
+        }
+
+        /* 默认（cover）模式下 .bottom-control-bar 是 display:none，底栏那枚取链角标看不见，
+           所以主信息列挂了第二枚。三处规则全部限定在 view-cover 下，其它模式一行都不改布局；
+           显隐交给外层 slot，不给角标本身上 display——那会和
+           `.play-source-badge[hidden]{display:none}`（同特异度）打架，导致空角标占位。 */
+        .song-source-badge-slot { display: none; }
+        .player-container.view-cover .song-source-badge-slot {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+        .player-container.view-cover .song-info-wrapper:has(.song-source-badge-slot) {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .player-container.view-cover .song-info-wrapper:has(.song-source-badge-slot) .scrollable-text {
+            width: auto;
+            flex: 0 1 auto;
+            min-width: 0;
         }
 
         .scrollable-text {
@@ -539,7 +561,7 @@
         .ctx-item:focus-visible,
         .setting-dropdown-trigger:focus-visible,
         .setting-dropdown-item:focus-visible {
-            outline: 2px solid var(--theme-color, #ffcc33);
+            outline: 2px solid var(--theme-color, #E8BE6A);
             outline-offset: 2px;
         }
 
@@ -564,9 +586,9 @@
 
         /* 当前选中项高亮 */
         .kb-nav-selected {
-            outline: 2px solid var(--theme-color, #ffcc33) !important;
+            outline: 2px solid var(--theme-color, #E8BE6A) !important;
             outline-offset: 2px !important;
-            box-shadow: 0 0 0 4px rgba(var(--theme-color-rgb, 255, 204, 51), 0.15) !important;
+            box-shadow: 0 0 0 4px rgba(var(--theme-color-rgb, 232, 190, 106), 0.15) !important;
             z-index: 9999;
             position: relative;
             border-radius: 8px;
@@ -576,7 +598,7 @@
         .kb-nav-selected.result-item,
         .kb-nav-selected.playlist-item,
         .kb-nav-selected.add-to-playlist-item {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.12) !important;
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12) !important;
         }
 
         .play-button {
@@ -804,9 +826,9 @@
         }
 
         .lyric-offset-btn:hover {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
-            border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.4);
-            color: var(--theme-color, #ffcc33);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
+            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.4);
+            color: var(--theme-color, #E8BE6A);
             transform: scale(1.1);
         }
 
@@ -843,9 +865,77 @@
             margin: 0;
         }
 
+        /* ===== 自定义数字步进器（utils/numberStepper.js + .num-stepper）=====
+           原生 type=number 的上下箭头是 UA 影子节点：只能整块关掉、关掉后又没法自己画，
+           所以 ± 用真实按钮做。任何数字输入框套上这个壳就生效，不再逐处抄样式。 */
+        .num-stepper {
+            display: inline-flex;
+            align-items: stretch;
+            gap: 6px;
+        }
+        .num-stepper input[type="number"],
+        .setting-number-input {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        .num-stepper input[type="number"]::-webkit-inner-spin-button,
+        .num-stepper input[type="number"]::-webkit-outer-spin-button,
+        .setting-number-input::-webkit-inner-spin-button,
+        .setting-number-input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .num-step-btn {
+            flex: 0 0 auto;
+            width: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.07);
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1;
+            cursor: pointer;
+            transition: var(--t-base);
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .num-step-btn:hover {
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
+            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.4);
+            color: var(--theme-color, #E8BE6A);
+        }
+        .num-step-btn:active { transform: scale(0.92); }
+        .num-step-btn:focus-visible {
+            outline: 2px solid var(--theme-color, #E8BE6A);
+            outline-offset: 2px;
+        }
+        /* 设置页里那个紧跟滑块的数字框：去掉行内样式后由这条统一给形 */
+        .setting-number-input {
+            width: 52px;
+            padding: 4px 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 12px;
+            font-family: inherit;
+            text-align: center;
+            outline: none;
+            transition: var(--t-base);
+        }
+        .setting-number-input:focus {
+            border-color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.1);
+        }
+
         .lyric-offset-input:focus {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.12);
-            border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.5);
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12);
+            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
         }
 
         .lyric-offset-unit {
@@ -1057,15 +1147,19 @@
                覆盖元素 border-box（=line-height 行盒），字形上伸/下伸超出盒子的
                部分落在 mask 区域外 → alpha=0 直接隐藏。旧 width 动画方案的
                overflow:hidden 同样裁。
-               修法：盒子上下各外扩 0.4em（top:-0.4em + padding 0.4em +
-               border-box 抵消），内容区与字形位置不变，mask/裁剪区随之扩大，
-               f/g/j/y/q 完整显形。垂直外扩不影响 --reveal 的水平百分比语义。 */
-            top: -0.4em;
+               修法：盒子上下外扩（top + padding + border-box 互相抵消，内容区与字形
+               位置不变），mask/裁剪区随之扩大。
+               ★ 2026-09-26 再修：原来上下各 0.4em 仍然不够——实测 14 个已加载字体的
+               最坏上伸墨迹 33px（42px 字号、line-height 1.4 → 半行距仅 8.4px），
+               需要 (33-8.4)/42 = 0.586em，0.4em 差 7.8px，表现为宋体下 f/j 顶部被裁。
+               改为上 0.7em / 下 0.5em（下伸实测最坏 15px → 0.157em，留足余量）。
+               外扩只放大透明区域，字形落点不变，故不会与相邻行互相污染。 */
+            top: -0.7em;
             left: 0;
-            height: calc(100% + 0.8em);
+            height: calc(100% + 1.2em);
             width: 100%;
             box-sizing: border-box;
-            padding: 0.4em 0;
+            padding: 0.7em 0 0.5em;
             color: white;
             overflow: hidden;
             white-space: nowrap;
@@ -1092,18 +1186,17 @@
              盒子恒定宽后用 inset 镜像裁切代替 width 动画（无重排） */
         .word-highlight.rtl-highlight {
             text-align: right;
-            /* 上下负 inset 外扩（与上方 mask 修法同源）：clip-path 的 inset 正值内缩
-               会裁掉字形上伸/下伸，负值把裁剪区外扩 0.4em，f/g/j/y 完整 */
-            clip-path: inset(-0.4em 0 -0.4em 100%);
+            /* 上下负 inset 外扩（与上方 mask 修法同源，数值同步为 0.7em/0.5em）：
+               clip-path 的 inset 正值内缩会裁掉字形上伸/下伸，负值把裁剪区外扩 */
+            clip-path: inset(-0.7em 0 -0.5em 100%);
             -webkit-mask-image: none;
             mask-image: none;
         }
-        /* 完全高亮后移除前沿渐变与裁切，避免文字右边发暗 */
-        .word-highlight.done {
-            clip-path: none !important;
-            -webkit-mask-image: none !important;
-            mask-image: none !important;
-        }
+        /* ★ 2026-09-27：.done 不再移除 mask-image/clip-path（原规则见 git 历史）。
+           每词唱完瞬间切 mask 触发整层重栅格化，英文歌每秒 2-4 词 = 高频重栅格，
+           是默认/歌词模式英文卡顿来源之一。现由 JS 把 --reveal 推到 120%（前沿
+           完全出界）实现同等视觉，mask 常驻零切换。.done 仍保留 class 供
+           viewmode.css/ai.css 的 opacity 等视觉规则使用。 */
 
         /* 情感词消除裁剪方块 */
         .word.word-emotion {
@@ -1180,6 +1273,11 @@
         :root {
             --titlebar-height: 38px;
             --titlebar-fg: rgba(255, 255, 255, 0.92);
+            /* ★ 这三个都是「随背景换墨」的一组值，由 240-titlebar.js 的 updateBrandColor 成组写入。
+               hover/veil 原先在下面的规则里写死 rgba(255,255,255,.x)：亮墨（深背景）没问题，
+               换成暗墨（浅背景）时白色 hover 等于没有，三大金刚键点了看不见反馈。 */
+            --titlebar-hover-bg: rgba(255, 255, 255, 0.15);
+            --titlebar-veil-bg: rgba(255, 255, 255, 0.08);
         }
 
         .app-titlebar {
@@ -1214,8 +1312,9 @@
             height: 22px;
             border-radius: 6px;
             color: var(--titlebar-fg);
-            background: rgba(255, 255, 255, 0.08);
-            transition: color 0.3s ease;
+            background: var(--titlebar-veil-bg);
+            /* 墨色翻转要走缓动（--t-slow），硬切会显得是"跳了一下"而不是"适应了背景" */
+            transition: var(--t-slow);
             flex: none;
         }
         .tb-logo-img {
@@ -1234,7 +1333,7 @@
             font-weight: 600;
             letter-spacing: 0.5px;
             color: var(--titlebar-fg);
-            transition: color 0.3s ease;
+            transition: var(--t-slow);
         }
 
         .tb-center {
@@ -1259,11 +1358,22 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background 0.15s ease, color 0.15s ease;
+            /* 墨色随背景翻转 + hover 底，两条都要缓动；--t-base 已含 background/color/transform */
+            transition: var(--t-base);
         }
 
         .tb-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: var(--titlebar-hover-bg);
+        }
+
+        .tb-btn:active {
+            background: var(--titlebar-hover-bg);
+            transform: scale(0.94);
+        }
+
+        .tb-btn:focus-visible {
+            outline: 2px solid var(--titlebar-fg);
+            outline-offset: -3px;
         }
 
         .tb-btn.tb-close:hover {
@@ -1382,8 +1492,8 @@ body.perf-minimal .neon-char text {
     filter: drop-shadow(0 0 0.05em rgba(255, 255, 255, 0.45)) !important;
 }
         .about-star-btn:hover {
-            background: var(--theme-color, #ffcc33) !important;
-            border-color: var(--theme-color, #ffcc33) !important;
+            background: var(--theme-color, #E8BE6A) !important;
+            border-color: var(--theme-color, #E8BE6A) !important;
             color: #150f04 !important;
             transform: translateY(-1px);
         }

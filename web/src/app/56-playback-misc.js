@@ -23,12 +23,20 @@ function updateFlyinTranslation(lineIndex) {
             const line = lyrics[lineIndex];
             if (!line) return;
 
-            /* 先淡出，再更新内容，再淡入 */
+            /* 先淡出，再更新内容，再淡入。
+               ★ 2026-09-27：此前完全无视双语排版开关（appSettings.lyrics.showTranslation/
+               showRomaji），只要有译文/罗马音就无脑塞——bilingualCycleBtn（285）切
+               「只看原文」时底栏上方的翻译/罗马音区纹丝不动，用户报「按钮没用」。
+               现与主歌词行（20-lyrics-render:383/390 读同一组键）保持同判定。
+               两类内容都被关掉时整个区域淡出，不留空占位。 */
             flyinArea.style.opacity = '0';
             setTimeout(() => {
-                if (flyinTrans) flyinTrans.textContent = (line.translation && line.translation.trim() !== '//') ? line.translation : '';
-                if (flyinRoma) flyinRoma.textContent = line.romaji || '';
-                flyinArea.style.opacity = '1';
+                const ly = (globalThis.appSettings && globalThis.appSettings.lyrics) || {};
+                const hasTrans = !!ly.showTranslation && !!(line.translation && line.translation.trim() !== '//');
+                const hasRoma = !!ly.showRomaji && !!(line.romaji && line.romaji.trim());
+                if (flyinTrans) flyinTrans.textContent = hasTrans ? line.translation : '';
+                if (flyinRoma) flyinRoma.textContent = hasRoma ? line.romaji : '';
+                flyinArea.style.opacity = (hasTrans || hasRoma) ? '1' : '0';
             }, 300);
         }
 

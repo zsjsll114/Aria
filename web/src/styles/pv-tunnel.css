@@ -57,8 +57,8 @@
 .tunnel-view-container {
     --tunnel-font-size: 1;
     --tunnel-highlight-color: #ffffff;
-    --tunnel-emotion-color: #ffcc33;
-    --tunnel-graphic-color: #ffcc33;
+    --tunnel-emotion-color: #E8BE6A;
+    --tunnel-graphic-color: #E8BE6A;
     --tunnel-glow: 12px;
     --tunnel-transit-duration: 450ms;
     --tunnel-row-gap: 90px;
@@ -100,7 +100,7 @@
     position: absolute;
     inset: 0;
     background: linear-gradient(165deg,
-        color-mix(in srgb, var(--tunnel-emotion-color, #ffcc33) calc(var(--tunnel-veil, 0.12) * 62%), transparent) 0%,
+        color-mix(in srgb, var(--tunnel-emotion-color, #E8BE6A) calc(var(--tunnel-veil, 0.12) * 62%), transparent) 0%,
         color-mix(in srgb, #ffffff calc(var(--tunnel-veil, 0.12) * 30%), transparent) 100%);
     filter: hue-rotate(var(--hue-jitter, 0deg));
     transition: background 1.2s ease, filter 0.9s ease;
@@ -360,7 +360,7 @@
     top: 88%;
     font-size: 0.42em;
     font-weight: 600;
-    color: var(--group-accent, var(--tunnel-emotion-color, #ffcc33));
+    color: var(--group-accent, var(--tunnel-emotion-color, #E8BE6A));
     opacity: 0.75;
     letter-spacing: 0.2em;
 }
@@ -541,8 +541,8 @@
 .vm-t-word.w5 { left: 46%; top: 62%; }
 .vm-t-word.dim { color: rgba(255, 255, 255, 0.42); }
 .vm-t-word.active {
-    color: #ffcc33;
-    text-shadow: 0 0 8px rgba(255, 204, 51, 0.85);
+    color: #E8BE6A;
+    text-shadow: 0 0 8px rgba(232, 190, 106, 0.85);
     scale: 1.16;
 }
 
@@ -637,8 +637,8 @@
     margin-bottom: 16px;
     padding: 12px 14px;
     border-radius: 12px;
-    background: rgba(255, 204, 51, 0.08);
-    border: 1px solid rgba(255, 204, 51, 0.22);
+    background: rgba(232, 190, 106, 0.08);
+    border: 1px solid rgba(232, 190, 106, 0.22);
 }
 
 .tunnel-ai-cost-item {
@@ -654,7 +654,7 @@
 .tunnel-ai-cost-value {
     font-size: 14px;
     font-weight: 700;
-    color: var(--theme-color, #ffcc33);
+    color: var(--theme-color, #E8BE6A);
 }
 
 .tunnel-ai-mode-list {
@@ -680,13 +680,13 @@
 }
 
 .tunnel-ai-mode-btn:hover {
-    border-color: rgba(255, 204, 51, 0.55);
-    background: rgba(255, 204, 51, 0.08);
+    border-color: rgba(232, 190, 106, 0.55);
+    background: rgba(232, 190, 106, 0.08);
 }
 
 .tunnel-ai-mode-btn.selected {
-    border-color: var(--theme-color, #ffcc33);
-    background: rgba(255, 204, 51, 0.12);
+    border-color: var(--theme-color, #E8BE6A);
+    background: rgba(232, 190, 106, 0.12);
 }
 
 .tunnel-ai-mode-name {
@@ -726,7 +726,7 @@
 }
 
 .tunnel-ai-btn.primary {
-    background: var(--theme-color, #ffcc33);
+    background: var(--theme-color, #E8BE6A);
     color: #1a1206;
 }
 
@@ -911,7 +911,7 @@
 
 /* 20. Mosaic accent color application */
 .tunnel-shot .tunnel-block {
-    --mosaic-accent-var: #ffcc33;
+    --mosaic-accent-var: #E8BE6A;
 }
 
 /* ==========================================================================
@@ -995,8 +995,8 @@
 
 .tunnel-block-mosaic-enter .tunnel-char.active {
     text-shadow:
-        0 1px 3px color-mix(in srgb, var(--mosaic-accent-var, #ffcc33) 45%, transparent),
-        0 0 18px color-mix(in srgb, var(--mosaic-accent-var, #ffcc33) 30%, transparent);
+        0 1px 3px color-mix(in srgb, var(--mosaic-accent-var, #E8BE6A) 45%, transparent),
+        0 0 18px color-mix(in srgb, var(--mosaic-accent-var, #E8BE6A) 30%, transparent);
 }
 
 /* 21. PV区域覆盖整个窗口（含标题栏区域） */

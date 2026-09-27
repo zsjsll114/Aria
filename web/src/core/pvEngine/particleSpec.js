@@ -24,7 +24,7 @@ export function burstCount(rnd) {
  * @returns {{kind:string, angle:number, dist:number, dur:number, size:number,
  *            bl:number, color:string, tx:number, ty:number, alpha:number, rotateDeg:number}}
  */
-export function buildBurstParticle(rnd, i, highlight = '#ffcc33') {
+export function buildBurstParticle(rnd, i, highlight = '#E8BE6A') {
     const kind = PARTICLE_KINDS[(Math.floor(rnd() * PARTICLE_KINDS.length) + i) % PARTICLE_KINDS.length];
     const angle = rnd() * Math.PI * 2;              /* 任意方位角 */
     const dist = 0.55 + rnd() * 1.5;                /* 迸发距离 0.55~2.05em（随字号缩放） */

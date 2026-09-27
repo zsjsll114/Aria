@@ -83,7 +83,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--theme-color, #ffcc33);
+    color: var(--theme-color, #E8BE6A);
     white-space: nowrap;
 }
 
@@ -159,7 +159,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
                 border-color var(--d-instant) var(--e-enter-soft);
 }
 .next-up-cta:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.32); }
-.next-up-cta:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: 2px; }
+.next-up-cta:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: 2px; }
 .next-up-cta.nu-empty { display: none; }
 
 .next-up-dismiss {
@@ -181,7 +181,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
                 color var(--d-instant) var(--e-enter-soft);
 }
 .next-up-dismiss:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.next-up-dismiss:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: 2px; }
+.next-up-dismiss:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: 2px; }
 
 /* ---------- 候选面板（在提示条上方展开，绝对定位 → 不推动提示条） ---------- */
 .next-up-panel {
@@ -265,7 +265,7 @@ html#ariaRoot body.perf-low .next-up-item-title {
     transition: background var(--d-instant) var(--e-enter-soft);
 }
 .next-up-item:hover { background: rgba(255, 255, 255, 0.12); }
-.next-up-item:focus-visible { outline: 2px solid var(--theme-color, #ffcc33); outline-offset: -2px; }
+.next-up-item:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: -2px; }
 
 .next-up-item-no {
     flex: none;

@@ -19,3 +19,12 @@ tauri-plugin-shell = "2"
 image = "0.25"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# 绿色版体积：默认 release 档（opt-level=3 / codegen-units=16 / 无 LTO）产出 96MB 的 Aria.exe。
+# 下面四项只改编译方式，不改任何行为。panic 刻意沿用默认 unwind —— tokio 靠 unwind 把
+# 单个任务 panic 隔离掉，写 abort 会让一次崩溃直接带走整个播放器（那是功能退化，不是瘦身）。
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

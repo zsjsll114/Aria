@@ -4,6 +4,13 @@
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
 import { playerContainer } from './40-playback-state.js';
+/* ★ 帧时埋点（todos #21）：手机版歌词预览的逐字扫过是独立 rAF，
+   与 57 的弹簧循环并行；它每帧读一次 offsetParent（强制布局），
+   窄屏/歌词页下是滚动路径上的第三个循环，必须能被诊断页看见。 */
+import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
+
+const MLP_PROBE_SOURCE = 'mobilePreview';
+registerLoop(MLP_PROBE_SOURCE, '移动端逐字进度');
 
 /* ========== ★ P4 手机版双页布局：歌词预览 + 页面切换 ==========
            窄屏(≤700px)默认模式下分两页：播放控件页 / 歌词页。
@@ -158,7 +165,8 @@ function updateMobileLyricPreview(force = false) {
 }
 
 /* ★ 逐字扫过：根据当前播放进度设置唱词推进的高亮或百分比 */
-function updateMobileLyricProgress() {
+function updateMobileLyricProgress(ts) {
+    probeFrame(MLP_PROBE_SOURCE, ts);
     /* 预览不可见时停止；暂停时保持轮询但无 DOM 变动，恢复播放自动继续扫过 */
     if (!mobilePreviewEl || !mobilePreviewEl.offsetParent) {
         _mlpRafId = null;

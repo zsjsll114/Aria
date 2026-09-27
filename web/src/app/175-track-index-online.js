@@ -24,8 +24,9 @@ import { applyVolumeOnSongChange, handlePlayFailure } from './135-crossfade.js';
 import { fadeOutVolume } from '../core/fadeController.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
 import { chorusCacheGet } from '../services/aiCache.js'; // 高潮检测缓存读取（预加载链：无依赖环，175→services 单向）
-import { beginResolveTrace, markResolveFailed, recordResolveHit } from '../services/playSource.js'; // 取链透明化（todos #15）
+import { beginResolveTrace, clearResolveTrace, markResolveFailed, platformKeyOf, recordResolveHit, resolveSourceOf } from '../services/playSource.js'; // 取链透明化（todos #15）
 import { conceal } from '../utils/motion.js'; // 退场后再卸载（utils→services/log 单向，无分片环）
+import { artistOf, titleOf } from '../services/lyricIndex.js'; // title/song/name 字段归一（该模块零 import，无环）
 import { logWarn, logInfo, logError } from '../services/log.js';
 /* { key, url, lyricData, chorusSegments, aiTheme, trackIndex } */
 globalThis.preloadAbortFlag = { aborted: false };
@@ -319,7 +320,11 @@ async function preloadNextSong() {
             const track = playlist[nextIdx];
             /* 仅预加载在线歌曲 */
             if (!track.source || !track.id) return;
-            const effectiveSource = track.source || (track.mid ? 'tencent' : 'netease');
+            /* 键必须与 loadOnlineSong 里的 _preLyricKey / _songKey 同口径（别名统一交给 platformKeyOf），
+               否则自建条目带 source:'qq' 时预加载永远命不中，白跑一遍网络请求。
+               ★ 这里刻意不做「不认识就退回默认平台」：本地曲目的 source='local' 必须原样传下去，
+                 退成 netease 会让预加载去给一个本地文件抢在线直链。 */
+            const effectiveSource = platformKeyOf(track.source) || (track.mid ? 'tencent' : 'netease');
             const songKey = `${effectiveSource}:${track.id}`;
             /* 如果已经预加载了同一首歌，跳过 */
             if (nextSongPreload && nextSongPreload.key === songKey && nextSongPreload.trackIndex === nextIdx) return;
@@ -417,26 +422,44 @@ async function loadOnlineSong(songInfo, skipPlaylistUpdate, _isRetry, preloadOnl
             isLoadingSong = true;
             const songId = songInfo.id;
             const songMid = songInfo.mid;   /* 仅QQ有 */
-            if (!songId) { setHint('无法获取歌曲ID'); isLoadingSong = false; return; }
+            if (!songId) {
+                /* 这条路径根本没开始取链，但角标还挂着**上一首**的终态——
+                   用户看到的「上一首失败了，现在这首歌也显示取链失败」就是这么来的。 */
+                clearResolveTrace();
+                setHint('无法获取歌曲ID'); isLoadingSong = false; return;
+            }
+            /* ★ 取链分支的音源判定：优先用「这首歌自带的 source」，全局 currentSource 只兜底。
+               此前分支写的是 `currentSource === 'kugou' || songInfo.source === 'kugou'`，而
+               tencent / netease 两个分支**只查了全局**——自建服务返回的条目带 source:'qq'
+               （不是 'tencent'），全局又默认停在 'tencent'，于是网易/酷狗的歌会被塞进 QQ 分支：
+               拿网易 id 去查 QQ mid → 全链失败 → 走同名歌兜底 → 慢，且 songInfo.song 为空时
+               标题直接显示「未知歌曲」。别名统一交给 platformKeyOf，别再写第四张映射表。
+               ★ 只认这四个：source 是 'local'/'selfhost'/拼写错的其它值时退回全局判定，
+                 否则会被下面的 else 塞进「未知音源 → vkeys」，比原来更糟。 */
+            const effSource = resolveSourceOf(songInfo, currentSource);
+            /* ★ 同一次收口：把三个平台的字段名摊平（title/song/name、artist/singer）。
+               下面二十多处按 `songInfo.song` 取名（同名歌跨源兜底、getKugouPlayInfo、日志），
+               对只带 name 的自建/网易条目本来就是 undefined → 拿 "undefined" 去搜同名歌，
+               整条兜底链必然空转（这就是「加载很慢」），标题栏也显示成「未知歌曲」。
+               在入口补一次，比在二十个调用点各写一份 `|| songInfo.name` 靠谱。 */
+            if (!songInfo.song) songInfo.song = titleOf(songInfo);
+            if (!songInfo.singer) songInfo.singer = artistOf(songInfo);
             /* 取链透明化：本次加载的降级轨迹从这里开始计（key 约定同 _preLyricKey） */
-            beginResolveTrace(`${songInfo.source || currentSource}:${songId}`);
+            beginResolveTrace(`${effSource}:${songId}`);
 
 /* 立即暂停并重置 audio，取消上一次的加载 */
 audio.pause();
 
-/* 取消正在进行的 AI 分析（避免旧请求的 finally 误重设新请求的状态） */
-if (typeof isAiAnalyzing !== 'undefined' && isAiAnalyzing && typeof currentAiAbortController !== 'undefined' && currentAiAbortController) {
-    currentAiAbortController._manualCancel = true;
-    currentAiAbortController.abort();
-    currentAiAbortController = null;
-    isAiAnalyzing = false;
-}
+/* 取消正在进行的 AI 分析（避免旧请求的 finally 误重设新请求的状态）。
+   ★ 2026-09-27 收口到 95 的共享 cancelAiAnalysis（95/135/175 三个切歌入口统一），
+   本处保留调用点；函数体见 95-track-loading.js。 */
+if (typeof cancelAiAnalysis === 'function') cancelAiAnalysis();
 
 /* ★ 即时 UI 响应：先更新标题、歌手、封面、背景，让用户立刻看到切换 */
             /* 封面/背景在预加载模式下也需要设置（否则初始歌曲无背景） */
             try {
-                songTitleEl.textContent = songInfo.song || '未知歌曲';
-                songArtistEl.textContent = songInfo.singer || '未知歌手';
+                songTitleEl.textContent = titleOf(songInfo) || '未知歌曲';
+                songArtistEl.textContent = artistOf(songInfo) || '未知歌手';
                 if (songInfo.cover) {
                     setCoverImage(songInfo.cover);
                     setBlurBackground(songInfo.cover);
@@ -518,18 +541,18 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                    从搜索或榜单点歌），就会把别人的歌词渲染上来。
                    实测症状：英文歌配中文歌词、「歌词不对应/有时候不准」。
                    key 约定与 nextSongPreload 一致：`${source}:${id}`。 */
-                const _preLyricKey = `${songInfo.source || currentSource}:${songInfo.id}`;
+                const _preLyricKey = `${effSource}:${songInfo.id}`;
                 if (_preloadedLyricData && _preloadedLyricData.key === _preLyricKey) {
                     lyricPromise = Promise.resolve(_preloadedLyricData);
-                } else if (currentSource === 'kugou' || songInfo.source === 'kugou') {
+                } else if (effSource === 'kugou') {
                     lyricPromise = fetchKugouLyric(songInfo);
-                } else if (currentSource === 'kuwo' || songInfo.source === 'kuwo') {
+                } else if (effSource === 'kuwo') {
                     lyricPromise = fetchLyricWithFallback(songInfo, 'kuwo');
                 } else {
                     /* ★ 传 songInfo 对象而非 songId 字符串：让 fetchLyricWithFallback
                        优先用 songInfo.source 作为歌词接口音源，避免依赖模块级 currentSource
                        （预加载并发可能改写它）导致查错后端返回 {} 而「有音无词」。 */
-                    lyricPromise = fetchLyricWithFallback(songInfo, currentSource)
+                    lyricPromise = fetchLyricWithFallback(songInfo, effSource)
                         .catch(lyricErr => {
                             logWarn('trackIndexOnline', '歌词获取失败，跳过歌词:', lyricErr);
                             return {};
@@ -543,7 +566,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     /* 已有直链（如本地音乐、自定义外链、随机 API 返回的 Music 字段） */
                     playUrl = songInfo.url;
                     recordResolveHit(songInfo.source === 'local' ? 'local' : 'direct', playUrl, songInfo.quality || '');
-                } else if (currentSource === 'kugou' || songInfo.source === 'kugou') {
+                } else if (effSource === 'kugou') {
                     /* 酷狗音乐：通过 hash 获取播放直链（含多源回退与用户音质参数） */
                     const hash = songInfo.hash || songMid || songId;
                     const expSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
@@ -588,7 +611,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                             }
                         } catch (e) { /* 酷我兜底失败，放弃 */ }
                     }
-                } else if (currentSource === 'kuwo' || songInfo.source === 'kuwo') {
+                } else if (effSource === 'kuwo') {
                     /* 酷我音乐：一站式获取官方直链、500x500高清封面与原版LRC歌词 */
                     const kuwoId = songInfo.kuwoId || songId;
                     const songName = songInfo.song || songInfo.title || songInfo.name || '';
@@ -618,7 +641,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         }
                         logInfo('trackIndexOnline', `[Kuwo] 一站式解析成功: ${songName}`);
                     }
-                } else if (currentSource === 'tencent') {
+                } else if (effSource === 'tencent') {
                     let effectiveMid = songMid;
                     let vkeysUrl = null;
                     if (!effectiveMid && songId) {
@@ -717,7 +740,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         const kwHit = await _resolveKuwoByName(songInfo.song, songInfo.singer, { songId, verbose: true });
                         if (kwHit) { playUrl = kwHit.url; recordResolveHit('crossKuwo', playUrl); if (kwHit.cover && !songInfo.cover) songInfo.cover = kwHit.cover; }
                     }
-                } else if (currentSource === 'netease') {
+                } else if (effSource === 'netease') {
                     /* 网易云：★ 上游参考项目 对齐先试本机自建 /song/url/v1 直链（秒回），失败再走公网 byfuns 音质阶梯 */
                     const userLevel = (appSettings.quality && appSettings.quality.neteasePlayback) || 'exhigh';
                     const QUALITY_LEVELS = ['hires', 'lossless', 'exhigh', 'higher', 'standard'];
@@ -757,7 +780,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const fetchController = new AbortController();
                     const fetchTimeout = setTimeout(() => fetchController.abort(), 4500);
                     try {
-                        const urlJson = await fetch(`${API_BASE}/${currentSource}?id=${songId}`, { signal: fetchController.signal }).then(r => r.json());
+                        const urlJson = await fetch(`${API_BASE}/${effSource}?id=${songId}`, { signal: fetchController.signal }).then(r => r.json());
                         playUrl = (urlJson.code === 200 && urlJson.data && urlJson.data.url) ? urlJson.data.url : null;
                         if (playUrl) recordResolveHit('unknown', playUrl);
                     } catch (fetchErr) {
@@ -772,8 +795,8 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         const statusEl = selectedEl.querySelector('.result-status');
                         if (statusEl) statusEl.textContent = '获取失败';
                     }
-                    /* 获取播放链接失败也尝试重试 */
-                    if (handlePlayFailure(songInfo, skipPlaylistUpdate)) return;
+                    /* 获取播放链接失败也尝试重试（failGen=gen：失败时已是旧代际则不再重试） */
+                    if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
                     isLoadingSong = false;
                     return;
                 }
@@ -796,7 +819,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         try {
                             const retryRes = await fetchLyricWithFallback(
                                 songInfo,
-                                lyricSourceOverride || (songInfo && songInfo.source) || currentSource
+                                lyricSourceOverride || effSource
                             ).catch(() => ({}));
                             if (retryRes && _hasLyricContent(retryRes)) {
                                 lyricJson = retryRes;
@@ -814,10 +837,10 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 if (!skipPlaylistUpdate) {
                     playlist = [{
                         url: playUrl,
-                        title: songInfo.song,
-                        artist: songInfo.singer,
+                        title: titleOf(songInfo),
+                        artist: artistOf(songInfo),
                         cover: songInfo.cover || '',
-                        source: currentSource,
+                        source: effSource,
                         id: songInfo.id,
                         mid: songMid || ''
                     }];
@@ -876,15 +899,15 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 audio.load();
                 audio.playbackRate = currentPlaybackRate;
                 applyPreservesPitch(preservesPitch);
-                songTitleEl.textContent = songInfo.song;
-                songArtistEl.textContent = songInfo.singer;
+                songTitleEl.textContent = titleOf(songInfo);
+                songArtistEl.textContent = artistOf(songInfo);
 
                 /* 更新当前歌曲信息与收藏按钮状态 */
                 currentSongData = {
-                    title: songInfo.song,
-                    artist: songInfo.singer,
+                    title: titleOf(songInfo),
+                    artist: artistOf(songInfo),
                     cover: songInfo.cover || '',
-                    source: currentSource,
+                    source: effSource,
                     id: songInfo.id,
                     mid: songMid || '',
                     interval: songInfo.interval || ''
@@ -994,7 +1017,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         if (statusEl) statusEl.textContent = '加载失败';
                     }
                     if (preloadOnly) { preloadedSongReady = null; return; }
-                    if (handlePlayFailure(songInfo, skipPlaylistUpdate)) return;
+                    if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
                     isLoadingSong = false;
                     return;
                 }
@@ -1003,7 +1026,8 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 if (preloadOnly) {
                     preloadedSongReady = true;
                     if (typeof triggerAiAnalysisIfNeeded === 'function') {
-                        triggerAiAnalysisIfNeeded();
+                        /* silent：这条路径没有用户手势（开机预加载），不能弹 AI 反代隐私确认 */
+                        triggerAiAnalysisIfNeeded({ silent: true });
                     }
                     if (pendingPlayAfterPreload) {
                         pendingPlayAfterPreload = false;
@@ -1034,7 +1058,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     /* 检查预加载数据是否匹配当前歌曲 */
                     const _preload = nextSongPreload;
-                    const _songKey = `${currentSource}:${songInfo.id}`;
+                    const _songKey = `${effSource}:${songInfo.id}`;
                     const _usedPreload = _preload && _preload.key === _songKey;
                     /* AI 智能分析：始终走实时分析路径（不再使用预加载的AI主题，确保情感词正确渲染） */
                     if (typeof triggerAiAnalysisIfNeeded === 'function') {
@@ -1059,7 +1083,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     if (gen !== playbackGeneration) return;  /* 已过期，不处理 */
                     handleAudioPlayError();
                     logError('trackIndexOnline', '播放失败:', err);
-                    if (handlePlayFailure(songInfo, skipPlaylistUpdate)) return;
+                    if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
                     if (selectedEl) {
                         const statusEl = selectedEl.querySelector('.result-status');
                         if (statusEl) statusEl.textContent = '播放失败';

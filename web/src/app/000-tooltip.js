@@ -9,6 +9,8 @@
  * 消除系统「白色矩形」原生 tooltip。
  * ============================================================ */
 import { saveSettings } from './180-boot-config.js';
+import { logCatch } from '../services/log.js';
+import { ACCENT_PRESETS } from '../config/themePalette.js';
 (function () {
   if (document.getElementById('aria-tip')) return;
 
@@ -139,7 +141,7 @@ import { saveSettings } from './180-boot-config.js';
  *   1) 性能偏好（自动/流畅优先/均衡/画质优先 → aria_perf_pref）
  *   2) 自建服务平台开关（selfhost_prefs 同构写回，扫码仍去设置页）
  *   3) Now Playing 接管（接管其它播放器 → 写 appSettings.nowPlaying + saveSettings）
- *   4) 初始主题色（aria_theme_color + <html> --theme-color 即时生效）
+ *   4) 初始主题色（写 appSettings.interface.themeColor + 190 的 applyThemeColor）
  *   5) 音乐偏好（本地/流媒体/两者 → aria_music_pref）
  * 完成后写 aria_oobe_done，不再弹出；全程 try/catch，任何异常静默。
  * ============================================================ */
@@ -182,19 +184,35 @@ import { saveSettings } from './180-boot-config.js';
       .aria-oobe-card.win11-oobe{
         width:min(800px,94vw);
         min-height:480px;
-        background:rgba(26,29,38,.92);
-        backdrop-filter:blur(40px) saturate(190%);
-        -webkit-backdrop-filter:blur(40px) saturate(190%);
-        border:1px solid rgba(255,255,255,.16);
-        border-radius:20px;
+        /* ★ 标准毛玻璃配方（AGENTS 约束 16，照 .search-modal 抄）：原先是
+           rgba(26,29,38,.92) 的近实心暗板 + blur(40px)——92% 不透明底把模糊完全
+           盖住了，看着就是「没有毛玻璃」。现在玻璃只有一处事实源，别再改回实色。 */
+        background:rgba(255,255,255,.12);
+        backdrop-filter:saturate(2) blur(40px);
+        -webkit-backdrop-filter:saturate(2) blur(40px);
+        border:1px solid rgba(255,255,255,.18);
+        border-radius:24px;
         padding:32px 36px 24px;
         color:rgba(255,255,255,.94);
-        box-shadow:0 32px 80px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.15);
+        box-shadow:0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.15);
         font-family:var(--app-font-family,"Segoe UI Variable Text","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif);
         animation:ariaOobePop .4s cubic-bezier(0.1,0.9,0.2,1);
         display:flex;
         flex-direction:column;
         box-sizing:border-box;
+      }
+      /* ★ 同一份玻璃必须配一条退化：模糊的代价在合成器软件光栅化，
+         无显卡/低性能档要退回实色（选择器锚在 #ariaRoot 上才顶得住组件特异性，约束 12）。 */
+      html#ariaRoot.is-software-renderer .aria-oobe-card.win11-oobe,
+      html#ariaRoot body.perf-low .aria-oobe-card.win11-oobe{
+        background:rgba(24,26,34,.96);
+        backdrop-filter:none;
+        -webkit-backdrop-filter:none;
+      }
+      html#ariaRoot.is-software-renderer #ariaOobeOverlay,
+      html#ariaRoot body.perf-low #ariaOobeOverlay{
+        backdrop-filter:none;
+        -webkit-backdrop-filter:none;
       }
       
       .aria-oobe-layout{display:flex;gap:36px;flex:1;min-height:350px}
@@ -213,7 +231,7 @@ import { saveSettings } from './180-boot-config.js';
       }
       .aria-oobe-app-name{font-size:16px;font-weight:800;color:#fff;letter-spacing:.4px}
       .aria-oobe-step-tag{
-        font-size:12px;font-weight:600;color:var(--theme-color,#ffcc33);
+        font-size:12px;font-weight:600;color:var(--theme-color,#E8BE6A);
         margin-bottom:8px;letter-spacing:.3px;
       }
       .aria-oobe-hero-title{font-size:22px;font-weight:700;line-height:1.3;margin:0 0 12px;color:#fff;letter-spacing:-.2px}
@@ -221,7 +239,7 @@ import { saveSettings } from './180-boot-config.js';
       
       /* Win11 胶囊式平滑进度槽 */
       .aria-oobe-progress-track{width:100%;height:4px;background:rgba(255,255,255,.12);border-radius:2px;overflow:hidden;margin-top:auto}
-      .aria-oobe-progress-fill{height:100%;background:var(--theme-color,#ffcc33);border-radius:2px;transition:width .35s cubic-bezier(0.1,0.9,0.2,1)}
+      .aria-oobe-progress-fill{height:100%;background:var(--theme-color,#E8BE6A);border-radius:2px;transition:width .35s cubic-bezier(0.1,0.9,0.2,1)}
       
       /* 右侧内容区 (Fluent 选项卡与平滑横向转场) */
       .aria-oobe-content{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
@@ -242,17 +260,17 @@ import { saveSettings } from './180-boot-config.js';
         transform:translateY(-2px);
       }
       .aria-oobe-card-item.sel{
-        border-color:var(--theme-color,#ffcc33);
-        background:color-mix(in srgb,var(--theme-color,#ffcc33) 14%,rgba(255,255,255,.04));
-        box-shadow:0 4px 16px color-mix(in srgb,var(--theme-color,#ffcc33) 12%,transparent);
+        border-color:var(--theme-color,#E8BE6A);
+        background:color-mix(in srgb,var(--theme-color,#E8BE6A) 14%,rgba(255,255,255,.04));
+        box-shadow:0 4px 16px color-mix(in srgb,var(--theme-color,#E8BE6A) 12%,transparent);
       }
       .aria-oobe-radio{
         width:18px;height:18px;flex:0 0 18px;border-radius:50%;
         border:2px solid rgba(255,255,255,.35);box-sizing:border-box;transition:all .2s cubic-bezier(0.1,0.9,0.2,1);
       }
       .aria-oobe-card-item.sel .aria-oobe-radio{
-        border-color:var(--theme-color,#ffcc33);
-        background:radial-gradient(circle,var(--theme-color,#ffcc33) 0 45%,transparent 50%);
+        border-color:var(--theme-color,#E8BE6A);
+        background:radial-gradient(circle,var(--theme-color,#E8BE6A) 0 45%,transparent 50%);
         transform:scale(1.05);
       }
       .aria-oobe-title{font-size:14px;font-weight:600;margin-bottom:3px;color:#fff}
@@ -264,7 +282,22 @@ import { saveSettings } from './180-boot-config.js';
         background:rgba(255,255,255,.04);cursor:pointer;font-size:13px;transition:all .2s;
       }
       .aria-oobe-toggle:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24);transform:translateY(-1px)}
-      .aria-oobe-toggle.on{border-color:var(--theme-color,#ffcc33);background:color-mix(in srgb,var(--theme-color,#ffcc33) 14%,transparent);box-shadow:0 4px 14px color-mix(in srgb,var(--theme-color,#ffcc33) 15%,transparent)}
+      .aria-oobe-toggle.on{border-color:var(--theme-color,#E8BE6A);background:color-mix(in srgb,var(--theme-color,#E8BE6A) 14%,transparent);box-shadow:0 4px 14px color-mix(in srgb,var(--theme-color,#E8BE6A) 15%,transparent)}
+      /* 主题色色板：选中态用主题色底 + 主题色描边（和 .aria-oobe-toggle.on 同一套算法），
+         以前是内联的中性白底，选了颜色背景不跟着变 */
+      .aria-oobe-swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+      .aria-oobe-colorchip{
+        display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+        background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);
+        cursor:pointer;transition:background .2s var(--e-enter-soft, ease),border-color .2s var(--e-enter-soft, ease);
+      }
+      .aria-oobe-colorchip:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
+      .aria-oobe-colorchip.sel{
+        border-color:var(--theme-color,#E8BE6A);
+        background:color-mix(in srgb,var(--theme-color,#E8BE6A) 14%,transparent);
+      }
+      .aria-oobe-swatch{width:20px;height:20px;border-radius:50%;flex:0 0 auto}
+      .aria-oobe-swatch-name{font-size:12.5px;font-weight:600;color:#fff}
       
       .aria-oobe-scan-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
       .aria-oobe-scan-btn{
@@ -273,8 +306,8 @@ import { saveSettings } from './180-boot-config.js';
         cursor:pointer;transition:all .2s cubic-bezier(0.1,0.9,0.2,1);
       }
       .aria-oobe-scan-btn:hover{
-        border-color:var(--theme-color,#ffcc33);
-        background:color-mix(in srgb,var(--theme-color,#ffcc33) 16%,transparent);
+        border-color:var(--theme-color,#E8BE6A);
+        background:color-mix(in srgb,var(--theme-color,#E8BE6A) 16%,transparent);
         transform:translateY(-1px);
       }
       
@@ -285,14 +318,14 @@ import { saveSettings } from './180-boot-config.js';
       
       .aria-oobe-dots{display:flex;align-items:center;gap:6px}
       .aria-oobe-dot{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.22);transition:all .3s cubic-bezier(0.1,0.9,0.2,1)}
-      .aria-oobe-dot.on{width:20px;background:var(--theme-color,#ffcc33);box-shadow:0 0 8px color-mix(in srgb,var(--theme-color,#ffcc33) 40%,transparent)}
+      .aria-oobe-dot.on{width:20px;background:var(--theme-color,#E8BE6A);box-shadow:0 0 8px color-mix(in srgb,var(--theme-color,#E8BE6A) 40%,transparent)}
       
       .aria-oobe-btn{border:0;border-radius:8px;padding:9px 24px;font-size:13.5px;cursor:pointer;font-weight:600;transition:all .2s cubic-bezier(0.1,0.9,0.2,1)}
       .aria-oobe-btn.ghost{background:transparent;color:rgba(255,255,255,.65)}
       .aria-oobe-btn.ghost:hover{color:#fff;background:rgba(255,255,255,.08)}
       .aria-oobe-btn.primary{
-        background:var(--theme-color,#ffcc33);color:#150f04;
-        box-shadow:0 4px 14px color-mix(in srgb,var(--theme-color,#ffcc33) 35%,transparent);
+        background:var(--theme-color,#E8BE6A);color:#150f04;
+        box-shadow:0 4px 14px color-mix(in srgb,var(--theme-color,#E8BE6A) 35%,transparent);
       }
       .aria-oobe-btn.primary:hover{filter:brightness(1.1);transform:scale(1.02)}
       .aria-oobe-btn.primary:active{transform:scale(0.98)}
@@ -337,12 +370,16 @@ import { saveSettings } from './180-boot-config.js';
 
     var step = 0;
     var lastStep = 0;
-    var langPref = (typeof localStorage !== 'undefined' && localStorage.getItem('aria_language')) || 'zh-CN';
+    /* ★ 语言初值必须问 i18n 本身。原先读的是 localStorage.getItem('aria_language')，
+       而 i18n 用的键是 aria_i18n_lang（i18n.js:7）——那个键从来没人写过，于是
+       英文模式下向导第 0 步仍然预选「简体中文」，看起来就像向导不认识当前语言。 */
+    var langPref = (typeof globalThis.AriaI18n !== 'undefined' && globalThis.AriaI18n.getLanguage
+      && globalThis.AriaI18n.getLanguage()) || 'zh-CN';
     var perfPref = 'auto';                                       /* auto|low|balanced|high */
     var qualityPref = 'lossless';                                /* lossless|exhigh|standard */
     var emotionGlowPref = true;                                  /* AI 情感词高亮与微光 */
     var shEnabled = jsonGet('selfhost_prefs', null) || { enabled: { kugou: false, qq: false, netease: false }, dailySource: 'netease' };
-    var themeColor = '#ffcc33';                                  /* 初始主题色 */
+    var themeColor = '#E8BE6A';                                  /* 初始主题色 */
 
     var T = {
       0: {
@@ -400,8 +437,8 @@ import { saveSettings } from './180-boot-config.js';
           var emRadio = el.querySelector('#ariaOobeEmRadio');
           var updateEm = function () {
             if (emotionGlowPref) {
-              emRadio.style.borderColor = 'var(--theme-color,#ffcc33)';
-              emRadio.style.background = 'radial-gradient(circle,var(--theme-color,#ffcc33) 0 45%,transparent 50%)';
+              emRadio.style.borderColor = 'var(--theme-color,#E8BE6A)';
+              emRadio.style.background = 'radial-gradient(circle,var(--theme-color,#E8BE6A) 0 45%,transparent 50%)';
             } else {
               emRadio.style.borderColor = 'rgba(255,255,255,.35)';
               emRadio.style.background = 'transparent';
@@ -417,14 +454,13 @@ import { saveSettings } from './180-boot-config.js';
       2: {
         title: '音质偏好与主题色', sub: '选择默认播放音质与界面主题色',
         render: function (el) {
-          var colors = [
-            { c: '#ffcc33', n: '曜石金' },
-            { c: '#ff5f57', n: '珊瑚红' },
-            { c: '#4cd964', n: '极光绿' },
-            { c: '#3fa9f5', n: '晴空蓝' },
-            { c: '#b57eea', n: '梦幻紫' },
-            { c: '#ff7597', n: '霓虹粉' }
-          ];
+          /* ★ 首跑向导的主题色必须就是设置页那 6 个。原先这里另写了一份
+             （#ff5f57/#4cd964/#3fa9f5/#b57eea/#ff7597），除了金色全部不在设置页色板里——
+             用户在向导里选了「晴空蓝」，进设置页那颗亮的是「自定义」，而且再也点不回预设。
+             名字按当前语言取（themePalette 里 zh/en 成对，不再写死中文）。 */
+          var isEn = !!(typeof globalThis.AriaI18n !== 'undefined' && globalThis.AriaI18n.getLanguage
+            && globalThis.AriaI18n.getLanguage() === 'en-US');
+          var colors = ACCENT_PRESETS.map(function (p) { return { c: p.hex, n: isEn ? p.en : p.zh }; });
           var qOpts = [
             { v: 'lossless', t: '无损品质 (FLAC / Lossless)', d: '优先获取无损 FLAC 音质' },
             { v: 'exhigh', t: '极高音质 (320kbps)', d: '品质与加载速度兼顾' },
@@ -438,11 +474,13 @@ import { saveSettings } from './180-boot-config.js';
                 '<div class="aria-oobe-desc" style="font-size:11.5px">' + o.d + '</div></div></div>';
             }).join('') + '</div>' +
             '<div class="aria-oobe-label" style="margin-bottom:10px;font-size:12px;font-weight:600;color:rgba(255,255,255,.75)">初始主题色</div>' +
-            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' + colors.map(function (item) {
-              var isSel = (themeColor === item.c);
-              return '<div class="aria-oobe-colorchip" data-c="' + item.c + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid ' + (isSel ? item.c : 'rgba(255,255,255,.10)') + ';cursor:pointer;transition:all .2s">' +
-                '<div style="width:20px;height:20px;border-radius:50%;background:' + item.c + ';box-shadow:0 0 10px ' + item.c + '66"></div>' +
-                '<span style="font-size:12.5px;font-weight:600;color:#fff">' + item.n + '</span>' +
+            '<div class="aria-oobe-swatches">' + colors.map(function (item) {
+              /* 选中态交给 CSS 的 .sel（背景/描边跟着主题色走）。
+                 原先这里把 border/background 写成内联样式，选中的那颗底色是
+                 rgba(255,255,255,.12) 的**中性白**——正是用户说的「控件背景不变色」。 */
+              return '<div class="aria-oobe-colorchip' + (themeColor === item.c ? ' sel' : '') + '" data-c="' + item.c + '" role="button" tabindex="0">' +
+                '<span class="aria-oobe-swatch" style="background:' + item.c + ';box-shadow:0 0 10px ' + item.c + '66"></span>' +
+                '<span class="aria-oobe-swatch-name">' + item.n + '</span>' +
               '</div>';
             }).join('') + '</div>';
 
@@ -455,15 +493,23 @@ import { saveSettings } from './180-boot-config.js';
           });
 
           var chips = el.querySelectorAll('.aria-oobe-colorchip');
+          /* ★ 主题色的应用只有一份实现：190 的 applyThemeColor。它同时写
+             --theme-color（文字/图标）与 --theme-color-rgb（所有
+             `rgba(var(--theme-color-rgb,…),α)` 的背景与描边）。
+             原先这里只写 --theme-color，症状就是用户报的「字体和 icon 变了、
+             控件背景纹丝不动」。
+             用 dynamic import 而不是顶层 import：000 是最早加载的模块，静态引 190
+             会把 20/90/100/180/210 整条链提前到 000 之前执行（210 的
+             hydrateColorRows 在 import 时就跑，提前等于在 DOM 解析前跑）。 */
+          var applyColor = function (hex) {
+            themeColor = hex;
+            chips.forEach(function (x) { x.classList.toggle('sel', x.dataset.c === hex); });
+            import('./190-settings-fontsize.js')
+                .then(function (m) { m.applyThemeColor(hex); })
+                .catch(function (e) { logCatch('oobe', e); });
+          };
           chips.forEach(function (ch) {
-            ch.addEventListener('click', function () {
-              themeColor = ch.dataset.c;
-              document.documentElement.style.setProperty('--theme-color', themeColor);
-              chips.forEach(function (x) {
-                x.style.borderColor = (x.dataset.c === themeColor) ? themeColor : 'rgba(255,255,255,.10)';
-                x.style.background = (x.dataset.c === themeColor) ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.04)';
-              });
-            });
+            ch.addEventListener('click', function () { applyColor(ch.dataset.c); });
           });
         }
       },
@@ -561,8 +607,11 @@ import { saveSettings } from './180-boot-config.js';
       T[step].render(body);
       renderDots();
       /* ★ i18n（2026-09-25）：切步渲染的全是中文硬编码文案，等 observer 50ms 防抖
-         会闪一下中文——同步触发 UI 弹层扫描（词表命中即翻，zh 模式内部直通无开销） */
-      try { if (typeof globalThis.AriaI18n !== 'undefined' && typeof globalThis.AriaI18n.applyLanguageToUiRoots === 'function') globalThis.AriaI18n.applyLanguageToUiRoots(); } catch (e) { /* 静默 */ }
+         会闪一下中文——同步触发 UI 弹层扫描（词表命中即翻，zh 模式内部直通无开销）。
+         2026-09-26 改成**只扫向导自己这一个容器**：全表扫描有 6ms 共享预算，
+         排在 .settings-overlay 之后的 #ariaOobeOverlay 会被饿到（英文模式 OOBE
+         连扫 12 轮仍是中文就是这个），定向扫既便宜又不会漏。 */
+      try { if (typeof globalThis.AriaI18n !== 'undefined' && typeof globalThis.AriaI18n.applyLanguageToUiRoots === 'function') globalThis.AriaI18n.applyLanguageToUiRoots('#ariaOobeOverlay'); } catch (e) { logCatch('oobe', e); }
       if (card && h0 > 0 && typeof card.animate === 'function') {
         var h1 = card.offsetHeight;
         if (h1 !== h0) {
@@ -604,12 +653,17 @@ import { saveSettings } from './180-boot-config.js';
           appSettings.lyrics.emotionWords = emotionGlowPref;
           try { saveSettings(); } catch (e) { /* 静默 */ }
         }
-        /* 初始主题色：写 localStorage 并即时生效到 <html> */
-        if (themeColor) {
-          if (localStorage.getItem('aria_theme_color') !== themeColor) {
-            localStorage.setItem('aria_theme_color', themeColor);
-            document.documentElement.style.setProperty('--theme-color', themeColor);
-          }
+        /* ★ 初始主题色必须落进 appSettings.interface.themeColor。原先只写
+           localStorage 的 aria_theme_color，而全仓没有任何地方读它——重启后
+           applyInterfaceSettings() 按 appSettings 里的旧值重写 CSS 变量，
+           向导里选的颜色当场失效（表现为「选了没用 / 只有当下有点变化」）。 */
+        if (themeColor && typeof appSettings !== 'undefined' && appSettings && appSettings.interface
+            && appSettings.interface.themeColor !== themeColor) {
+          appSettings.interface.themeColor = themeColor;
+          import('./190-settings-fontsize.js')
+              .then(function (m) { m.applyThemeColor(themeColor); })
+              .catch(function (e) { logCatch('oobe', e); });
+          try { saveSettings(); } catch (e) { logCatch('oobe', e); }
         }
         /* 立即生效尝试：性能档 */
         if (perfPref !== 'auto' && Aria.__applyPerfTier) {

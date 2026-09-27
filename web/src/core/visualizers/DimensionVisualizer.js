@@ -28,7 +28,7 @@ export class DimensionVisualizer extends VisualizerBase {
     constructor(container, options = {}) {
         super(container, options);
         this.modeId = 'dimension';
-        this.themeColor = options.themeColor || '#ffcc33';
+        this.themeColor = options.themeColor || '#E8BE6A';
         this.bgEngine = null;
         this.shapesEngine = null;
         this.camera = null;
@@ -67,7 +67,13 @@ export class DimensionVisualizer extends VisualizerBase {
         /* ★ 渲染缩放默认值，setPerfConfig 会按性能档位调整（低性能降采样省 CPU） */
         this._renderScale = 1;
 
-        const effectiveThemeColor = (this.aiData && (this.aiData.accent_color || this.aiData.primary_color)) || this.themeColor || '#ffcc33';
+        /* ★ 文字高亮色（.dim-char.active）必须尊重用户在「穿行」板块选的高亮颜色
+           （2026-09-26 用户反馈改了没用）：this.settings.highlightColor 由
+           applyModeSettings → applySettings 写入，优先级最高；
+           AI 主题色/模式主题色只做未自定义时的兜底。 */
+        const effectiveThemeColor = (this.settings && this.settings.highlightColor)
+            || (this.aiData && (this.aiData.accent_color || this.aiData.primary_color))
+            || this.themeColor || '#E8BE6A';
         stage.style.setProperty('--dim-highlight-color', effectiveThemeColor);
 
         // 1. 创建流体丝绸背景 Canvas
@@ -159,8 +165,13 @@ export class DimensionVisualizer extends VisualizerBase {
         this.initEntities();
         if (this.lyricStage) this.lyricStage.innerHTML = '';
         
-        // ★ 优先使用用户配置的独立模式主题色，避免被 AI 主题默认的红色覆盖
-        const effectiveThemeColor = this.themeColor || (this.aiData && (this.aiData.accent_color || this.aiData.primary_color)) || '#ffcc33';
+        // ★ 文字高亮色尊重用户设置（2026-09-26）：换歌会走到这里，原先用 themeColor
+        //   直接覆盖 --dim-highlight-color，把用户在穿行板块选的高亮颜色冲掉
+        //   （applyModeSettings 不会在换歌时重跑）。
+        const effectiveThemeColor = (this.settings && this.settings.highlightColor)
+            || this.themeColor
+            || (this.aiData && (this.aiData.accent_color || this.aiData.primary_color))
+            || '#E8BE6A';
         if (this.viewContainer) {
             this.viewContainer.style.setProperty('--dim-highlight-color', effectiveThemeColor);
         }
@@ -785,7 +796,7 @@ export class DimensionVisualizer extends VisualizerBase {
                     ry: this.camera.rot.y,
                     rz: this.camera.rot.z
                 },
-                this.themeColor || '#ffcc33'
+                this.themeColor || '#E8BE6A'
             );
         }
     }

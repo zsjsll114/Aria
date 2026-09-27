@@ -47,7 +47,7 @@ export class PVDecorations {
    * @param {string} themeColor 主题强调色
    * @param {number|string} [seed] 歌曲级稳定种子（换歌才重建图形场）
    */
-  renderForNode(node, themeColor = '#ffcc33', seed = null) {
+  renderForNode(node, themeColor = '#E8BE6A', seed = null) {
     if (!this.layer || !node) return;
 
     // 1. 渲染远景 3D 巨型连笔空心描边字 (260~360px)

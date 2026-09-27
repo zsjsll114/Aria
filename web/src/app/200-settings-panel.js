@@ -22,8 +22,10 @@ import { openEqPanel } from './90-eq.js';
 import { getFavorites } from './120-search-results.js';
 import { getPlaylists, playlistsHintEl } from './130-playlists.js';
 import { saveSettings } from './180-boot-config.js';
-import { applyBackgroundSettings, applyHighlightColor, applyInterfaceSettings, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor, setSettingValue } from './190-settings-fontsize.js';
-import { applyFontFamily, applyGlassStrength, bindColorRow, openColorPicker } from './210-color-multilang.js';
+import { perCharSynthesisWanted } from '../config/wordPerChar.js';
+import { stripSyntheticWords } from '../parsers/wordTiming.js';
+import { applyBackgroundSettings, applyInterfaceSettings, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor, setSettingValue } from './190-settings-fontsize.js';
+import { applyFontFamily, applyGlassStrength, setColorSwatchChannel, syncColorRowActive } from './210-color-multilang.js';
 import { buildAdvancedFontUI, initFontUploadBindings, loadFontFace, refreshAdvancedFontDropdowns, refreshFontDropdown, renderFontManagerUI, saveCustomFont, saveFontToDB } from './215-multilang-fonts.js';
 import { downloadJSON, importData, initCustomDropdowns, initPerformanceSettings, initShortcutRecording, refreshSettingsUI, refreshShortcutUI, showSettingsHint } from './220-shortcuts-viewmode.js';
 import { initSelfhostSection } from './selfhost-settings.js';
@@ -33,10 +35,20 @@ import { initSettingsAI } from './201-settings-ai.js'; // AI 域平铺绑定入�
 import { initNowPlayingSettings } from './232-nowplaying-follow.js'; // Now Playing 接管配置绑定（initSettingsMisc 调用；232→175→180→200 属既有分片环，运行时才解引用）
 import { renderSettingsNav } from '../config/settingsNav.js'; // 设置声明式导航（分组侧栏唯一事实源）
 import { conceal } from '../utils/motion.js'; // 分区交叉退场：演完才 display:none
+import { resetWordUpgradeTracker } from './293-word-upgrade.js'; // 开关联动后让当前这首歌重新走一次逐字升级
+
+/* 歌词三色字段：全局作用域色板行的写入目标（appSettings.lyrics.*） */
+const LYRIC_COLOR_FIELDS = ['highlightColor', 'highlightInactiveColor', 'inactiveColor'];
 
 /* ========== 全局选项卡与模式切换引擎 ========== */
 
 function initSettingsPanel() {
+            /* ★ 预设色块的写入通道：函数体第一句就注册（read/writeColorField 是下面
+               的函数声明，靠提升可见）。放最前面是因为再往下 initCustomDropdowns()
+               与 buildAppearanceControls() 没包 try，一旦抛错就会连带整块设置面板失效，
+               色块不能跟着一起变哑。210 里那一颗 document 级委托是唯一的点击入口。 */
+            setColorSwatchChannel({ read: readColorField, write: writeColorField });
+
             const overlay = typeof document !== 'undefined' ? document.getElementById('settingsOverlay') : null;
             const openBtn = typeof document !== 'undefined' ? document.getElementById('openSettingsBtn') : null;
             const closeBtn = typeof document !== 'undefined' ? document.getElementById('settingsCloseBtn') : null;
@@ -283,6 +295,63 @@ function initSettingsPanel() {
                 } catch (e) { logWarn('settingsPanel', e); }
             };
 
+            /* ============================================================
+               预设色块（.color-swatch）的读写目标 —— 210 的点击委托调这里。
+               字段名一律来自行的 data-var（约束 22 的唯一登记字段）；
+               行在 [data-mode-section] 里 → 写 appSettings.modeSettings[mode].<field>，
+               否则写全局：歌词三色 → appSettings.lyrics.*，themeColor → interface.themeColor。
+               解析不出的字段抛错，由 210 统一 logCatch（约束 9：不得静默）。
+               ============================================================ */
+            function readColorField(field, mode) {
+                if (mode) {
+                    const ms = (appSettings.modeSettings || {})[mode] || {};
+                    if (ms[field] !== undefined && ms[field] !== null) return String(ms[field]);
+                    const d = (DEFAULT_SETTINGS.modeSettings || {})[mode] || {};
+                    return d[field] !== undefined ? String(d[field]) : '';
+                }
+                if (field === 'themeColor') return String((appSettings.interface || {}).themeColor || '');
+                if (LYRIC_COLOR_FIELDS.includes(field)) return String((appSettings.lyrics || {})[field] || '');
+                return '';
+            }
+
+            function writeColorField(field, mode, value) {
+                if (mode) {
+                    const eng = (typeof previewEngineInstance !== 'undefined' && previewEngineInstance) ? previewEngineInstance : null;
+                    if (eng && eng.currentMode === mode && eng.modeVars && eng.modeVars[mode]) {
+                        /* 预览引擎正跑这一模式：整条既有链路照走
+                           （modeVars → 预览重绘 → onSettingChange → syncPreviewToMain） */
+                        eng.setModeVar(field, value);
+                    } else {
+                        /* 引擎没这一模式的槽位（如 letterpress/neon 未登记进 modeVars）或尚未创建：
+                           旧实现到这里就静默 return，那一行的色板点了完全没反应。
+                           下面直接落到同一份 syncPreviewToMain，槽位存在才顺手同步预览值。 */
+                        if (eng && eng.modeVars && eng.modeVars[mode]) eng.modeVars[mode][field] = value;
+                        syncPreviewToMain(field, value, mode);
+                    }
+                    return;
+                }
+                if (field === 'themeColor') {
+                    appSettings.interface.themeColor = value;
+                    if (appSettings.modeSettings) {
+                        Object.keys(appSettings.modeSettings).forEach(m => {
+                            appSettings.modeSettings[m].themeColor = value;
+                        });
+                    }
+                    applyThemeColor(value);
+                    syncGlobalThemeSwatches(value);
+                    saveSettings();
+                    return;
+                }
+                if (LYRIC_COLOR_FIELDS.includes(field)) {
+                    /* applyLyricSetting 就是「写 appSettings.lyrics.<field> + applyHighlightColor」
+                       的既有路径（202），不再抄第二份 */
+                    applyLyricSetting(field, value);
+                    saveSettings();
+                    return;
+                }
+                throw new Error('未知的颜色字段/作用域: ' + field + '（mode=' + (mode || 'global') + '）');
+            }
+
             /* ★ 预览设置 → 主播放器同步映射（每种视图模式完全独立隔离存储） */
             function syncPreviewToMain(name, value, mode) {
                 try {
@@ -503,23 +572,11 @@ function initSettingsPanel() {
                 saveSettings();
             });
 
-            bindColorRow('setHighlightColor', appSettings.lyrics.highlightColor, (v) => {
-                appSettings.lyrics.highlightColor = v;
-                applyHighlightColor(v);
-                saveSettings();
-            });
-
-            bindColorRow('setHighlightInactiveColor', appSettings.lyrics.highlightInactiveColor, (v) => {
-                appSettings.lyrics.highlightInactiveColor = v;
-                applyHighlightColor(appSettings.lyrics.highlightColor);
-                saveSettings();
-            });
-
-            bindColorRow('setInactiveColor', appSettings.lyrics.inactiveColor, (v) => {
-                appSettings.lyrics.inactiveColor = v;
-                applyHighlightColor(appSettings.lyrics.highlightColor);
-                saveSettings();
-            });
+            /* ★ 歌词三色的色板行原先在「歌词」分页里（容器 id setHighlightColor /
+               setHighlightInactiveColor / setInactiveColor），约束 22 的色板重构把那三行
+               搬进了外观分页的各模式板块、并删掉了容器 id，这三处 bindColorRow 当场变成
+               静默空转。点击现在由 210 的一颗 document 级委托统一接管，写入目标见
+               writeColorField 的 LYRIC_COLOR_FIELDS 分支——不再有「按 id 找容器」这一步。 */
 
             bindBtnGroup('setLyricAlign', appSettings.lyrics.align || 'left', (v) => {
                 appSettings.lyrics.align = v;
@@ -598,6 +655,57 @@ function initSettingsPanel() {
                 saveSettings();
             });
 
+            /* ========== 歌词逐字显示（todos #12 两个开关） ==========
+               ★ 互锁写在 JS 里而不是只写在文案上：开关2 一开就把开关1 的**状态**也置 false，
+                 因为判定函数 config/wordPerChar.js 的 perCharSynthesisWanted 里同样是
+                 「autoUpgrade 优先」——UI 和判定必须同一个口径，
+                 否则会出现"界面说关了、实际还在摊平"。 */
+            const syncPerCharToggle = () => {
+                const el = typeof document !== 'undefined' ? document.getElementById('setPerCharFromLineLyrics') : null;
+                if (el) el.classList.toggle('on', !!appSettings.lyrics.perCharFromLineLyrics);
+            };
+            const rerenderLyrics = () => {
+                try {
+                    if (!Array.isArray(globalThis.lyrics) || globalThis.lyrics.length === 0) return;
+                    /* ★ 关掉开关时必须先把上一轮合成的 words 剥掉再渲染：
+                       renderLyrics 会把 words 写回 globalThis.lyrics（约束 17 的同一份数组），
+                       所以「再渲染一次」数据里仍然全是逐字——开关看着完全没反应，
+                       切一首歌才恢复（用户实测）。实测数字：不剥离时关掉后 .word 仍是 29 个，
+                       剥离后归 0，再打开又回到 29。 */
+                    const want = perCharSynthesisWanted(globalThis.appSettings, globalThis.currentViewMode);
+                    renderLyrics(want ? globalThis.lyrics : stripSyntheticWords(globalThis.lyrics));
+                } catch (e) { logCatch('settingsPanel', e); }
+            };
+            const syncUpgradeToggle = () => {
+                const el = typeof document !== 'undefined' ? document.getElementById('setAutoUpgradeWordLyrics') : null;
+                if (el) el.classList.toggle('on', !!appSettings.lyrics.autoUpgradeWordLyrics);
+            };
+            bindToggle('setPerCharFromLineLyrics', appSettings.lyrics.perCharFromLineLyrics !== false, (v) => {
+                appSettings.lyrics.perCharFromLineLyrics = v;
+                /* ★ 互锁必须双向。原先只做了「开自动替换 → 关摊平」一个方向，
+                   于是「先开自动替换、再开摊平」能把两个都点亮（用户实测），
+                   而判定函数里 autoUpgrade 优先 = 刚点的这颗其实没生效。
+                   两个策略对同一份歌词是互斥的，点亮一个就把另一个按下去。 */
+                if (v && appSettings.lyrics.autoUpgradeWordLyrics) {
+                    appSettings.lyrics.autoUpgradeWordLyrics = false;
+                    syncUpgradeToggle();
+                }
+                saveSettings();
+                rerenderLyrics();
+            });
+            bindToggle('setAutoUpgradeWordLyrics', !!appSettings.lyrics.autoUpgradeWordLyrics, (v) => {
+                appSettings.lyrics.autoUpgradeWordLyrics = v;
+                if (v) {
+                    appSettings.lyrics.perCharFromLineLyrics = false;
+                    syncPerCharToggle();
+                    /* 换了策略，当前这首歌得重新去找真逐字：不清"已尝试"集合的话，
+                       它会因为之前试过而永远不再尝试（约束 18 的 _alignTried 同一个坑） */
+                    try { resetWordUpgradeTracker(); } catch (e) { logCatch('settingsPanel', e); }
+                }
+                saveSettings();
+                rerenderLyrics();
+            });
+
             /* ========== 界面设置 ========== */
             const sgs = typeof document !== 'undefined' ? document.getElementById('setGlassStrength') : null;
             const sgsVal = typeof document !== 'undefined' ? document.getElementById('setGlassStrengthVal') : null;
@@ -616,16 +724,11 @@ function initSettingsPanel() {
                 saveSettings();
             });
 
-            bindColorRow('setThemeColor', appSettings.interface.themeColor, (v) => {
-                appSettings.interface.themeColor = v;
-                if (appSettings.modeSettings) {
-                    Object.keys(appSettings.modeSettings).forEach(m => {
-                        appSettings.modeSettings[m].themeColor = v;
-                    });
-                }
-                applyThemeColor(v);
-                saveSettings();
-            });
+            /* 「主题强调色」这一行在界面分页、不在任何 [data-mode-section] 里，
+               所以它是全局作用域：字段名 data-var="themeColor" → interface.themeColor。
+               点击走 210 的委托，这里只把「哪颗亮着」按当前值摆正（水合时
+               data-active 是出厂值，用户存过自定义色就必须按 appSettings 反推）。 */
+            syncColorRowActive('themeColor', null, appSettings.interface.themeColor);
 
             /* 导入自定义字体 */
             const importFontBtn = typeof document !== 'undefined' ? document.getElementById('setImportFont') : null;

@@ -13,7 +13,7 @@ import { nextTrack, prevTrack } from './95-track-loading.js';
 import { fetchLyricLinesFromSource, probeLyricSourcesAvailability, renderSourceBadges, switchLyricSource } from './170-lyric-sources.js';
 import { convertToEnhancedLrc, formatTimestamp } from '../services/enhancedLrcConverter.js';
 import { KRC_XOR_KEY } from '../services/krcParser.js';
-import { logError } from '../services/log.js';
+import { logError, logCatch } from '../services/log.js';
 import { setHint } from './120-search-results.js'; // 提示条唯一入口（90↔120 无环：120 不 import 90）
 import { escapeHtml as _escapeHtml } from '../utils/formatters.js';
 import { realWordsOf } from '../parsers/wordTiming.js'; // 下载歌词时区分真实逐字 / 兜底合成
@@ -180,8 +180,48 @@ function openMoreMenu() {
                 { key: 'download', label: '下载', icon: CTX_ICONS.download, onClick: downloadCurrentSong },
                 { key: 'settings', label: '设置', icon: CTX_ICONS.settings, onClick: () => document.getElementById('openSettingsBtn').click() }
             ];
+            /* ★ 默认（cover）模式下 .bottom-control-bar 只有 view-lyrics/pv/dimension/wordcloud/
+               neon/letterpress/tunnel 这些规则把它 display:flex，cover 没有对应规则 → 整条底栏
+               display:none，于是挂在底栏上的「双语排版 / 取链详情 / 应用诊断」三个入口在默认模式
+               一个都点不到（此前 AGENTS.md 约束 14 说「常显面只有底栏」是反的）。
+               这里按句柄存在与否补进「更多」菜单：不显示比显示了点了没反应好。 */
+            const extra = [];
+            const aria = (typeof window !== 'undefined' && window.Aria) || {};
+            if (aria.__bilingualCycle && typeof aria.__bilingualCycle.cycle === 'function') {
+                extra.push({
+                    key: 'bilingual', label: '双语排版', icon: CTX_ICONS.bilingual,
+                    onClick: () => { try { aria.__bilingualCycle.cycle(); } catch (e) { logCatch('moreMenu', e); } }
+                });
+            }
+            if (aria.abLoop && typeof aria.abLoop.toggleLineLoop === 'function') {
+                const ab = aria.abLoop;
+                const st = () => { try { return ab.state().mode; } catch (e) { logCatch('moreMenu', e); return 'off'; } };
+                extra.push({
+                    key: 'ab-line', label: '单句循环', icon: CTX_ICONS.loop, active: st() === 'line',
+                    onClick: () => { try { ab.toggleLineLoop(); } catch (e) { logCatch('moreMenu', e); } }
+                });
+                extra.push({
+                    key: 'ab-mark', label: 'A-B 循环', icon: CTX_ICONS.loop, active: st() === 'ab',
+                    onClick: () => { try { ab.markBoundary(); } catch (e) { logCatch('moreMenu', e); } }
+                });
+            }
+            if (aria.playSource && typeof aria.playSource.show === 'function') {
+                extra.push({
+                    key: 'play-source', label: '取链详情', icon: CTX_ICONS.link,
+                    onClick: () => { try { aria.playSource.show(); } catch (e) { logCatch('moreMenu', e); } }
+                });
+            }
+            if (aria.diagnostics && typeof aria.diagnostics.show === 'function') {
+                extra.push({
+                    key: 'diagnostics', label: '应用诊断', icon: CTX_ICONS.pulse,
+                    onClick: () => { try { aria.diagnostics.show(); } catch (e) { logCatch('moreMenu', e); } }
+                });
+            }
+            if (extra.length) items.splice(items.length - 1, 0, { key: 'sep-diag', separator: true }, ...extra);
             const rect = moreBtn.getBoundingClientRect();
-            showCtxMenu(items, rect.left, rect.bottom + 4);
+            /* 默认模式下这个菜单已有 10 项：单列在小窗口里会顶出屏幕底（菜单只夹 top≥8px），
+               排两列后高度减半。列数由 showCtxMenu 的 opts 给，别在 CSS 里写死。 */
+            showCtxMenu(items, rect.left, rect.bottom + 4, { columns: 2 });
         }
 
 function buildSpeedSubmenu() {

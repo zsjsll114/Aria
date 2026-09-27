@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { extractStaticImports } from './lib/import-scan.mjs';
 
 const ROOT = 'web/src';
 function walk(d, out = []) {
@@ -14,6 +15,10 @@ function walk(d, out = []) {
     }
     return out;
 }
+/**
+ * 静态 import 抽取共用 `lib/import-scan.mjs`（那份逻辑有自测：tests/js/test_module_reachability.js）。
+ * 为什么不在这里重写：本文件导入即全仓扫描并打印报告，自测没法 import 它。
+ */
 const all = walk(ROOT).map((f) => path.normalize(f).replace(/\\/g, '/'));
 
 /* 收集入口：分片入口 + 两个 html 里直接 import 的模块 */
@@ -48,8 +53,13 @@ while (stack.length) {
     if (reachable.has(f)) continue;
     reachable.add(f);
     const t = fs.readFileSync(f, 'utf8');
-    for (const m of t.matchAll(/(?:^|[\s(;{}=])import\s+(?:[\s\S]*?\sfrom\s*)?["']([^"']+)["']/g)) {
-        const p = specToPath(m[1], f);
+    /* ★ 跨行懒匹配必须被 `;` 挡住（[^;]*?），用 [\s\S]*? 会把**副作用 import 吃掉**：
+       `import '../utils/numberStepper.js';` 后面紧跟一条 `import { x } from '...'` 时，
+       匹配从副作用那行的 `import` 起跳、懒 Span 越过换行撞到后一条的 `from '...'`，
+       于是副作用 import 的 specifier 永远不进图——实测把 utils/numberStepper.js
+       误报成「不可达影子模块」（2026-09-26 复扫 4 → 5 的那个虚增就是它）。 */
+    for (const spec of extractStaticImports(t)) {
+        const p = specToPath(spec, f);
         if (p) {
             if (!importers.has(p)) importers.set(p, new Set());
             importers.get(p).add(f);

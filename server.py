@@ -67,7 +67,8 @@ if getattr(sys, 'frozen', False):
 else:
     _PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 静态文件根指向 web/（Tauri frontendDist 同源，保证浏览器与桌面版加载同一份最新代码）。
+# 静态文件根指向 web/（桌面壳的两个窗口都直接加载本服务，浏览器与桌面版因此是同一份代码；
+# Tauri 自身的 frontendDist 只是 dist-stub 占位，不嵌前端）。
 # 项目根保留的历史 index.html/src 副本不再被本地服务器服务。
 # ★ 多候选回退：新建/解压后的目录结构各异（web 可能被放到 server.exe 同级/上级/dist 内），
 #   只要候选里存在 index.html 就用它；全都没有时至少让服务器能启动并在日志里明示问题，

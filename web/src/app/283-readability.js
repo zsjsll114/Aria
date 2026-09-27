@@ -183,7 +183,11 @@ function syncButton() {
     btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     const tip = fmt(enabled ? STR.tipOn : STR.tipOff);
     btn.setAttribute('data-tooltip', tip);
-    btn.setAttribute('aria-label', tip);
+    /* ★ aria-label 恒为短名：状态已经由 aria-pressed 与 .on 表达了。
+       原先把整句 tip 也写进 aria-label，读屏会念出「已开启（点击关闭）」这种
+       和 aria-pressed 重复的话，而「更多」菜单按 aria-label 取条目名时
+       会撑出一整行（见 292-toolbar.js 的 labelOf）。 */
+    btn.setAttribute('aria-label', fmt(STR.tipOff));
 }
 
 /**

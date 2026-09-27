@@ -53,16 +53,41 @@
             margin-left: auto;
             opacity: 0.5;
         }
-        .ctx-item.active-rate {
-            background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.2);
+        /* 选中态只有一份声明：active-rate 是倍速那颗的历史类名，is-on 是「更多」
+           菜单里开关类条目的状态（292-toolbar.js 按按钮的
+           .on/.is-active/.active-dl/aria-pressed 现算）。
+           .more-item 那面（底栏静态子菜单）与 .ctx-item 同一条规则，别再抄第二份配色。 */
+        .ctx-item.active-rate,
+        .ctx-item.is-on,
+        .more-item.is-on {
+            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
             color: var(--theme-color);
         }
-        .ctx-item.active-rate svg { opacity: 1; }
+        .ctx-item.active-rate svg,
+        .ctx-item.is-on svg,
+        .more-item.is-on svg { opacity: 1; }
 
         .ctx-separator {
             height: 1px;
             background: rgba(255, 255, 255, 0.1);
             margin: 4px 8px;
+        }
+
+        /* 多列网格：「更多」菜单在默认模式下已有 10 项，单列会在小窗口/低分辨率下
+           溢出屏幕底（showCtxMenu 只把 top 夹到 ≥8px，超出部分直接看不见）。
+           列数由 --ctx-cols 给（showCtxMenu 的 opts.columns），分隔线跨整行。 */
+        .ctx-menu.is-multi {
+            display: grid;
+            grid-template-columns: repeat(var(--ctx-cols, 2), max-content);
+            align-items: start;
+            column-gap: 4px;
+            max-height: calc(100vh - 16px);
+            overflow-y: auto;
+        }
+        .ctx-menu.is-multi .ctx-separator { grid-column: 1 / -1; }
+        /* 窄屏不硬撑两列：一列 + 滚动比把每项挤成两行文字好 */
+        @media (max-width: 560px) {
+            .ctx-menu.is-multi { display: block; max-height: calc(100vh - 16px); overflow-y: auto; }
         }
 
         /* 确认对话框（iOS 18 毛玻璃） */

@@ -179,7 +179,7 @@ function refreshSettingsUI() {
             }
             const themeContainer = document.getElementById('setThemeColor');
             if (themeContainer && appSettings.interface) {
-                const curTheme = appSettings.interface.themeColor || '#ffcc33';
+                const curTheme = appSettings.interface.themeColor || '#E8BE6A';
                 let matched = false;
                 themeContainer.querySelectorAll('.color-swatch').forEach(sw => {
                     if (sw.dataset.color === curTheme) {
@@ -302,6 +302,10 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
                     const btn = document.getElementById('btnResetPerfRecommended');
                     if (btn) { btn.textContent = '重置中...'; btn.disabled = true; }
                     try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch (e) { logCatch('shortcutsViewmode', e); }
+                    /* ★ 滑杆偏好必须一起清：这两个按钮号称「恢复推荐/出厂配置」，
+                       留着 interface.vfxIntensity 的话下次读取仍会叠上用户拖过的强度，
+                       等于按钮撒了谎（清法由 295 分片提供，键属它自己写入的）。 */
+                    if (typeof Aria.__resetVfxIntensity === 'function') Aria.__resetVfxIntensity();
                     const result = await autoDetectAndApplyPerformance(false);
                     if (btn) { btn.textContent = '恢复推荐配置'; btn.disabled = false; }
                     if (typeof initVisualOverheadUI === 'function') initVisualOverheadUI();
@@ -317,6 +321,7 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
             document.getElementById('btnResetPerfFactory')?.addEventListener('click', () => {
                 const doReset = () => {
                     try { localStorage.removeItem('perf_vfx_overrides_v1'); } catch (e) { logCatch('shortcutsViewmode', e); }
+                    if (typeof Aria.__resetVfxIntensity === 'function') Aria.__resetVfxIntensity();
                     applyPerformanceProfile('high');
                     savePerformanceSettings({
                         profile: 'high',
@@ -413,6 +418,8 @@ function initVisualOverheadUI() {
             }
 
             syncVfxUI();
+            /* 动效强度滑杆属 295 分片（自带 i18n，不把这个热文件变成「自译文件」） */
+            if (typeof Aria.__syncVfxIntensity === 'function') Aria.__syncVfxIntensity();
         }
 
 /* 仅刷新「视觉开销」控件状态（设置面板打开/档位切换时调用，不重复绑定） */
@@ -439,6 +446,8 @@ function refreshVfxOverheadUI() {
                     const on = o[key] !== undefined ? o[key] : (cur[key] !== false && cur[key] !== undefined);
                     el.classList.toggle('on', !!on);
                 });
+                /* 档位变了 → 「跟随」态的等效位置与说明都要重算（滑杆属 295 分片） */
+                if (typeof Aria.__syncVfxIntensity === 'function') Aria.__syncVfxIntensity();
             }
         }
 

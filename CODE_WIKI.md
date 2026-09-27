@@ -58,7 +58,7 @@
 ├── kugou_api doc/doc.md         # 酷狗 API 接口参考
 ├── src-tauri/                   # ★ Tauri v2 桌面壳
 │   ├── src/main.rs / lib.rs     # sidecar 拉启 + 桌面歌词窗口控制命令
-│   ├── tauri.conf.json          # 应用配置（frontendDist=../web，窗口定义）
+│   ├── tauri.conf.json          # 应用配置（frontendDist=dist-stub 占位，窗口定义）
 │   ├── build.rs / build-dev.bat # 构建
 │   └── capabilities/default.json
 ├── web/                         # ★ 前端
@@ -100,7 +100,7 @@
 │    shazam-server.mjs(18089)                                    │
 │  · 桌面歌词窗口控制命令: show/move/pos/click_through/drag/resize│
 └───────────────┬──────────────────────────────────┬─────────────┘
-                │ frontendDist = web/（同源）        │ WebView / 浏览器
+                │ 前端由 server.exe 提供（exe 不内嵌） │ WebView / 浏览器
 ┌───────────────▼──────────────────────────────────▼─────────────┐
 │  Web 前端 (web/)                                               │
 │  index.html → src/app/index.js → 顺序 import 41 个分片          │
@@ -375,7 +375,7 @@
   - **Sidecar 状态机** `SidecarState{children, running}` — `spawn_sidecars()` 在 Windows 直接 `Command::new("python").arg("server.py")` 与 `node scripts/shazam-server.mjs` 并行拉启；`project_root()` 从 exe 路径反推工程根规避 CWD 问题。
   - Tauri 命令：`sidecar_status/start/stop`；桌面歌词 `desktop_lyrics_show/move/pos/click_through/start_drag/resize`（`click_through` 用 `AppHandle` 显式取目标窗口，避免注入到调用方窗口）。
   - 窗口 resize 保持中心点不变。
-- `tauri.conf.json`：产品名 Aria、2.6.0、`frontendDist: ../web`、主窗口 + `desktop_lyrics` 透明无边框窗口（`decorations:false, transparent:true, alwaysOnTop`）。
+- `tauri.conf.json`：产品名 Aria、2.6.0、`frontendDist: dist-stub`（占位——两个窗口的 URL 都是 `http://localhost:8001/...`，前端由 server.exe 提供，exe 内不嵌 web/；曾指向 `../web` 时把 145MB 静态资源压缩塞进了二进制，白占 86MB）、主窗口 + `desktop_lyrics` 透明无边框窗口（`decorations:false, transparent:true, alwaysOnTop`）。
 - `capabilities/default.json`：core/window/shell 权限声明。
 - `build-dev.bat`：加载 VS2026 x64 环境 → `cargo build`。
 

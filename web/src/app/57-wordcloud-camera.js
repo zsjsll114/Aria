@@ -9,6 +9,10 @@ import { getWordcloudTargetFontRem, playerContainer } from './40-playback-state.
 import { wcLerpToDuration } from './55-wc-tuning.js';
 import { flyinAutoScaleFont, updateFlyinTranslation } from './56-playback-misc.js';
 import { updateMobileLyricPreview } from './60-mobile-dual-page.js';
+/* ★ 帧时埋点（todos #21）：本分片的常驻弹簧 rAF 是「默认/歌词模式滚动」的唯一驱动，
+   卡不卡只有设备自己知道（约束 12：开发机测不出软件光栅化的代价）。
+   埋点每帧一次 Map.get + 几次数值运算，无分配、不读 DOM。 */
+import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
 
 /* ★ 摄像机统一写入入口：平移写在 scrollEl 的 transform（屏幕像素）。
    焦距缩放有双通道，解决"卡顿 vs 模糊"的两难：
@@ -157,6 +161,7 @@ class WaveLyricSystem {
         this.browse = 0;        /* 滚轮浏览视口偏移（px，向下为正） */
         this.inited = false;
         this._remeasureTick = 0; /* 行高节流重测计数 */
+        this._lastUserScrolling = null; /* 滚轮浏览标志上一帧值（用于 lastOpacity 补写，见 step） */
     }
 
     /* ★ 行高重测：绝对定位物理模式下，若行因窗口变窄/字号变化/翻译开关等
@@ -184,9 +189,19 @@ class WaveLyricSystem {
         const nodes = new Array(n);
         const isCenter = (appSettings.lyrics && appSettings.lyrics.align === 'center') || (playerContainer && playerContainer.classList.contains('view-lyrics'));
         const origin = isCenter ? 'center center' : 'left center';
+        /* ★ 读写分趟（2026-09-26）：原实现把「读 el.clientHeight」与「写 position/left/top/
+           width/transformOrigin/transitionProperty/visibility」交错在同一个循环里 ——
+           每行的读都发生在上一行的写之后，于是 n 行 = n 次强制同步布局（Layout Thrashing）。
+           整首歌 150~400 行时，这一次 reset 就是几百毫秒的主线程冻结，表现为「刚进歌/
+           刚切歌那一下滚不动」。拆成「先一口气读完所有行高（一趟布局）+ 再统一写样式
+           （一趟失效）」后，值与写入顺序与原来完全一致，只是把 n 次回流压成 1 次。 */
+        const heights = new Array(n);
+        for (let i = 0; i < n; i++) {
+            heights[i] = els[i].clientHeight || 40;
+        }
         for (let i = 0; i < n; i++) {
             const el = els[i];
-            const h = el.clientHeight || 40;
+            const h = heights[i];
             nodes[i] = {
                 el,
                 y: 0,
@@ -311,6 +326,10 @@ class WaveLyricSystem {
             sc.style.transform = 'translateY(0px)';
         }
         const { kAnchor, kCouple, damping, browseK, visWindow } = WAVE_CONFIG;
+        /* ★ 桥接全局：isUserScrolling 是 globalThis 上的访问器属性（infrastructure/globalBridge），
+           每次读都是一次 getter 调用。原实现在「逐行循环」里读它（每帧 ~70 次），
+           这里改为每帧只读一次。 */
+        const userScrolling = isUserScrolling;
         const n = this.nodes.length;
         const steps = Math.max(1, Math.ceil(dt * 60));
         const sdt = dt / steps;
@@ -323,10 +342,20 @@ class WaveLyricSystem {
         if (this.activeIndex < 0) this.layoutFromTop();
         else this.updateTargetLayout();
         /* 滚轮浏览回中：仅在用户停止滚轮操作（!isUserScrolling）后柔和弹回 */
-        if (!isUserScrolling) {
+        if (!userScrolling) {
             this.browse += (0 - this.browse) * browseK * scale;
         }
         const nodes = this.nodes;
+        /* ★ 滚轮浏览期间 .lyrics-container.user-scrolling .line 用 opacity:!important 接管了
+           行透明度（见 base.css）→ 本方法写进去的 inline opacity 是死写，但每帧仍会为
+           可见窗口内每一行（~70 行）触发一次样式失效。跳过它视觉完全一致（CSS 胜过 inline）。
+           滚轮结束（标志翻转）时把 lastOpacity 置 -1，下一帧强制补一次写，不留旧值。 */
+        if (userScrolling !== this._lastUserScrolling) {
+            this._lastUserScrolling = userScrolling;
+            if (!userScrolling) {
+                for (let i = 0; i < n; i++) nodes[i].lastOpacity = -1;
+            }
+        }
         const off = this.browse;
         for (let s = 0; s < steps; s++) {
             for (let i = 0; i < n; i++) {
@@ -418,7 +447,7 @@ class WaveLyricSystem {
             /* 形态变化：缩放与透明度随与激活行的实际距离平滑逼近 */
             const distToActive = Math.abs(i - this.activeIndex);
             let targetScale, targetOpacity;
-            if (isUserScrolling) {
+            if (userScrolling) {
                 targetScale = 1.0;
                 targetOpacity = (i === this.activeIndex) ? 1.0 : 0.85;
             } else {
@@ -444,11 +473,16 @@ class WaveLyricSystem {
                 nd.el.style.transform = `translate3d(0, ${(nd.y - nd.h / 2).toFixed(2)}px, 0) scale(${nd.scale.toFixed(3)})`;
             }
 
-            const diffOpacity = Math.abs(nd.opacity - nd.lastOpacity);
-            const thOp = isLowPerf ? 0.02 : 0.008;
-            if (diffOpacity >= thOp) {
-                nd.lastOpacity = nd.opacity;
-                nd.el.style.opacity = nd.opacity.toFixed(3);
+            /* ★ 滚轮浏览期间透明度由 .user-scrolling 的 !important 规则接管 → 不写 inline
+               （写了也是死写，却仍要让样式失效一次）。物理量 nd.opacity 照常推进，
+               滚轮一结束就靠上面重置的 lastOpacity 补写回来。 */
+            if (!userScrolling) {
+                const diffOpacity = Math.abs(nd.opacity - nd.lastOpacity);
+                const thOp = isLowPerf ? 0.02 : 0.008;
+                if (diffOpacity >= thOp) {
+                    nd.lastOpacity = nd.opacity;
+                    nd.el.style.opacity = nd.opacity.toFixed(3);
+                }
             }
         }
         for (let i = 0; i < from; i++) {
@@ -880,15 +914,32 @@ function updateLyricsGapDots(t) {
 
 /* 常驻 rAF：默认/歌词模式独有的弹簧滚动 + 三点（播放/暂停都跑；
    播放时行切换设 target，暂停时可滚轮浏览歌词） */
+/* ★ 帧时埋点源名：诊断页「帧时（实时采样）」段会多出一行。
+   它是「默认/歌词模式滚动」的唯一驱动循环 —— 滚动卡不卡，看这一行的
+   中位/p95 帧时即可定位到是本循环还是合成器（内置心跳 global 同时变差 =
+   合成器/光栅化瓶颈；只有本循环变差 = 本循环 JS 瓶颈）。
+   源名/标签沿用 core/frameProbe 文档里的约定与 i18n 词表已登记的原文。 */
+const FX_PROBE_SOURCE = 'lyricsFx';
+registerLoop(FX_PROBE_SOURCE, '歌词弹簧/波纹循环');
+
 function ensureLyricsFxLoop() {
     if (lyricsFxLoopOn) return;
     lyricsFxLoopOn = true;
     let last = performance.now();
-    (function tick() {
+    (function tick(ts) {
         if (!lyricsFxLoopOn) return;
         requestAnimationFrame(tick);
+        probeFrame(FX_PROBE_SOURCE, ts);
         const now = performance.now();
-        if (!amNormalLyricsMode()) { waveCleanup(); return; }
+        if (!amNormalLyricsMode()) {
+            /* ★ 原来这条早退分支没有推进 last：离开歌词模式（词云/PV/飞入…）一段时间
+               再切回来时，dt 会被 clamp 到上限 0.04s（= 3 个物理子步），
+               回来第一帧行位姿一次性多推进两倍，观感是「跳一下」。
+               这里把 last 一并推进，语义等同「本帧没有物理推进」。 */
+            last = now;
+            waveCleanup();
+            return;
+        }
         const dt = Math.min(0.04, Math.max(0.001, (now - last) / 1000));
         last = now;
         /* ★ 耦合弹簧纵波：物理引擎接管歌词定位（行绝对定位，无容器平移）。
@@ -1159,19 +1210,17 @@ function updateLyricsHighlight() {
 
                 if (oldIndex >= 0 && lineElements[oldIndex]) {
                     lineElements[oldIndex].classList.remove('active');
-                    /* 重置旧行所有单词：高亮归零 + 移除浮动 active 类 */
+                    /* ★ 2026-09-27：旧行逐词重置（--reveal 归零/done 移除/lastWordProgress.delete）
+                       全部删除——英文一行 40-60 个字符元素，切行瞬间同一帧做几十次 mask 写入
+                       + class 翻转，是切行帧巨刺的直接来源（实测 485ms，中文 12 字无感）。
+                       行为变化：旧行保留唱完的满高亮（Apple Music 风格，离开行不复位）。
+                       该行再次成为活动行时，下方主循环第一帧按当前 t 计算 pct——
+                       残留值(100)与新 pct(0) 不同必然写入，无停留风险。历史注释里的
+                       「width 残留导致整层不可见」是旧 width 动画方案的问题，
+                       恒定盒 + --reveal 体制下不存在。 */
                     const oldWords = wordElementsByLine[oldIndex] || [];
-                    const oldHighlights = wordHighlightElementsByLine[oldIndex] || [];
                     for (let i = 0; i < oldWords.length; i++) {
                         if (oldWords[i] && oldWords[i].classList.contains('active')) oldWords[i].classList.remove('active');
-                        if (oldHighlights[i]) {
-                            /* ★ seek/切行后必须重置 --reveal 并清除 done，否则再次进入该行时
-                               高亮停留在旧值（甚至 width 残留 0% 导致整层不可见） */
-                            oldHighlights[i].style.width = '';
-                            oldHighlights[i].style.setProperty('--reveal', '0%');
-                            oldHighlights[i].classList.remove('done');
-                        }
-                        lastWordProgress.delete(oldWords[i]);
                     }
                 }
 
@@ -1239,8 +1288,13 @@ function updateLyricsHighlight() {
                         pct = 0;
                     } else if (t >= end) {
                         pct = 100;
-                    } else {
+                    } else if (end > start) {
                         pct = Math.round((t - start) / (end - start) * 1000) / 10;
+                    } else {
+                        /* ★ 兜底（2026-09-26）：end==start 的零长词元（真实逐字源里也存在，
+                           非合成路径独有）pct 只能是 0 或 100。此前除零产出 NaN，
+                           lastWordProgress 以 NaN 作键永不命中 → 每帧重写 mask → 英文歌整行卡顿 */
+                        pct = 100;
                     }
                     /* 一旦开始演唱就上浮并保持（Apple Music 风格，不再回落） */
                     if (t >= start && !wordEl.classList.contains('active')) {
@@ -1250,11 +1304,18 @@ function updateLyricsHighlight() {
                     /* 跳过未变化的目标值，避免无谓的样式写入与重绘 */
                     if (lastWordProgress.get(wordEl) === pct) continue;
                     if (highlightEl.classList.contains('rtl-highlight')) {
-                        /* ★ 上下 -0.4em 外扩（2026-09-20 裁剪彻底修复）：inset 正值裁
-                           字形上伸/下伸（g/j/y/f 不全），负值把裁剪区扩出行盒 */
-                        highlightEl.style.clipPath = `inset(-0.4em 0 -0.4em ${100 - pct}%)`;
+                        /* ★ 上下负 inset 外扩（2026-09-20 首修 0.4em；2026-09-26 按实测墨迹
+                           改为上 0.7em / 下 0.5em，与 base.css .word-highlight 同步）：
+                           inset 正值/零值会裁掉字形上伸下伸（g/j/y/f 不全） */
+                        highlightEl.style.clipPath = `inset(-0.7em 0 -0.5em ${100 - pct}%)`;
                     } else {
-                        highlightEl.style.setProperty('--reveal', pct + '%');
+                        /* ★ 2026-09-27：pct>=100 时写 120% 而非 100%，配套删除 base.css
+                           .done 的 mask-image:none——此前每词唱完瞬间 .done 移除 mask-image，
+                           整层 mask 重栅格化（切换 mask 比更新变量贵一个量级），英文每秒
+                           唱完 2-4 词 = 每秒 2-4 次整词层重栅格，是默认/歌词模式英文卡顿
+                           的一大来源。mask 常驻后前沿推到 120%（渐变起点 106% 已出界），
+                           视觉与无 mask 等价且零额外栅格化。 */
+                        highlightEl.style.setProperty('--reveal', (pct >= 100 ? 120 : pct) + '%');
                     }
                     /* 完全高亮后添加 done 移除前沿渐变，部分高亮时保留渐变 */
                     if (pct >= 100) {

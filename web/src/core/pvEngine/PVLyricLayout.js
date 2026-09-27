@@ -33,7 +33,7 @@ export class PVLyricLayout {
       return [];
     }
 
-    const defaultThemeColor = (aiData && aiData.accent_color) || (typeof window !== 'undefined' && window.coverPalette ? window.coverPalette.accent : null) || '#ffcc33';
+    const defaultThemeColor = (aiData && aiData.accent_color) || (typeof window !== 'undefined' && window.coverPalette ? window.coverPalette.accent : null) || '#E8BE6A';
     
     // 构建精准情感词映射表与情感词列表
     const emotionMap = new Map();

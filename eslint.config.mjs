@@ -74,6 +74,7 @@ const PROJECT_GLOBAL_KEYS = [
     'saveQueueMode', 'scrollTimeout', 'searchPage', 'searchPageCache', 'searchPagingBusy',
     'stallCheckGeneration', 'stallLastTime', 'stallTimer', 'submenuHideTimer',
     'triggerPostLoadTasks', 'updateVolume', 'wordcloudCanvasH', 'wordcloudCanvasW',
+    'cancelAiAnalysis',
     // ---- window.* 挂载键（函数入口/单例/握手） ----
     'Aria', 'AIAnalyzer', 'ChorusDetector', 'aiClient', 'applicationCache',
     'applyEmotionWordColors', 'backToBoards', 'batchDownloadSongs', 'closeRecent',

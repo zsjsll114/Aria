@@ -47,10 +47,10 @@
       }
       .aria-dialog-btn:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); }
       .aria-dialog-btn.primary {
-        background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.22);
-        border-color: rgba(var(--theme-color-rgb, 255, 204, 51), 0.55);
+        background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.22);
+        border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.55);
       }
-      .aria-dialog-btn.primary:hover { background: rgba(var(--theme-color-rgb, 255, 204, 51), 0.34); }
+      .aria-dialog-btn.primary:hover { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.34); }
       .aria-dialog-btn.danger { background: rgba(255, 82, 82, 0.18); border-color: rgba(255, 82, 82, 0.6); }
       .aria-dialog-btn.danger:hover { background: rgba(255, 82, 82, 0.3); }
     `;

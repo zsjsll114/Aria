@@ -181,8 +181,8 @@ import { logCatch } from '../services/log.js';
     const st = _styleProbe || {};
     try {
       st.themeColor = (typeof document !== 'undefined' && document.documentElement)
-        ? (getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#ffcc33')
-        : '#ffcc33';
+        ? (getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#E8BE6A')
+        : '#E8BE6A';
       st.fontFamily = (typeof document !== 'undefined' && document.documentElement)
         ? (getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim() || undefined)
         : undefined;
@@ -250,7 +250,7 @@ import { logCatch } from '../services/log.js';
       tms, curStart, nextStart,
       playing: !!(audio && !audio.paused && !(globalThis.isBuffering)),
       /* ★ 主题色跟随（2s TTL 缓存）：主界面当前主题色随推送带上，桌面歌词按此给逐字高亮上色 */
-      themeColor: probeStyles().themeColor || '#ffcc33',
+      themeColor: probeStyles().themeColor || '#E8BE6A',
       /* ★ 字体跟随（2s TTL 缓存）：主界面字体设置变量 → 桌面歌词窗口 */
       fontFamily: probeStyles().fontFamily,
       /* ★ 歌词样式跟随（2s TTL 缓存，与主界面歌词一致）：实测主界面歌词行 font-family / font-size */
