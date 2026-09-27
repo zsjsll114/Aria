@@ -36,11 +36,14 @@ def settle(page, ms=4000):
 
 
 def dismiss_blockers(page):
-    """欢迎层 / 首次设置向导 / 021 的动态确认框都会拦住指针事件
+    """欢迎层 / 首次设置向导 / 性能检测弹窗 / 021 的动态确认框都会拦住指针事件
        （test_settings_smoke.py 里那批用例之所以全程用 evaluate 点击就是这个原因），
-       本用例要走真实点击，先摘掉。"""
+       本用例要走真实点击，先摘掉。
+       ★ performanceDialog（2026-09-27 CI 实测）：boot 自动性能检测 auto=true 会弹
+         「性能优化配置」模态（welcome-overlay 挡全屏），reload 后重新出现——
+         必须每次 dismiss 都摘，否则设置面板里的真实点击全部 30s 超时。"""
     page.evaluate("""() => {
-        ['welcomeOverlay', 'ariaOobeOverlay'].forEach(id => {
+        ['welcomeOverlay', 'ariaOobeOverlay', 'performanceDialog'].forEach(id => {
             const e = document.getElementById(id);
             if (e) { e.classList.remove('visible'); e.style.display = 'none'; }
         });
@@ -69,6 +72,10 @@ SEED_INIT_SCRIPT = """
 try {
     localStorage.setItem('aria_ai_proxy_notice', '1');
     localStorage.setItem('aria_oobe_done', '1');
+    /* ★ 短路启动期性能自检（同 test_pv_handoff 先例）：CI 上自检 auto=true 会弹
+       「性能优化配置」模态（performanceDialog，welcome-bg 挡全屏），reload 后还会
+       再弹一次，settle 之后的所有真实点击全部 30s 超时（2026-09-27 CI 实测）。 */
+    localStorage.setItem('lyrics_player_performance', JSON.stringify({ profile: 'high', manuallyConfigured: true }));
 } catch (e) {}
 """
 
@@ -182,7 +189,15 @@ def close_settings(page):
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        # ★ 拦 config/load（2026-09-27 CI 实测）：loadConfigFromBackend 会把 server
+        #   user_config.json 里的 performance（manuallyConfigured=false，前面测试写入）
+        #   setItem 进 PERF key，**覆盖** SEED_INIT_SCRIPT 预置的手动档标记 →
+        #   性能自检照跑 → performanceDialog 弹出挡住全部真实点击（30s 超时）。
+        import re as _re
+        context.route(_re.compile(r"/api/config/load"), lambda r: r.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        page = context.new_page()
         page.add_init_script(SEED_INIT_SCRIPT)
         errors = []
         page.on("pageerror", lambda e: errors.append("pageerror: " + str(e)))
