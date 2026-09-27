@@ -149,8 +149,13 @@ def main():
                   "背景模糊 60px" in desc100 and "PV 发光 开" in desc100, desc100[:200])
 
             # ---- ⑤ ★ 手动单项开关优先于滑杆 ----
+            # ★ 点击前先把 DOM 的 on 类对齐到实际生效值（2026-09-27 CI 实测）：
+            #   滑杆改值后设置面板开关的类刷新是异步的，CI 时序下 `contains('on')`
+            #   仍为 false → 下面 if 直接跳过点击 → 覆盖表空、三条断言连坐全红。
+            #   同步类后再点，语义不变（把 on 的开关点成 off）且与刷新时机无关。
             js(page, """() => {
                 const el = document.getElementById('vfxPvBloom');
+                el.classList.toggle('on', !!window.getPerfVfx().pvBloom);
                 if (el.classList.contains('on')) el.click();   // 关掉 bloom
             }""")
             page.wait_for_timeout(200)
