@@ -56,7 +56,21 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--autoplay-policy=no-user-gesture-required",
                                                          "--mute-audio"])
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        # ★ 环境隔离（同 test_phone_remote.py 五道闸，2026-09-27 CI 实测）：boot 的
+        #   默认曲/热歌榜异步加载链会在 harness SETUP 之后的任意时刻重写
+        #   globalThis.lyrics/audio.src——CI 时序下 toggleLineLoop 读到网络真歌的
+        #   行时间（startMs=4176≠4000），flaky 两连。断网后歌词只属于 harness。
+        import re as _re
+        context.route(_re.compile(r"/api/config/load"), lambda r: r.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        context.route(_re.compile(r"^https?://(?!127\.0\.0\.1|localhost)"), lambda r: r.abort())
+        context.route(_re.compile(r"/api/rank/"), lambda r: r.fulfill(
+            status=200, body="{}", content_type="application/json"))
+        context.route(_re.compile(r"/api/selfhost/"), lambda r: r.abort())
+        context.route(_re.compile(r"/api/audio/stream"), lambda r: r.abort())
+        context.route(_re.compile(r"/proxy"), lambda r: r.abort())
+        page = context.new_page()
         page.goto(URL, wait_until="load")
         try:
             page.wait_for_function(
