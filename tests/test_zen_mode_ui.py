@@ -36,11 +36,15 @@ def probe(page):
         };
         const cover = document.querySelector('.cover-area');
         const btn = document.getElementById('zenModeBtn');
+        /* top 组容器不再整组隐藏（逐按钮隐藏），量一个「普通按钮」代表组内状态 */
+        const normalTopBtn = document.querySelector('.top-action-buttons > *:not(#zenModeBtn)');
         return {
             zen: document.documentElement.classList.contains('is-zen'),
             scope: document.documentElement.getAttribute('data-zen-scope') || '',
-            top: vis('.player-container .top-action-buttons'),
+            normalTopBtn: vis('.top-action-buttons > *:not(#zenModeBtn)'),
+            normalTopBtnTag: normalTopBtn ? (normalTopBtn.id || normalTopBtn.className) : 'MISSING',
             zenBtn: vis('#zenModeBtn'),
+            zenBtnFixed: btn ? btn.style.position : 'MISSING',
             info: vis('.player-container .song-info-container'),
             cover: vis('.cover-area'),
             queuePanel: vis('#plmPanel'),
@@ -80,26 +84,27 @@ def main():
         idle = probe(page)
         check("no_idle_autocenter", idle["zen"] is False, {"zen": idle["zen"]})
 
-        # —— 2. 右上角按钮进入：is-zen + 按钮豁免 + 队列/控件隐藏 + 封面平移 ——
+        # —— 2. 右上角按钮进入：is-zen + 按钮平移到右上角常驻 + 队列/控件隐藏 + 封面下移 ——
         page.evaluate("document.getElementById('zenModeBtn').click()")
         zen1 = probe(page)
         check("button_enters_zen", zen1["zen"] is True and zen1["btnPressed"] == "true", zen1)
-        check("top_hidden_btn_exempt",
-              zen1["top"] == "hidden" and zen1["zenBtn"] == "shown", zen1)
+        check("top_others_hidden_btn_fixed",
+              zen1["normalTopBtn"] == "hidden" and zen1["zenBtn"] == "shown"
+              and zen1["zenBtnFixed"] == "fixed", zen1)
         check("info_text_hidden_cover_shown",
               zen1["info"] == "hidden" and zen1["cover"] == "shown", zen1)
         check("queue_fab_and_panel_hidden",
               zen1["queuePanel"] == "hidden" and zen1["queueFab"] == "hidden", zen1)
-        check("cover_flipped_to_center",
-              "translate" in zen1["coverTransform"], {"transform": zen1["coverTransform"]})
+        check("cover_shifted_down",
+              "translateY" in zen1["coverTransform"], {"transform": zen1["coverTransform"]})
 
-        # —— 3. 再点按钮退出：封面回原位 ——
+        # —— 3. 再点按钮退出：封面回原位、按钮回组内 ——
         page.evaluate("document.getElementById('zenModeBtn').click()")
         zen2 = probe(page)
         check("button_exits_zen", zen2["zen"] is False and zen2["btnPressed"] == "false", zen2)
-        check("cover_restored", zen2["coverTransform"] == "(none)" or "translate" not in zen2["coverTransform"],
+        check("cover_restored", "translateY" not in zen2["coverTransform"],
               {"transform": zen2["coverTransform"]})
-        check("top_restored", zen2["top"] == "shown", zen2)
+        check("top_restored", zen2["normalTopBtn"] == "shown" and zen2["zenBtnFixed"] != "fixed", zen2)
 
         # —— 4. Z 键切换 ——
         page.evaluate("""() => {

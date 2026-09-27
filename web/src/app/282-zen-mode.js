@@ -33,7 +33,7 @@ const DEFAULT_ZEN_KEY = 'z';
    默认开：顶栏图标组 / 底栏控制条 / 歌名歌手与主控制区 / 播放队列 —— 封面不藏
    （进入专注时由 coverShiftToCenter 平移到视口中心）。 */
 const ZEN_SCOPES = [
-    { token: 'top', label: '右上角图标组（专注按钮除外）', labelEn: 'Top icon row (focus btn stays)', defaultOn: true },
+    { token: 'top', label: '右上角图标组', labelEn: 'Top icon row', defaultOn: true },
     { token: 'bottom', label: '底部控制条', labelEn: 'Bottom control bar', defaultOn: true },
     { token: 'info', label: '歌名歌手与主控制区', labelEn: 'Title, artist & main controls', defaultOn: true },
     { token: 'titlebar', label: '桌面端标题栏', labelEn: 'Desktop title bar', defaultOn: false },
@@ -57,12 +57,12 @@ const STR = {
     scopeLabel: ['隐藏范围', 'What gets hidden'],
     scopeDesc: ['隐藏控件与播放队列；封面与歌词留在画面', 'Hide controls and the queue; the cover and lyrics stay'],
     keyLabel: ['快捷键', 'Shortcut'],
-    keyDesc: ['点击按键后按下新键，Esc 取消', 'Click the chip, then press a new key; Esc cancels'],
+    keyDesc: ['先点这里，再按下要绑定的按键；按 Esc 放弃', 'Click here first, then press the key to bind; Esc to give up'],
     keyRecording: ['按下按键...', 'Press a key...'],
     keyConflict: ['该按键已被其它功能占用', 'That key is already bound to another action'],
     btnLabel: ['专注模式', 'Focus mode'],
-    tipOn: ['退出专注模式（控件已隐藏，封面居中）', 'Exit focus mode (controls hidden, cover centered)'],
-    tipOff: ['进入专注模式（隐藏控件，封面移到中央）', 'Enter focus mode (hide controls, center the cover)']
+    tipOn: ['退出专注模式', 'Exit focus mode'],
+    tipOff: ['进入专注模式', 'Enter focus mode']
 };
 
 function langIsEn() {
@@ -221,9 +221,9 @@ function applyScopeAttr() {
     if (root.getAttribute('data-zen-scope') !== v) root.setAttribute('data-zen-scope', v);
 }
 
-/* ---------- 封面 FLIP 平移（进入 → 视口中心，退出 → 原位） ----------
-   非线性用带轻微过冲的弹簧曲线；坐标按进入瞬间的 getBoundingClientRect 计算，
-   只在这一刻读一次布局（避免每帧回流）。resize 时若仍在专注态就重新对位。 */
+/* ---------- 封面 FLIP 平移（进入 → 沿箭头竖直下移到播放器竖直中心，退出 → 原位）----------
+   只动竖直方向（水平保持在左侧列），非线性用带轻微过冲的弹簧曲线；
+   坐标按进入瞬间的 getBoundingClientRect 计算一次，resize 时重算。 */
 const COVER_EASE_IN = 'transform 0.9s cubic-bezier(0.22, 1.2, 0.36, 1)';
 const COVER_EASE_OUT = 'transform 0.7s cubic-bezier(0.33, 0, 0.2, 1)';
 
@@ -231,10 +231,9 @@ function coverShiftToCenter() {
     const cover = q('.cover-area');
     if (!cover) return;
     const r = cover.getBoundingClientRect();
-    const dx = (window.innerWidth / 2) - (r.left + r.width / 2);
     const dy = (window.innerHeight / 2) - (r.top + r.height / 2);
     cover.style.transition = COVER_EASE_IN;
-    cover.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+    cover.style.transform = `translateY(${Math.round(dy)}px)`;
 }
 
 function coverShiftReset() {
@@ -242,6 +241,44 @@ function coverShiftReset() {
     if (!cover) return;
     cover.style.transition = COVER_EASE_OUT;
     cover.style.transform = '';
+}
+
+/* ---------- 专注按钮 FLIP：进入时平移到视口右上角常驻（退出入口），退出回组内 ----------
+   top 组淡出不能压在按钮上（opacity 是合成属性，父级 0 时子级无法恢复——
+   之前「外观隐藏但能点」就是这个），所以 zen.css 改为逐按钮隐藏，按钮本体
+   用 fixed 定位 + FLIP 平移。 */
+const ZEN_BTN_EASE = 'transform 0.65s cubic-bezier(0.22, 1.2, 0.36, 1)';
+
+function zenBtnShiftToCorner() {
+    const btn = doc().getElementById(BTN_ID);
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    btn.style.position = 'fixed';
+    btn.style.left = `${Math.round(r.left)}px`;
+    btn.style.top = `${Math.round(r.top)}px`;
+    btn.style.margin = '0';
+    btn.style.zIndex = '400';
+    const dx = (window.innerWidth - 14 - btn.offsetWidth) - r.left;
+    const dy = 12 - r.top;
+    requestAnimationFrame(() => {
+        btn.style.transition = ZEN_BTN_EASE;
+        btn.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+    });
+}
+
+function zenBtnShiftReset() {
+    const btn = doc().getElementById(BTN_ID);
+    if (!btn) return;
+    const prevTransform = btn.style.transform;
+    if (!prevTransform) { btn.style.cssText = ''; return; }
+    /* 回组内布局后从旧视觉位置平移回新位置（反向 FLIP） */
+    btn.style.cssText = '';
+    btn.style.transition = ZEN_BTN_EASE;
+    btn.style.transform = prevTransform;
+    requestAnimationFrame(() => {
+        btn.style.transition = ZEN_BTN_EASE;
+        btn.style.transform = '';
+    });
 }
 
 /**
@@ -259,6 +296,7 @@ export function enterZen() {
     d.documentElement.classList.add(ZEN_CLASS);
     _zen = true;
     coverShiftToCenter();
+    zenBtnShiftToCorner();
     syncZenSettingsUI();
     return true;
 }
@@ -270,6 +308,7 @@ export function exitZen() {
     d.documentElement.classList.remove(ZEN_CLASS);
     _zen = false;
     coverShiftReset();
+    zenBtnShiftReset();
     syncZenSettingsUI();
     return true;
 }
@@ -512,8 +551,16 @@ export function initZenMode() {
     });
 
     applyScopeAttr();
-    /* 专注态下窗口尺寸变化会破坏封面居中，重算一次 */
-    window.addEventListener('resize', () => { if (_zen) coverShiftToCenter(); });
+    /* 专注态下窗口尺寸变化会破坏封面居中/按钮贴角，重算一次 */
+    window.addEventListener('resize', () => {
+        if (!_zen) return;
+        coverShiftToCenter();
+        const btn = doc().getElementById(BTN_ID);
+        if (btn && btn.style.position === 'fixed') {
+            btn.style.left = `${Math.max(8, window.innerWidth - btn.offsetWidth - 14)}px`;
+            btn.style.top = '12px';
+        }
+    });
 }
 
 /* 分片按 index.js 顺序在文档解析后求值，正常这里 DOM 已就绪；

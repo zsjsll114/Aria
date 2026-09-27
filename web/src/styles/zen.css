@@ -49,23 +49,22 @@ html#ariaRoot #appTitlebar {
    visibility 延迟 fade-out 时长再翻到 hidden，才能看见淡出过程。 */
 
 /* ① 右上角图标组（默认开）。
-   ★ #zenModeBtn 豁免：删掉鼠标唤回机制后，它就是专注态唯一的常驻退出入口，
-   必须保持可见可点。 */
-html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons {
+   ★ 逐按钮隐藏而不是整组 opacity:0——opacity 是合成属性，父级 0 时子级
+   无法恢复（之前 #zenModeBtn「外观隐藏但能点」就是这个）。专注态按钮本体
+   由 282 的 zenBtnShiftToCorner 平移到视口右上角常驻，作为退出入口。 */
+html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons > *:not(#zenModeBtn) {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
     transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
 }
 
-/* 退出按钮豁免 + 专注态高亮：取景框图标点亮主题色，明确「这就是出口」 */
+/* 专注态按钮高亮：取景框图标点亮主题色，明确「这就是出口」 */
 html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons #zenModeBtn {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
     color: var(--theme-color, #E8BE6A) !important;
     border-color: color-mix(in srgb, var(--theme-color, #E8BE6A) 45%, transparent) !important;
     background: color-mix(in srgb, var(--theme-color, #E8BE6A) 14%, transparent) !important;
+    transition: opacity var(--zen-fade-in) var(--zen-ease), visibility 0s !important;
 }
 
 /* ② 底部控制条（默认开）。view-pv/tunnel/wordcloud… 下它是 display:flex + 绝对定位，

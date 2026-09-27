@@ -85,9 +85,14 @@ def main():
         page.evaluate("document.getElementById('ctxMenu').classList.remove('visible')")
 
         # —— 2. 单句循环：状态 + 真的 seek 到行首 ——
+        # ★ toggle 前把播放位置落在第二行内：主循环每帧按 currentTime 刷
+        #   activeLineIndex，SETUP 里设的 1 会被 currentTime=0 刷回 0（CI 时序下必现），
+        #   让「当前行」的判定与自动刷新一致才稳定。
         r = page.evaluate("""() => {
-            Aria.abLoop.toggleLineLoop();
             const a = document.querySelector('audio');
+            globalThis.activeLineIndex = 1;
+            a.currentTime = 4.2;
+            Aria.abLoop.toggleLineLoop();
             return { state: Aria.abLoop.state(), currentTimeMs: Math.round(a.currentTime * 1000) };
         }""")
         check("line-loop-activates", r["state"]["mode"] == "line", r)
