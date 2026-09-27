@@ -168,12 +168,13 @@ function initSettingsPanel() {
             function initPreviewEngine() {
                 const activeMode = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode || 'cover';
                 if (previewEngineInstance) {
-                    /* 已存在：恢复播放 + 设置激活模式 + 重新构建控件面板 */
-                    previewEngineInstance.isPlaying = true;
-                    previewEngineInstance.startTime = performance.now() - (previewEngineInstance.lastTime || 0);
+                    /* 已存在：恢复播放 + 设置激活模式 + 重新构建控件面板。
+                       ★ 2026-09-27：改用 start()（内含 cancelAnimationFrame 防重链）。
+                       原实现手动 isPlaying=true + loop()——loop 不查在途 rAF，一旦某条
+                       关闭路径漏了 pause，这里就会叠出第二条 rAF 链，与主播放器双引擎
+                       抢帧预算（用户实测「打开设置页面之后就开始卡了」的候选根因）。 */
                     try { previewEngineInstance.setMode(activeMode); } catch (e) { logCatch('settingsPanel', e); }
-                    previewEngineInstance.updatePlayIcon();
-                    previewEngineInstance.loop();
+                    previewEngineInstance.start();
                     buildAppearanceControls();
                     return;
                 }

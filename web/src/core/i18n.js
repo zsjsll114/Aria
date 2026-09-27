@@ -860,6 +860,12 @@ const STATIC_PHRASE_MAP = {
   /* 282 自带 bilingual STR 表（同 280：无占位符的整句在这里也记一笔账） */
   '点击按键后按下新键，Esc 取消': 'Click the chip, then press a new key; Esc cancels',
   '该按键已被其它功能占用': 'That key is already bound to another action',
+  /* 282 zen 2026-09-27 重设计（删静止自动进入；封面 FLIP 居中；按钮豁免 top 隐藏） */
+  '右上角图标组（专注按钮除外）': 'Top icon row (focus btn stays)',
+  '歌名歌手与主控制区': 'Title, artist & main controls',
+  '隐藏控件与播放队列；封面与歌词留在画面': 'Hide controls and the queue; the cover and lyrics stay',
+  '进入专注模式（隐藏控件，封面移到中央）': 'Enter focus mode (hide controls, center the cover)',
+  '退出专注模式（控件已隐藏，封面居中）': 'Exit focus mode (controls hidden, cover centered)',
   // 双语排版一键循环（todos #4，285-bilingual-cycle.js）
   '双语排版': 'Bilingual layout',
   '原文': 'Original',

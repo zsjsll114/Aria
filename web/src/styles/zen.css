@@ -48,12 +48,24 @@ html#ariaRoot #appTitlebar {
 /* ===== 隐藏态：transition 写在这里 = 进入专注时用的那一套 =====
    visibility 延迟 fade-out 时长再翻到 hidden，才能看见淡出过程。 */
 
-/* ① 右上角图标组（默认开） */
+/* ① 右上角图标组（默认开）。
+   ★ #zenModeBtn 豁免：删掉鼠标唤回机制后，它就是专注态唯一的常驻退出入口，
+   必须保持可见可点。 */
 html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
     transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
+}
+
+/* 退出按钮豁免 + 专注态高亮：取景框图标点亮主题色，明确「这就是出口」 */
+html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons #zenModeBtn {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    color: var(--theme-color, #E8BE6A) !important;
+    border-color: color-mix(in srgb, var(--theme-color, #E8BE6A) 45%, transparent) !important;
+    background: color-mix(in srgb, var(--theme-color, #E8BE6A) 14%, transparent) !important;
 }
 
 /* ② 底部控制条（默认开）。view-pv/tunnel/wordcloud… 下它是 display:flex + 绝对定位，
@@ -65,8 +77,10 @@ html#ariaRoot.is-zen[data-zen-scope~="bottom"] .player-container .bottom-control
     transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
 }
 
-/* ③ 左侧播放信息列：封面 + 歌名歌手 + 主控制区（默认开） */
-html#ariaRoot.is-zen[data-zen-scope~="info"] .player-container .player-controls-wrapper {
+/* ③ 歌名歌手与主控制区（默认开）。
+   ★ 2026-09-27 不再藏 .player-controls-wrapper 整列——封面（.cover-area）留在画面，
+   由 282 的 coverShiftToCenter 平移到视口中心；这里只藏文字与控制按钮。 */
+html#ariaRoot.is-zen[data-zen-scope~="info"] .player-container .song-info-container {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -89,9 +103,12 @@ html#ariaRoot.is-zen[data-zen-scope~="offset"] .player-container .lyric-offset-c
     transition: opacity var(--zen-fade-out) var(--zen-ease), visibility 0s var(--zen-fade-out) !important;
 }
 
-/* ⑥ 右下角当前播放队列（默认关）。.plm-panel 自己已有 opacity .24s 过渡，
-   所以退出专注时的淡入沿用它，这里只在隐藏态补 visibility 的延迟。 */
-html#ariaRoot.is-zen[data-zen-scope~="queue"] #plmPanel {
+/* ⑥ 右下角当前播放队列（2026-09-27 默认开）。.plm-panel 自己已有 opacity .24s 过渡，
+   所以退出专注时的淡入沿用它，这里只在隐藏态补 visibility 的延迟。
+   ★ FAB 按钮（playlistManagerToggle）与面板一起隐藏——此前只藏面板，按钮孤零零
+   留在原地点开一个看不见的面板（用户实测反馈）。 */
+html#ariaRoot.is-zen[data-zen-scope~="queue"] #plmPanel,
+html#ariaRoot.is-zen[data-zen-scope~="queue"] #playlistManagerToggle {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
