@@ -27,6 +27,9 @@ const UPGRADE_DELAY_MS = 2500;
    替换 → renderLyrics → 又触发升级 → 又替换（约束 18 的 _alignTried 同一个教训） */
 const TRIED_CAP = 200;
 const _tried = new Set();
+/* 按标题记一份已排期的歌：songKey 里的 id/source 在 boot 恢复/取链补全时会漂移，
+   标题不会（见 maybeUpgradeToWordLyrics 内的同标题去重注释） */
+const _triedByTitle = new Set();
 /* 已排期但还没开跑的歌（防同一次渲染里叠多个定时器；也是「放弃时不要烧掉重试机会」的凭据） */
 let _scheduledKey = null;
 let _running = false;
@@ -109,8 +112,17 @@ export function maybeUpgradeToWordLyrics(lines) {
     /* 已经有真逐字 → 无事可做（合成行不算，见 lyricMatch.hasRealWordTiming） */
     if (hasRealWordTiming(lines)) return;
     const key = songKey();
+    const titleKey0 = (globalThis.currentSongData && (globalThis.currentSongData.title
+        || globalThis.currentSongData.song)) || '';
     if (!key || _tried.has(key) || _scheduledKey === key) return;
+    if (titleKey0 && _triedByTitle.has(titleKey0)) return;
     _scheduledKey = key;
+    /* ★ 同标题去重（2026-09-27）：排期与 2.5s 执行之间，boot 恢复/取链补全可能把
+       songInfo 字段补齐（source 从空到有、id 从 hash 变数字）→ songKey 漂移 →
+       同一首歌被当成两首各排期一次，重复打网络（E2E 实测 applied=2）。
+       排期时按标题记一份，漂移后的 key 只要标题相同就视为同一首。 */
+    const titleKey = titleKey0;
+    if (titleKey) _triedByTitle.add(titleKey);
     const snapshot = lines;
     setTimeout(() => {
         _scheduledKey = null;
@@ -138,6 +150,7 @@ export function maybeUpgradeToWordLyrics(lines) {
 /** 测试/设置页用：清掉"已尝试"记录，让当前这首歌重新走一遍升级 */
 export function resetWordUpgradeTracker() {
     _tried.clear();
+    _triedByTitle.clear();
     _running = false;
     _scheduledKey = null;
 }
