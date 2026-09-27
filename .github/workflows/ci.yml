@@ -31,6 +31,12 @@ jobs:
         with:
           node-version: "22"
 
+      # ★ 2026-09-27：tests/js/test_html_escape_rule.js import 'eslint'（RuleTester），
+      #   缺这步 CI 上没有 node_modules → import 即崩 → 整个 js 测试 job 挂
+      #   （9-25 起连续红就是这个，与代码无关）。lint job 装的 node_modules 不跨 job。
+      - name: Install devDependencies (eslint for RuleTester)
+        run: npm ci
+
       - name: Install Playwright
         run: |
           pip install playwright
