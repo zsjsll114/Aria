@@ -37,6 +37,10 @@ jobs:
       - name: Install devDependencies (eslint for RuleTester)
         run: npm ci
 
+      # 版本号单一来源门禁：server.py 的 SERVER_VERSION 必须已同步到其余三处
+      - name: Version consistency gate (server.py 为唯一来源)
+        run: python scripts/sync_version.py --check
+
       - name: Install Playwright
         run: |
           pip install playwright

@@ -1,6 +1,6 @@
 {
   "name": "aria-player",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "歌词播放器 - 桌面版",
   "scripts": {
     "tauri": "tauri",
@@ -8,7 +8,8 @@
     "lint": "eslint web/src scripts tests/js",
     "lint:fix": "eslint web/src scripts tests/js --fix",
     "format": "prettier --write \"web/src/**/*.js\"",
-    "format:check": "prettier --check \"web/src/**/*.js\""
+    "format:check": "prettier --check \"web/src/**/*.js\"",
+    "version:sync": "python scripts/sync_version.py"
   },
   "author": "",
   "license": "MIT",
@@ -20,6 +21,7 @@
     "prettier": "^3.9.6"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.9",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "kuromoji": "^0.1.2",
     "node-shazam": "^1.2.7",

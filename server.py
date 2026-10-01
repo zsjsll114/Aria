@@ -34,6 +34,12 @@ except Exception:
 
 PORT = 8001
 
+# ★ 版本号唯一来源（single source of truth）。
+#   package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml 的版本号
+#   都由 scripts/sync_version.py 从这里同步出去，CI 用 --check 门禁防漂移。
+#   改版本只许改这一行，别去动那三处。
+SERVER_VERSION = '2.0.0'
+
 # ★ 监听地址：默认只绑本机回环（127.0.0.1）。
 #   历史行为是绑 ""（等价 0.0.0.0 全接口），意味着同网段任何设备都能直接访问
 #   /proxy（通用代理，可当跳板）、/api/selfhost/*（携带登录态）、
@@ -630,7 +636,7 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
                 return
             except Exception:
                 pass
-        self._send_json_response({"server_version": "2.0.0", "tauri_supported": True})
+        self._send_json_response({"server_version": SERVER_VERSION, "tauri_supported": True})
 
     def _serve_file_with_range(self, path, total_override=None, content_type=None):
         """支持 HTTP 206 Partial Content (Range) 断点与时间轴拖拽。
@@ -1911,7 +1917,7 @@ if __name__ == '__main__':
         _ver_info = {
             "build_time": _build_stamp,
             "timestamp": _iso_stamp,
-            "server_version": "2.0.0",
+            "server_version": SERVER_VERSION,
             "tauri_supported": True
         }
         for _fname in ('build_info.json', 'version.json'):
