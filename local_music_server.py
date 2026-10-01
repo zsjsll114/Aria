@@ -533,7 +533,9 @@ def load_user_config():
     if os.path.exists(USER_CONFIG_FILE):
         try:
             with open(USER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                config = json.load(f)
+                _restore_ai_credentials(config)
+                return config
         except Exception as e:
             print(f"[Config] 读取 user_config.json 失败: {e}")
     # 自动创建初始 user_config.json 模板
@@ -556,13 +558,110 @@ def save_user_config(config_dict):
     """原子保存配置到本地 user_config.json 文件"""
     if not isinstance(config_dict, dict):
         raise ValueError("Config data must be a JSON object")
-    
+
+    # ★ AI 凭据保险（2026-09-29 用户确立：令牌放独立文件，恢复默认/覆写永不删）。
+    #   user_config.json 可能被「恢复出厂」或配置合并 bug 清掉 ai 段，独立文件只合并
+    #   不删除——哪怕前端把空配置发上来，历史凭据也不丢。load 侧 _restore_ai_credentials 自动补回。
+    try:
+        _backup_ai_credentials(config_dict)
+    except Exception as e:
+        print(f"[Config] AI 凭据备份失败（不影响主配置保存）: {e}")
+
     tmp_file = f"{USER_CONFIG_FILE}.tmp"
     with open(tmp_file, 'w', encoding='utf-8') as f:
         json.dump(config_dict, f, ensure_ascii=False, indent=2)
-    
+
     os.replace(tmp_file, USER_CONFIG_FILE)
     return {'success': True, 'savedAt': config_dict.get('lastUpdated')}
+
+
+# ==================== AI 凭据独立保险文件 (cache/ai_credentials.json) ====================
+AI_CREDENTIALS_FILE = os.path.join(BASE_DIR, 'cache', 'ai_credentials.json')
+
+
+def _load_ai_credentials():
+    if os.path.exists(AI_CREDENTIALS_FILE):
+        try:
+            with open(AI_CREDENTIALS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            print(f"[Config] 读取 ai_credentials.json 失败: {e}")
+    return {}
+
+
+def _backup_ai_credentials(config_dict):
+    """从前端上送配置提取 AI 凭据，与已存凭据合并（新值覆盖旧值，旧值不丢）后原子落盘
+    ★ ai 实际存放位置是 settings.ai（appSettings 整体 persist）——优先读它，顶层 ai 兼容"""
+    ai = config_dict.get('ai')
+    settings = config_dict.get('settings')
+    if isinstance(settings, dict) and isinstance(settings.get('ai'), dict):
+        ai = settings['ai']
+    if not isinstance(ai, dict):
+        return
+    stored = _load_ai_credentials()
+    merged = dict(stored)
+    for key in ('provider', 'apiKey', 'apiBase', 'model', 'proxyToken'):
+        val = ai.get(key)
+        if isinstance(val, str) and val.strip():
+            merged[key] = val.strip()
+    saved_configs = ai.get('providerConfigs')
+    if isinstance(saved_configs, dict):
+        merged_provider_configs = dict(stored.get('providerConfigs') or {})
+        for prov, conf in saved_configs.items():
+            if isinstance(conf, dict) and any(conf.get(k) for k in ('apiKey', 'apiBase', 'model')):
+                merged_provider_configs[prov] = {**(merged_provider_configs.get(prov) or {}), **conf}
+        merged['providerConfigs'] = merged_provider_configs
+    os.makedirs(os.path.dirname(AI_CREDENTIALS_FILE), exist_ok=True)
+    tmp_file = f"{AI_CREDENTIALS_FILE}.tmp"
+    with open(tmp_file, 'w', encoding='utf-8') as f:
+        json.dump(merged, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_file, AI_CREDENTIALS_FILE)
+
+
+def _restore_ai_credentials(config):
+    """load 时若 ai 段缺凭据（被恢复默认/覆写清掉），从独立保险文件补回
+    ★ 前端读 settings.ai（appSettings persist 位置）——两处都补"""
+    if not isinstance(config, dict):
+        return
+    stored = _load_ai_credentials()
+    if not stored:
+        return
+    targets = []
+    ai = config.get('ai')
+    if not isinstance(ai, dict):
+        ai = {}
+        config['ai'] = ai
+    targets.append(ai)
+    settings = config.get('settings')
+    if not isinstance(settings, dict):
+        settings = {}
+        config['settings'] = settings
+    s_ai = settings.get('ai')
+    if not isinstance(s_ai, dict):
+        s_ai = {}
+        settings['ai'] = s_ai
+    targets.append(s_ai)
+    for ai in targets:
+        for key in ('provider', 'apiKey', 'apiBase', 'model', 'proxyToken'):
+            if not (isinstance(ai.get(key), str) and ai.get(key).strip()) and stored.get(key):
+                ai[key] = stored[key]
+        stored_configs = stored.get('providerConfigs')
+        if isinstance(stored_configs, dict):
+            configs = ai.get('providerConfigs')
+            if not isinstance(configs, dict):
+                configs = {}
+                ai['providerConfigs'] = configs
+            for prov, conf in stored_configs.items():
+                if not isinstance(conf, dict):
+                    continue
+                target = configs.get(prov)
+                if not isinstance(target, dict):
+                    target = {}
+                    configs[prov] = target
+                for key in ('apiKey', 'apiBase', 'model'):
+                    if not (isinstance(target.get(key), str) and target.get(key).strip()) and conf.get(key):
+                        target[key] = conf[key]
 
 # ==================== 听歌识曲本地化缓存 (isrc -> 本地化歌名, 持久化到 recognize_cache.json) ====================
 RECOGNIZE_CACHE_FILE = os.path.join(BASE_DIR, 'recognize_cache.json')
