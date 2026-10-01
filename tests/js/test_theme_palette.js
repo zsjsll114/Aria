@@ -92,11 +92,12 @@ test('A4 全仓只剩装饰色里的旧金色，主题色的两种写法都已�
     /* 主题色除了十六进制还有 rgba(255,204,51,…) 这种写法：只换十六进制会在同一条规则里
        留下两个金色（pv-tunnel.css:545 实测就是 color:#E8BE6A 配 text-shadow:rgba(255,204,51,.85)）。
        允许残留的只有两处真装饰色：AI 面板的高亮笔 marker（=renderChorusMarkers 的副歌标记条，
-       ★ 2026-09-26 行号从 1636/1637 漂到 1658/1659——f4f6973 团队提交移动了代码，判定按
+       ★ 行号漂移史：2026-09-26 从 1636/1637 → 1658/1659（f4f6973 团队提交）；
+       2026-09-29 → 1654/1655（getLowQualityAudioUrl 删 ygking 死链块，行数 -9）。
        行号硬编码本就脆弱，这里先跟上）、回响视觉器自己的能量光。 */
     const DECORATIVE_RGB = new Set([
-        'web/src/app/201-settings-ai.js:1658',
-        'web/src/app/201-settings-ai.js:1659',
+        'web/src/app/201-settings-ai.js:1654',
+        'web/src/app/201-settings-ai.js:1655',
         'web/src/core/visualizers/dimension/DimensionBackground.js:22',
     ]);
     const unexpected = rgbHits.filter(h => !DECORATIVE_RGB.has(h));

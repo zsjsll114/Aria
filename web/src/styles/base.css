@@ -978,7 +978,7 @@
         }
 
         /* 默认（封面）与歌词全屏模式：歌词视口上下边缘自然渐变羽化 */
-        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tunnel):not(.view-dimension) .lyrics-container {
+        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tempera):not(.view-scroll):not(.view-tunnel):not(.view-dimension) .lyrics-container {
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
             mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
         }
@@ -1194,8 +1194,9 @@
         }
         /* ★ 2026-09-27：.done 不再移除 mask-image/clip-path（原规则见 git 历史）。
            每词唱完瞬间切 mask 触发整层重栅格化，英文歌每秒 2-4 词 = 高频重栅格，
-           是默认/歌词模式英文卡顿来源之一。现由 JS 把 --reveal 推到 120%（前沿
-           完全出界）实现同等视觉，mask 常驻零切换。.done 仍保留 class 供
+           是默认/歌词模式英文卡顿来源之一。现由 JS 把 --reveal 推到 300%（前沿
+           完全出界——120% 在窄字符上 calc(120%-14px) 会落回元素内留暗带，09-28
+           实测修正）实现同等视觉，mask 常驻零切换。.done 仍保留 class 供
            viewmode.css/ai.css 的 opacity 等视觉规则使用。 */
 
         /* 情感词消除裁剪方块 */

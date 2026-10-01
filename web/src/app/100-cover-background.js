@@ -162,6 +162,12 @@ function extractDominantColor(imgElement) {
                 if (pvEngineInstance && pvEngineInstance.background) {
                     pvEngineInstance.background.updateTheme(palette.primary, palette.secondary, palette.accent);
                 }
+                /* ★ 2026-09-29：PV 引擎已替换为 folia sonnet——accent 跟随新封面并重建场景 */
+                if (typeof window !== 'undefined' && window.__sonnetProbe) {
+                    import('../core/visualizers/sonnet/sonnetMode.js').then(m => {
+                        m.applySonnetCoverPalette(palette);
+                    }).catch(e => logCatch('coverBackground', e));
+                }
                 /* ★ 上游参考项目 第一步：封面取色 → 全局 CSS 变量，供 PV 流体背景/隧道背景等消费
                    （--cover-primary/secondary/accent），实现「背景 = 封面色板拉渐变」 */
                 try {

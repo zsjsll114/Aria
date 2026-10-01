@@ -1,6 +1,6 @@
 import { DimensionVisualizer } from './DimensionVisualizer.js';
 import { LetterpressVisualizer } from './LetterpressVisualizer.js';
-import { NeonVisualizer } from './NeonVisualizer.js';
+
 
 /**
  * VisualizerManager.js
@@ -22,7 +22,7 @@ export class VisualizerManager {
   _registerBuiltins() {
     this.register('dimension', DimensionVisualizer);
         this.register('letterpress', LetterpressVisualizer);
-    this.register('neon', NeonVisualizer);
+
   }
 
   register(modeId, visualizerClass) {

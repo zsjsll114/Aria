@@ -2,8 +2,9 @@
  * osd.css — 音量/进度/倍速屏幕浮层（281-osd.js + core/osd.js）
  *
  * 三层结构：label（干什么）/ value（大字，是多少）/ sub（上下文）+ 一条 3px 刻度条。
- * 本文件禁止出现 backdrop-filter：浮层存活期只有 1.2 秒，却要逼合成器在淡入淡出的
- * 每一帧重算一次全屏高斯（AGENTS 约束 6/12）；用高不透明度实色底即可。
+ * 本文件禁止【全屏层】backdrop-filter：浮层存活期只有 1.2 秒，全屏高斯会逼合成器
+ * 每帧重算（AGENTS 约束 6/12）。★ 2026-10-02 用户要求毛玻璃观感：backdrop-filter
+ * 只挂在 .osd-card（卡片 ~500px 内，成本按卡片面积计，不碰全屏），整层仍不吃。
  * 降级段选择器一律锚 html#ariaRoot（约束 12），否则会被组件里带 !important 的规则顶掉。
  * ============================================================ */
 
@@ -31,7 +32,11 @@
     padding: 22px 30px 20px;
     border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(18, 19, 26, 0.92);
+    /* ★ 2026-10-02 毛玻璃化（用户要求与其它浮层观感一致）：卡片级 backdrop，
+       实色底相应减淡让模糊透出来 */
+    background: rgba(18, 19, 26, 0.62);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
     box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45);
     color: #fff;
     text-align: center;

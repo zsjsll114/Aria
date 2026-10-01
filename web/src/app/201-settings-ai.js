@@ -1507,19 +1507,15 @@ async function getLowQualityAudioUrl() {
     if (!id) return null;
 
     if ((source === 'tencent' || source === 'kugou') && mid) {
-        /* QQ音乐 / 酷狗音乐：请求 128kbps 最低音质 */
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 8000);
-            const resp = await fetch(`https://api.ygking.top/api/song/url?mid=${mid}&quality=128`, { signal: controller.signal });
-            clearTimeout(timeout);
-            const json = await resp.json();
-            if (json.code === 0 && json.data && json.data[mid]) {
-                const url = json.data[mid];
-                if (url && url.startsWith('http')) return url;
-            }
-        } catch (e) { /* 失败则回退 */ }
-    } else if (source === 'netease' && id) {
+        /* ★ 2026-09-29：原走 ygking.top 128kbps 取链，上游已死（整体 Failed to fetch）。
+           高潮检测只需一段可分析音频——当前播放 URL 就是最可靠的可播源（audio 正在播它），
+           直接复用；没有播放地址才放弃（返回 null 由调用方走降级）。 */
+        const audioEl = typeof audio !== 'undefined' ? audio : (document.getElementById('audioPlayer'));
+        const src = audioEl && audioEl.src && audioEl.src.startsWith('http') ? audioEl.src : null;
+        if (src) return src;
+        /* 网易云外链兜底保留（该公网外链仍活） */
+    }
+    if (source === 'netease' && id) {
         /* 网易云：使用外链（标准音质） */
         return `https://music.163.com/song/media/outer/url?id=${id}`;
     }

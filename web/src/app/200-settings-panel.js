@@ -116,6 +116,12 @@ function initSettingsPanel() {
                 if (previewEngineInstance) {
                     previewEngineInstance.isPlaying = false;
                     previewEngineInstance.updatePlayIcon();
+                    /* ★ 2026-10-02（用户实测「打开 tempera/scroll 预览框后概率性左侧
+                       无法点击」）：关闭只停了预览自己的 rAF，Pixi 引擎 ticker
+                       （tempera/scroll/sonnet/tunnel）在隐藏的 overlay 后面满帧渲染
+                       烧 GPU——WebView2 下足以造成概率性输入卡顿。统一走互斥收口：
+                       藏容器 + 全引擎暂停，重开设置时 setMode 会恢复。 */
+                    previewEngineInstance._hideAllPvPreviewContainers();
                 }
             });
 
@@ -207,6 +213,7 @@ function initSettingsPanel() {
             }
 
             /* ★ 注册全局外观模式切换函数（在 initSettingsPanel 闭包内，可访问 previewEngineInstance） */
+            window.__previewEngine = () => previewEngineInstance;
             window.switchAppearanceMode = function(mode) {
                 if (!mode) return;
                 logInfo('settingsPanel', '[switchAppearanceMode] mode=', mode, '| previewEngineInstance=', previewEngineInstance);
@@ -450,7 +457,7 @@ function initSettingsPanel() {
                         const playerContainer = typeof document !== 'undefined' ? document.querySelector('.player-container:not(.preview-player)') : null;
                         let mainMode = 'cover';
                         if (playerContainer) {
-                            const modes = ['dimension', 'letterpress', 'neon', 'pv', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
+                            const modes = ['dimension', 'letterpress', 'pv', 'tempera', 'scroll', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
                             for (const m of modes) {
                                 if (playerContainer.classList.contains(`view-${m}`)) {
                                     mainMode = m;

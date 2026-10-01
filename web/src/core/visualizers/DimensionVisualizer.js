@@ -175,8 +175,16 @@ export class DimensionVisualizer extends VisualizerBase {
         if (this.viewContainer) {
             this.viewContainer.style.setProperty('--dim-highlight-color', effectiveThemeColor);
         }
+        /* ★ 2026-10-02（用户实测「预览切高亮背景也跟着变、切背景却不生效」）：
+           此处 bgEngine 曾喂 effectiveThemeColor（=highlightColor 优先）——
+           切高亮色连带刷背景；且每次 setLyrics 都会把 applySettings 刚写入的
+           bgColor 冲掉，背景颜色设置永远被覆盖。对齐 applySettings 的语义：
+           背景色调归 bgColor（缺省回落 themeColor），高亮色只管文字。 */
         if (this.bgEngine) {
-            this.bgEngine.setTheme(effectiveThemeColor, this.aiData);
+            const bgTheme = (this.settings && (this.settings.bgColor || this.settings.themeColor))
+                || this.themeColor
+                || '#E8BE6A';
+            this.bgEngine.setTheme(bgTheme, this.aiData);
         }
         this.updateCameraTarget(0, true);
     }

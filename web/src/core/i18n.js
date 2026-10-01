@@ -312,6 +312,8 @@ const STATIC_PHRASE_MAP = {
   '流字 · Tunnel': 'Tunnel',
   '活字 · Letterpress': 'Letterpress',
   '霓虹 · Neon': 'Neon',
+  /* ★ 2026-10-02：长卷 HUD 题字（ScrollEngine 画布内角标）——i18n 覆盖门禁要求登记 */
+  '[ 長卷 ] SCROLL': '[ Scroll ] SCROLL',
 
   // 按钮
   '搜索': 'Search',

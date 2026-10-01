@@ -1210,17 +1210,21 @@ function updateLyricsHighlight() {
 
                 if (oldIndex >= 0 && lineElements[oldIndex]) {
                     lineElements[oldIndex].classList.remove('active');
-                    /* ★ 2026-09-27：旧行逐词重置（--reveal 归零/done 移除/lastWordProgress.delete）
-                       全部删除——英文一行 40-60 个字符元素，切行瞬间同一帧做几十次 mask 写入
-                       + class 翻转，是切行帧巨刺的直接来源（实测 485ms，中文 12 字无感）。
-                       行为变化：旧行保留唱完的满高亮（Apple Music 风格，离开行不复位）。
-                       该行再次成为活动行时，下方主循环第一帧按当前 t 计算 pct——
-                       残留值(100)与新 pct(0) 不同必然写入，无停留风险。历史注释里的
-                       「width 残留导致整层不可见」是旧 width 动画方案的问题，
-                       恒定盒 + --reveal 体制下不存在。 */
+                    /* ★ 旧行逐词重置（2026-09-28 恢复）：用户实测否决了「旧行保留满高亮」——
+                       换行后旧行的高亮进度必须归位。为控切行帧成本，重置用「显式归零写入」
+                       （--reveal: 0% + done 移除 + lastWordProgress.delete），保持恒定盒
+                       体制下的变量写入（无重排）；lastWordProgress 同步删除，保证该行
+                       再次激活时第一帧必然重新计算。 */
                     const oldWords = wordElementsByLine[oldIndex] || [];
+                    const oldHighlights = wordHighlightElementsByLine[oldIndex] || [];
                     for (let i = 0; i < oldWords.length; i++) {
                         if (oldWords[i] && oldWords[i].classList.contains('active')) oldWords[i].classList.remove('active');
+                        if (oldHighlights[i]) {
+                            oldHighlights[i].style.setProperty('--reveal', '0%');
+                            oldHighlights[i].classList.remove('done');
+                            oldHighlights[i].style.clipPath = '';
+                        }
+                        lastWordProgress.delete(oldWords[i]);
                     }
                 }
 
@@ -1313,9 +1317,13 @@ function updateLyricsHighlight() {
                            .done 的 mask-image:none——此前每词唱完瞬间 .done 移除 mask-image，
                            整层 mask 重栅格化（切换 mask 比更新变量贵一个量级），英文每秒
                            唱完 2-4 词 = 每秒 2-4 次整词层重栅格，是默认/歌词模式英文卡顿
-                           的一大来源。mask 常驻后前沿推到 120%（渐变起点 106% 已出界），
-                           视觉与无 mask 等价且零额外栅格化。 */
-                        highlightEl.style.setProperty('--reveal', (pct >= 100 ? 120 : pct) + '%');
+                           的一大来源。mask 常驻后前沿推到出界实现同等视觉且零额外栅格化。
+                           ★ 2026-09-28 修正：120% 在窄字符上出界假设不成立——渐变起点
+                           calc(120% - 14px) 只有在元素宽 > 70px 时才超出 100%，普通字号
+                           的字符（20-60px 宽）右侧会残留 14px 暗渐变带（用户实测反馈
+                           「每个字符右边都发暗」）。改写 300%：宽 > 7px 即出界，覆盖全部
+                           歌词字符，保持零重栅格化。 */
+                        highlightEl.style.setProperty('--reveal', (pct >= 100 ? 300 : pct) + '%');
                     }
                     /* 完全高亮后添加 done 移除前沿渐变，部分高亮时保留渐变 */
                     if (pct >= 100) {

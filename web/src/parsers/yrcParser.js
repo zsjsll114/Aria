@@ -71,7 +71,7 @@ export function parseYrc(yrcText) {
         if (words.length > 0) {
             /* 空格已保留在词内，动态拼接生成 original 文本 */
             trimLineBoundaryWords(words);
-            const fullText = words.map(w => w.text).join('').trim();
+            const fullText = joinWordTexts(words).trim();
             if (fullText) {
                 parsed.push({ start, duration, end: start + duration, original: fullText, words });
             }
@@ -86,6 +86,30 @@ export function parseYrc(yrcText) {
 
 if (typeof window !== 'undefined') {
     window.parseYrc = parseYrc;
+}
+
+/* ★ 2026-10-02（用户实测「预览框里面歌词没有分词、没有空格」）：词内空格保留策略
+   依赖上游 YRC 逐词自带空白，但真实数据里空格归属不稳定（时而在前词尾、时而在
+   后词首、时而丢失）——直接 join 出 "inthe carlistening" 这种粘连串，tempera/scroll
+   预览的 fullText = original 首当其冲。修补：Latin/希腊/西里尔 ↔ 同类字母的拼接缝
+   若两侧都无空白则补一个空格；CJK 边界一律不动（中日韩歌词的「中英混排无空格」
+   是排版意图，不能插入西式空格）。 */
+const LATIN_ADJACENT = /[A-Za-z0-9\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u1E00-\u1EFF]/;
+/* 左侧允许收尾标点（fallin' / word) / quote"），这些词仍是 Latin 词 */
+const LATIN_TAIL_PUNCT = /[''"")}»\u2019\u201D]$/;
+function joinWordTexts(words) {
+    let out = '';
+    words.forEach(w => {
+        const t = w.text || '';
+        if (!out) { out = t; return; }
+        const lastCh = out.slice(-1);
+        const firstCh = t.slice(0, 1);
+        const lastIsLatin = LATIN_ADJACENT.test(lastCh) || LATIN_TAIL_PUNCT.test(out);
+        const needsSpace = !/\s/.test(lastCh) && !/\s/.test(firstCh)
+            && lastIsLatin && LATIN_ADJACENT.test(firstCh);
+        out += (needsSpace ? ' ' : '') + t;
+    });
+    return out;
 }
 
 export function parseNeteaseYrc(yrcText) {
@@ -114,7 +138,7 @@ export function parseNeteaseYrc(yrcText) {
         if (words.length > 0) {
             /* 空格已保留在词文本内，直接拼接（替代旧的 hasLatin 空格补偿） */
             trimLineBoundaryWords(words);
-            const fullText = words.map(w => w.text).join('');
+            const fullText = joinWordTexts(words);
             parsed.push({ start, duration, end: start + duration, original: fullText, words });
         }
     }

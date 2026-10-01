@@ -60,11 +60,13 @@ function _hasLyricContent(d) {
 
 /* ============ 跨源回退链共享工具 ============
    历史缺陷：fetchPlayUrlForPreload 与 loadOnlineSong 各自复制了一份「QQ→酷狗→网易→酷我」
-   回退链（ygking 音质阶梯 / byfuns 音质阶梯 / 同名跨源 / 酷我搜索兜底），
-   修 bug 只改一处即造成两链路不一致（例如 ygking 空数据重试只存在于主链）。
-   现统一收敛到此，两处调用仅保留各自差异：verbose(主链打日志) / retryEmpty(ygking 空数据重试)。
+   回退链（音质阶梯 / 同名跨源 / 酷我搜索兜底），
+   修 bug 只改一处即造成两链路不一致（例如空数据重试只存在于主链）。
+   现统一收敛到此，两处调用仅保留各自差异：verbose(主链打日志) / retryEmpty(空数据重试)。
    行为逐字等价：非标记差异一律按「主链行为」为准。
-   probe 参数用于单测注入（默认走 checkAudioUrlPlayable 探测），生产调用不传。 */
+   probe 参数用于单测注入（默认走 checkAudioUrlPlayable 探测），生产调用不传。
+   ★ 2026-09-29 用户裁定：ygking.top 已死（5 音质连续 Failed to fetch，每次白等 ~3s），
+   从 QQ 链路整体移除；公网兜底只留 vkeys（/tencent 元数据链 + 播放性探测）。 */
 
 /* QQ：取 mid 与预取链接（/tencent?id= 服务端接口） */
 async function _fetchQQMeta(songId, { verbose = false } = {}) {
@@ -78,58 +80,6 @@ async function _fetchQQMeta(songId, { verbose = false } = {}) {
         if (verbose) logWarn('trackIndexOnline', '获取 QQ 音乐 mid 失败:', e);
         return { mid: null, url: null };
     }
-}
-
-/* ygking 音质阶梯：依次取链 + 探测，命中即返回 {url, quality}；
-   retryEmpty=true 时对「code=0 但 data 空」重试一次（load 主链行为） */
-async function _tryYgkingQualities(mid, orderedQualities, {
-    songId, songName = '', referer = 'https://y.qq.com/',
-    retryEmpty = false, verbose = false,
-    fetchImpl = fetch, probe = null
-} = {}) {
-    const ping = probe || ((url, sid, ref) => checkAudioUrlPlayable(url, sid, ref));
-    for (const quality of orderedQualities) {
-        let retried = false;
-        for (;;) {
-            try {
-                const controller = new AbortController();
-                /* ★ 3.5s 超时（2026-09-22）：ygking 公网上游经常整体失联（curl 实测超时），
-                   8s×5 档=40s 白等会拖死播放链；selfhost 在前已命中时不会走到这里，
-                   走到这里说明 selfhost 失败，快速失败尽早落 vkeys/跨源兜底 */
-                const timeout = setTimeout(() => controller.abort(), 3500);
-                const resp = await fetchImpl(`https://api.ygking.top/api/song/url?mid=${mid}&quality=${quality}`, { signal: controller.signal });
-                clearTimeout(timeout);
-                const json = await resp.json();
-                /* ygking 返回格式: {code:0, data: {mid: "url"}, quality:"320"} */
-                if (json.code === 0 && json.data && json.data[mid]) {
-                    const url = json.data[mid];
-                    if (url && url.startsWith('http')) {
-                        /* 播放性校验：取链成功≠可播，坏链换下一音质 */
-                        if (await ping(url, songId, referer)) {
-                            return { url, quality };
-                        }
-                        if (verbose) logWarn('trackIndexOnline', `ygking.top ${quality} 链接探测不可播，尝试下一音质`);
-                    }
-                }
-                /* code=0 且 data 为空：主链可重试一次，仍空则放弃剩下音质 */
-                if (json.code === 0 && (!json.data || Object.keys(json.data).length === 0)) {
-                    if (!retryEmpty || retried) {
-                        if (verbose) logWarn('trackIndexOnline', 'ygking.top 返回空数据(API作者cookie疑似过期/限流)，跳过剩余音质');
-                        break;
-                    }
-                    retried = true;
-                    if (verbose) logWarn('trackIndexOnline', 'ygking.top 空数据，0.5s 后重试一次...');
-                    await new Promise(r => setTimeout(r, 500));
-                    continue;
-                }
-                break;
-            } catch (e) {
-                if (verbose) logWarn('trackIndexOnline', `ygking.top ${quality} 获取失败:`, e.message);
-                break;
-            }
-        }
-    }
-    return null;
 }
 
 /* byfuns 音质阶梯：网易云公网兜底，串行试错，返回 {url, level} 或 null */
@@ -239,8 +189,8 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec)
                 /* ★ 与网易云分支（下方 _tryNeteaseSelfhost）对齐：本机自建 QQ 取链优先。
                    历史缺口：这一步原先只加在 loadOnlineSong 主链上，而「预加载下一首」与
                    「排行榜直接播放」（258-rankings.js 也调本函数）走的是这条链，没有它 →
-                   表现为「QQ 已扫码登录，却仍走 ygking/vkeys 外链，且明显更慢」。
-                   注意顺序与主链一致：自建 → 本地解析池 → ygking → vkeys → 跨源。 */
+                   表现为「QQ 已扫码登录，却仍走 vkeys 外链，且明显更慢」。
+                   注意顺序与主链一致：自建 → 本地解析池 → vkeys → 跨源。 */
                 const expSec = durSec || 0;
                 if (effectiveMid && !playUrl) {
                     try {
@@ -258,13 +208,6 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec)
                     if (resolved) playUrl = resolved;
                 }
 
-                const YGK_QUALITIES = ['master', 'atmos', 'flac', '320', '128'];
-                const orderedQualities = [userQuality, ...YGK_QUALITIES.filter(q => q !== userQuality)];
-                /* 解析池已命中时跳过ygking循环，防止低音质覆盖母带结果（预加载静默、不重试空数据） */
-                if (effectiveMid && !playUrl) {
-                    const hit = await _tryYgkingQualities(effectiveMid, orderedQualities, { songId, songName });
-                    if (hit) playUrl = hit.url;
-                }
                 if (!playUrl) {
                     if (vkeysUrl && await checkAudioUrlPlayable(vkeysUrl, songId, 'https://y.qq.com/')) {
                         playUrl = vkeysUrl;
@@ -680,22 +623,10 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         }
                     }
 
-                    /* QQ音乐：优先 ygking.top，使用用户设置的播放音质，失败回退到其他音质 */
-                    const YGK_QUALITIES = ['master', 'atmos', 'flac', '320', '128'];
-                    /* 用户选择的音质排在最前，其余按高→低排列 */
-                    const orderedQualities = [userQuality, ...YGK_QUALITIES.filter(q => q !== userQuality)];
-                    /* 解析池已命中时跳过ygking循环，防止低音质覆盖母带结果 */
-                    if (effectiveMid && !playUrl) {
-                        const ygkHit = await _tryYgkingQualities(effectiveMid, orderedQualities, {
-                            songId, songName: songInfo.song, retryEmpty: true, verbose: true
-                        });
-                        if (ygkHit) {
-                            playUrl = ygkHit.url;
-                            recordResolveHit('ygking', playUrl, ygkHit.quality);
-                            logInfo('trackIndexOnline', `ygking.top 获取成功 (音质: ${ygkHit.quality}): ${songInfo.song}`);
-                        }
-                    }
-                    /* 步骤2: ygking 失败，回退到 vkeys.cn 接口 */
+                    /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡，5 音质连续
+                       Failed to fetch 每次白等 ~3s）。解析池未命中直接落 vkeys。 */
+
+                    /* 步骤2: 解析池失败，回退到 vkeys.cn 接口 */
                     if (!playUrl) {
                         /* vkeys 试听链常对VIP歌不可播，须先探测再采用（用户策略核心闭环） */
                         if (vkeysUrl && await checkAudioUrlPlayable(vkeysUrl, songId, 'https://y.qq.com/')) {

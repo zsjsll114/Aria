@@ -165,6 +165,22 @@ export const DEFAULT_SETTINGS = {
         neon: {
             fontSize: 1.0, highlightColor: '#ffffff', themeColor: DEFAULT_ACCENT,
             showTranslation: true, fontFamily: 'default', emotionGlow: 14
+        },
+        /* ★ 版画 Tempera（2026-10-01 补设置面板）：fontSize 乘基准引擎字号；
+           cameraIntensity/glyphMotion 对齐上游 DEFAULT_TEMPERA_TUNING；
+           布尔项直通 tuning（textInversion/showBlocks/showDecor/showCornerMarks/enableTransitions） */
+        tempera: {
+            fontSize: 1.0, highlightColor: '#ffffff', themeColor: DEFAULT_ACCENT,
+            fontFamily: 'default',
+            cameraIntensity: 1.0, glyphMotion: 1.0,
+            textInversion: true, showBlocks: true, showDecor: true,
+            showCornerMarks: true, enableTransitions: true
+        },
+        /* ★ 长卷 Scroll（2026-10-01 补设置面板）：fontSize 乘卷面基准字号（屏高 8%）；
+           scrollSpeed 为时间→空间推进倍率；showChapters 控制章节色带 */
+        scroll: {
+            fontSize: 1.0, scrollSpeed: 1.0, highlightColor: '#ffffff',
+            themeColor: DEFAULT_ACCENT, showChapters: true, fontFamily: 'default', emotionGlow: 10
         }
     },
     ai: {

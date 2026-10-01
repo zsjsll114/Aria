@@ -461,6 +461,11 @@ function cacheLyricElements() {
                 setTimeout(() => { if (typeof applyEmotionWordColors === 'function') applyEmotionWordColors(); }, 80);
             }
             if (currentViewMode === 'pv') {
+                /* ★ 2026-09-29：PV 引擎已替换为 folia sonnet（SonnetEngine）。
+                   此前这里在「pvEngineInstance 不存在」时自动 new PVEngine——放歌触发
+                   renderLyrics 就把旧 PV 复活盖掉 sonnet（实测截图为旧紫色 PV 画面）。
+                   现在歌词变化由 sonnetMode 的 rAF tick 引用比较自动重编译 program，
+                   这里只保证引擎在 pv 容器上活着（页面刷新后恢复 pv 模式的路径）。 */
                 let pvContainer = typeof document !== 'undefined' ? document.getElementById('pvViewContainer') : null;
                 if (!pvContainer && typeof document !== 'undefined' && playerContainer) {
                     pvContainer = document.createElement('div');
@@ -469,28 +474,10 @@ function cacheLyricElements() {
                     playerContainer.appendChild(pvContainer);
                 }
                 if (pvContainer) pvContainer.style.display = 'block';
-                if (!pvEngineInstance && typeof PVEngine === 'function' && pvContainer) {
-                    pvEngineInstance = new PVEngine(pvContainer);
-                    pvEngineInstance.init(pvContainer);
-                    pvEngineInstance.start();
-                }
-                if (pvEngineInstance) {
-                    logInfo('lyricsRender', '[PV Mode] renderLyrics: 传送', lyrics.length, '行歌词到 PVEngine');
-                    pvEngineInstance.setLyrics(lyrics, currentAiTheme || {});
-                    if (appSettings.modeSettings && appSettings.modeSettings.pv) {
-                        pvEngineInstance.applySettings(appSettings.modeSettings.pv);
-                    }
-                    /* ★ 上游参考项目 流体背景：当前封面喂入背景层（缩图模糊底，切歌交叉淡化） */
-                    if (pvEngineInstance.background && typeof pvEngineInstance.background.setCover === 'function') {
-                        const coverEl = getCoverLayers().find(l => l && (l.currentSrc || l.src));
-                        const coverUrl = coverEl ? (coverEl.currentSrc || coverEl.src) : null;
-                        if (coverUrl) pvEngineInstance.background.setCover(coverUrl);
-                    }
-                    if (window.coverPalette && pvEngineInstance.background) {
-                        pvEngineInstance.background.updateTheme(window.coverPalette.primary, window.coverPalette.secondary, window.coverPalette.accent);
-                    }
-                    pvEngineInstance.update(audio ? audio.currentTime : 0);
-                }
+                /* ensureSonnetEngine 幂等：引擎在则复用（切回不重拉 Pixi），不在则懒建 */
+                import('../core/visualizers/sonnet/sonnetMode.js').then(m => {
+                    return m.ensureSonnetEngine(pvContainer);
+                }).catch(e => logCatch('lyricsRender', e));
             }
             if (currentViewMode === 'tunnel') {
                 let tunnelContainer = typeof document !== 'undefined' ? document.getElementById('tunnelViewContainer') : null;

@@ -528,7 +528,11 @@ function resolveFontFamilyInner(fontKey) {
                     wordsContainer.className = 'words-container preview-words-container'; wordsContainer.style.textAlign = align;
                     wordsContainer.style.overflow = 'visible';
                     let lineHasRTL = false; let gci = 0;
-
+                    /* ★ 2026-10-02：词间空格判定统一前置——此前 flyin 被排除在补空格
+                       逻辑外（旧假设「逐字符已内嵌空格」），但 YRC 词内空格归属不稳定，
+                       拉丁词直接粘连。现在按「前词尾 + 本词头都无空白」判定补一格，
+                       四个 DOM 模式（含 flyin）统一生效。 */
+                    let prevTrailingWs = '';
                     for (let j = 0; j < line.words.length; j++) {
                         const word = line.words[j];
                         const lowerWord = (word.text || '').toLowerCase();
@@ -544,9 +548,6 @@ function resolveFontFamilyInner(fontKey) {
 
                         const isLatin = !CJK_RE.test(word.text) && /^[\p{L}\p{M}\p{N}\s\p{P}\p{S}]+$/u.test(word.text) && /[\p{L}]/u.test(word.text);
                         const isRTL = RTL_RE.test(word.text); if (isRTL) lineHasRTL = true;
-                        /* ★ 飞入模式逐字符已有数据内嵌空格，避免插入额外空格造成双倍间距 */
-                        if (isLatin && j > 0 && !isFlyin) { const sp = document.createElement('span'); sp.style.display = 'inline'; sp.style.position = 'relative'; sp.textContent = ' '; wordsContainer.appendChild(sp); }
-                        const ccAll = word.text.length, dur = word.end - word.start;
                         /* ★ 词首/词尾空白剥离为独立占位 span（与主播放器一致）：
                            flex 下纯空白字符元素会折叠成 0 宽，导致飞入英文词间距丢失 */
                         const leadingWs = (word.text.match(/^[\s\u00a0]+/) || [''])[0];
@@ -554,6 +555,14 @@ function resolveFontFamilyInner(fontKey) {
                         const coreText = word.text.slice(leadingWs.length, word.text.length - trailingWs.length);
                         const isWsOnly = coreText.length === 0;
                         const cc = Math.max(1, coreText.length);
+                        if (isLatin && j > 0 && !leadingWs && !prevTrailingWs) {
+                            const sp = document.createElement('span');
+                            sp.style.cssText = 'display:inline;position:relative;white-space:pre;';
+                            sp.textContent = ' ';
+                            wordsContainer.appendChild(sp);
+                        }
+                        prevTrailingWs = trailingWs;
+                        const dur = word.end - word.start;
 
                         if (isRTL && !isFlyin) {
                             const we = document.createElement('span'); we.className = 'word preview-word' + (isEmotionWord ? ' word-emotion' : '');
@@ -1076,8 +1085,17 @@ function resolveFontFamilyInner(fontKey) {
                 this.updateWordcloudCamera();
             }
             /* PV 模式海报推进 */
-            if (this.currentMode === 'pv' && this.pvEngine) {
-                this.pvEngine.update(t / 1000);
+            if (this.currentMode === 'pv') {
+                if (this.pvEngine) this.pvEngine.update(t / 1000);
+                if (this.sonnetPreviewEngine) this.sonnetPreviewEngine.update(t / 1000);
+            }
+            /* 凝彩模式推进 */
+            if (this.currentMode === 'tempera' && this.temperaPreview) {
+                this.temperaPreview.setTime(t / 1000);
+            }
+            /* 长卷模式推进 */
+            if (this.currentMode === 'scroll' && this.scrollPreview) {
+                this.scrollPreview.setTime(t / 1000);
             }
             /* 流光隧道模式推进 */
             if (this.currentMode === 'tunnel' && this.tunnelEngine) {
@@ -1100,11 +1118,25 @@ function resolveFontFamilyInner(fontKey) {
             if (timeEl) { const cur = Math.floor(t / 1000); const tot = Math.floor(this.cycleDuration / 1000); timeEl.textContent = `${Math.floor(cur/60)}:${String(cur%60).padStart(2,'0')} / ${Math.floor(tot/60)}:${String(tot%60).padStart(2,'0')}`; }
         }
 
+        /* ★ 2026-10-01 预览容器互斥收口（用户实测「预览被别的模式预览背景遮挡」）：
+           pv/tempera/scroll/tunnel 四个容器同 z-index 叠在 playerEl 里，此前各分支
+           只管自己显示——pv 的不透明底色、scroll/tempera 的 canvas 会盖住兄弟模式，
+           且未激活引擎也不暂停（白烧 GPU + 透明 canvas 混叠）。切模式统一全藏+全暂停。 */
+        _hideAllPvPreviewContainers() {
+            ['pvPreviewContainer', 'temperaPreviewContainer', 'scrollPreviewContainer', 'tunnelPreviewContainer'].forEach(k => {
+                if (this[k]) this[k].style.display = 'none';
+            });
+            if (this.sonnetPreviewEngine) this.sonnetPreviewEngine.setPaused(true);
+            if (this.temperaPreview) this.temperaPreview.setPaused(true);
+            if (this.scrollPreview) this.scrollPreview.setPaused(true);
+            if (this.tunnelEngine) this.tunnelEngine.stop();
+        }
+
         setMode(mode) {
             this.currentMode = mode;
             this._wcLastTransform = '';   /* 切模式后 scrollEl 的 transform 可能被其他模式改写，强制相机重写 */
-            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
-            
+            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tempera', 'view-scroll', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
+
             const ca = this.playerEl.querySelector('.preview-cover-area');
             if (ca) ca.style.display = (mode === 'cover') ? '' : 'none';
 
@@ -1112,10 +1144,8 @@ function resolveFontFamilyInner(fontKey) {
                 this.playerEl.classList.add(`view-${mode}`);
                 if (this.scrollEl) this.scrollEl.style.display = 'none';
                 if (this.wireframesEl) this.wireframesEl.style.display = 'none';
-                if (this.pvPreviewContainer) this.pvPreviewContainer.style.display = 'none';
+                this._hideAllPvPreviewContainers();
                 if (this.pvEngine) this.pvEngine.stop();
-                if (this.tunnelPreviewContainer) this.tunnelPreviewContainer.style.display = 'none';
-                if (this.tunnelEngine) this.tunnelEngine.stop();
 
                 this.visManager.switchMode(mode, this.playerEl);
                 this.visManager.setLyrics(this.lyrics, {
@@ -1124,6 +1154,7 @@ function resolveFontFamilyInner(fontKey) {
                 this.visManager.applySettings(this.modeVars[mode] || {});
             } else if (mode === 'pv') {
                 if (this.visManager) this.visManager.destroy();
+                this._hideAllPvPreviewContainers();
                 this.playerEl.classList.add('view-pv');
                 if (!this.pvPreviewContainer) {
                     this.pvPreviewContainer = document.createElement('div');
@@ -1143,30 +1174,126 @@ function resolveFontFamilyInner(fontKey) {
                 if (this.scrollEl) this.scrollEl.style.display = 'none';
                 if (this.wireframesEl) this.wireframesEl.style.display = 'none';
                 
-                if (!this.pvEngine) {
-                    /* ★ 修复：若首个模式即为 PV（尚未经历 render→loadLyrics），先装载硬编码歌词 */
-                    if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
-                    const EngineClass = (typeof PVEngine !== 'undefined') ? PVEngine : (typeof window !== 'undefined' ? window.PVEngine : null);
-                    if (EngineClass) {
-                        this.pvEngine = new EngineClass(this.pvPreviewContainer);
-                        this.pvEngine.init(this.pvPreviewContainer);
-                        this.pvEngine.setLyrics(this.lyrics, {
-                            accent_color: (this.modeVars.pv && this.modeVars.pv.themeColor) || '#E8BE6A',
-                            emotion_words: ['golden', 'Bad', '温柔', 'vida', 'darkness']
-                        });
+            /* ★ 2026-09-30 预览换 sonnet 引擎：设置页预览仍在用旧 PVEngine
+               （用户实测「预览还是 PV 的」）。SonnetEngine 独立实例（与主播放器
+               单例互不影响），动态 import 保 Pixi 懒加载。
+               ★ 2026-10-02 双层画面根修（用户实测「预览框底部两层 verse，一层播放
+               一层静止」）：旧守卫查 this.pvEngine——它从未被赋值（引擎赋的是
+               sonnetPreviewEngine，且在 init() 完成后才赋）→ init 窗口期内每次
+               setMode('pv') 都新建一个引擎叠加；旧引擎不再被喂时间 → 恒静止层。
+               改为同步占位 _pvCreating + 立即赋 sonnetPreviewEngine。 */
+            if (!this.sonnetPreviewEngine && !this._pvCreating) {
+                this._pvCreating = true;
+                if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
+                this._sonnetModulePromise = this._sonnetModulePromise
+                    || import('./visualizers/sonnet/SonnetEngine.js');
+                this._sonnetModulePromise.then(({ SonnetEngine, deriveCoverBackground }) => {
+                    if (this.destroyed || this.sonnetPreviewEngine) {
+                        this._pvCreating = false;
+                        return;
                     }
-                }
-                if (this.pvEngine) {
-                    this.pvEngine.start();
-                    this.pvEngine.applySettings(this.modeVars.pv || {});
-                    if (this.pvEngine.background && typeof this.pvEngine.background._handleResize === 'function') {
-                        setTimeout(() => this.pvEngine.background._handleResize(), 50);
+                    const eng = new SonnetEngine(this.pvPreviewContainer);
+                    this.sonnetPreviewEngine = eng;   /* ★ 同步占位：init 窗口期防并发重建 */
+                    /* ★ 2026-10-01 预览背景对齐全屏（用户实测「预览框的背景不一样」）：
+                       this.coverPalette 从未被赋值 → deriveCoverBackground 永远拿 null
+                       落到 #09090b 近黑。改读全局 window.coverPalette（100-cover-background
+                       每首歌写入），accent 同步取封面色。 */
+                    const palette = (typeof window !== 'undefined' && window.coverPalette) || null;
+                    eng.theme = {
+                        name: 'Aria',
+                        backgroundColor: deriveCoverBackground(palette),
+                        primaryColor: '#f4f4f5',
+                        secondaryColor: (palette && palette.secondary) || '#71717a',
+                        accentColor: (palette && palette.accent) || '#E8BE6A',
+                        fontStyle: 'sans', fontFamily: null, fontFamilyStack: null, fontWeight: null,
+                        wordColors: [],
+                    };
+                    /* 预览容器底色 = 封面主色混黑（与全屏封面色层同源）：sonnet canvas
+                       是透明底（backgroundAlpha 0），全屏观感来自容器后面的封面色层，
+                       预览窗没有那层 → 底色直接刷在容器上补齐 */
+                    if (this.pvPreviewContainer) {
+                        this.pvPreviewContainer.style.background = deriveCoverBackground(palette);
                     }
-                    this.pvEngine.update((this.lastTime || 0) / 1000);
-                }
-            } else if (mode === 'tunnel') {
-                if (this.visManager) this.visManager.destroy();
-                this.playerEl.classList.add('view-tunnel');
+                    eng.lyricsFontScale = (this.modeVars.pv && this.modeVars.pv.fontSize) || 1.2;
+                    eng.init().then(() => {
+                        this._pvCreating = false;
+                        eng.setLyrics(this.lyrics || []);
+                        eng.applySettings(this.modeVars.pv || {});
+                        eng.update((this.lastTime || 0) / 1000);
+                    }).catch(e => { this._pvCreating = false; logCatch('previewEngine', e); });
+                }).catch(e => { this._pvCreating = false; logCatch('previewEngine', e); });
+            }
+            if (this.sonnetPreviewEngine) {
+                this.sonnetPreviewEngine.setPaused(false);
+                this.sonnetPreviewEngine.update((this.lastTime || 0) / 1000);
+                /* ★ 2026-10-02：applySettings 从死掉的 pvEngine 引用改挂 sonnet 预览实例 */
+                this.sonnetPreviewEngine.applySettings(this.modeVars.pv || {});
+            }
+        } else if (mode === 'tempera') {
+            /* ★ 2026-09-30：凝彩预览——TemperaPixiRuntime 独立实例（自适应预览窗尺寸） */
+            if (this.visManager) this.visManager.destroy();
+            this._hideAllPvPreviewContainers();
+            this.playerEl.classList.add('view-tempera');
+            if (!this.temperaPreviewContainer) {
+                this.temperaPreviewContainer = document.createElement('div');
+                this.temperaPreviewContainer.className = 'tempera-view-container';
+                this.temperaPreviewContainer.style.position = 'absolute';
+                this.temperaPreviewContainer.style.inset = '0';
+                this.temperaPreviewContainer.style.width = '100%';
+                this.temperaPreviewContainer.style.height = '100%';
+                this.temperaPreviewContainer.style.zIndex = '20';
+                this.playerEl.appendChild(this.temperaPreviewContainer);
+            }
+            this.temperaPreviewContainer.style.display = 'block';
+            if (this.scrollEl) this.scrollEl.style.display = 'none';
+            if (this.wireframesEl) this.wireframesEl.style.display = 'none';
+            if (!this.temperaPreview && !this._temperaCreating) {
+                if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
+                this._temperaCreating = true;
+                import('./visualizers/tempera/temperaMode.js').then(m => {
+                    /* FALLBACK_SONGS 是 loadLyrics 局部变量，此处拿不到——credits 元数据可省 */
+                    return m.createDetachedTemperaRuntime(this.temperaPreviewContainer, this.lyrics || [], {});
+                }).then(handle => {
+                    if (this.destroyed) { handle.destroy(); return; }
+                    this.temperaPreview = handle;
+                    handle.setTime((this.lastTime || 0) / 1000);
+                }).catch(e => { this._temperaCreating = false; logCatch('previewEngine', e); });
+            }
+            if (this.temperaPreview) this.temperaPreview.setPaused(false);
+        } else if (mode === 'scroll') {
+            /* ★ 2026-10-01：长卷预览——ScrollEngine 独立实例 */
+            if (this.visManager) this.visManager.destroy();
+            this._hideAllPvPreviewContainers();
+            this.playerEl.classList.add('view-scroll');
+            if (!this.scrollPreviewContainer) {
+                this.scrollPreviewContainer = document.createElement('div');
+                this.scrollPreviewContainer.className = 'scroll-view-container';
+                this.scrollPreviewContainer.style.position = 'absolute';
+                this.scrollPreviewContainer.style.inset = '0';
+                this.scrollPreviewContainer.style.width = '100%';
+                this.scrollPreviewContainer.style.height = '100%';
+                this.scrollPreviewContainer.style.zIndex = '20';
+                this.playerEl.appendChild(this.scrollPreviewContainer);
+            }
+            this.scrollPreviewContainer.style.display = 'block';
+            if (this.scrollEl) this.scrollEl.style.display = 'none';
+            if (this.wireframesEl) this.wireframesEl.style.display = 'none';
+            if (!this.scrollPreview && !this._scrollCreating) {
+                if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
+                this._scrollCreating = true;
+                import('./visualizers/scroll/scrollMode.js').then(m => {
+                    return m.createDetachedScrollEngine(this.scrollPreviewContainer, this.lyrics || []);
+                }).then(handle => {
+                    if (this.destroyed) { handle.destroy(); return; }
+                    this.scrollPreview = handle;
+                    handle.setTime((this.lastTime || 0) / 1000);
+                }).catch(e => { this._scrollCreating = false; logCatch('previewEngine', e); });
+            }
+            if (this.scrollPreview) this.scrollPreview.setPaused(false);
+        } else if (mode === 'tunnel') {
+            if (this.visManager) this.visManager.destroy();
+            this._hideAllPvPreviewContainers();
+            this.playerEl.classList.add('view-tunnel');
                 if (!this.tunnelPreviewContainer) {
                     this.tunnelPreviewContainer = document.createElement('div');
                     this.tunnelPreviewContainer.className = 'tunnel-view-container';
@@ -1201,20 +1328,15 @@ function resolveFontFamilyInner(fontKey) {
                     this.tunnelEngine.applySettings(this.modeVars.tunnel || {});
                     this.tunnelEngine.update((this.lastTime || 0) / 1000);
                 }
-            } else {
-                if (this.visManager) this.visManager.destroy();
-                if (this.pvPreviewContainer) {
-                    this.pvPreviewContainer.style.display = 'none';
-                }
-                if (this.pvEngine) {
-                    this.pvEngine.stop();
-                }
-                if (this.tunnelPreviewContainer) {
-                    this.tunnelPreviewContainer.style.display = 'none';
-                }
-                if (this.tunnelEngine) {
-                    this.tunnelEngine.stop();
-                }
+        } else {
+            if (this.visManager) this.visManager.destroy();
+            /* ★ 2026-10-02 修复（用户实测「预览框从 tempera/scroll 切到 default/lyrics/
+               wordcloud/flyin 会把后者的预览窗口遮盖」）：else 分支此前只藏 pv/tunnel，
+               tempera/scroll 容器原样留在 z=20 压住 DOM 预览。统一走互斥收口。 */
+            this._hideAllPvPreviewContainers();
+            if (this.pvEngine) {
+                this.pvEngine.stop();
+            }
                 if (mode === 'lyrics') this.playerEl.classList.add('view-lyrics');
                 else if (mode === 'flyin') this.playerEl.classList.add('view-lyrics', 'view-flyin');
                 else if (mode === 'wordcloud') this.playerEl.classList.add('view-lyrics', 'view-wordcloud');
@@ -1233,6 +1355,17 @@ function resolveFontFamilyInner(fontKey) {
                     flyinTransArea.style.display = 'none';
                     flyinTransArea.style.opacity = '0';
                 }
+            }
+
+            /* ★ 2026-10-01 透层修复（用户实测「新模式底下有一层默认模式的预览界面」）：
+               pv/tempera/scroll/tunnel 及全景视觉模式的 Pixi canvas 是透明或局部底色，
+               预览播放器自己的模糊封面背景 + 歌词 DOM 会从底下透出来。此前只有
+               pv/tunnel 藏了歌词容器、背景从未藏——统一在此收口，回默认类模式恢复。 */
+            const visualizerLike = mode === 'pv' || mode === 'tempera' || mode === 'scroll' || mode === 'tunnel'
+                || (this.visManager && this.visManager.has(mode));
+            if (this.bgEl) this.bgEl.style.visibility = visualizerLike ? 'hidden' : 'visible';
+            if (this.lyricsContainerEl) {
+                this.lyricsContainerEl.style.visibility = visualizerLike ? 'hidden' : 'visible';
             }
 
             /* ★ 确保播放器控件栏始终处于 DOM 最顶层，防止被全屏/3D视觉舞台遮挡 */
@@ -1264,8 +1397,10 @@ function resolveFontFamilyInner(fontKey) {
                 /* ★ 概率空白根修（用户实测：切模式时概率出现）：切模式瞬间容器可能
                    还在面板展开动画中（尺寸 0），flyinAutoScaleFont 量到 0 宽会把
                    歌词字号算成 0 且不再补救（ResizeObserver 只在尺寸变化时触发，
-                   若切模式前后容器尺寸没变就不会再回调）。多重延迟兜底覆盖时序窗。 */
-                [140, 320, 650].forEach(d => setTimeout(() => {
+                   若切模式前后容器尺寸没变就不会再回调）。多重延迟兜底覆盖时序窗。
+                   ★ 2026-10-02 再延长（用户复测「有概率不显示到下一句」）：面板展开
+                   动画在低端机上可超 1s，补 1200/2500 两档。 */
+                [140, 320, 650, 1200, 2500].forEach(d => setTimeout(() => {
                     try { if (this.currentMode === 'flyin') this.flyinAutoScaleFont(); } catch (_e) { logCatch('previewEngine', _e); }
                 }, d));
             } else if (mode === 'wordcloud') {
@@ -1552,17 +1687,48 @@ function resolveFontFamilyInner(fontKey) {
                     });
                 }
             }
+            /* ★ 2026-09-30：sonnet 预览实例同步应用设置变更 */
+            if (this.currentMode === 'pv' && this.sonnetPreviewEngine) {
+                this.sonnetPreviewEngine.applySettings(this.modeVars.pv || {});
+                /* ★ 2026-10-01：切歌换封面时预览跟随封面色（对齐全屏 applySonnetCoverPalette 路径） */
+                if (typeof window !== 'undefined' && window.coverPalette) {
+                    try { this.sonnetPreviewEngine.applyCoverPalette(window.coverPalette); } catch (e) { logCatch('previewEngine', e); }
+                }
+            }
             if (this.visManager && this.visManager.has(this.currentMode)) {
+                /* ★ 2026-10-02（用户实测「dimension 预览切高亮/背景色不对应、刷新慢，
+                   实际播放是对的」）：此分支此前只重喂 setLyrics，从不 applySettings——
+                   主播放器经 syncPreviewToMain 正确刷新，预览却停在旧配色直到切模式。
+                   任何设置变更都即时 applySettings。 */
                 this.visManager.applySettings(this.modeVars[this.currentMode] || {});
                 if (name === 'themeColor' || name === 'highlightColor' || name === 'bgColor') {
+                    /* ★ accent 通道对齐主播放器语义：highlightColor（高亮颜色）优先，
+                       bgColor（背景颜色）不再串进文字高亮——此前 bgColor 在前，
+                       切背景色会连带改高亮、切高亮也喂的是背景色（用户实测串扰）。 */
+                    const v = this.modeVars[this.currentMode] || {};
                     this.visManager.setLyrics(this.lyrics, {
-                        accent_color: (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].bgColor) || (this.modeVars[this.currentMode] && this.modeVars[this.currentMode].themeColor) || '#E8BE6A'
+                        accent_color: v.highlightColor || v.themeColor || '#E8BE6A',
                     });
                 }
             }
             /* ★ 需要重新渲染 DOM 的设置变更 */
             const rerenderKeys = ['align', 'fontFamily', 'showTranslation', 'showRomaji'];
             if (rerenderKeys.includes(name)) {
+                /* ★ 2026-10-01 夜（用户实测「设置里 tempera 预览字体永远黑体」）：
+                   tempera/scroll 预览实例的字体烘焙在 Pixi 场景里，fontFamily 变化
+                   必须销毁重建预览实例（render() 只重建 DOM 歌词，动不到 Pixi）。 */
+                if (name === 'fontFamily' && this.currentMode === 'tempera' && this.temperaPreview) {
+                    try { this.temperaPreview.destroy(); } catch (e) { logCatch('previewEngine', e); }
+                    this.temperaPreview = null;
+                    this._temperaCreating = false;
+                    this.setMode('tempera');
+                }
+                if (name === 'fontFamily' && this.currentMode === 'scroll' && this.scrollPreview) {
+                    try { this.scrollPreview.destroy(); } catch (e) { logCatch('previewEngine', e); }
+                    this.scrollPreview = null;
+                    this._scrollCreating = false;
+                    this.setMode('scroll');
+                }
                 this.render();
                 requestAnimationFrame(() => {
                     this.update(this.lastTime || 0);

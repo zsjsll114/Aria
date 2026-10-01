@@ -539,12 +539,112 @@
 .vm-t-word.w3 { right: 14%; top: 22%; transform: rotate(4deg); }
 .vm-t-word.w4 { right: 21%; top: 50%; }
 .vm-t-word.w5 { left: 46%; top: 62%; }
+/* --- 凝彩 · Tempera 模式卡预览（网点色块挖窗意象，2026-09-30） --- */
+/* --- 长卷 · Scroll 模式卡预览（横卷三层意象） --- */
+.view-mode-preview-scroll {
+    background: #101014;
+    position: relative;
+    overflow: hidden;
+}
+.view-mode-preview-scroll .vm-sc-past,
+.view-mode-preview-scroll .vm-sc-future {
+    position: absolute;
+    font-size: 10px;
+    color: rgba(244, 244, 245, 0.25);
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+.view-mode-preview-scroll .vm-sc-past { left: -6px; top: 40%; }
+.view-mode-preview-scroll .vm-sc-future { right: -6px; top: 38%; }
+.view-mode-preview-scroll .vm-sc-current {
+    position: absolute;
+    left: 14%; top: 34%;
+    color: #f4f4f5;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 2px;
+    white-space: nowrap;
+}
+.view-mode-preview-scroll .vm-sc-band {
+    position: absolute;
+    left: 0; right: 0; bottom: 14%;
+    height: 16px;
+    background: linear-gradient(90deg, rgba(232,190,106,0.35), rgba(74,78,87,0.35));
+}
+
+.view-mode-preview-tempera {
+    background: #191a1e;
+    position: relative;
+    overflow: hidden;
+}
+.view-mode-preview-tempera .vm-tc-field {
+    position: absolute;
+    border-radius: 2px;
+}
+.view-mode-preview-tempera .vm-tc-field.f1 {
+    left: 8%; top: 14%; width: 52%; height: 44%;
+    background: #E8BE6A;
+    transform: rotate(-6deg);
+}
+.view-mode-preview-tempera .vm-tc-field.f2 {
+    right: 6%; bottom: 10%; width: 44%; height: 52%;
+    background: #4a4e57;
+    transform: rotate(5deg);
+}
+.view-mode-preview-tempera .vm-tc-hole {
+    position: absolute;
+    left: 40%; top: 32%; width: 34px; height: 34px;
+    border-radius: 50%;
+    background: #191a1e;
+    box-shadow: 0 0 0 2px rgba(244, 244, 245, 0.55);
+}
+.view-mode-preview-tempera .vm-tc-word {
+    position: absolute;
+    left: 14%; bottom: 16%;
+    color: #f4f4f5;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 2px;
+    mix-blend-mode: difference;
+}
+
 .vm-t-word.dim { color: rgba(255, 255, 255, 0.42); }
 .vm-t-word.active {
     color: #E8BE6A;
     text-shadow: 0 0 8px rgba(232, 190, 106, 0.85);
     scale: 1.16;
 }
+
+/* sonnet 预览卡：黑底 + 巨字冲击 + 支撑词散布 */
+.view-mode-preview-sonnet {
+    overflow: hidden;
+    background: linear-gradient(165deg, #17151c, #060509 75%);
+}
+.view-mode-preview-sonnet .vm-s-giant {
+    position: absolute;
+    right: 6%;
+    top: 12%;
+    font-size: 54px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 0 14px rgba(232, 190, 106, 0.5);
+    letter-spacing: 2px;
+}
+.view-mode-preview-sonnet .vm-s-word {
+    position: absolute;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+}
+.view-mode-preview-sonnet .vm-s-word.w1 { left: 8%; top: 20%; writing-mode: vertical-rl; }
+.view-mode-preview-sonnet .vm-s-word.w2 {
+    left: 12%;
+    bottom: 16%;
+    color: #E8BE6A;
+    text-shadow: 0 0 10px rgba(232, 190, 106, 0.8);
+}
+.view-mode-preview-sonnet .vm-s-word.w3 { right: 10%; bottom: 24%; color: rgba(255, 255, 255, 0.4); }
 
 /* 详展信息标签（视图切换弹窗内） */
 .view-mode-detail {

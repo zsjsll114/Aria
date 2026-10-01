@@ -24,10 +24,15 @@ export function normalizeLyricLine(text) {
 }
 
 /** 一行可显示的文本：优先整行，逐字行退化为拼词元（与 lyricIndex.lineTextOf 同思路，
- *  但这里不 import 那个模块，保持本文件零依赖可单测）。 */
+ *  但这里不 import 那个模块，保持本文件零依赖可单测）。
+ *  ★ 2026-10-02 自动替换从未生效的根因：Aria 歌词行的行文本字段是 `original`
+ *  （parseLrc/parseYrc/mergeLyrics 契约），这里只认 `text`/`words` —— 当前词每行
+ *  归一成空串 → 覆盖率恒 0% → 永不替换（端到端探针实测《晴天》kugou KRC 命中
+ *  42 行逐字但 coverage 0%）。补上 original 兜底。 */
 function lineText(line) {
     if (!line) return '';
     if (typeof line.text === 'string' && line.text) return line.text;
+    if (typeof line.original === 'string' && line.original) return line.original;
     if (Array.isArray(line.words) && line.words.length) {
         return line.words.map(w => (w && (w.word ?? w.text ?? w.c)) || '').join('');
     }

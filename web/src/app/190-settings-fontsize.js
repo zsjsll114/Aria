@@ -283,6 +283,23 @@ function applyModeSettings(mode) {
             if (mode === 'pv' && pvEngineInstance) {
                 pvEngineInstance.applySettings(s);
             }
+            /* ★ 2026-09-29：PV 引擎已替换为 folia sonnet——设置同路下发 */
+            if (mode === 'pv' && typeof window !== 'undefined' && window.__sonnetProbe) {
+                import('../core/visualizers/sonnet/sonnetMode.js').then(m => {
+                    m.applySonnetSettings(s);
+                }).catch(e => logCatch('settingsFontsize', e));
+            }
+            /* ★ 2026-10-01：版画/长卷设置下发（设置面板补齐 tempera/scroll 区块） */
+            if (mode === 'tempera') {
+                import('../core/visualizers/tempera/temperaMode.js').then(m => {
+                    m.applyTemperaSettings(s);
+                }).catch(e => logCatch('settingsFontsize', e));
+            }
+            if (mode === 'scroll') {
+                import('../core/visualizers/scroll/scrollMode.js').then(m => {
+                    m.applyScrollSettings(s);
+                }).catch(e => logCatch('settingsFontsize', e));
+            }
             if (mode === 'tunnel' && tunnelEngineInstance) {
                 tunnelEngineInstance.applySettings(s);
             }

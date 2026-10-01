@@ -138,6 +138,7 @@ const tFont = () => ({ type: 'font' });
 /** 与 index.html 的 .view-mode-card[data-mode] 九个卡片一致；220 的 switchView 只认这些。 */
 export const VIEW_MODES = [
     'cover', 'lyrics', 'flyin', 'wordcloud', 'pv', 'tunnel', 'dimension', 'letterpress', 'neon',
+    'tempera', 'scroll',
 ];
 
 /* ---------- 命名空间字段表 ---------- */
@@ -235,6 +236,17 @@ export const MODE_FIELD_POOL = {
     showEcho: tBool(),
     aiColorSync: tBool(),
     mosaicTilt: tBool(),
+    /* 版画 Tempera（2026-10-02 补 schema：defaults.js 已有这些键，漏一个就存不下来） */
+    cameraIntensity: tNum(0, 2),
+    glyphMotion: tNum(0, 2),
+    textInversion: tBool(),
+    showBlocks: tBool(),
+    showDecor: tBool(),
+    showCornerMarks: tBool(),
+    enableTransitions: tBool(),
+    /* 长卷 Scroll */
+    scrollSpeed: tNum(0.1, 4),
+    showChapters: tBool(),
 };
 
 /**
@@ -270,6 +282,12 @@ export const MODE_FIELDS_BY_MODE = {
         'themeColor', 'fontFamily', 'emotionGlow'],
     letterpress: ['fontSize', 'highlightColor', 'showTranslation', 'themeColor', 'fontFamily', 'emotionGlow'],
     neon: ['fontSize', 'highlightColor', 'showTranslation', 'themeColor', 'fontFamily', 'emotionGlow'],
+    /* ★ 2026-10-02 补版画/长卷（defaults.js 早已收录，schema 缺席 = 设置存不下来） */
+    tempera: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily',
+        'cameraIntensity', 'glyphMotion', 'textInversion', 'showBlocks', 'showDecor',
+        'showCornerMarks', 'enableTransitions', 'emotionGlow'],
+    scroll: ['fontSize', 'scrollSpeed', 'highlightColor', 'themeColor', 'showChapters',
+        'fontFamily', 'emotionGlow'],
 };
 
 /** 配方的四个组，UI 说明与统计共用这一份顺序。 */

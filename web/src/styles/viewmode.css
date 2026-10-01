@@ -873,12 +873,15 @@
 
         /* ========== PV 模式与全景视觉模式视图适配 ========== */
         .player-container.view-pv,
+        .player-container.view-tempera,
         .player-container.view-dimension {
             flex-direction: column;
             padding-bottom: 0;
         }
         .player-container.view-pv .player-controls-wrapper,
         .player-container.view-pv .lyrics-area-wrapper,
+        .player-container.view-tempera .player-controls-wrapper,
+        .player-container.view-tempera .lyrics-area-wrapper,
         .player-container.view-dimension .player-controls-wrapper,
         .player-container.view-dimension .lyrics-area-wrapper {
             display: none !important;
@@ -888,6 +891,7 @@
            ★ 桌面端必须叠加 --titlebar-top-offset（Tauri 标题栏高度），
              否则 !important 会顶掉 base.css 的安全距离，与三大金刚键重叠 */
         .player-container.view-pv .top-action-buttons,
+        .player-container.view-tempera .top-action-buttons,
         .player-container.view-dimension .top-action-buttons {
             display: flex !important;
             position: absolute !important;
@@ -899,6 +903,7 @@
 
         /* 底部控制栏在所有全景模式下居中浮动显示 */
         .player-container.view-pv .bottom-control-bar,
+        .player-container.view-tempera .bottom-control-bar,
         .player-container.view-dimension .bottom-control-bar,
         .player-container.view-wordcloud .bottom-control-bar {
             display: flex !important;
@@ -921,6 +926,7 @@
         .player-container.view-flyin .flyin-translation-area,
         .player-container.view-wordcloud .flyin-translation-area,
         .player-container.view-pv .flyin-translation-area,
+        .player-container.view-tempera .flyin-translation-area,
         .player-container.view-dimension .flyin-translation-area {
             display: block !important;
             position: absolute !important;
@@ -943,6 +949,71 @@
             position: absolute;
             inset: 0;
             z-index: 2;
+        }
+
+        /* --- PV 模式（folia sonnet 复刻引擎）：PixiJS 全屏多镜头 PV。
+           ★ 2026-09-30 背景不再纯黑：径向渐变用封面主色系（--cover-primary/secondary
+           由 100-cover-background 写入），深色基调 + 歌曲专属色晕铺满全视口。
+           ★ 容器恢复全高：halftone 网点等 Pixi 滤镜作用于全高 canvas（点阵铺满），
+           内容安全区由引擎侧 bottomInset=96 收敛（见 SonnetEngine）。 --- */
+        /* --- 凝彩 · Tempera（folia tempera 复刻，独立第二 PV 模式）：
+           网点印刷海报风。引擎自带 paper/screentone 底，容器给纯纸感深底。 --- */
+        .player-container.view-tempera {
+            background: #111114 !important;
+        }
+        .player-container.view-tempera .tempera-view-container {
+            display: block !important;
+            width: 100%;
+            position: absolute;
+            inset: 0;
+            height: 100%;
+            z-index: 2;
+            overflow: hidden;
+        }
+        .player-container.view-tempera .lyrics-scroll,
+        .player-container.view-tempera .lyrics-line,
+        .player-container.view-tempera #lyricsScroll {
+            visibility: hidden !important;
+        }
+
+        /* --- 长卷 · Scroll（连续横卷歌词）：此前 .scroll-view-container 零 CSS 规则，
+           容器无定位/无高度 → Pixi resizeTo 拿到塌陷尺寸，内容挤在左半段
+           （用户实测「只占屏幕的左半段」根因之二）。对齐 tempera 的全屏容器规则。 --- */
+        .player-container.view-scroll {
+            background: #101014 !important;
+        }
+        .player-container.view-scroll .scroll-view-container {
+            display: block !important;
+            width: 100%;
+            position: absolute;
+            inset: 0;
+            height: 100%;
+            z-index: 2;
+            overflow: hidden;
+        }
+        .player-container.view-scroll .lyrics-scroll,
+        .player-container.view-scroll .lyrics-line,
+        .player-container.view-scroll #lyricsScroll {
+            visibility: hidden !important;
+        }
+
+        .player-container.view-pv {
+            background:
+                radial-gradient(ellipse 120% 90% at 50% 0%, color-mix(in srgb, var(--cover-primary, #3a86ff) 18%, transparent) 0%, transparent 55%),
+                radial-gradient(ellipse 100% 80% at 80% 100%, color-mix(in srgb, var(--cover-secondary, #ff006e) 12%, transparent) 0%, transparent 50%),
+                #09090b !important;
+        }
+        .player-container.view-pv .pv-view-container {
+            inset: 0;
+            height: 100%;
+        }
+        .player-container.view-pv .pv-view-container {
+            overflow: hidden;
+        }
+        .player-container.view-pv .lyrics-scroll,
+        .player-container.view-pv .lyrics-line,
+        .player-container.view-pv #lyricsScroll {
+            visibility: hidden !important;
         }
 
         /* --- 浮空模式预览卡片 --- */

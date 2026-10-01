@@ -101,6 +101,7 @@ test('真源码当前是合规的，且赋值点数量级符合预期', () => {
   const src = readFileSync(resolve(ROOT, 'web/src/app/175-track-index-online.js'), 'utf8');
   const r = analyzeResolveInstrumentation(src);
   assert.deepEqual(r.problems, [], `真源码不合规：${r.problems.join('; ')}`);
-  assert.ok(r.assigns >= 19, `赋值点只有 ${r.assigns}，门禁可能切短了函数体`);
+  assert.ok(r.assigns >= 18, `赋值点只有 ${r.assigns}，门禁可能切短了函数体`);
+  /* ★ 2026-09-29：ygking.top 音质阶梯移除（上游死亡）后 playUrl 赋值点 19 → 18 */
   assert.equal(r.preloadRecords, 0);
 });

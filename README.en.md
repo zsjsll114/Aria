@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
 
-**A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo search, nine full-screen lyric visual modes, a desktop lyrics overlay, and AI mood analysis**
+**A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo search, nine full-screen lyric visual modes, a desktop lyrics overlay, a phone remote, and AI mood analysis**
 
 Web app + Tauri 2 desktop shell — a player built for one person's long listening sessions.
 
@@ -28,37 +28,39 @@ For personal use only. This repository contains no audio, lyrics, or cover art; 
 
 ## Nine Lyric Visuals
 
+Beyond the default cover layout, there are nine full-screen lyric visuals, switchable from the style picker:
+
 | Mode | Description |
 |---|---|
 | Cover | Cover art and lyrics side by side, with the full control bar |
-| Lyrics | Default. Word-by-word highlighting + smooth scrolling, with translation / romaji lines |
-| Fly-In | Whole-line fly-in, great for singing along |
-| WordCloud | Lyrics aggregate into a word cloud that floats with playback |
-| PV Art | Storyboard engine: 60 layouts rotating by section mood, poster-style typography, camera moves & particles |
-| Mondrian | Mondrian color-block collage, seven layout families + depth fly-through, smooth morphing between sections |
-| Tunnel | 3D particle scene with multi-layer parallax camera |
-| Letterpress | Print-shop theme: words are inked in one by one, 30 rotating layouts, paper color follows section mood |
-| Neon | Street-sign theme: unsung words are dark tubes that light up word by word, with a storefront watermark |
+| Lyrics | Full-screen lyrics + mini bottom bar, word-by-word highlighting with smooth scrolling, translation / romaji lines |
+| Fly-In | Dark & minimal, characters fly in and glow — great for singing along |
+| WordCloud | 2D word-cloud layout, damped camera focus tracking, per-word fill |
+| Verse | Multi-shot lyric film: giant close-ups / magazine layouts / collage fragments, per-word dispersion & camera moves, purely timeline-driven |
+| Tempera | Halftone-print lyric PV: color-block compositions with cut-out windows + dynamic lyric inversion + 121 camera variants |
+| Scroll | The whole song as one horizontal scroll: time advances leftward, sung lines stay on the roll as history, chapter color bands, no jump cuts |
+| Mondrian | Mondrian-style color-block collage: blocks split by line meaning, 8 geometric compositions, word blocks snap to color blocks with collision avoidance |
+| Tunnel | 3D particle flow in space, depth-of-field follows the theme color |
+| Letterpress | Letterpress layout: sung characters are inked in one by one, paper color follows section mood |
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/screenshots/pv.png" width="100%" alt="PV Art"><br><sub><b>PV Art</b></sub></td>
     <td align="center" width="33%"><img src="docs/screenshots/mondrian.png" width="100%" alt="Mondrian"><br><sub><b>Mondrian</b></sub></td>
     <td align="center" width="33%"><img src="docs/screenshots/tunnel.png" width="100%" alt="Tunnel"><br><sub><b>Tunnel</b></sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/letterpress.png" width="100%" alt="Letterpress"><br><sub><b>Letterpress</b></sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/letterpress.png" width="100%" alt="Letterpress"><br><sub><b>Letterpress</b></sub></td>
-    <td align="center"><img src="docs/screenshots/neon.png" width="100%" alt="Neon"><br><sub><b>Neon</b></sub></td>
     <td align="center"><img src="docs/screenshots/wordcloud.png" width="100%" alt="WordCloud"><br><sub><b>WordCloud</b></sub></td>
-  </tr>
-  <tr>
     <td align="center"><img src="docs/screenshots/flyin.png" width="100%" alt="Fly-In"><br><sub><b>Fly-In</b></sub></td>
     <td align="center"><img src="docs/screenshots/lyrics1.png" width="100%" alt="Lyrics"><br><sub><b>Lyrics</b></sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/lyrics2.png" width="100%" alt="Lyrics clean layout"><br><sub><b>Lyrics</b> (clean layout)</sub></td>
+    <td align="center" colspan="2"><sub>Screenshots for Verse / Tempera / Scroll to be added</sub></td>
   </tr>
 </table>
 
-PV and Mondrian shine brightest with AI mood analysis enabled: the AI handles per-line pagination, emotion tagging and layout suggestions. Everything works without AI too — layouts and palettes just won't follow the song's emotion.
+Everything shines brighter with AI mood analysis enabled: per-line emotion tags and chorus detection drive mood-aware palettes and compositions in the visual modes. No AI key? All modes still work — they fall back to purely timeline-driven behavior.
 
 RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every visual mode, no configuration needed.
 
@@ -66,13 +68,15 @@ RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every 
 
 | Module | Description |
 |---|---|
-| Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout |
-| Multi-source search | QQ Music / KuGou / Netease / Kuwo with aggregated fallback; hi-fi & daily mixes via self-hosted services |
-| AI mood analysis | Gemini per-line emotion tagging + chorus detection; PV / Mondrian / Neon / Letterpress adapt layout & palette to mood |
+| Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout; automatic alignment fallback when word timing is missing |
+| Multi-source search | QQ Music / KuGou / Netease / Kuwo, multi-tier racing & aggregated fallback with a transparent resolve pipeline; hi-fi & daily mixes via self-hosted services |
+| AI mood analysis | Gemini or OpenAI-compatible APIs: per-line emotion tagging + chorus detection, driving layout & palette changes in visual modes |
 | Desktop lyrics | Standalone transparent window, free drag, click-through, local per-word interpolation |
+| Phone remote | Scan or type the address on your phone (same LAN) to control playback / track / volume (requires `--lan`) |
 | Local music | Local library scan + Enhanced LRC word-timeline generation + song recognition (Shazam / Vosk) |
 | Playlists & favorites | Favorites / playlists / public playlist import from Netease, QQ & KuGou / play stats |
-| Audio | 10-band equalizer, speed control (pitch preserved), seamless crossfade, downloads |
+| Audio | 10-band equalizer, speed control (pitch preserved), long-press 2× fast-forward, A-B loop, seamless crossfade, downloads, sleep timer |
+| Experience details | In-lyrics search, bilingual layout, next-song preview, OSD hints, zen / focus mode, theme palette, VFX intensity slider, toolbar customization |
 
 ## Quick Start
 
@@ -105,8 +109,8 @@ macOS / Linux have no .bat files — run the equivalent commands manually.
 
 ## Before You Start (read these three)
 
-1. **Mainland users going through a Cloudflare Worker proxy for AI: the page URL must be `http://localhost:8001`**, not `127.0.0.1` — the Worker validates by page Origin, and `127.0.0.1` gets `403 Forbidden`. Calling the Gemini API directly (no Worker) has no such restriction.
-2. **The server listens on localhost only by default.** To use it from your phone, run `python server.py --lan`. This exposes search, proxy and config APIs (including AI keys) to your LAN — home WiFi only, turn it off afterwards.
+1. **Mainland users going through a Cloudflare Worker proxy for AI: the page URL must be `http://localhost:8001`**, not `127.0.0.1` — the Worker validates by page Origin, and `127.0.0.1` gets `403 Forbidden`. Calling the API directly (no Worker) has no such restriction.
+2. **The server listens on localhost only by default.** To use it from your phone (including the phone remote), run `python server.py --lan`. This exposes search, proxy and config APIs (including AI keys) to your LAN — home WiFi only, turn it off afterwards.
 3. **Music-source services need separate logins.** Without login it automatically falls back to the free source pool: search and playback still work, but no hi-fi, daily mixes or playlist sync. Login lives in Settings → Self-Hosted.
 
 ## Feature Guide
@@ -114,6 +118,10 @@ macOS / Linux have no .bat files — run the equivalent commands manually.
 ### Desktop Lyrics
 
 Toggle via the "Desktop Lyrics" button at the top right. Drag the lyric bar to move it, ✕ to close, the lock button toggles click-through. Position is saved automatically after dragging. Font size, color, stroke and fonts are in Settings → Interface.
+
+### Phone Remote
+
+Start with `python server.py --lan`, then open `http://<your-LAN-IP>:8001/remote.html` in your phone browser (the server prints the usable address on startup). Play / pause / skip / volume work remotely, with live lyric progress sync.
 
 ### Fonts
 
@@ -129,11 +137,10 @@ Favorites: the heart button at the end of any row. Playlists: create / rename / 
 
 ### AI Mood Analysis
 
-Fill in a Gemini API key under Settings → AI. For mainland networks a Cloudflare Worker proxy is recommended (`docs/cf-gemini-auth-worker.js` has a ready-made script); direct API URLs work too. Keys are stored only in your local `user_config.json` and never uploaded.
+Fill in an API key under Settings → AI (Gemini official and OpenAI-compatible endpoints both supported). For mainland networks a Cloudflare Worker proxy is recommended (`docs/cf-gemini-auth-worker.js` has a ready-made script); direct API URLs work too. Keys are stored only in your local `user_config.json` and never uploaded.
 
 ## Known Limitations
 
-- The three third-party music-source vendors listen on `0.0.0.0` by upstream code (no host parameter passed), so they bind all NICs even without `--lan` — fully closing this requires patching the vendors, still an open item.
 - Multi-monitor / mixed-DPI setups are not fully tested; external screens may show cursor or positioning offsets.
 - Visual modes are GPU-heavy at fullscreen + high refresh rate; rendering does not auto-throttle when minimized.
 - Variable fonts (VF) as the global font are expensive to interpolate at full-screen sizes — low-end devices should use static-weight fonts (e.g. Noto Sans SC Bold) or lower the performance tier.
@@ -150,17 +157,18 @@ This project is developed with extensive AI assistance: product shape, architect
 - **Hi-fi options are greyed out**: login to that platform's self-hosted service is required.
 - **AI always returns 403**: your page URL isn't `localhost` — see note 1 above.
 - **Desktop lyrics in the wrong place after restart**: wait a moment after dragging before closing; if it still misbehaves, lock → unlock once.
+- **Phone remote won't connect**: make sure the server was started with `--lan` and your phone is on the same WiFi.
 
 Please report issues with the [ISSUE template](.github/ISSUE_TEMPLATE/bug_report.md) — attaching console errors and system info speeds things up a lot.
 
 ## Architecture
 
 ```
-Tauri 2 shell (Rust) ── loads http://localhost:8001, spawns two sidecars
+Tauri 2 shell (Rust) ── loads http://localhost:8001, spawns sidecars
         │
 Python backend (stdlib-only http.server, port 8001)
-  ├ serves web/ statically + /proxy + /api/*
-  └ selfhost_service.py: three Node music-source sidecars (3100/3200/3201)
+  ├ serves web/ statically + /proxy + /api/* (incl. /api/remote/* phone-remote bus)
+  └ selfhost_service.py: three Node music-source sidecars (3100/3200/3201, loopback-only)
 ```
 
 The frontend is a framework-free sharded module system (`web/src/app/*.js`, loaded by number), with visual engines in `web/src/core/` (pvEngine / tunnelEngine / visualizers). See [AGENTS.md](AGENTS.md) and [CODE_WIKI.md](CODE_WIKI.md) for details.

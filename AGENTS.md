@@ -463,7 +463,7 @@
     把 `201` 的闸门条件改成 `if (false && …)` 跑一遍确认它真的报红——这个测试文件是这么验证过的。
 
 
-24. **「动效强度」滑杆只叠一层，且写入侧读原样表（2026-09-27 确立）。**
+25. **「动效强度」滑杆只叠一层，且写入侧读原样表（2026-09-27 确立）。**
     生效值 = 档位 vfx ⊕ 滑杆 ⊕ 手动单项微调，顺序写在 `app/180-boot-config.js` 的
     `getVfxOverrides()` 一处（数学在 `core/vfxIntensity.js`，纯函数）。两条硬约束：
     ① **手动在最上层**——滑杆不得覆盖用户手调过的开关（那是数据丢失不是重置），所以滑杆值
@@ -475,7 +475,7 @@
     回归：`node --test tests/js/test_vfx_intensity.js`（11 例）+ `python tests/test_vfx_intensity_ui.py`
     （23 例，含变异验证：摘叠加→4 条红、基底取错→`manual-table-stays-minimal` 红、摘重置钩子→`factory-reset-clears-intensity` 红）。
 
-25. **逐字高亮渲染的性能与形态铁律（2026-09-27 用户确立，两轮实测教训）。**
+26. **逐字高亮渲染的性能与形态铁律（2026-09-27 用户确立，两轮实测教训）。**
     默认/歌词模式英文歌卡顿，两轮修复史与硬边界：
     ① **NaN 双端钳位（2026-09-26）**：短词/单字符词 `duration < charCount ms` 时
       `20-lyrics-render.js` 词内切字符 `Math.round` 产生 charStart==charEnd →
@@ -503,7 +503,7 @@
       （57 registerLoop FX_PROBE_SOURCE）= 默认/歌词模式滚动循环帧时中位/p95/max；
       与内置心跳对照可区分「本循环 JS 瓶颈」与「合成器瓶颈」。
 
-26. **切歌竞态守卫：迟到回调必须带「失败时刻的代际」（2026-09-27 用户确立）。**
+27. **切歌竞态守卫：迟到回调必须带「失败时刻的代际」（2026-09-27 用户确立）。**
     `playbackGeneration` 在三个切歌入口递增（95 loadTrack / 135 loadPlaylistTrack 本地
     分支 / 175 loadOnlineSong），此后所有异步回调凭 `gen === playbackGeneration`
     判定自己是否过期。两条硬规则：

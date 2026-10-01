@@ -381,31 +381,13 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     return cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
                 }) || candidates[0];
 
-                if (bestSong && bestSong.mid) {
-                    const userQ = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.qqPlayback) || '320';
-                    let playUrl = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
+                    if (bestSong && bestSong.mid) {
+                        const userQ = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.qqPlayback) || '320';
+                        let playUrl = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
 
-                    if (!playUrl) {
-                        const YGK_QUALITIES = ['320', 'flac', '128', 'master'];
-                        for (const quality of YGK_QUALITIES) {
-                            try {
-                                const controller = new AbortController();
-                                const timeout = setTimeout(() => controller.abort(), 6000);
-                                const resp = await fetch(`https://api.ygking.top/api/song/url?mid=${bestSong.mid}&quality=${quality}`, { signal: controller.signal });
-                                clearTimeout(timeout);
-                                const ygkJson = await resp.json();
-                                if (ygkJson.code === 0 && ygkJson.data && ygkJson.data[bestSong.mid]) {
-                                    const url = ygkJson.data[bestSong.mid];
-                                    if (url && url.startsWith('http')) {
-                                        playUrl = url;
-                                        break;
-                                    }
-                                }
-                            } catch (e) { logWarn('musicApi', e); }
-                        }
-                    }
+                        /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡），解析池未命中直接落 vkeys */
 
-                    if (!playUrl && bestSong.id) {
+                        if (!playUrl && bestSong.id) {
                         try {
                             const vkeysRes = await fetch(`${API_BASE}/tencent?id=${bestSong.id}`).then(r => r.json()).catch(() => ({}));
                             if (vkeysRes.code === 200 && vkeysRes.data && vkeysRes.data.url) {
@@ -584,26 +566,10 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                     if (resolved) {
                         return { url: resolved, cover: bestSong.cover || '' };
                     }
-                    const YGK_QUALITIES = ['320', 'flac', '128', 'master'];
-                    for (const quality of YGK_QUALITIES) {
-                        try {
-                            const controller = new AbortController();
-                            const timeout = setTimeout(() => controller.abort(), 6000);
-                            const resp = await fetch(`https://api.ygking.top/api/song/url?mid=${bestSong.mid}&quality=${quality}`, { signal: controller.signal });
-                            clearTimeout(timeout);
-                            const ygkJson = await resp.json();
-                            if (ygkJson.code === 0 && ygkJson.data && ygkJson.data[bestSong.mid]) {
-                                const url = ygkJson.data[bestSong.mid];
-                                if (url && url.startsWith('http')) {
-                                    logInfo('musicApi', `[KuGou Play] 成功调度 QQ 原唱音频流 (${bestSong.song} - ${bestSong.singer}, 音质: ${quality})`);
-                                    return { url, cover: bestSong.cover || '' };
-                                }
-                            }
-                        } catch (e) { /* 尝试下一个音质 */ }
-                    }
+                    /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡），解析池未命中直接落 vkeys */
                 }
 
-                // 若 ygking 失败，尝试 vkeys QQ 音频
+                // 解析池未命中，尝试 vkeys QQ 音频
                 if (bestSong && bestSong.id) {
                     try {
                         const vkCtl = new AbortController();
@@ -832,7 +798,18 @@ export async function checkAudioUrlPlayable(url, songId, referer, expectedSec) {
         try {
             data = await fetch(`/api/audio/check?${params.toString()}`, { signal: ctl.signal }).then(r => r.json());
         } finally { clearTimeout(timer); }
-        return !!(data && data.ok);
+        const ok = !!(data && data.ok);
+        if (!ok) {
+            /* ★ 失败原因落日志（2026-09-29）：此前只返回 bool，「自建探测不可播」
+               无从区分是 30s 试听、上游 403 还是网络异常，排查全靠猜 */
+            const why = data && data.preview
+                ? `试听预览（total=${data.total}B < 期望 ${Math.round(expectedSec || 0)}s 整曲）`
+                : data && data.err
+                    ? `err=${data.err}`
+                    : `HTTP ${data && data.status || '?'} total=${data && data.total || 0}`;
+            logWarn('musicApi', `[AudioCheck] 不可播: ${why} | ${(url || '').slice(0, 90)}`);
+        }
+        return ok;
     } catch (e) {
         logWarn('musicApi', '[AudioCheck] 校验异常(按不可播处理):', e.message);
         return false;
@@ -899,28 +876,8 @@ export async function getPlayUrl(songInfo, source) {
         const resolved = await qqResolveUrl(songMid || songId, intervalToSec(songInfo.interval) || songInfo.duration, userQ);
         if (resolved) return resolved;
 
-        // 1. 回退原链：ygking 五档音质循环
-        const YGK_QUALITIES = ['master', 'atmos', 'flac', '320', '128'];
-        if (songMid) {
-            for (const quality of YGK_QUALITIES) {
-                try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 8000);
-                    const resp = await fetch(`https://api.ygking.top/api/song/url?mid=${songMid}&quality=${quality}`, { signal: controller.signal });
-                    clearTimeout(timeout);
-                    const ygkJson = await resp.json();
-                    if (ygkJson.code === 0 && ygkJson.data && ygkJson.data[songMid]) {
-                        const url = ygkJson.data[songMid];
-                        if (url && url.startsWith('http')) {
-                            logInfo('musicApi', `ygking.top 获取成功 (音质: ${quality}): ${songInfo.song}`);
-                            return url;
-                        }
-                    }
-                } catch (e) {
-                    logWarn('musicApi', `ygking.top ${quality} 获取失败:`, e.message);
-                }
-            }
-        }
+        /* ★ 2026-09-29：ygking 五档音质循环已移除（上游死亡，每次白等 ~3s×5）。
+           解析池未命中直接走 moeyao meting → vkeys 原链。 */
 
         if (songMid) {
             try {

@@ -60,26 +60,17 @@ async function downloadCurrentSong() {
                                 ext = resolved.includes('.flac') || resolved.includes('AI00') || resolved.includes('F000') ? 'flac' : 'mp3';
                             }
                         } catch (e) { /* 静默，走原链 */ }
-                        const YGK_QUALITIES = ['master', 'atmos', 'flac', '320', '128'];
-                        const orderedQualities = [userQuality, ...YGK_QUALITIES.filter(q => q !== userQuality)];
-                        for (const quality of orderedQualities) {
-                            /* 解析池已命中（拿到新链接）时跳过ygking下载循环，防止覆盖母带结果 */
-                            if (downloadUrl && downloadUrl !== audio.src) break;
+                        /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡）。
+                           解析池未命中时落 vkeys 元数据链（server /tencent?id=）。 */
+                        if (!downloadUrl || downloadUrl === audio.src) {
                             try {
-                                const controller = new AbortController();
-                                const timeout = setTimeout(() => controller.abort(), 3500);
-                                const resp = await fetch(`https://api.ygking.top/api/song/url?mid=${dlSongMid}&quality=${quality}`, { signal: controller.signal });
-                                clearTimeout(timeout);
-                                const ygkJson = await resp.json();
-                                if (ygkJson.code === 0 && ygkJson.data && ygkJson.data[dlSongMid]) {
-                                    const url = ygkJson.data[dlSongMid];
-                                    if (url && url.startsWith('http')) {
-                                        downloadUrl = url;
-                                        if (quality === 'flac' || quality === 'master') ext = 'flac';
-                                        break;
-                                    }
+                                const vkJson = await fetch(`/tencent?id=${encodeURIComponent(currentSongData.id || dlSongMid)}`)
+                                    .then(r => r.json());
+                                if (vkJson.code === 200 && vkJson.data && vkJson.data.url) {
+                                    downloadUrl = vkJson.data.url;
+                                    ext = downloadUrl.includes('.flac') || downloadUrl.includes('AI00') || downloadUrl.includes('F000') ? 'flac' : 'mp3';
                                 }
-                            } catch (e) { /* 静默 */ }
+                            } catch (e) { /* 静默，降级到当前播放 URL */ }
                         }
                     } else if (dlSource === 'netease') {
                         const userLevel = (appSettings.quality && appSettings.quality.neteaseDownload) || 'lossless';

@@ -826,7 +826,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 if (typeof window !== 'undefined') window.currentViewMode = mode;
                 
                 /* ★ 先移除并更新所有视图模式 class */
-                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
+                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-tempera', 'view-scroll');
                 
                 if (mainVisManager && mainVisManager.has(mode)) {
                     playerContainer.classList.add(`view-${mode}`);
@@ -861,26 +861,55 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                     }
                     pvContainer.style.display = 'block';
                     {
-                        if (!pvEngineInstance) {
-                            pvEngineInstance = new PVEngine(pvContainer);
-                        }
-                        pvContainer.innerHTML = '';
-                        pvEngineInstance.init(pvContainer);
-                        /* ★ 创建晚于配置下发：补发性能档位（DPR降采样/粒子预算/发光开关） */
-                        if (typeof window !== 'undefined' && Aria.__lastPerfProfile &&
-                            typeof pvEngineInstance.setPerformanceConfig === 'function') {
-                            pvEngineInstance.setPerformanceConfig({ pv: Aria.__lastPerfProfile.pv, vfx: Aria.__lastPerfProfile.vfx });
-                        }
-                        logInfo('shortcutsViewmode', '[PV Mode] PVEngine 初始化完成, lyrics:', typeof lyrics !== 'undefined' ? lyrics.length : 0, '条');
-                        if (typeof lyrics !== 'undefined' && lyrics.length > 0) {
-                            pvEngineInstance.setLyrics(lyrics, currentAiTheme || {});
-                        }
-                        if (window.coverPalette && pvEngineInstance.background) {
-                            pvEngineInstance.background.updateTheme(window.coverPalette.primary, window.coverPalette.secondary, window.coverPalette.accent);
-                        }
-                        pvEngineInstance.start();
-                        pvEngineInstance.update(audio ? audio.currentTime : 0);
+                        /* ★ 2026-09-28：PV 引擎替换为 folia sonnet 复刻（PixiJS 确定性多镜头 PV）。
+                           原始 PVEngine 已由 SonnetEngine 全面接替——入口/容器/设置键（modeSettings.pv）
+                           全部沿用，只有引擎实现换了。原 PVEngine 调用点以 sonnetMode 单例等价替换；
+                           旧的 AI 分析弹窗链路（ensurePVAnalysis）随引擎退役，sonnet 不消费 AI 情绪。 */
+                        import('../core/visualizers/sonnet/sonnetMode.js').then(async (m) => {
+                            await m.ensureSonnetEngine(pvContainer);
+                            m.updateSonnetEngine(audio ? audio.currentTime : 0);
+                            logInfo('shortcutsViewmode', '[PV Mode] SonnetEngine 初始化完成, lyrics:', typeof lyrics !== 'undefined' ? lyrics.length : 0, '条');
+                        }).catch((err) => {
+                            logError('shortcutsViewmode', '[PV Mode] SonnetEngine 初始化失败:', err);
+                        });
                     }
+                } else if (mode === 'tempera') {
+                    /* ★ 2026-09-30：凝彩 · Tempera（folia tempera 复刻）——独立第二 PV 模式。
+                       网点 screentone 构图块 + 文字动态反色，与诗镜 · Verse（sonnet 复刻）并存。 */
+                    playerContainer.classList.add('view-tempera');
+                    let temperaContainer = document.getElementById('temperaViewContainer');
+                    if (!temperaContainer) {
+                        temperaContainer = document.createElement('div');
+                        temperaContainer.id = 'temperaViewContainer';
+                        temperaContainer.className = 'tempera-view-container';
+                        playerContainer.appendChild(temperaContainer);
+                    }
+                    temperaContainer.style.display = 'block';
+                    import('../core/visualizers/tempera/temperaMode.js').then(async (m) => {
+                        await m.ensureTemperaRuntime(temperaContainer);
+                        logInfo('shortcutsViewmode', '[Tempera Mode] TemperaPixiRuntime 初始化完成, lyrics:', typeof lyrics !== 'undefined' ? lyrics.length : 0, '条');
+                    }).catch((err) => {
+                        logError('shortcutsViewmode', '[Tempera Mode] 初始化失败:', err);
+                    });
+                } else if (mode === 'scroll') {
+                    /* ★ 2026-10-01：长卷 · Scroll——连续横卷歌词（第三种 PV 形态）。
+                       已唱句留卷、三层视差、章节色带。 */
+                    playerContainer.classList.add('view-scroll');
+                    let scrollContainer = document.getElementById('scrollViewContainer');
+                    if (!scrollContainer) {
+                        scrollContainer = document.createElement('div');
+                        scrollContainer.id = 'scrollViewContainer';
+                        scrollContainer.className = 'scroll-view-container';
+                        playerContainer.appendChild(scrollContainer);
+                    }
+                    scrollContainer.style.display = 'block';
+                    import('../core/visualizers/scroll/scrollMode.js').then(async (m) => {
+                        await m.ensureScrollEngine(scrollContainer);
+                        m.updateScrollEngine(audio ? audio.currentTime : 0);
+                        logInfo('shortcutsViewmode', '[Scroll Mode] ScrollEngine 初始化完成, lyrics:', typeof lyrics !== 'undefined' ? lyrics.length : 0, '条');
+                    }).catch((err) => {
+                        logError('shortcutsViewmode', '[Scroll Mode] 初始化失败:', err);
+                    });
                 } else if (mode === 'tunnel') {
                     playerContainer.classList.add('view-tunnel');
                     let tunnelContainer = document.getElementById('tunnelViewContainer');
@@ -925,7 +954,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 /* ★ P4：默认（封面）模式显式标记 view-cover，作为手机版双页布局的样式作用域；
                    可视化模式（星雾/光曜等）由 mainVisManager 添加各自的 view-* 类，不标记 */
                 const isDefaultCoverMode = !(mainVisManager && mainVisManager.has(mode))
-                    && mode !== 'lyrics' && mode !== 'flyin' && mode !== 'wordcloud' && mode !== 'pv' && mode !== 'tunnel';
+                    && mode !== 'lyrics' && mode !== 'flyin' && mode !== 'wordcloud' && mode !== 'pv' && mode !== 'tunnel' && mode !== 'tempera' && mode !== 'scroll';
                 playerContainer.classList.toggle('view-cover', isDefaultCoverMode);
 
                 /* ★ P4：离开默认模式时退出手机版歌词页；每次切换后同步按钮态与预览文本 */
@@ -949,6 +978,29 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                     }
                     if (tunnelEngineInstance) {
                         tunnelEngineInstance.stop();
+                    }
+                    /* sonnet（PV 引擎替身）切走时挂起 Pixi 渲染循环。
+                       ★ 只在引擎已存在时才 import——否则每次切歌词/默认模式都会
+                       拉起 1.5MB 的 Pixi bundle（实测会把歌词模式首屏拖住）。 */
+                    if (window.__sonnetProbe) {
+                        import('../core/visualizers/sonnet/sonnetMode.js').then(m => m.suspendSonnetEngine()).catch(() => {});
+                    }
+                }
+                /* ★ 凝彩清理必须在 mode!=='pv' 守卫之外：切往 pv 时上面整块被跳过，
+                   凝彩 canvas 不隐藏 → verse 背景还是凝彩的（用户实测）。 */
+                if (mode !== 'tempera') {
+                    const temperaContainer = document.getElementById('temperaViewContainer');
+                    if (temperaContainer) temperaContainer.style.display = 'none';
+                    if (window.__temperaActive) {
+                        import('../core/visualizers/tempera/temperaMode.js').then(m => m.suspendTemperaRuntime()).catch(() => {});
+                    }
+                }
+                /* 长卷切走时挂起（同级清理，勿入 mode!=='pv' 守卫——同凝彩残留教训） */
+                if (mode !== 'scroll') {
+                    const scrollContainer = document.getElementById('scrollViewContainer');
+                    if (scrollContainer) scrollContainer.style.display = 'none';
+                    if (window.__scrollActive) {
+                        import('../core/visualizers/scroll/scrollMode.js').then(m => m.suspendScrollEngine()).catch(() => {});
                     }
                 }
 

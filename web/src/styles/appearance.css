@@ -152,3 +152,8 @@
     .appearance-mode-segment { flex-wrap: wrap; }
     .appearance-mode-btn { flex: 1 1 calc(50% - 2px); }
 }
+
+/* ★ 2026-10-02（用户实测「打开 tempera/scroll 预览框后概率性左侧无法点击」）：
+   预览是纯显示层，Pixi canvas 不需要接收指针事件——统一掐掉，
+   杜绝 canvas 任何形式的指针截获（控件栏自身 pointer-events:auto 不受影响）。 */
+#lyricPreviewContainer canvas { pointer-events: none; }

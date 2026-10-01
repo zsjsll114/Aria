@@ -934,7 +934,24 @@ async function loadConfigFromBackend() {
                     const data = await res.json();
                     let hasValidData = false;
                     if (data && data.settings && typeof data.settings === 'object' && Object.keys(data.settings).length > 0) {
-                        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(data.settings));
+                        /* ★ AI 令牌跨端保护（2026-09-30 根因修复）：ai 存在 settings.ai，
+                           但 server 端 save 可能来自令牌缺失的端 → 覆盖前必须保留两端
+                           中「有令牌的那一份」，否则每次同步都可能把令牌冲掉（实测两次）。 */
+                        let mergedSettings = data.settings;
+                        try {
+                            const localAi = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}').ai;
+                            const serverAi = data.settings.ai || data.ai || null;
+                            const keyOf = (a) => (a && ((a.apiKey && a.apiKey.length > 8 && a.apiKey)
+                                || (a.providerConfigs && a.providerConfigs[a.provider || 'openai']?.apiKey))) || '';
+                            const localKey = keyOf(localAi);
+                            const serverKey = keyOf(serverAi);
+                            if (serverAi && localKey && !serverKey) {
+                                mergedSettings = { ...data.settings, ai: localAi };  // 本地有令牌 → 不被覆盖
+                            } else if (serverKey && (!localKey || localKey !== serverKey)) {
+                                mergedSettings = { ...data.settings, ai: serverAi }; // server 有令牌 → 回灌本地
+                            }
+                        } catch (_mergeErr) { /* 合并失败按原样覆盖 */ }
+                        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(mergedSettings));
                         hasValidData = true;
                     }
                     if (data && data.playlists && Array.isArray(data.playlists) && data.playlists.length > 0) {
