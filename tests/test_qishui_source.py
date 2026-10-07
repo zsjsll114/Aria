@@ -300,7 +300,10 @@ with sync_playwright() as p:
         const tabs = Array.from(document.querySelectorAll('#rankTabs .source-btn'));
         const names = tabs.map(b => b.dataset.daily);
         const q = tabs.find(b => b.dataset.daily === 'qishui');
-        if (!q) return { err: 'no qishui daily tab', names };
+        /* ★ 探针失败字段刻意不叫 err：下面 out 里的 err 是**页面上那条合法的离线提示**
+           （"本机汽水服务未就绪"），两者同名会把「无 vendor 时的正确降级」误判成失败
+           —— CI（无 _eval/）一直红在这条上。 */
+        if (!q) return { probeErr: 'no qishui daily tab', names };
         const qLabel = q.textContent.trim();
         q.click();
         await new Promise(r => setTimeout(r, 9000));
@@ -314,8 +317,8 @@ with sync_playwright() as p:
         document.getElementById('rankingsOverlay')?.classList.remove('visible');
         return out;
     }""")
-    if daily.get("err"):
-        check("qishui-daily-tab-exists", False, daily["err"])
+    if daily.get("probeErr"):
+        check("qishui-daily-tab-exists", False, daily["probeErr"])
     else:
         check("qishui-daily-tab-exists", daily["names"] == ["qq", "kugou", "netease", "qishui"],
               "dailySrcOrder 必须含汽水且追加在末位。got=%s" % daily["names"])
@@ -376,9 +379,25 @@ with sync_playwright() as p:
            （顺序不能反：renderSelfPlatList 是缓存优先的 —— 已有卡片时后台刷新失败
              会被静默忽略、不覆盖成错误态。那是四平台共用的既有设计，不是汽水特有；
              这里要钉的是「没有缓存时的失败呈现」，所以放在第一次访问。） */
+        /* ★ 等「打桩状态真的落到入口上」再点（原来是死等 900ms）：
+           入口能否点击由 selfPlatMetaCache 决定，而它由后台 _refreshPlaylistDynamic
+           异步填充；无 vendor 的机器上 /api/selfhost/status 要十几秒，900ms 常落在
+           「缓存还没填」或「旧响应正覆盖新状态」的窗口里 —— 点下去会被「未登录」闸门
+           挡掉，表现成「卡片空、也没有报错」这种极难定位的失败（CI 上就红在这里）。
+           最多等 2s、命中即早退；等待结果与点击瞬间的入口状态都回传，失败能直接看出因。 */
+        const waitEntryStubState = async () => {
+          for (let i = 0; i < 20; i++) {
+            const e = document.querySelector('#playlistsList .selfplat-entry[data-selfplat="qishui"]');
+            const meta = (e && (e.querySelector('.playlist-meta') || {}).textContent) || '';
+            if (e && !e.classList.contains('selfplat-off') && /我的/.test(meta)) return true;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return false;
+        };
+
         stub.mode = 'unauth';
         pmod.renderPlaylistsView();
-        await new Promise(r => setTimeout(r, 900));        /* 等后台 _refreshPlaylistDynamic */
+        const stubStateOk = await waitEntryStubState();
         const entry = document.querySelector('#playlistsList .selfplat-entry[data-selfplat="qishui"]');
         if (!entry) { window.fetch = realFetch; return { err: 'no qishui selfplat entry' }; }
         const offClass = entry.classList.contains('selfplat-off');
@@ -386,30 +405,47 @@ with sync_playwright() as p:
 
         entry.click();
         let t0 = Date.now();
-        while (Date.now() - t0 < 6000 && !document.querySelector('#playlistsList .rank-error')) {
+        while (Date.now() - t0 < 6000
+               && !document.querySelector('#playlistsList .rank-error')
+               && document.querySelectorAll('#playlistsList .rank-board-card').length === 0) {
             await new Promise(r => setTimeout(r, 150));
         }
         const unauthEl = document.querySelector('#playlistsList .rank-error');
         const unauthText = unauthEl ? unauthEl.textContent.trim() : null;
+        const unauthProbe = {
+          hasError: !!unauthEl,
+          cards: document.querySelectorAll('#playlistsList .rank-board-card').length,
+          skeleton: !!document.querySelector('#playlistsList .skeleton'),
+          offAtClick: offClass,
+          inner: ((document.getElementById('playlistsList') || {}).innerHTML || '')
+              .replace(/\s+/g, ' ').slice(0, 150),
+        };
 
         /* ② 再切回「已登录」：回到列表重新进入，应渲染平台歌单卡片 */
         stub.mode = 'ok';
         pmod.renderPlaylistsView();
-        await new Promise(r => setTimeout(r, 400));
+        await waitEntryStubState();
         const entry2 = document.querySelector('#playlistsList .selfplat-entry[data-selfplat="qishui"]');
         if (entry2) entry2.click();
         t0 = Date.now();
         while (Date.now() - t0 < 6000
-               && document.querySelectorAll('#playlistsList .rank-board-card').length === 0) {
+               && document.querySelectorAll('#playlistsList .rank-board-card').length === 0
+               && !document.querySelector('#playlistsList .rank-error')) {
             await new Promise(r => setTimeout(r, 150));
         }
         const cards = Array.from(document.querySelectorAll('#playlistsList .rank-board-card'))
             .map(c => ((c.querySelector('.rank-board-name') || {}).textContent || '').trim());
         const createdByCount = (document.querySelector('#playlistsList .rank-board-count') || {}).textContent || '';
+        const okProbe = {
+          hasError: !!document.querySelector('#playlistsList .rank-error'),
+          errorText: ((document.querySelector('#playlistsList .rank-error') || {}).textContent || '').slice(0, 80),
+          skeleton: !!document.querySelector('#playlistsList .skeleton'),
+        };
 
         document.getElementById('playlistsCloseBtn')?.click();
         window.fetch = realFetch;
-        return { offClass, metaBefore, cards, createdByCount, unauthText };
+        return { offClass, metaBefore, cards, createdByCount, unauthText,
+                 stubStateOk, unauthProbe, okProbe };
     }""")
     if pl.get("err"):
         check("qishui-selfplat-entry-exists", False, pl["err"])
@@ -417,13 +453,19 @@ with sync_playwright() as p:
         check("qishui-selfplat-entry-exists", True, "meta=%r off=%s" % (pl["metaBefore"], pl["offClass"]))
         check("qishui-selfplat-entry-logged-in", pl["offClass"] is False,
               "状态缓存为已登录时入口不得置灰。meta=%r" % pl["metaBefore"])
+        # ★ 失败信息里带上诊断：这段过去失败时只报一个 [] 或 None，看不出是
+        #   「状态没落到入口（闸门挡掉点击）」还是「渲染了但映射错」。
         check("qishui-selfplat-cards-rendered",
-              pl["cards"][:2] == ["探针歌单甲", "探针歌单乙"], pl["cards"])
-        check("qishui-selfplat-card-count", "12" in (pl["createdByCount"] or ""), pl["createdByCount"])
+              pl["cards"][:2] == ["探针歌单甲", "探针歌单乙"],
+              "cards=%s ｜ 点击前状态就位=%s ｜ 点击后=%s"
+              % (pl["cards"], pl.get("stubStateOk"), pl.get("okProbe")))
+        check("qishui-selfplat-card-count", "12" in (pl["createdByCount"] or ""),
+              "count=%r" % pl["createdByCount"])
         check("qishui-playlists-unauth-explicit",
               "未登录" in (pl["unauthText"] or ""),
               "后端 200+{ok:false,UNAUTHENTICATED} 必须映射成「未登录」，"
-              "否则渲染成空账号、用户不会去登录。got=%r" % pl["unauthText"])
+              "否则渲染成空账号、用户不会去登录。got=%r ｜ %s"
+              % (pl["unauthText"], pl.get("unauthProbe")))
         check("qishui-playlists-no-fake-empty",
               "暂无歌单" not in (pl["unauthText"] or ""),
               "未登录不得显示成「该账号暂无歌单」。got=%r" % pl["unauthText"])

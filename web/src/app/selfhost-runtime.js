@@ -21,15 +21,26 @@ function loadPrefs() {
   return { enabled: { kugou: false, qq: false, netease: false }, dailySource: 'netease' };
 }
 
+/* ★ 乱序响应守卫（2026-10-07）：/api/selfhost/status 在**没有 vendor 的机器**上很慢
+   （要逐个探测/尝试拉起副进程，实测可到十几秒），于是同一时刻常有两个请求在飞：
+   先发的那个**后**回来，会把刚刷出来的新状态覆盖成旧值 —— 表现是
+   「刚刷新/刚扫码成功，界面又变回离线」这类难查的抖动。
+   用序号把过期响应丢掉：只允许最新一次请求的结果落进缓存。 */
+let _statusSeq = 0;
+
 async function fetchStatus(force = false) {
   const now = Date.now();
   if (!force && _statusCache && now - _statusAt < _STATUS_TTL) return _statusCache;
+  const seq = ++_statusSeq;
   try {
     const res = await fetch('/api/selfhost/status');
     if (!res.ok) throw new Error(String(res.status));
-    _statusCache = await res.json();
+    const data = await res.json();
+    if (seq !== _statusSeq) return _statusCache;   /* 过期响应：丢弃，别覆盖较新的状态 */
+    _statusCache = data;
     _statusAt = Date.now();
   } catch (e) {
+    if (seq !== _statusSeq) return _statusCache;
     _statusCache = null;
     _statusAt = Date.now();
   }
