@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Aria",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "identifier": "com.lyrics.player",
   "build": {
     "frontendDist": "dist-stub"
@@ -20,7 +20,8 @@
         "fullscreen": false,
         "visible": false,
         "decorations": false,
-        "transparent": true
+        "transparent": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       },
       {
         "label": "desktop_lyrics",
@@ -55,7 +56,21 @@
             "allow-desktop-lyrics-pos",
             "allow-desktop-lyrics-click-through",
             "allow-desktop-lyrics-start-drag",
-            "allow-desktop-lyrics-resize"
+            "allow-desktop-lyrics-resize",
+            "allow-native-audio-status",
+            "allow-native-audio-devices",
+            "allow-native-audio-check-exclusive",
+            "allow-native-audio-load",
+            "allow-native-audio-play",
+            "allow-native-audio-pause",
+            "allow-native-audio-seek",
+            "allow-native-audio-set-volume",
+            "allow-native-audio-set-eq",
+            "allow-native-audio-set-spatial",
+            "allow-native-audio-set-rate",
+            "allow-native-audio-set-output",
+            "allow-native-audio-snapshot",
+            "allow-native-audio-release-output"
           ]
         },
         {
@@ -86,7 +101,21 @@
             "allow-desktop-lyrics-pos",
             "allow-desktop-lyrics-click-through",
             "allow-desktop-lyrics-start-drag",
-            "allow-desktop-lyrics-resize"
+            "allow-desktop-lyrics-resize",
+            "allow-native-audio-status",
+            "allow-native-audio-devices",
+            "allow-native-audio-check-exclusive",
+            "allow-native-audio-load",
+            "allow-native-audio-play",
+            "allow-native-audio-pause",
+            "allow-native-audio-seek",
+            "allow-native-audio-set-volume",
+            "allow-native-audio-set-eq",
+            "allow-native-audio-set-spatial",
+            "allow-native-audio-set-rate",
+            "allow-native-audio-set-output",
+            "allow-native-audio-snapshot",
+            "allow-native-audio-release-output"
           ]
         }
       ]

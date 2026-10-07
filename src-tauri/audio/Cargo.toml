@@ -1,0 +1,43 @@
+[package]
+name = "aria-audio"
+version = "0.1.0"
+edition = "2021"
+description = "Aria native audio engine (WASAPI shared/exclusive, symphonia decode, EQ, automix crossfade)"
+
+# ★ 独立 crate，刻意不依赖 Tauri：
+#   ① 编译快 —— 改一行 DSP 不用重编整个 Tauri（release 档 lto=fat 极慢）；
+#   ② 可 CLI 实测 —— bin/audio_probe 能脱离 WebView2 直接放声音、量时钟，
+#      这是排查「高亮抖动 / 音量不对 / seek 不准」唯一可信的环境；
+#   ③ 边界清晰 —— 引擎只认样本和命令，不认窗口、不认 IPC。
+#   打包时被 src-tauri 以 path 依赖引入（见 src-tauri/Cargo.toml）。
+
+# ★ 显式声明自己是 workspace root：src-tauri/Cargo.toml 没有 [workspace] 段，
+#   若不声明，cargo 会在两处产生歧义（并可能把 audio/target 卷进 Tauri 的构建缓存）。
+#   Tauri 侧通过 path 依赖引用本 crate 是允许的——path 依赖可以跨 workspace。
+[workspace]
+
+[lib]
+name = "aria_audio"
+path = "src/lib.rs"
+
+[[bin]]
+name = "audio-probe"
+path = "src/bin/audio_probe.rs"
+
+[dependencies]
+wasapi = "0.24"
+# 只用来读本机 http://127.0.0.1:8001 的流代理，因此**刻意关掉默认的 TLS feature**：
+# 既不需要 rustls/native-tls 那一大坨依赖，也让绿色版体积不受影响。
+# ★ 如果哪天要直连 https 上游音源，请重新审视这个决定——但直连上游本身就是要避免的。
+ureq = { version = "2", default-features = false }
+# 0.5.4：0.6.x 重组了 codecs 模块（audio/video 拆分）且 API 仍在震荡。
+# 这里要的是稳定解码能力，不是最新 API（与 spike 同口径，已验证 mp3/flac/mp4 全部可解）。
+symphonia = { version = "0.5.4", features = [
+    "mp3",
+    "flac",
+    "wav",
+    "aac",
+    "isomp4",
+    "ogg",
+    "vorbis",
+] }

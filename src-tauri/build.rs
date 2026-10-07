@@ -17,6 +17,23 @@ fn main() {
             "desktop_lyrics_click_through",
             "desktop_lyrics_start_drag",
             "desktop_lyrics_resize",
+            /* 原生音频引擎（Phase 2b）。★ 这个清单必须与 lib.rs 的
+               generate_handler! 严格一致 —— 漏一个不会编译失败，而是
+               运行期 invoke 报 "not allowed"，只有真机点到那个功能才会发现。 */
+            "native_audio_status",
+            "native_audio_devices",
+            "native_audio_check_exclusive",
+            "native_audio_load",
+            "native_audio_play",
+            "native_audio_pause",
+            "native_audio_seek",
+            "native_audio_set_volume",
+            "native_audio_set_eq",
+            "native_audio_set_spatial",
+            "native_audio_set_rate",
+            "native_audio_set_output",
+            "native_audio_snapshot",
+            "native_audio_release_output",
         ])),
     )
     .unwrap()

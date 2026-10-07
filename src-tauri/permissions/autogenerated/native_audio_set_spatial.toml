@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-audio-set-spatial"
+description = "Enables the native_audio_set_spatial command without any pre-configured scope."
+commands.allow = ["native_audio_set_spatial"]
+
+[[permission]]
+identifier = "deny-native-audio-set-spatial"
+description = "Denies the native_audio_set_spatial command without any pre-configured scope."
+commands.deny = ["native_audio_set_spatial"]

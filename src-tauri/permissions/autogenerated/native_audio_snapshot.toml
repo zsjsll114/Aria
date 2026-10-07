@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-audio-snapshot"
+description = "Enables the native_audio_snapshot command without any pre-configured scope."
+commands.allow = ["native_audio_snapshot"]
+
+[[permission]]
+identifier = "deny-native-audio-snapshot"
+description = "Denies the native_audio_snapshot command without any pre-configured scope."
+commands.deny = ["native_audio_snapshot"]

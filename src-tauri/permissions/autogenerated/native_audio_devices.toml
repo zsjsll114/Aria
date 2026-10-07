@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-audio-devices"
+description = "Enables the native_audio_devices command without any pre-configured scope."
+commands.allow = ["native_audio_devices"]
+
+[[permission]]
+identifier = "deny-native-audio-devices"
+description = "Denies the native_audio_devices command without any pre-configured scope."
+commands.deny = ["native_audio_devices"]

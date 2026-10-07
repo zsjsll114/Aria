@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-audio-check-exclusive"
+description = "Enables the native_audio_check_exclusive command without any pre-configured scope."
+commands.allow = ["native_audio_check_exclusive"]
+
+[[permission]]
+identifier = "deny-native-audio-check-exclusive"
+description = "Denies the native_audio_check_exclusive command without any pre-configured scope."
+commands.deny = ["native_audio_check_exclusive"]

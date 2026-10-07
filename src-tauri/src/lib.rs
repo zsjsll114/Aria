@@ -6,6 +6,12 @@ use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
+/* 原生音频引擎的 IPC 层（Phase 2b）。
+   ★ 单独一个模块而不是塞进本文件：本文件是「Tauri 壳与 sidecar 生命周期」，
+   音频是另一件事，混在一起会让本来就长的 run() 更难读。 */
+mod native_audio;
+use native_audio::NativeAudioState;
+
 /* 轮询等待本地服务端口就绪（Python 冷启动可能需要数秒，
    此前 WebView 立即导航会命中"连接拒绝"错误页，表现为
    启动时只有一层透明边框、且需手动操作后才恢复） */
@@ -337,6 +343,7 @@ pub fn run() {
             children: Mutex::new(Vec::new()),
             running: AtomicBool::new(false),
         })
+        .manage(NativeAudioState::new())
         .invoke_handler(tauri::generate_handler![
             sidecar_status,
             sidecar_start,
@@ -347,7 +354,21 @@ pub fn run() {
             desktop_lyrics_pos,
             desktop_lyrics_click_through,
             desktop_lyrics_start_drag,
-            desktop_lyrics_resize
+            desktop_lyrics_resize,
+            native_audio::native_audio_status,
+            native_audio::native_audio_devices,
+            native_audio::native_audio_check_exclusive,
+            native_audio::native_audio_load,
+            native_audio::native_audio_play,
+            native_audio::native_audio_pause,
+            native_audio::native_audio_seek,
+            native_audio::native_audio_set_volume,
+            native_audio::native_audio_set_eq,
+            native_audio::native_audio_set_spatial,
+            native_audio::native_audio_set_rate,
+            native_audio::native_audio_set_output,
+            native_audio::native_audio_snapshot,
+            native_audio::native_audio_release_output
         ])
         .setup(|app| {
             // 启动时确定性拉起 Python(8001)/Node(18089) sidecar,

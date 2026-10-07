@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-audio-pause"
+description = "Enables the native_audio_pause command without any pre-configured scope."
+commands.allow = ["native_audio_pause"]
+
+[[permission]]
+identifier = "deny-native-audio-pause"
+description = "Denies the native_audio_pause command without any pre-configured scope."
+commands.deny = ["native_audio_pause"]

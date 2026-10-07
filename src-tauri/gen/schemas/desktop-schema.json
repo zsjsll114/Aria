@@ -591,6 +591,90 @@
           "markdownDescription": "Enables the desktop_lyrics_start_drag command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_audio_check_exclusive command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-check-exclusive",
+          "markdownDescription": "Enables the native_audio_check_exclusive command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-devices",
+          "markdownDescription": "Enables the native_audio_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_load command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-load",
+          "markdownDescription": "Enables the native_audio_load command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-pause",
+          "markdownDescription": "Enables the native_audio_pause command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-play",
+          "markdownDescription": "Enables the native_audio_play command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_release_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-release-output",
+          "markdownDescription": "Enables the native_audio_release_output command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-seek",
+          "markdownDescription": "Enables the native_audio_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_set_eq command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-set-eq",
+          "markdownDescription": "Enables the native_audio_set_eq command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_set_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-set-output",
+          "markdownDescription": "Enables the native_audio_set_output command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_set_rate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-set-rate",
+          "markdownDescription": "Enables the native_audio_set_rate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_set_spatial command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-set-spatial",
+          "markdownDescription": "Enables the native_audio_set_spatial command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-set-volume",
+          "markdownDescription": "Enables the native_audio_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-snapshot",
+          "markdownDescription": "Enables the native_audio_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_audio_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-audio-status",
+          "markdownDescription": "Enables the native_audio_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the page_loaded command without any pre-configured scope.",
           "type": "string",
           "const": "allow-page-loaded",
@@ -649,6 +733,90 @@
           "type": "string",
           "const": "deny-desktop-lyrics-start-drag",
           "markdownDescription": "Denies the desktop_lyrics_start_drag command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_check_exclusive command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-check-exclusive",
+          "markdownDescription": "Denies the native_audio_check_exclusive command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-devices",
+          "markdownDescription": "Denies the native_audio_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_load command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-load",
+          "markdownDescription": "Denies the native_audio_load command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-pause",
+          "markdownDescription": "Denies the native_audio_pause command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-play",
+          "markdownDescription": "Denies the native_audio_play command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_release_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-release-output",
+          "markdownDescription": "Denies the native_audio_release_output command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-seek",
+          "markdownDescription": "Denies the native_audio_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_set_eq command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-set-eq",
+          "markdownDescription": "Denies the native_audio_set_eq command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_set_output command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-set-output",
+          "markdownDescription": "Denies the native_audio_set_output command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_set_rate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-set-rate",
+          "markdownDescription": "Denies the native_audio_set_rate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_set_spatial command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-set-spatial",
+          "markdownDescription": "Denies the native_audio_set_spatial command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-set-volume",
+          "markdownDescription": "Denies the native_audio_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-snapshot",
+          "markdownDescription": "Denies the native_audio_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_audio_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-audio-status",
+          "markdownDescription": "Denies the native_audio_status command without any pre-configured scope."
         },
         {
           "description": "Denies the page_loaded command without any pre-configured scope.",
