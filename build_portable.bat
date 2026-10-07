@@ -114,6 +114,13 @@ if not exist "%OUT%\server.exe" (echo [ERROR] server.exe not copied & goto fail)
 
 if exist "%ARIA_EXE%" (copy /y "%ARIA_EXE%" "%OUT%\Aria.exe" >nul && echo       Aria.exe OK) else (echo       [WARN] Aria.exe not built)
 
+rem --- license + third-party notices (AGPL-3.0: 分发物必须随附许可证与来源声明) ---
+copy /y "%ROOT%LICENSE" "%OUT%\LICENSE.txt" >nul
+if not exist "%OUT%\LICENSE.txt" (echo [ERROR] LICENSE not copied & goto fail)
+copy /y "%ROOT%THIRD_PARTY_NOTICES.md" "%OUT%\THIRD_PARTY_NOTICES.md" >nul
+if not exist "%OUT%\THIRD_PARTY_NOTICES.md" (echo [ERROR] THIRD_PARTY_NOTICES not copied & goto fail)
+echo       LICENSE.txt + THIRD_PARTY_NOTICES.md OK
+
 rem --- web frontend (static only, no user data) ---
 rem   web\src\font mixes app fonts with the author's private collection (the font picker
 rem   just lists that directory - see 215-multilang-fonts.js). The private ones are

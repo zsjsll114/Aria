@@ -1,6 +1,6 @@
 {
   "name": "aria-player",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "歌词播放器 - 桌面版",
   "scripts": {
     "tauri": "tauri",
@@ -12,7 +12,7 @@
     "version:sync": "python scripts/sync_version.py"
   },
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.0",

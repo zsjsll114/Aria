@@ -36,3 +36,16 @@ Aria 歌词播放器（绿色便携版）使用说明
 
 五、想删除？
   直接删除整个文件夹即可，无注册表、无系统服务残留。
+
+六、许可证与源码（本包按 AGPL-3.0 分发）
+  - 本程序整体按 GNU Affero General Public License v3.0（AGPL-3.0）发布，
+    许可证全文见包内 LICENSE.txt。
+  - 本程序包含源自 chthollyphile/folia-major（AGPL-3.0）的代码（「诗镜 · Verse」
+    与「版画 · Tempera」两个视觉引擎等），以及改作自 JPV Lyrics Motion Kit
+    （AGPL-3.0，github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit）的隧道模式入场主题、
+    PV 背景形状场与 Cadenza 光束扫描。第三方许可与逐个文件的来源清单见包内
+    THIRD_PARTY_NOTICES.md。
+  - 按 AGPL-3.0 第 13 条，你有权取得本程序的完整源码：
+      https://github.com/zsjsll114/Aria
+  - 版权人自有部分亦可由版权人按 MIT 等其它条款单独授权；但本分发包是
+    AGPL-3.0 的组合作品。
