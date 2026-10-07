@@ -24,6 +24,24 @@ LINE_LEVEL = """[
   { "start": 19000, "text": "第五行歌词凑足行数下限" }
 ]"""
 
+# ★ 第 8 节专用种子（10 行）：293 的判据里有一道 WORD_UPGRADE_MIN_LINES=8
+#   （2026-10-03 由 5 提到 8，见 src/config/wordPerChar.js：5 行样本下匹配率几乎必然虚高），
+#   而 LINE_LEVEL 只有 5 行 —— 会被"当前歌词只有 5 行，样本太小不自动换"直接挡下，
+#   连抓取都不会发生，看起来就像"升级链路坏了"。这一节被测的是**排期守卫**
+#   （数组被换掉后还该不该继续试），与行数策略无关，所以给它够长的种子。
+WORD_SEED = """[
+  { "start": 0,     "text": "第一行歌词内容" },
+  { "start": 4000,  "text": "第二行歌词内容比较长一点" },
+  { "start": 9000,  "text": "第三行歌词" },
+  { "start": 14000, "text": "第四行 收尾" },
+  { "start": 19000, "text": "第五行歌词凑足行数下限" },
+  { "start": 24000, "text": "第六行继续往下走" },
+  { "start": 29000, "text": "第七行也要有内容" },
+  { "start": 34000, "text": "第八行歌词内容" },
+  { "start": 39000, "text": "第九行歌词内容更长一些" },
+  { "start": 44000, "text": "第十行歌词收尾" }
+]"""
+
 
 def check(name, ok, detail=""):
     RESULTS.append((name, bool(ok), detail))
@@ -55,6 +73,11 @@ def main():
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         # ★ 没有这一条，收尾时任何一次 evaluate 卡住就把整份脚本挂死（实测汇总行都打不出来）
         page.set_default_timeout(20000)
+        # ★ 失败时能直接说出「293 被哪一道门挡下」：它的每道门都有 [WordUpgrade] 日志，
+        #   而"没应用"这个现象本身看不出是样本行数不够、候选不够格，还是排期守卫
+        #   因为歌被切走而放弃 —— 这三者处置完全不同（前者改测试，后两者是产品行为）。
+        logs = []
+        page.on("console", lambda m: logs.append(m.text))
         try:
             page.goto(URL, wait_until="load")
             try:
@@ -287,7 +310,19 @@ def main():
             }""")
             guard = page.evaluate("""async (linesJson) => {
                 const u = await import('/src/app/293-word-upgrade.js');
-                const seed = JSON.parse(linesJson);
+                /* ★ 假歌词的时间轴必须与**当前音频时长**同量级：293 有一道
+                   「候选时长 vs 音频时长 ±35%」的反误替换校验，种子若固定停在 44s、
+                   而页面上的歌是 259s，就会被判成"疑似别的歌"整条跳过（实测轨迹：
+                   `kuwo/amll/lrclib 候选时长 44s 与音频 259s 差 83%，疑似别的歌，不换`）。
+                   本节测的是**排期守卫**，不是时长策略 —— 按音频时长等比例铺开，
+                   文本仍与候选一致（覆盖率 100%），只有时间轴变得合理。 */
+                const rawSeed = JSON.parse(linesJson);
+                const durMs = (globalThis.audio && Number.isFinite(globalThis.audio.duration))
+                    ? globalThis.audio.duration * 1000 : 0;
+                const seed = rawSeed.map((l, i, arr) => Object.assign({}, l, {
+                    start: durMs > 30000 ? Math.round(durMs * 0.95 * i / arr.length) : l.start,
+                }));
+                globalThis.__wordSeed = seed;      /* 下面"重新排期"那节复用同一份时间轴 */
                 /* ★ 假候选**在取词那一刻**从 globalThis.lyrics 现算：
                    这样不管守卫用的是排期时的快照还是执行时的当前数组，文本都对得上，
                    被测的就只剩「排期守卫」这一件事。 */
@@ -313,34 +348,50 @@ def main():
                 globalThis.lyrics = swapped;
                 u.maybeUpgradeToWordLyrics(swapped);
                 await new Promise(res => setTimeout(res, 4200));
-                return { applied: globalThis.__applied.slice(),
+                return { applied: globalThis.__applied.slice(), seedN: seed.length,
                          song: (globalThis.currentSongData || {}).id,
                          lines: (globalThis.lyrics || []).length };
-            }""", LINE_LEVEL)
+            }""", WORD_SEED)
             applied = guard["applied"]
-            check("upgrade_survives_array_swap", len(applied) == 1, guard)
-            if applied:
+            # ★ 只数**本用例种子**的应用次数（行数可辨）：本节把 autoUpgradeWordLyrics
+            #   打开了，应用自己也会给当前真歌排期一次升级（实测多出一条 n=83 的记录），
+            #   那是与本节无关的活动，不该打乱"数组被换掉后仍应恰好应用一次"的断言。
+            seeded = [a for a in applied if a.get("n") == guard.get("seedN")]
+            check("upgrade_survives_array_swap", len(seeded) == 1,
+                  "本用例种子应用 %d 次（全部=%s）｜轨迹=%s"
+                  % (len(seeded), applied, [x for x in logs if "WordUpgrade" in x][-4:]))
+            if seeded:
                 check("upgrade_reports_match_rate",
-                      (applied[0]["opts"] or {}).get("upgradeRate", 0) >= 0.9, applied[0])
+                      (seeded[0]["opts"] or {}).get("upgradeRate", 0) >= 0.9, seeded[0])
                 check("upgrade_not_silent",
-                      (applied[0]["opts"] or {}).get("silent") is not True, applied[0])
+                      (seeded[0]["opts"] or {}).get("silent") is not True, seeded[0])
 
-            # 一首歌只试一次：不该反复打网络
+            # 一首歌只试一次：不该反复打网络（同样只数本用例种子）
             page.wait_for_timeout(2000)
-            again = page.evaluate("() => ({ n: globalThis.__applied.length })")
+            again = page.evaluate(
+                "(n) => ({ n: (globalThis.__applied || []).filter(a => a.n === n).length })",
+                guard.get("seedN"))
             check("upgrade_tries_once_per_song", again["n"] == 1, again)
 
             # 开关点亮时 resetWordUpgradeTracker 要能重新排期
-            rearmed = page.evaluate("""async () => {
+            # ★ 自备一份歌词：上一节跑完后 globalThis.lyrics 可能已被清空（切歌/重渲染/
+            #   歌词面板复位），依赖残留值就成了看运气 —— 实测这里拿到过空数组，
+            #   于是 lines<2 直接 return，看起来像"开关没生效"。
+            rearmed = page.evaluate("""async (linesJson) => {
                 const u = await import('/src/app/293-word-upgrade.js');
                 appSettings.lyrics.autoUpgradeWordLyrics = true;
                 u.resetWordUpgradeTracker();
-                globalThis.lyrics = globalThis.lyrics.map(l => Object.assign({}, l));
+                globalThis.lyrics = (globalThis.__wordSeed || JSON.parse(linesJson))
+                    .map(l => Object.assign({}, l));
                 u.maybeUpgradeToWordLyrics(globalThis.lyrics);
                 await new Promise(res => setTimeout(res, 4200));
-                return { n: globalThis.__applied.length, lines: (globalThis.lyrics || []).length };
-            }""")
-            check("reset_tracker_rearms_attempt", rearmed["n"] == 2, rearmed)
+                return { applied: globalThis.__applied.slice(),
+                         lines: (globalThis.lyrics || []).length };
+            }""", WORD_SEED)
+            rearmed_n = len([a for a in (rearmed.get("applied") or [])
+                             if a.get("n") == guard.get("seedN")])
+            check("reset_tracker_rearms_attempt", rearmed_n == 2,
+                  "种子应用 %d 次（期望 2）｜%s" % (rearmed_n, rearmed))
 
         finally:
             # ★ 无论中途断言是否抛错，都把两个键钉回出厂值：这个 E2E 写的是真实

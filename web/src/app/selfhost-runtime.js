@@ -21,30 +21,37 @@ function loadPrefs() {
   return { enabled: { kugou: false, qq: false, netease: false }, dailySource: 'netease' };
 }
 
-/* ★ 乱序响应守卫（2026-10-07）：/api/selfhost/status 在**没有 vendor 的机器**上很慢
-   （要逐个探测/尝试拉起副进程，实测可到十几秒），于是同一时刻常有两个请求在飞：
-   先发的那个**后**回来，会把刚刷出来的新状态覆盖成旧值 —— 表现是
-   「刚刷新/刚扫码成功，界面又变回离线」这类难查的抖动。
-   用序号把过期响应丢掉：只允许最新一次请求的结果落进缓存。 */
+/* ★ 状态请求的两条纪律（2026-10-07，缺一条都会出真事故）：
+   1) **并发合并**：日推/歌单一打开就并行问 4 个平台，每个 dayRecommend 都先
+      fetchStatus()。不去重会同时打出 4 个 /status —— 而第 2 条会让"不是最新的"
+      那几个响应被丢弃、调用方拿到 null，结果**日推一行都不渲染**（实测踩到）。
+   2) **乱序守卫**：/api/selfhost/status 在没有 vendor 的机器上很慢（要逐个探测/
+      尝试拉起副进程，实测可到十几秒），先发的慢响应后回来会把刚刷出的新状态
+      覆盖成旧值 —— 表现是「刚刷新/刚扫码成功，界面又变回离线」。用序号丢弃过期响应。
+   两条合起来的正确形状：同一时刻只允许一个在飞，其余调用共享同一个 promise。 */
 let _statusSeq = 0;
+let _statusInflight = null;
 
 async function fetchStatus(force = false) {
   const now = Date.now();
   if (!force && _statusCache && now - _statusAt < _STATUS_TTL) return _statusCache;
+  if (_statusInflight) return _statusInflight;     /* 合并：别再打第二个请求 */
   const seq = ++_statusSeq;
-  try {
-    const res = await fetch('/api/selfhost/status');
-    if (!res.ok) throw new Error(String(res.status));
-    const data = await res.json();
-    if (seq !== _statusSeq) return _statusCache;   /* 过期响应：丢弃，别覆盖较新的状态 */
-    _statusCache = data;
-    _statusAt = Date.now();
-  } catch (e) {
-    if (seq !== _statusSeq) return _statusCache;
-    _statusCache = null;
-    _statusAt = Date.now();
-  }
-  return _statusCache;
+  _statusInflight = (async () => {
+    try {
+      const res = await fetch('/api/selfhost/status');
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (seq === _statusSeq) { _statusCache = data; _statusAt = Date.now(); }
+    } catch (err) {
+      logWarn('selfhost', '[status] 查询失败:', (err && err.message) || err);
+      if (seq === _statusSeq) { _statusCache = null; _statusAt = Date.now(); }
+    } finally {
+      _statusInflight = null;
+    }
+    return _statusCache;
+  })();
+  return _statusInflight;
 }
 
 export function selfhostEnabled(platform) {

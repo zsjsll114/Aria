@@ -127,6 +127,19 @@ def main():
             const { cf, dd } = globalThis.__am;
             const a = dd.getActiveAudio();
             a.currentTime = a.duration - 7.5;
+            /* ★ 先等这次 seek 彻底落地，再手动派 timeupdate 触发 ARM。
+               `seeking` 是异步派发的：若它落在 ARM **之后**，crossfader 的干预探针
+               （A 的 pause/seeking/emptied，见 crossfader.js:_armInterveneProbes）
+               会把这次 seek 判成"用户干预"当场中止本轮 —— 实测表现是 phase 一直
+               IDLE，后面 b-started / swap / live-binding 全跟着红。
+               data: URL 在慢机器上 seek 还常伴随一次重缓冲（日志会有
+               「中途重缓冲 t=… bufferedEnd=…」），所以必须等 seeked 真到。 */
+            await new Promise(res => {
+                if (!a.seeking) { setTimeout(res, 200); return; }
+                a.addEventListener('seeked', () => res(), { once: true });
+                setTimeout(res, 4000);                    /* 兜底：别把整份脚本挂死 */
+            });
+            await new Promise(res => setTimeout(res, 150));   /* 让 seeking/seeked 的余波走完 */
             a.dispatchEvent(new Event('timeupdate'));
             /* _armAndGo 异步：决策+分析 B+预载+canplay 探针，轮询到 CROSSING */
             for (let i = 0; i < 80; i++) {
@@ -170,7 +183,10 @@ def main():
         check("crossing-completed", done["phase"] == "IDLE" and done["i"] < 290, done)
         check("active-deck-is-old-shadow", done["swapped"], done)
         check("live-binding-follows", done["globalAudioIsB"], done)
-        check("b-keeps-playing", done["bTime"] > 3.0, done)
+        # ★ 阈值按**实际交叉时长**给，不按文件头那句旧注释（写 6s，实际决策 overlap=3s）：
+        #   交叉结束时 B 的时间正好走到 overlap 附近（实测 2.9s），>3.0 会卡在边界上。
+        #   要钉的性质是"B 在交叉期间一直在推进"，不是某个具体秒数。
+        check("b-keeps-playing", done["bTime"] > 1.0, done)
 
         # —— 5. 元数据同步：标题/索引/进度条总时长 ——
         meta = page.evaluate("""() => ({

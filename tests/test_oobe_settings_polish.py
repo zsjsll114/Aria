@@ -228,17 +228,37 @@ def main():
                     || sec.querySelector('.setting-row') || sec.firstElementChild);
                 if (!first) return null;
                 return { cw: body.clientWidth, x: Math.round(first.getBoundingClientRect().x * 10) / 10,
-                         scrollH: body.scrollHeight, clientH: body.clientHeight };
+                         scrollH: body.scrollHeight, clientH: body.clientHeight,
+                         /* 外观节是**两栏**（左侧模式栏），首元素 x 天然比别人靠右，
+                            不能拿它当"单栏长页"基准，否则"左右不跳"永远是假红 */
+                         twoCol: !!sec.querySelector('[data-mode-section]') };
             }""", tab)
 
-        # 短页（关于，不出滚动条）与长页（播放/界面，一定出）对比：内容宽度与左边界都得不变
-        short = probe("about")
+        # ★ 不再写死"关于页一定短"：关于页现在承载许可与第三方声明（约 270 行），
+        #   高度早就超过视口了 —— 写死节名只会随内容增长再次变红。
+        #   被测的是「scrollbar-gutter 让内容宽度/左边界在"有滚动条/无滚动条"两种页面上
+        #   都保持不变」，与具体是哪一节无关，所以这里**动态挑**一个真的不出滚动条的节
+        #   （以及一个一定出的节）来对比。
+        tabs = page.evaluate("() => [...document.querySelectorAll('.settings-section[data-section]')]"
+                             ".map(s => s.dataset.section)")
+        scan = []
+        for t in tabs:
+            m = probe(t)
+            page.wait_for_timeout(180)
+            if m:
+                m["tab"] = t
+                scan.append(m)
+        # 两栏节（外观）不参与对比：它的首元素 x 天然靠右（见 probe 里的 twoCol 说明）
+        single = [s for s in scan if not s.get("twoCol")]
+        shorts = [s for s in single if s["scrollH"] <= s["clientH"] + 1]
+        longs = [s for s in single if s["scrollH"] > s["clientH"] + 1]
+        short = shorts[0] if shorts else None
+        long = longs[0] if longs else None
+        back = probe(short["tab"]) if short else None
         page.wait_for_timeout(400)
-        long = probe("playback")
-        page.wait_for_timeout(400)
-        back = probe("about")
-        check("short-page-really-has-no-scrollbar", short and short["scrollH"] <= short["clientH"] + 1, short)
-        check("long-page-really-scrolls", long and long["scrollH"] > long["clientH"] + 1, long)
+        scan_brief = [{k: s[k] for k in ("tab", "scrollH", "clientH", "twoCol")} for s in scan]
+        check("short-page-really-has-no-scrollbar", bool(short), {"short": short, "scan": scan_brief})
+        check("long-page-really-scrolls", bool(long), {"long": long, "scan": scan_brief})
         check("content-width-stable-across-tabs", short and long and short["cw"] == long["cw"],
               {"short": short, "long": long})
         check("no-h-shift-between-tabs", short and long and abs(short["x"] - long["x"]) < 0.6,

@@ -44,10 +44,14 @@ def main():
                               content_type="application/json")
             return h
 
+        # ★ 字段名必须与后端一致：selfhost_service 的 /status 回的是 **loggedIn**（驼峰，
+        #   见 selfhost_service.py 的 out[name] = {...'loggedIn': logged_in...}），
+        #   前端 isReady/_refreshPlaylistDynamic 也只认 loggedIn —— 这里曾写成
+        #   logged_in（下划线），于是三平台全被判成"未登录"，日推一行都渲染不出来。
         page.route("**/api/selfhost/status",
-                   route_handler("", 200, {"netease": {"alive": True, "logged_in": True},
-                                           "qq": {"alive": True, "logged_in": True},
-                                           "kugou": {"alive": True, "logged_in": True}}))
+                   route_handler("", 200, {"netease": {"alive": True, "loggedIn": True},
+                                           "qq": {"alive": True, "loggedIn": True},
+                                           "kugou": {"alive": True, "loggedIn": True}}))
         page.route("**/api/selfhost/netease/proxy**", route_handler("", 200, NETEASE_DAILY))
         page.route("**/api/selfhost/kugou/proxy**", route_handler("", 500, {"err": "off"}))
 
