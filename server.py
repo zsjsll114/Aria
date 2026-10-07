@@ -38,7 +38,7 @@ PORT = 8001
 #   package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml 的版本号
 #   都由 scripts/sync_version.py 从这里同步出去，CI 用 --check 门禁防漂移。
 #   改版本只许改这一行，别去动那三处。
-SERVER_VERSION = '2.0.0'
+SERVER_VERSION = '2.1.0'
 
 # ★ 监听地址：默认只绑本机回环（127.0.0.1）。
 #   历史行为是绑 ""（等价 0.0.0.0 全接口），意味着同网段任何设备都能直接访问
@@ -97,6 +97,7 @@ DIRECTORY = WEB_DIR
 import shutil
 import local_music_server
 import qq_resolver
+import qq_qrc
 import agg_resolver
 import selfhost_service
 import remote_bus
@@ -169,6 +170,80 @@ def _http_get_bytes(url, headers, timeout=12):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read(), dict(r.headers)
+
+
+# ==================== QQ 逐字歌词（QRC）第一方链路 ====================
+# 背景：vendor 的 /getLyric 走 fcg_query_lyric_new.fcg，**只有普通 LRC**，
+#      翻译恒空、crypt=1 时还是密文，逐字更是完全没有。QRC 逐字 + 翻译 +
+#      罗马音只存在于 lyric_download.fcg?lrctype=4，且内容是加密的
+#      （QQ 私改版 3DES + zlib，算法见 qq_qrc.py）。
+# ★ 该接口不需要登录（2026-10-03 实测匿名也返回完整 QRC）；有 cookie 则带上更稳。
+
+_QQ_LYRIC_URL = ('https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg'
+                 '?version=15&miniversion=82&lrctype=4&musicid={sid}'
+                 '&format=json&inCharset=utf8&outCharset=utf-8&songtype=0')
+
+
+def _qq_music_cookie():
+    """取 QQ 自建服务的登录 cookie；拿不到就空串（匿名也能用）。"""
+    try:
+        return selfhost_service._STATE['qq'].cookie or ''
+    except Exception:
+        return ''
+
+
+def _qq_song_id(songmid):
+    """songmid → 数字 songid（lyric_download 只认数字 id）。匿名可查。"""
+    payload = {'comm': {'uin': '0', 'format': 'json', 'ct': 24, 'cv': 0},
+               'req': {'module': 'music.pf_song_detail_svr', 'method': 'get_song_detail_yqq',
+                       'param': {'song_type': 0, 'song_mid': songmid, 'song_id': 0}}}
+    url = ('https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data='
+           + urllib.parse.quote(json.dumps(payload)))
+    h = {'User-Agent': UA_DESKTOP, 'Referer': 'https://y.qq.com/'}
+    cookie = _qq_music_cookie()
+    if cookie:
+        h['Cookie'] = cookie
+    req = urllib.request.Request(url, headers=h)
+    with urllib.request.urlopen(req, timeout=8) as r:
+        data = json.loads(r.read().decode('utf-8', 'replace'))
+    info = ((data.get('req') or {}).get('data') or {}).get('track_info') or {}
+    return str(info.get('id') or '')
+
+
+def _qq_fetch_qrc(songmid='', songid=''):
+    """拉取并解密 QQ 歌词。返回 {ok, qrc, trans, roma, err?}。
+
+    qrc 为空视为失败（调用方回退普通 LRC 链路）；trans/roma 允许为空。
+    """
+    if not songid and songmid:
+        try:
+            songid = _qq_song_id(songmid)
+        except Exception as e:
+            return {'ok': False, 'err': 'songid 解析失败: %s' % e}
+    if not songid:
+        return {'ok': False, 'err': 'missing songid'}
+
+    h = {'User-Agent': UA_DESKTOP, 'Referer': 'https://y.qq.com/'}
+    cookie = _qq_music_cookie()
+    if cookie:
+        h['Cookie'] = cookie
+    try:
+        req = urllib.request.Request(_QQ_LYRIC_URL.format(sid=songid), headers=h)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode('utf-8', 'replace')
+    except Exception as e:
+        return {'ok': False, 'err': '拉取失败: %s' % e}
+
+    try:
+        blocks = qq_qrc.parse_response(body)
+    except Exception as e:
+        return {'ok': False, 'err': '解密失败: %s' % e}
+
+    if not blocks.get('qrc'):
+        return {'ok': False, 'err': '上游未提供逐字歌词'}
+    return {'ok': True, 'songid': songid,
+            'qrc': blocks.get('qrc', ''), 'trans': blocks.get('trans', ''), 'roma': blocks.get('roma', '')}
+
 
 
 def _probe_audio_url(url, extra_headers=None):
@@ -565,6 +640,12 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # QQ音乐解析池：/api/qq/resolve?mid=<songMid>&dur=<官方时长秒>  (debug: &stats=1)
+        # QQ 逐字歌词（QRC 解密，详见 qq_qrc.py）：
+        #   /api/qq/lyric?mid=<songmid>[&songid=<数字id>]
+        if self.path.startswith('/api/qq/lyric'):
+            self._handle_qq_lyric()
+            return
+
         if self.path.startswith('/api/qq/resolve'):
             self._handle_qq_resolve()
             return
@@ -1299,6 +1380,27 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
             return
         result = qq_resolver.resolve(mid, dur=dur or None, quality=quality or None,
                                      skip_cache=skip_cache)
+        self._send_json_response(result)
+
+    def _handle_qq_lyric(self):
+        """QQ 逐字歌词 + 翻译 + 罗马音（解密实现见 qq_qrc.py）。
+
+        GET /api/qq/lyric?mid=<songmid>[&songid=<数字id>]
+
+        ★ 与 selfhost 的 QQ vendor 是两条路，别合并：vendor /getLyric 只有普通
+          LRC（翻译恒空），逐字只在 lyric_download.fcg?lrctype=4 且是加密的。
+        """
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        mid = (params.get('mid', [''])[0] or '').strip()
+        songid = (params.get('songid', [''])[0] or '').strip()
+        if not mid and not songid:
+            self._send_json_response({'ok': False, 'err': 'missing mid'})
+            return
+        try:
+            result = _qq_fetch_qrc(mid, songid)
+        except Exception as e:
+            result = {'ok': False, 'err': 'internal: %s' % e}
         self._send_json_response(result)
 
     def _handle_agg_resolve(self):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易云）
+selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易云 / 汽水）
 ====================================================================
 每个平台以独立 Node 服务（后端 music API server）以本地副进程运行，
 由 server.py 统一代理访问，避免前端直连副进程、统一 CORS 与超时。
@@ -15,6 +15,18 @@ selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易
   kugou    -> MakcRe/KuGouMusicApi   (概念版 lite, 端口 3100)
   qq       -> sansejian/qq-music-api (tsx src/app.ts, 端口 3200)
   netease  -> NeteaseCloudMusicApi   fork (端口 3201, vendor 待安置)
+  qishui   -> 自写 server.mjs + ly-music-source 库 (端口 3300, 见下)
+
+★ 汽水与前三个平台的一处结构性差异（决定了它为什么不能照抄同一套接线）：
+  前三个 vendor 都是「上游已经把音频 URL 解好」，Python 侧只负责把登录态注入
+  查询串/请求头；汽水的音频是**加密**的，解密在 vendor 进程内完成，它给的是
+  字节流而不是直链。所以：
+    1) 登录态不经过 Python —— 会话由 vendor 自己落盘（_eval/qishui-music-api/.session.json），
+       Python 的 _STATE['qishui'].cookie 只是一个「曾登录」标记（'qishui-session'），
+       真实登录态一律以 vendor 的 GET /status 为准（见 _qishui_login_snapshot）。
+    2) 播放链路是「vendor /stream → server.py /api/audio/stream（带 Range 与磁盘缓存）→ 浏览器」，
+       前端拿到的仍然是一个 http URL（127.0.0.1:3300/stream?id=…），
+       与其它源拿 CDN 直链的形状一致，下游 getStreamCachedAudioUrl 无需特殊分支。
 """
 import atexit
 import json
@@ -64,13 +76,29 @@ _SERVICES = {
         'poll':    '_poll_qq',
     },
     'netease': {
-        'label':   '网易云',
+        'label':   '网易云音乐',
         'port':    3201,
         'dir':     os.path.join(PROJECT_DIR, '_eval', 'NeteaseCloudMusicApi'),
         'start':   'node app.js',
         'env':     {'PORT': '3201'},
         'qr':   '_get_qr_netease',
         'poll': '_poll_netease',
+    },
+    'qishui': {
+        'label':   '汽水音乐',
+        'port':    3300,
+        # ★ 代码与第三方库分家（2026-10-03）：`.gitignore:19` 把 `_eval/` 整目录排除
+        #   （第三方音源镜像），另外三个 vendor 全是上游 clone 的、丢了能重跑
+        #   scripts/setup-vendors.bat；但汽水的适配层是我们自己写的，必须入库 ——
+        #   于是它放在 scripts/（受控），第三方库 ly-music-source 留在 _eval/（镜像）。
+        #   cwd 仍取 _eval/qishui-music-api：NODE_OPTIONS 的 preload 守卫用的是
+        #   `../../scripts/…` 相对路径（绝对中文路径会被 cmd 剥引号变乱码，见下方注释），
+        #   层级必须与另外三个 vendor 一致。
+        'dir':     os.path.join(PROJECT_DIR, '_eval', 'qishui-music-api'),
+        'start':   'node ../../scripts/qishui-server.mjs',
+        'env':     {'PORT': '3300'},
+        'qr':      '_get_qr_qishui',
+        'poll':    '_poll_qishui',
     },
 }
 
@@ -396,7 +424,20 @@ def _proxy_raw(name, method, path_and_query, body=None, headers=None):
         except Exception:
             return (e.code, {'error': str(e.code)}, b'', [])
     except Exception as e:
-        return (502, {'error': str(e)[:200]}, b'', [])
+        # ★ 附带诊断三件套：实际请求的 URL、base、当前代理配置。
+        #   这类失败单看异常文本无法区分「base 拼错 / path 编码错了 / 系统代理截胡」
+        #   （2026-10-04 排查「不带 query 的 path 一律 getaddrinfo failed」时就卡在这）。
+        #   前端只读 error 字段，多出来的键不影响既有调用。
+        try:
+            _proxies = {k: str(v) for k, v in urllib.request.getproxies().items()}
+        except Exception:
+            _proxies = {}
+        return (502, {
+            'error': str(e)[:200],
+            'url': url[:200],
+            'base': str(getattr(_STATE[name], 'base', ''))[:80],
+            'proxies': _proxies,
+        }, b'', [])
 
 
 def _parse_kugou_cookie(cookie):
@@ -441,6 +482,13 @@ def logout(name):
     _STATE[name].uid = ''
     _invalidate_login_state(name)
     _persist_login()
+    # ★ 汽水的会话不在 Python 手里（vendor 自己落盘），只清本地标记等于没退出：
+    #   下次 /status 一问 vendor 仍是 authenticated，UI 会立刻又显示已登录。
+    if name == 'qishui':
+        try:
+            _proxy_raw(name, 'POST', f'/logout?_t={_now_ms()}', body={})
+        except Exception:
+            pass
     return {'ok': True}
 
 
@@ -812,6 +860,97 @@ def _join_setcookies(setc):
     return '; '.join(parts)
 
 
+# ---- 汽水（走自写 vendor：_eval/qishui-music-api/server.mjs + ly-music-source） ----
+# 与前三个平台不同，汽水的 HTTP 面是我们自己写的，所以这里的「登录流程」其实是
+# 薄薄一层转发：vendor 已经把 createQrLogin / pollQrLogin 包成了 /login/qr 与
+# /login/qr/check，Python 只做两件上游做不到的事：
+#   1) 把会话落盘的责任交还给 vendor（它的库只存内存），Python 不碰 cookie 内容；
+#   2) 给前端提供与前三个平台**完全一致**的返回形状（ok/img/key、ok/loggedIn/status），
+#      这样 selfhost-settings.js 的扫码弹窗一行都不用改就能多出一个平台。
+_QISHUI_QR_HINT = '请用汽水音乐 App 扫码授权（搜索与逐字歌词匿名可用，播放需登录）'
+
+
+def _get_qr_qishui(name):
+    status, data, _, _ = _proxy_raw(name, 'POST', f'/login/qr?_t={_now_ms()}', body={})
+    d = data if isinstance(data, dict) else {}
+    token = d.get('token') or ''
+    img = d.get('qrcode') or ''
+    if status >= 400 or not d.get('ok') or not token or not img:
+        return {'ok': False, 'err': d.get('err') or f'取码失败(status={status})'}
+    _STATE[name].tmp = token          # 轮询时前端会把 key 原样回传，这里只是兜底
+    return {'ok': True, 'platform': 'qishui', 'img': img, 'key': token, 'hint': _QISHUI_QR_HINT}
+
+
+def _poll_qishui(name, key):
+    key = key or {}
+    token = key.get('key') or key.get('token') or _STATE[name].tmp
+    if not token:
+        return {'ok': False, 'loggedIn': False, 'err': '缺少 token'}
+    status, data, _, _ = _proxy_raw(name, 'POST', f'/login/qr/check?_t={_now_ms()}',
+                                    body={'token': token})
+    d = data if isinstance(data, dict) else {}
+    if d.get('loggedIn'):
+        # ★ 标记而非真 cookie：真会话在 vendor 侧（.session.json）。此串只用于
+        #   _persist_login 的语义统一与「上次登录过」的展示，绝不参与任何请求注入。
+        _STATE[name].cookie = 'qishui-session'
+        _STATE[name].uid = str(d.get('uid') or '')
+        _STATE[name].tmp = ''
+        _invalidate_login_state(name)
+        _persist_login()
+        return {'ok': True, 'loggedIn': True, 'uid': _STATE[name].uid}
+    # ★ 必须先「校验」再「降级」。早期实现只看 d['loggedIn']，于是把 vendor 的业务
+    #   报错（{ok:false,err}）、副进程没起来（HTTP 502 + {'error':...}）、响应根本不是
+    #   JSON 这三种情况统统当成 status='waiting' 透传 —— 前端收到的是「一切正常，
+    #   请继续等」，用户扫完码看到的就是「没反应」。这里把失败原因如实带回，
+    #   前端才能显示出来并据此重试。
+    if status >= 400 or not isinstance(data, dict) or not data.get('ok'):
+        # 响应体不是 JSON（网关页/HTML 错误页）时 d 恒为空 dict，只能从原始体里取线索
+        if isinstance(data, str):
+            detail = data[:160].replace('\n', ' ').strip()
+        else:
+            detail = d.get('err') or d.get('error') or ''
+        return {'ok': False, 'loggedIn': False,
+                'err': detail or f'汽水登录校验失败（HTTP {status}）'}
+    # waiting / scanned / expired / failed 原样透传，前端 describeStatus 按字符串提示
+    return {'ok': True, 'loggedIn': False,
+            'status': d.get('status') or 'waiting', 'message': d.get('message') or ''}
+
+
+# 汽水登录态快照缓存：status_all 会被前端轮询，不能每次都把 /status 打到 vendor
+# （vendor 拿到 authenticated 后还会去打上游取 profile）。20s 与前端 5s 的状态
+# 轮询 + _probe_alive 的节奏匹配，又远小于一次扫码的耗时。
+_QISHUI_PR = {'at': 0.0, 'uid': '', 'loggedIn': False}
+_QISHUI_TTL = 20.0
+
+
+def _qishui_login_snapshot(name):
+    """问 vendor 要登录态。返回 (uid, loggedIn)。
+
+    ★ 为什么汽水不能沿用「cookie 非空即已登录」：那套判定的前提是 cookie 真的
+      会被注入到上游请求里（kugou/qq/netease 都是）。汽水的 cookie 是我们自己
+      编的标记串，注入无从谈起 —— 只有 vendor 自己知道会话还在不在。
+    """
+    now = time.time()
+    if now - _QISHUI_PR['at'] < _QISHUI_TTL:
+        return _QISHUI_PR['uid'], _QISHUI_PR['loggedIn']
+    uid, logged = '', False
+    try:
+        status, data, _, _ = _proxy_raw(name, 'GET', '/status')
+        d = data if isinstance(data, dict) else {}
+        logged = bool(d.get('authenticated'))
+        uid = str(d.get('uid') or '')
+    except Exception:
+        pass   # 探测异常保守判未登录：与 _verify_login 的「保守判有效」取向相反，
+               # 因为这里的误判代价是「多显示一次未登录」，而不是「假已登录」。
+    _QISHUI_PR.update({'at': now, 'uid': uid, 'loggedIn': logged})
+    if logged:
+        # 回填标记与 uid（覆盖「vendor 有会话但 Python 缓存被删/首次启动」的情形）
+        _STATE[name].cookie = _STATE[name].cookie or 'qishui-session'
+        if uid:
+            _STATE[name].uid = uid
+    return uid, logged
+
+
 # ==================== 酷狗每日签到领 VIP（源自 KGM-AUTO-CHECKIN，本地化） ====================
 # 与 GitHub Actions 版同接口：/user/detail 校验 → /youth/listen/song 听歌领
 # → /youth/vip ×8（每次间隔 30s）→ /user/vip/detail 查到期时间。周日顺带刷新 token。
@@ -926,6 +1065,8 @@ def _resolve_uid(name):
         if not _STATE[name].uid and _STATE[name].cookie:
             _STATE[name].uid = _fetch_netease_uid(name)
         return _STATE[name].uid
+    if name == 'qishui':
+        return _STATE[name].uid
     return ''
 
 
@@ -962,6 +1103,10 @@ def _invalidate_login_state(name):
     _LG_CACHE.pop(name, None)
     if name == 'netease':
         _NET_PR['at'] = 0.0
+    if name == 'qishui':
+        # 汽水同理：vendor /status 快照有 20s TTL，不清就会把「刚扫码成功」
+        # 覆盖成旧的 authenticated=False（前端 700ms 后重刷设置页正好撞上）。
+        _QISHUI_PR['at'] = 0.0
 
 
 def _verify_login(name):
@@ -1015,6 +1160,23 @@ def status_all():
         if has_source and not alive and not _STATE[name].alive:
             _STATE[name].alive = True  # 标记正在拉起，防重复 spawn
             _ensure_running_async(name)
+        # ★ 汽水：登录态由 vendor 自己持有（会话落盘在 vendor 目录），Python 侧
+        #   没有可校验的 cookie —— 直接问 vendor /status，别走下面那套
+        #   「cookie 非空 → _verify_login」的判定（那套对汽水只会恒判未登录，
+        #   因为标记串根本不会出现在任何上游请求里）。
+        if name == 'qishui':
+            uid, logged_in = _qishui_login_snapshot(name) if alive else ('', False)
+            if alive:
+                _STATE[name].alive = True  # 确认存活，供下次 _state_is_ok 复用
+            out[name] = {
+                'label': cfg['label'],
+                'alive': alive,
+                'loggedIn': logged_in,
+                'hasSource': has_source,
+                'uid': uid,
+                'exposed': _exposed_cached(name) if alive else False,
+            }
+            continue
         uid = _resolve_uid(name) if alive and _STATE[name].cookie else ''
         logged_in = bool(_STATE[name].cookie)
         if alive and _STATE[name].cookie and uid:

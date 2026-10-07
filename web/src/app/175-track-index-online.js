@@ -7,8 +7,8 @@ import { API_BASE } from '../config/constants.js';
 import { playerConfig } from '../config/defaults.js';
 import { getCoverLayers } from '../infrastructure/dom.js';
 import { detectAndParseLyrics, mergeLyrics } from '../parsers/lyricMerger.js';
-import { checkAudioUrlPlayable, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveInfo, qqResolveUrl } from '../services/musicApi.js';
-import { selfhostQQPlayUrl, selfhostNeteasePlayUrl } from './selfhost-runtime.js';
+import { checkAudioUrlPlayable, fetchAggSameSongUrl, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchQishuiLyric, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveInfo, qqResolveUrl } from '../services/musicApi.js';
+import { selfhostQQPlayUrl, selfhostNeteasePlayUrl, selfhostQishuiPlayUrl } from './selfhost-runtime.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { audio, renderLyrics } from './20-lyrics-render.js';
 import { currentTimeEl, progressEl, searchResultsEl, songArtistEl, songTitleEl, totalTimeEl, volumeBar } from './30-dom-refs.js';
@@ -16,7 +16,7 @@ import { getLyricOffset, initLyricOffsetControl, updateLineTimes, updateLyricOff
 import { handleAudioPlayError } from './70-audio-engine.js';
 import { applyPreservesPitch } from './85-rate-download.js';
 import { resetMobileLyricPreview, updateMobileLyricPreview } from './60-mobile-dual-page.js';
-import { cleanupEqAudioGraph } from './90-eq.js';
+import { cleanupEqAudioGraph, eqGraphBuiltOnce, initEqAudioGraph, wantsAudioGraph } from './90-eq.js';
 import { initLyricsInteractions, setBlurBackground, setCoverImage } from './100-cover-background.js';
 import { getFavorites, makeSongKey, setHint, updateFavoriteBtn } from './120-search-results.js';
 import { getPlaylists } from './130-playlists.js';
@@ -27,7 +27,7 @@ import { chorusCacheGet } from '../services/aiCache.js'; // 高潮检测缓存�
 import { beginResolveTrace, clearResolveTrace, markResolveFailed, platformKeyOf, recordResolveHit, resolveSourceOf } from '../services/playSource.js'; // 取链透明化（todos #15）
 import { conceal } from '../utils/motion.js'; // 退场后再卸载（utils→services/log 单向，无分片环）
 import { artistOf, titleOf } from '../services/lyricIndex.js'; // title/song/name 字段归一（该模块零 import，无环）
-import { logWarn, logInfo, logError } from '../services/log.js';
+import { logWarn, logInfo, logError, logCatch } from '../services/log.js';
 /* { key, url, lyricData, chorusSegments, aiTheme, trackIndex } */
 globalThis.preloadAbortFlag = { aborted: false };
 
@@ -113,12 +113,20 @@ async function _tryByfunsLevels(id, orderedLevels, {
 }
 
 /* 网易云：自建 /song/url/v1 直链优先（本机秒回），失败返回 null */
-async function _tryNeteaseSelfhost(id, level, { songName = '', songId = '' } = {}) {
+async function _tryNeteaseSelfhost(id, level, { songName = '', songId = '', expSec = 0 } = {}) {
     const ctl = new AbortController();
     const tid = setTimeout(() => ctl.abort(), 8000);
     try {
         const url = await selfhostNeteasePlayUrl(id, level, ctl.signal);
-        if (url) logInfo('trackIndexOnline', '[Netease] 自建 song/url/v1 直链命中:', songName || songId || id);
+        if (!url) return null;
+        /* ★ 时长探测（2026-10-07 补）：此前自建直链**不做任何校验**就被采用，
+           而网易云对无权益曲目会回 30 秒试听链 → 用户听到"VIP 却只有 30 秒"。
+           与 QQ 自建同一口径：先探测整曲时长，不合格就交棒公网阶梯（那条有自己的探测）。 */
+        if (expSec && !(await checkAudioUrlPlayable(url, songId, 'https://music.163.com/', expSec))) {
+            logWarn('trackIndexOnline', `[Netease] 自建直链为试听/不可播（期望约 ${Math.round(expSec)}s），走公网阶梯: ${songName || songId || id}`);
+            return null;
+        }
+        logInfo('trackIndexOnline', '[Netease] 自建 song/url/v1 直链命中:', songName || songId || id);
         return url;
     } catch (e) {
         return null;
@@ -159,7 +167,7 @@ async function _resolveKuwoByName(songName, singer, { songId, expSec = 0, verbos
     return null;
 }
 
-async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec) {
+async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec, singer = '') {
             let playUrl = null;
             /* 酷我源：一站式获取直链、封面与歌词 */
             if (source === 'kuwo' && songId) {
@@ -236,9 +244,12 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec)
                 const orderedLevels = [userLevel, ...QUALITY_LEVELS.filter(q => q !== userLevel)];
                 const expSec = durSec || 0;
                 /* ★ 上游参考项目 对齐：本机自建网易云 /song/url/v1 一次直链优先（本机+登录cookie 秒回），
-                   自建离线才走公网 byfuns 串行音质试错 */
+                   自建离线才走公网 byfuns 串行音质试错
+                   ★ 2026-10-07 补 expSec：上一步刚算好（L245）却没传下来，
+                   于是**预加载这条**仍会把 30 秒试听链当"D+"的备用地址存起来
+                   （主链已修，预加载漏了 —— 两条链必须同口径）。 */
                 if (!playUrl) {
-                    playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName, songId });
+                    playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName, songId, expSec });
                 }
                 if (!playUrl) {
                     const hit = await _tryByfunsLevels(songId, orderedLevels, { songId, songName, expSec });
@@ -247,14 +258,74 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec)
                 /* 原实现此处先赋值 outer 外链、再判 !playUrl 做酷狗兜底——该分支恒假（死代码），
                    预加载语义就是「宁取外链保住备用地址」，跨源兜底交给播放时主链，此处保持不回退 */
                 if (!playUrl) playUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
-            } else {
+            } else if (source === 'qishui') {
+                /* ★ 汽水：vendor 解密吐流（同主链口径）。预加载链**故意不埋点**
+                   （见 scripts/audits/resolve-instrumentation.mjs：埋了角标会跳到下一首）。
+                   失败不重试——预加载只是闲时备歌，真播时主链还会再走一遍。 */
                 try {
-                    const urlJson = await fetch(`${API_BASE}/${source}?id=${songId}`).then(r => r.json());
+                    const qsUrl = await selfhostQishuiPlayUrl(songId, 'higher');
+                    if (qsUrl && await checkAudioUrlPlayable(qsUrl, songId, '', durSec || 0)) playUrl = qsUrl;
+                } catch { /* 离线/未登录：留给播放时主链 */ }
+                if (!playUrl && songName) {
+                    const hit = await _resolveSameSong('netease', songName, singer, { songId });
+                    if (hit) playUrl = hit.url;
+                }
+            } else {
+                /* ★ 第三方 API 必须经本机 /proxy 转发：浏览器直连 api.vkeys.cn 会被
+                   CORS 拦截（该端点不返回 Access-Control-Allow-Origin）→ 预载永远拿不到
+                   直链、automix 的 ARM 取链随之必败（真机实测：ARM 窗口内每 250ms 重试
+                   一次，控制台瞬间刷屏上百条）。/proxy 由 server.py 附加 CORS 头，
+                   并已做 scheme 白名单 + 本机 Origin 校验。 */
+                try {
+                    const target = `${API_BASE}/${source}?id=${songId}`;
+                    const urlJson = await fetch(`/proxy?url=${encodeURIComponent(target)}`).then(r => r.json());
                     playUrl = (urlJson.code === 200 && urlJson.data && urlJson.data.url) ? urlJson.data.url : null;
                 } catch (e) { /* 静默 */ }
+                /* ★ 跨源兜底（与 loadOnlineSong 主链同口径）：vkeys 对部分 kugou id 直接
+                   返回 404（真机实测 A8748CA6… → code 404），单靠它拿不到链；而前端串联的
+                   _resolveSameSong('netease') 内部同样直连第三方（API_BASE / api.byfuns.top），
+                   在浏览器里会一起 CORS 挂。唯一可靠通道是服务端聚合兜底
+                   （gdstudio 多源搜索 + 取链 + 校验，本地 server 已缓存）。 */
+                if (!playUrl && songName) {
+                    const hit = await fetchAggSameSongUrl(songName, singer);
+                    if (hit && hit.url) playUrl = hit.url;
+                }
             }
             return playUrl;
         }
+
+/**
+ * Automix 专用：在线曲 swap 后的歌词补载（96-automix 调用）。
+ * B 没走 loadOnlineSong 主链，这里按同口径取词：platformKeyOf 别名表 +
+ * fetchLyricWithFallback 跨源兜底 → 渲染。歌词/activeLineIndex 的裸键写入
+ * 收敛在本分片（owner），调用方不得绕过（no-restricted-syntax 棘轮）。
+ * 失败静默——听歌不断。
+ */
+async function loadLyricsAfterAutomixSwap(track) {
+    try {
+        const src = platformKeyOf(track.source) || (track.mid ? 'tencent' : 'netease');
+        /* ★ 传对象而非 String(track.id)：songName 是「同名歌兜底」的入口（见 preloadNextSong
+           同款注释），传字符串会让兜底整条失效——automix 交接后补词更容易拿到空结果。 */
+        const lData = await fetchLyricWithFallback({ ...track, source: src }, src);
+        const parsed = detectAndParseLyrics(lData || {});
+        lyrics = mergeLyrics(parsed.originals || [], parsed.translations || [], parsed.romaji || []);
+        activeLineIndex = -1;
+        renderLyrics(lyrics);
+        logInfo('trackIndexOnline', `[Automix] 在线曲歌词已补载: ${titleOf(track) || track.id}`);
+    } catch (e) { logCatch('trackIndexOnline', e); }
+}
+
+/**
+ * Automix 专用：查下一首在线曲是否已有预载直链（key 同 nextSongPreload 口径）。
+ * 只读不消费——native 路径的 loadOnlineSong 仍会正常消费 nextSongPreload；
+ * 即便 automix 先用它开交叉，过期条目也会被 loadOnlineSong 的 key 校验自然忽略。
+ * @returns {string} 预载直链；未命中返回 ''
+ */
+function getPreloadedOnlineUrl(track) {
+    if (!track || !track.id || !nextSongPreload || !nextSongPreload.url) return '';
+    const effectiveSource = platformKeyOf(track.source) || (track.mid ? 'tencent' : 'netease');
+    return nextSongPreload.key === `${effectiveSource}:${track.id}` ? nextSongPreload.url : '';
+}
 
 /* 预加载下一首歌的所有资源 */
 async function preloadNextSong() {
@@ -278,12 +349,24 @@ async function preloadNextSong() {
 
             try {
                 const preloadData = { key: songKey, trackIndex: nextIdx, url: null, lyricData: null, chorusSegments: null, aiTheme: null };
-                logInfo('trackIndexOnline', '[Preload] 开始预加载下一首:', track.title);
+                /* ★ 队列条目字段名不统一（title/song/name、artist/singer）——榜单 / 自建歌单 /
+                   历史播放的「播放全部」都是 push 原始接口对象再以 skipPlaylistUpdate=true 播放，
+                   队列里留下的就是 {song, singer} 形状。此处若直读 track.title，拿到的是 undefined
+                   且**不止日志难看**：fetchPlayUrlForPreload 的 songName 为空会让「跨源同名歌兜底」
+                   整条链（酷狗→网易→酷我）失效——那些分支的守卫正是 `if (!playUrl && songName)`
+                   ——预载成功率骤降，automix 的 ARM 取链随之一起失败。统一走 titleOf/artistOf 归一。 */
+                const preloadTitle = titleOf(track);
+                const preloadSinger = artistOf(track);
+                logInfo('trackIndexOnline', '[Preload] 开始预加载下一首:', preloadTitle);
 
                 /* 并行获取 URL 和歌词（使用 oiapi.net 备用） */
-                const urlPromise = fetchPlayUrlForPreload(String(track.id), track.mid || '', effectiveSource, track.title,
-                    intervalToSec(track.interval) || track.duration || 0);
-                const lyricPromise = fetchLyricWithFallback(String(track.id), effectiveSource)
+                const urlPromise = fetchPlayUrlForPreload(String(track.id), track.mid || '', effectiveSource, preloadTitle,
+                    intervalToSec(track.interval) || track.duration || 0, preloadSinger);
+                /* ★ 歌词必须传**对象**：fetchLyricWithFallback(songInfo, source) 只在 songInfo 是对象时
+                   才读 songName，旧写法传 String(track.id) 会让 songName 恒为空 → 酷狗/网易的
+                   「同名歌兜底」整条失效（真机日志 '搜索无同名结果，放弃酷狗取词' 就是这个）。
+                   source 显式归一后写回，保证函数内部 effSource 判定走对自建/公网分支。 */
+                const lyricPromise = fetchLyricWithFallback({ ...track, source: effectiveSource }, effectiveSource)
                     .catch(() => null);
 
                 /* ★ 预加载封面图（让切歌时封面/背景立即交叉淡入，不等网络下载） */
@@ -299,12 +382,12 @@ async function preloadNextSong() {
 
                 /* 预加载高潮检测（仅检查缓存，避免下载音频影响当前播放） */
                 if (!myFlag.aborted) {
-                    const chorusCacheKey = `${track.title} - ${track.artist || ''}`;
+                    const chorusCacheKey = `${preloadTitle} - ${preloadSinger}`;
                     try {
                         const cached = await chorusCacheGet(chorusCacheKey);
                         if (cached) {
                             preloadData.chorusSegments = cached.chorusSegments;
-                            logInfo('trackIndexOnline', '[Preload] 高潮检测命中缓存:', track.title);
+                            logInfo('trackIndexOnline', '[Preload] 高潮检测命中缓存:', preloadTitle);
                         }
                     } catch (e) { /* 静默 */ }
                 }
@@ -313,7 +396,7 @@ async function preloadNextSong() {
 
                 if (!myFlag.aborted) {
                     nextSongPreload = preloadData;
-                    logInfo('trackIndexOnline', '[Preload] 预加载完成:', track.title, { hasUrl: !!preloadData.url, hasLyrics: !!preloadData.lyricData, hasChorus: !!preloadData.chorusSegments, hasAI: !!preloadData.aiTheme });
+                    logInfo('trackIndexOnline', '[Preload] 预加载完成:', preloadTitle, { hasUrl: !!preloadData.url, hasLyrics: !!preloadData.lyricData, hasChorus: !!preloadData.chorusSegments, hasAI: !!preloadData.aiTheme });
                 }
             } catch (err) {
                 if (!myFlag.aborted) {
@@ -357,6 +440,17 @@ async function loadOnlineSong(songInfo, skipPlaylistUpdate, _isRetry, preloadOnl
                除了「用户被禁的控件」，能触发 loadOnlineSong 的只剩自动流程，
                直接短路可避免换 src/换封面/换歌词干扰接管显示。 */
             if (typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive()) {
+                return Promise.resolve(false);
+            }
+            /* ★ 预载只服务于「闲时备歌」：用户已在播放/暂停到中途时，主 audio 正被
+               占用，而本函数下方的 pause+removeAttribute('src')+load 是无条件的——
+               boot 晚到的开篇歌单预载会把正在播的歌（含 automix 的 ARM/CROSSING
+               期 A deck）直接毁掉（实测踩坑：emptied → 交叉中止 → 音频 error 4）。
+               预载对忙碌的元素毫无意义，直接跳过；welcome 点击后的回退链
+               （preloadedSongReady=null → initDefaultSong）不受影响。 */
+            if (preloadOnly && typeof audio !== 'undefined' && audio
+                && (!audio.paused || audio.currentTime > 0)) {
+                preloadedSongReady = null;
                 return Promise.resolve(false);
             }
             /* 代际计数器递增：使所有上一次的异步回调（canplay监听器、超时、fade回调）过期 */
@@ -489,6 +583,10 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     lyricPromise = Promise.resolve(_preloadedLyricData);
                 } else if (effSource === 'kugou') {
                     lyricPromise = fetchKugouLyric(songInfo);
+                } else if (effSource === 'qishui') {
+                    /* 汽水歌词走自建 vendor（逐字；QRC→KRC 同构解析，见 fetchQishuiLyric）。
+                       失败返回 {}，由下方首曲自愈重试与同名歌兜底接管。 */
+                    lyricPromise = fetchQishuiLyric(songInfo);
                 } else if (effSource === 'kuwo') {
                     lyricPromise = fetchLyricWithFallback(songInfo, 'kuwo');
                 } else {
@@ -519,7 +617,34 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         /* VIP 未开通时酷狗常给 30s 试听链，须探测整曲时长后决定是否回退跨源 */
                         if (await checkAudioUrlPlayable(kgInfo.url, songId, '', expSec)) {
                             playUrl = kgInfo.url;
-                            recordResolveHit('kugou', playUrl, userQuality);
+                            /* ★ 2026-10-03：渠道名要如实反映**真正的上游**。
+                               getKugouPlayInfo 在酷狗官方接口拿不到直链时会跨源回退
+                               （→ QQ 解析池 → vkeys → 网易），于是出现用户实测的
+                               「命中渠道=酷狗取链接口 / 链接域名=ws.stream.qqmusic.qq.com /
+                               轨迹=0 条 [QQResolve] vkeys 命中」三者对不上。
+                               现在按 getKugouPlayInfo 带回的 provider 归一化上报。
+                               ★ 音质不套用酷狗档位：跨源拿到的可能是无损链，写死
+                               userQuality（酷狗档位，常为 320）会当场把 flac 标成 320k；
+                               传空串让 describeDetail 按直链后缀嗅探。 */
+                            const kgProv = kgInfo.provider || 'kugou';
+                            const KG_CHANNEL = {
+                                kugou: 'kugou',
+                                qqResolve: 'qqResolve',
+                                vkeysPrefetch: 'vkeysPrefetch',
+                                byfuns: 'crossNetease',
+                                neteaseOuter: 'crossNetease',
+                            };
+                            recordResolveHit(KG_CHANNEL[kgProv] || 'kugou', playUrl,
+                                kgProv === 'kugou' ? userQuality : '');
+                            if (kgProv !== 'kugou') {
+                                logInfo('trackIndexOnline',
+                                    `[KuGou] 官方直链不可用，跨源 ${kgProv} 命中: ${songInfo.song}`);
+                            }
+                            /* ★ 2026-10-04：酷狗 getSongInfo 报文自带 mvhash = 这首歌自己的 MV。
+                               取链时顺手落到 songInfo 上，等 currentSongData 构造时会带出去，
+                               MV 背景就能零搜索直接铺（详见 mvApi.resolveMvForSong 的三级解析）。
+                               跨源回退（provider≠kugou）时 kgInfo 没有该字段，保持空串走搜索兜底。 */
+                            if (kgInfo.mvHash && !songInfo.mvHash) songInfo.mvHash = kgInfo.mvHash;
                             if (kgInfo.cover && !songInfo.cover) {
                                 songInfo.cover = kgInfo.cover;
                                 /* ★ 酷狗封面同步应用：搜索项常无 img，封面在 playInfo 才返回；
@@ -584,6 +709,34 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         }
                         logInfo('trackIndexOnline', `[Kuwo] 一站式解析成功: ${songName}`);
                     }
+                } else if (effSource === 'qishui') {
+                    /* 汽水：本机 vendor 解密吐流，是**唯一**取链途径（汽水没有公网直链可回退）。
+                       ★ 这里拿到的 URL 指向 127.0.0.1:3300/stream，下游 getStreamCachedAudioUrl
+                       会把它包成 /api/audio/stream（Range + 磁盘缓存），与其它源拿 CDN 直链
+                       时的形状完全一致 —— 所以播放链一行都不用改。
+                       ★ 未登录/vendor 离线时拿不到 URL 或探不通，落跨源同名歌兜底
+                       （用户至少还能听到别的平台的同名曲，而不是一个红色「取链失败」）。 */
+                    const qsId = songInfo.qishuiId || songId;
+                    const qsUrl = await selfhostQishuiPlayUrl(qsId, 'higher');
+                    if (qsUrl) {
+                        const qsDur = intervalToSec(songInfo.interval) || songInfo.duration || 0;
+                        if (await checkAudioUrlPlayable(qsUrl, songId, '', qsDur)) {
+                            playUrl = qsUrl;
+                            /* 音质留空：vendor 不自报档位，宁可角标只显示「汽水音乐」，
+                               也不要拿请求的 'higher' 冒充平台档位（那是另一种撒谎）。 */
+                            recordResolveHit('selfhostQishui', playUrl, '');
+                            logInfo('trackIndexOnline', `[Qishui] 自建汽水命中: ${songInfo.song}`);
+                        } else {
+                            logWarn('trackIndexOnline', '[Qishui] 取流不可播（未登录/试听/离线），落跨源兜底');
+                        }
+                    }
+                    if (!playUrl && songInfo.song) {
+                        const qsSame = await fetchSameSongUrlFrom('netease', songInfo.song, songInfo.singer || '').catch(() => null);
+                        if (qsSame && qsSame.url) {
+                            playUrl = qsSame.url;
+                            recordResolveHit('crossNetease', playUrl);
+                        }
+                    }
                 } else if (effSource === 'tencent') {
                     let effectiveMid = songMid;
                     let vkeysUrl = null;
@@ -610,6 +763,14 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         } else if (shUrl) {
                             logWarn('trackIndexOnline', '[SelfHost] QQ 自建服务链接探测不可播/试听，落回原链');
                         }
+                    } else if (!effectiveMid && !playUrl) {
+                        /* ★ 显式告警（2026-10-07 用户报障「取链过程没有经过自建 vendor」）：
+                           缺 mid 时自建那一步会被**整段跳过**，日志里既没有 [SelfHost] 也没有
+                           任何 [QQ]，从外部看就像"从没尝试过自建"（排查时只能靠猜）。
+                           这里确实调不了 —— vendor 的取链接口是按 mid 走的（自建服务的开关/
+                           在线/登录状态另见 selfhost-runtime.js:192-201 的三重闸门日志）——
+                           但**跳过必须说清**，不能静默（约束 9）。 */
+                        logWarn('trackIndexOnline', `[SelfHost] 缺 QQ mid，自建取链被跳过（也未能从 /tencent?id= 补齐）: ${songInfo.song} / ${songInfo.singer || ''}`);
                     }
                     if (effectiveMid && !playUrl) {
                         const durSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
@@ -678,7 +839,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const orderedLevels = [userLevel, ...QUALITY_LEVELS.filter(q => q !== userLevel)];
                     const nmExpSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
                     if (!playUrl) {
-                        playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName: songInfo.song, songId });
+                        playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName: songInfo.song, songId, expSec: nmExpSec });
                         if (playUrl) recordResolveHit('selfhostNetease', playUrl, userLevel);
                     }
                     if (!playUrl) {
@@ -778,11 +939,31 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     currentTrackIndex = 0;
                 }
 
+                /* ★ 预载二次守卫：入口守卫（函数开头）在 await 取链之前，取链耗时
+                   数秒、恢复执行时用户可能已开始播放——此处再查一次，绝不毁掉
+                   正在进行的播放/automix 交叉（实测踩坑：emptied → 交叉中止）。
+                   非预载（真切歌）不适用，真切歌就是要抢占元素。 */
+                if (preloadOnly && (!audio.paused || audio.currentTime > 0)) {
+                    preloadedSongReady = null;
+                    isLoadingSong = false;
+                    return Promise.resolve(false);
+                }
+
                 /* 关键修复：先暂停并重置 audio，避免上一首歌的 readyState 干扰 */
                 audio.pause();
                 audio.removeAttribute('src');
 
-                /* 清理旧的 Web Audio 图，防止内存泄漏 */
+                /* 清理旧的 Web Audio 图，防止内存泄漏。
+                   ★ 2026-10-05：拆完必须重建。全局响度压缩（DynamicsCompressor）就挂在
+                   这张图里，而此前**全仓没有任何地方在加载后重建它**（本文件下面那段
+                   注释当时也承认了这点）→ 于是"在线点播期间音量均衡静默失效、整体偏响"，
+                   正是用户问的"是不是音量均衡没生效"。这里先记住用户本来有没有图，
+                   新曲就绪后再按原样建一张（见下方 playPromise.then）。 */
+                /* ★ 2026-10-06：判据从"曾经建过图"扩成"用户有必须建图才能生效的意图"
+                   （wantsAudioGraph：非默认声道 / 均衡器有增益 / 空间音频 / 虚拟声场）。
+                   否则"从没开过均衡器但设了单声道"的用户会看到：设置选着、声音没变
+                   —— 这正是用户报的「立体声/切换声道没用」。 */
+                const hadEqGraph = eqGraphBuiltOnce() || wantsAudioGraph();
                 cleanupEqAudioGraph();
                 eqInitFailed = false; /* 重置失败标志，新歌曲可以重新尝试 */
 
@@ -830,6 +1011,14 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 audio.load();
                 audio.playbackRate = currentPlaybackRate;
                 applyPreservesPitch(preservesPitch);
+                /* ★ 重建 EQ 图（含响度压缩 DynamicsCompressor / 均衡 / 空间处理）。
+                   只在"用户本来已经有图"时重建 —— 从未开过 EQ / 均衡的用户不该被强加一张图。
+                   等 canplay 之后再建：initEqAudioGraph 需要能读到有效的 audio.src，
+                   且它内部会处理 crossOrigin 重载与播放位置恢复。
+                   建图失败不阻断播放（90-eq 内部会回退直连旁通，声音照常）。 */
+                if (hadEqGraph) {
+                    playPromise.then(() => initEqAudioGraph()).catch(() => {});
+                }
                 songTitleEl.textContent = titleOf(songInfo);
                 songArtistEl.textContent = artistOf(songInfo);
 
@@ -841,7 +1030,14 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     source: effSource,
                     id: songInfo.id,
                     mid: songMid || '',
-                    interval: songInfo.interval || ''
+                    interval: songInfo.interval || '',
+                    /* ★ 这首歌自己的 MV id（2026-10-03）：搜索结果里 QQ 每首歌都带 vid，
+                       一路带到这里，MV 动态背景就能"跟随播放"零请求直接铺（见 101）。
+                       ★ 2026-10-04 补 mvId / mvHash：网易的 song.mv、酷狗的 getSongInfo.mvhash
+                         同属"歌曲自带的 MV 关联"，只带 QQ 的 vid 会让另外两源退化成关键词搜索。 */
+                    mvVid: songInfo.mvVid || '',
+                    mvId: songInfo.mvId || '',
+                    mvHash: songInfo.mvHash || ''
                 };
                 /* ★ 最近播放：加载即记录（不依赖 play 成功，避免自动播放策略挂起导致漏记） */
                 if (typeof window.recordRecentPlay === 'function') {
@@ -1107,4 +1303,4 @@ function pickInitialTrackSelection() {
             return { playlist: [], trackIndex: 0, isDefault: true };
         }
 
-export { applyPreloadedAiTheme, fetchPlayUrlForPreload, getNextTrackIndex, initPlayer, loadOnlineSong, pickInitialTrackSelection, preloadNextSong };
+export { applyPreloadedAiTheme, fetchPlayUrlForPreload, getPreloadedOnlineUrl, getNextTrackIndex, initPlayer, loadLyricsAfterAutomixSwap, loadOnlineSong, pickInitialTrackSelection, preloadNextSong };
