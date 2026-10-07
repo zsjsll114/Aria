@@ -85,6 +85,13 @@ aria_boot_*.png
 scratch/
 # WASAPI 独占模式可行性探针（纯 Rust 独立 crate，验证完即弃）
 spike-wasapi/
+# 探针脚本在**仓库根目录**留下的截图/日志（与 scratch/ 同理：诊断完即弃、不入库）。
+# 实测这批有 80+ 个（tempera / verse / 滚动 / 频谱等专项探针的输出）。
+probe_*.png
+probe_*.jpg
+probe_*.txt
+probe_*.mjs
+proc_info.txt
 
 # ---------- macOS 遗留（Windows 项目中误入的 .app bundle） ----------
 test/
