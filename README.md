@@ -6,7 +6,7 @@
 
 **简体中文** | [English](README.en.md)
 
-**多源在线音乐播放器，主打逐字歌词与歌词视觉：QQ / 酷狗 / 网易 / 酷我搜索，九种全屏歌词模式，桌面歌词，手机遥控器，AI 情绪分析**
+**多源在线音乐播放器，主打逐字歌词与歌词视觉：QQ / 酷狗 / 网易 / 酷我 / 汽水搜索，十种全屏歌词模式，桌面歌词，手机遥控器，AI 情绪分析**
 
 网页版 + Tauri 2 桌面壳，一个人长时间听歌用的播放器。
 
@@ -14,13 +14,13 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 
 [![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![CI](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml/badge.svg)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
 [![Node](https://img.shields.io/badge/node-20.19%2B%20or%2022.13%2B-green)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-green)]()
 
-[视觉展示](#九种歌词视觉) ·
+[视觉展示](#十种歌词视觉) ·
 [核心能力](#核心能力) ·
 [快速开始](#快速开始) ·
 [常见问题](#常见问题) ·
@@ -33,7 +33,7 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 
 仅供个人使用。仓库不含任何音频、歌词或封面内容；在线音源接口由第三方开源项目在本机运行时提供，详见文末[免责声明](#第三方音源与免责声明)。
 
-## 九种歌词视觉
+## 十种歌词视觉
 
 默认模式之外，还有九种全屏歌词视觉，在「选择样式」里一键切换：
 
@@ -45,10 +45,11 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 | 云涌 · WordCloud | 二维词云排版，镜头阻尼跟焦，逐字填充 |
 | 诗镜 · Verse | 多镜头歌词影像：巨字特写 / 杂志排版 / 碎片拼贴，逐字色散与运镜跟随，纯时间轴驱动 |
 | 版画 · Tempera | 网点印刷风歌词 PV：色块构图挖窗 + 歌词动态反色 + 121 种镜头变体 |
-| 长卷 · Scroll | 整首歌一幅横卷：时间向左推进，已唱句留卷成历史，章节色带分章，连续无跳切 |
 | 格律 · Mondrian | 蒙德里安风格色块拼画，按句意分块 + 8 种几何构图，词块贴合色块并碰撞避让 |
 | 穿行 · Tunnel | 3D 空间粒子流体，随主题色变换景深 |
+| 穿行 · Dimension | 浮空层叠的三维歌词，景深与视差随情绪色变化 |
 | 活字 · Letterpress | 铅字版面排版，唱到的字逐字压印上墨，段落情绪换纸色 |
+| 字面 · Jizura | 日系文字 PV 引擎（[JIZURA](https://github.com/852wa/JIZURA) 复刻，MIT）：27 套版式 × 860 个部件自动分镜，卡点跟歌词走 |
 
 <table>
   <tr>
@@ -63,7 +64,7 @@ A multi-source online music player for Windows, built around word-by-word lyrics
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/lyrics2.png" width="100%" alt="拾光 · Lyrics 纯享版式"><br><sub><b>拾光 · Lyrics</b>（纯享版式）</sub></td>
-    <td align="center" colspan="2"><sub>诗镜 · Verse / 版画 · Tempera / 长卷 · Scroll 的截图待补充</sub></td>
+    <td align="center" colspan="2"><sub>诗镜 · Verse / 版画 · Tempera 的截图待补充</sub></td>
   </tr>
 </table>
 
@@ -76,7 +77,7 @@ A multi-source online music player for Windows, built around word-by-word lyrics
 | 模块 | 说明 |
 |---|---|
 | 逐字歌词 | YRC / KRC / QRC 全格式逐字时间轴，原词 / 翻译 / 罗马音三行布局；无逐字时自动对齐补全 |
-| 多源搜索 | QQ 音乐 / 酷狗 / 网易 / 酷我，多梯队在取链竞速与聚合兜底，取链过程透明可见；自建服务高音质与每日推荐 |
+| 多源搜索 | QQ 音乐 / 酷狗 / 网易 / 酷我，多梯队在取链竞速与聚合兜底，取链过程透明可见；自建服务高音质与每日推荐。汽水音乐走本机自建源：搜索与逐字歌词免登录，日推（字节推荐流）与「我的歌单」已接入，播放需扫码；汽水没有排行榜，榜单页仍是三平台 |
 | AI 情绪分析 | Gemini 或 OpenAI 兼容接口：逐句情感标注、高潮段落识别，驱动视觉模式换构图与配色 |
 | 桌面歌词 | 独立透明窗口，自由拖动、点击穿透、逐字本地插值 |
 | 手机遥控器 | 同一局域网扫码或输入地址，用手机控制播放 / 切歌 / 音量（需 `--lan` 启动） |
@@ -118,7 +119,7 @@ macOS / Linux 没有 bat，按脚本内容手动执行即可。
 
 1. **大陆用户若走 Cloudflare Worker 反代用 AI：页面地址必须用 `http://localhost:8001`**，不能用 `127.0.0.1`——Worker 按页面来源（Origin）校验，`127.0.0.1` 会得到 `403 Forbidden`。直连 API（不挂 Worker）没有这个限制，用什么地址打开都行。
 2. **默认只监听本机。** 想用手机访问（含手机遥控器）时执行 `python server.py --lan`。这会把搜索、代理和配置接口（含 AI Key）暴露给同网段设备，只在自己家的 WiFi 里用，用完关掉。
-3. **音源服务需要单独登录。** 未登录时自动降级到免费源池：能搜能播，但没有高音质、每日推荐和收藏歌单。登录入口在「设置 → 自建服务」。
+3. **音源服务需要单独登录。** 未登录时自动降级到免费源池：能搜能播，但没有高音质、每日推荐和收藏歌单。登录入口在「设置 → 自建服务」。汽水是例外——它没有免费源池，未登录时搜索与逐字歌词照用，但**播放不可用**，必须扫码登录。
 
 ## 功能指南
 
@@ -175,14 +176,14 @@ Tauri 2 壳（Rust）── 加载 http://localhost:8001，spawn sidecar
         │
 Python 后端（纯标准库 http.server，端口 8001）
   ├ 静态服务 web/ + /proxy + /api/*（含 /api/remote/* 手机遥控器总线）
-  └ selfhost_service.py：三个 Node 音源副进程（3100/3200/3201，已收口只绑回环）
+  └ selfhost_service.py：四个 Node 音源副进程（3100/3200/3201/3300，已收口只绑回环）
 ```
 
 前端为无框架分片模块（`web/src/app/*.js` 按编号加载），视觉引擎在 `web/src/core/`（pvEngine / tunnelEngine / visualizers）。详细架构见 [AGENTS.md](AGENTS.md) 与 [CODE_WIKI.md](CODE_WIKI.md)。
 
 ## 第三方音源与免责声明
 
-`_eval/` 目录下是三个第三方音源 API 项目的本地镜像（KuGouMusicApi / NeteaseCloudMusicApi / qq-music-api-node），由 `scripts/setup-vendors.bat` 克隆并安装，**不属于本仓库的一部分**，各自遵循其原始许可证，由原项目独立维护。本项目只是在本机 127.0.0.1 上调用它们，不修改其上游逻辑（`patches/` 里是对 QQ 镜像的本地修复，仅本项目使用）。
+`_eval/` 目录下是第三方音源 API 项目的本地镜像（KuGouMusicApi / NeteaseCloudMusicApi / qq-music-api-node，以及汽水用的 npm 库 `ly-music-source`），由 `scripts/setup-vendors.bat` 克隆并安装，**不属于本仓库的一部分**，各自遵循其原始许可证，由原项目独立维护。本项目只是在本机 127.0.0.1 上调用它们，不修改其上游逻辑（`patches/` 里是对 QQ 镜像的本地修复，仅本项目使用）。汽水多加了一层 HTTP 适配层 `scripts/qishui-server.mjs`（在仓库内、受版本控制），因为上游是库而非服务。
 
 在此基础上：
 
@@ -192,14 +193,21 @@ Python 后端（纯标准库 http.server，端口 8001）
 
 ## 致谢
 
-- [folia-major](https://github.com/chthollyphile/folia-major) —— 本项目视觉分镜设计的参考来源
+- [folia-major](https://github.com/chthollyphile/folia-major)（AGPL-3.0）—— **"诗镜 · Verse" 与 "版画 · Tempera" 两个视觉引擎的代码来源**（逐行保真移植），完整清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [JPV Lyrics Motion Kit](https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit)（AGPL-3.0）—— 隧道模式逐字入场主题、PV 背景形状场与 Cadenza 逐字光束扫描的来源（改作）
 - [KuGouMusicApi](https://github.com/makbkf/KuGouMusicApi) / [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) / [qq-music-api-node](https://github.com/jsososo/QQMusicApi) —— 音源接口
 - [Tauri](https://tauri.app/) · [segmentit](https://github.com/nekobato/segmentit) · [kuromoji.js](https://github.com/takuyaa/kuromoji.js)
 - 字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · 方舟像素 · Cubic 11
 
 ## 许可证
 
-[MIT](LICENSE)。仅覆盖本仓库自有源代码，不含 `_eval/` 下的第三方项目。
+[AGPL-3.0](LICENSE)。本项目整体按 GNU Affero General Public License v3.0 发布。
+
+**为什么不是 MIT**：本项目的「诗镜 · Verse」（`web/src/core/visualizers/sonnet/`）与「版画 · Tempera」（`web/src/core/visualizers/tempera/`）两个视觉引擎，以及若干工具模块（`pixiTextureBudget.js`、`utils/lyrics/*` 等），是从 [chthollyphile/folia-major](https://github.com/chthollyphile/folia-major)（**AGPL-3.0**）**逐行保真移植**而来；隧道模式的部分逐字入场主题改作自 JPV Lyrics Motion Kit（AGPL-3.0）。AGPL 的传染性使包含它们的整体作品必须以 AGPL-3.0 发布 —— 此前标注的 MIT 对这一部分不成立，已修正。
+
+- 第三方许可与**逐个文件的来源清单**：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- 版权人自有部分（不源自上述项目的代码）同样可按 MIT 或其它条款单独授权；但**本仓库与其分发物是 AGPL-3.0 的组合作品**。
+- `_eval/` 下的音源接口项目是运行时另行获取的独立项目，不在本仓库许可范围内。
 
 ## 相关文档
 

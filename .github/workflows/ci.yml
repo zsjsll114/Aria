@@ -86,6 +86,7 @@ jobs:
           python -m unittest tests.python.test_cache_lock
           python -m unittest tests.python.test_kugou_cellphone
           python -m unittest tests.python.test_verify_login
+          python -m unittest tests.python.test_qishui_login
 
       - name: Run PV regression tests
         run: |
@@ -99,17 +100,33 @@ jobs:
           python tests/test_word_fallback.py
           python tests/test_word_align.py
 
+      # 2026-10-05 P3：浮层契约（ui/overlay.js + 021-aria-dialog.js）行为回归。
+      # 钉住层级高于设置面板、dialog 语义、焦点陷阱/归还、ESC 只关顶层、
+      # prompt 的 await 形态（258 同名覆盖曾让 AutoEQ 导入静默失效）。
+      - name: Overlay contract regression
+        run: python tests/test_overlay_contract.py
+
+      # 2026-10-05：外观 mod 文件（.aria-theme.json）导入端到端 ——
+      # 文件 → 白名单校验 → 确认框 → 应用 → 落库，以及不合法文件的零副作用。
+      - name: Theme mod import regression
+        run: python tests/test_theme_mod_ui.py
+
       # 2026-09-26 这批修复各自的回归钉：默认模式入口/取链音源判定/日推点击/数字步进器
       - name: Cover-mode entries, source routing, daily-recommend & stepper smoke
         run: |
           python tests/test_cover_mode_entries.py
           python tests/test_source_routing.py
+          # 2026-10-03 汽水音乐接入：第 5 个音源按钮 / 自建取链回退 / 设置页第 4 个卡片 /
+          # QRC→KRC 往返。CI 无 _eval/ vendor → 走「明确报错且不静默换源」分支
+          python tests/test_qishui_source.py
           python tests/test_daily_recommend_click.py
           python tests/test_number_stepper.py
           python tests/test_titlebar_contrast.py
           python tests/test_theme_palette_ui.py
           python tests/test_word_per_char_ui.py
           python tests/test_ab_loop_ui.py
+          # 2026-10-02 Automix 全链路（分析→ARM→交叉→swap→live binding），两段节拍 WAV data: URL，不联网
+          python tests/test_automix_e2e.py
           # 2026-09-26 AI 反代隐私确认：开机无手势不得弹窗（本机未走反代时整体 SKIP）
           python tests/test_ai_privacy_boot.py
           # 2026-09-26 首跑向导：标准毛玻璃 + 英文模式真的翻译 + 主题色写全两个变量

@@ -78,7 +78,22 @@ if exist _eval\qqmusic-api-py (
     git -C _eval\qqmusic-api-py reset --hard 5f87b07b85923f8862d7b57f9d558ce0314ba1a7
 )
 
-rem ---------- 5. kuromoji dictionary (same-origin, git-ignored) ----------
+rem ---------- 5. qishui vendor (ly-music-source, npm library) ----------
+rem Different from 1-3: qishui's upstream is a *library*, not a service, so it has
+rem no app.js to spawn. Our HTTP adapter lives in scripts\qishui-server.mjs (tracked,
+rem because _eval/ is git-ignored); this step only fetches the library it imports.
+if exist _eval\qishui-music-api\vendor\node_modules\ly-music-source\dist\index.js (
+    echo [skip] _eval\qishui-music-api vendor already present
+) else (
+    if not exist _eval\qishui-music-api\vendor mkdir _eval\qishui-music-api\vendor
+    pushd _eval\qishui-music-api\vendor
+    echo [npm] installing ly-music-source@0.1.0 ...
+    call npm install ly-music-source@0.1.0 --no-audit --no-fund --no-save --registry=https://registry.npmmirror.com
+    if errorlevel 1 echo [warn] ly-music-source install failed - qishui self-host stays offline.
+    popd
+)
+
+rem ---------- 6. kuromoji dictionary (same-origin, git-ignored) ----------
 rem The PV word segmenter loads this dict from web/src/vendor/kuromoji/dict/.
 rem It is ~17MB so it is git-ignored; mirror it from node_modules here.
 echo [dict] syncing kuromoji dictionary into web\src\vendor\kuromoji\dict ...

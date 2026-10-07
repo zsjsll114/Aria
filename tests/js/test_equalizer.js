@@ -26,7 +26,7 @@ const state = st.state;
 
 let calls;
 function resetDeps({ inited = false, nodeCount = 10 } = {}) {
-    calls = { changed: 0, presetApplied: 0, bandChanged: [], disconnects: 0, closes: 0, gainSets: [] };
+    calls = { changed: 0, presetApplied: 0, bandChanged: [], disconnects: 0, connects: 0, closes: 0, gainSets: [] };
     const mkFilter = (i) => ({
         gain: { setValueAtTime: (g) => calls.gainSets.push([i, g]) },
         disconnect: () => { calls.disconnects++; },
@@ -36,8 +36,21 @@ function resetDeps({ inited = false, nodeCount = 10 } = {}) {
     state.eqInited = inited;
     state.eqInitFailed = false;
     state.eqFilterNodes = inited ? Array.from({ length: nodeCount }, (_, i) => mkFilter(i)) : [];
-    state.eqSourceNode = inited ? { disconnect: () => { calls.disconnects++; } } : null;
-    state.audioCtx = inited ? { currentTime: 1.5, close: () => { calls.closes++; } } : null;
+    /* source node 必须能 disconnect（改接）与 connect（补旁通）——见 cleanup 的修复语义 */
+    state.eqSourceNode = inited ? {
+        disconnect: () => { calls.disconnects++; },
+        connect: () => { calls.connects++; },
+    } : null;
+    /* ctx 的 state/destination 是 cleanup 的旁通分支要读的（'closed' 时不旁通） */
+    state.audioCtx = inited ? {
+        currentTime: 1.5,
+        state: 'running',
+        destination: {},
+        close: () => { calls.closes++; },
+    } : null;
+    state.eqDeckGain = null;
+    state.eqMixBus = null;
+    state.eqInited = inited;
     eq.initEqualizer({
         audio: { src: '', currentTime: 0, paused: true },
         onPlayError: () => {},
@@ -47,7 +60,7 @@ function resetDeps({ inited = false, nodeCount = 10 } = {}) {
     });
 }
 
-beforeEach(() => { store.clear(); resetDeps(); });
+beforeEach(() => { store.clear(); eq._resetEqGraphForTest(); resetDeps(); });
 
 test('内置预设能应用，且会请求整面板重建（频段 + 高亮）', () => {
     const name = Object.keys(EQ_PRESETS)[0];
@@ -131,13 +144,21 @@ test('脏数据不破功：段数不对 / JSON 坏掉时保持原状', async () 
     assert.equal(state.eqActivePreset, '摇滚');
 });
 
-test('cleanupEqAudioGraph：节点断开、上下文关闭、状态复位', () => {
+test('cleanupEqAudioGraph：只拆下游，保留 ctx 与 source（元素捕获不可逆）', () => {
     resetDeps({ inited: true });
     eq.cleanupEqAudioGraph();
-    assert.equal(calls.disconnects, 11, '10 个滤波节点 + source');
-    assert.equal(calls.closes, 1);
+    assert.equal(calls.disconnects, 11, '10 个滤波节点 + source 改接旁通前的 disconnect');
+    /* ★★ 2026-10-05 修复的核心断言（「有时候放歌没声音」的根因）：
+       `createMediaElementSource` 对元素的捕获**永久且不可转移** —— ctx 一旦 close，
+       元素就永久静音；换个 ctx 再 create 会抛 InvalidStateError（元素已绑定另一个
+       source node）⇒ eqInitFailed 死锁，非重启不能恢复。
+       而 175-track-index-online.js 每次在线点播加载都会调本函数。
+       所以 cleanup **绝不 close ctx、绝不丢 source**，并补一条直连旁通保声。 */
+    assert.equal(calls.closes, 0, '绝不 close AudioContext（close 即永久静音）');
+    assert.notEqual(state.audioCtx, null, 'ctx 必须保留（复用，不能丢）');
+    assert.notEqual(state.eqSourceNode, null, 'source node 必须保留（元素只被捕获一次）');
+    assert.equal(calls.connects, 1, '必须补一条 source → destination 的直连旁通');
     assert.equal(state.eqInited, false);
-    assert.equal(state.audioCtx, null);
     assert.deepEqual(state.eqFilterNodes, []);
 });
 

@@ -10,7 +10,7 @@
 
 - 多源在线音乐搜索与播放（QQ 音乐、网易云、酷我、咪咕、聚合兜底、任意存量 API）
 - 逐字（卡拉OK式）歌词高亮渲染，支持原词 / 翻译 / 罗马音三行布局
-- 多种歌词可视化模式（默认模式之外的九种全屏视觉）：**拾光 Lyrics**（全屏逐字滚动）、**飞白 Fly-In**（逐字飞入发光）、**词云 WordCloud**（二维词云 + 相机跟焦）、**诗镜 Verse**（SonnetEngine，folia-major 移植的多镜头歌词影像：巨字特写/杂志排版/碎片拼贴）、**版画 Tempera**（网点印刷风 PV：色块挖窗 + 歌词反色 + 121 镜头变体）、**长卷 Scroll**（整歌一幅横卷，已唱句留卷成历史）、**格律 Mondrian**（色块拼画，手工预设布局表按句组轮换）、**穿行 Tunnel**（3D 空间粒子流体）、**活字 Letterpress**（印刷压印隐喻 + 纸色随段落情绪）。霓虹 Neon 引擎代码保留（NeonVisualizer.js）但已从样式选择器下线
+- 多种歌词可视化模式（默认模式之外的八种全屏视觉）：**拾光 Lyrics**（全屏逐字滚动）、**飞白 Fly-In**（逐字飞入发光）、**词云 WordCloud**（二维词云 + 相机跟焦）、**诗镜 Verse**（SonnetEngine，folia-major 移植的多镜头歌词影像：巨字特写/杂志排版/碎片拼贴）、**版画 Tempera**（网点印刷风 PV：色块挖窗 + 歌词反色 + 121 镜头变体）、**格律 Mondrian**（色块拼画，手工预设布局表按句组轮换）、**穿行 Tunnel**（3D 空间粒子流体）、**活字 Letterpress**（印刷压印隐喻 + 纸色随段落情绪）。霓虹 Neon 引擎代码保留（NeonVisualizer.js）但已从样式选择器下线。长卷 Scroll 已于 2026-10-05 整体删除
 - 手机遥控器（`--lan` 模式下手机浏览器访问 `/remote.html`，经 `/api/remote/*` 总线远程控制播放）
 - 听歌识曲（Node sidecar 调用 Shazam 指纹识别；Shazam 失败时回退到 Vosk 语音转写 + 歌词反查）
 - 本地音乐管理（上传、结构化落盘、Enhanced LRC 逐字歌词生成）
@@ -46,7 +46,7 @@
 ├── qq_resolver.py               # QQ 音乐多源解析池（Tier A~D 竞速/降级 + 防试听校验）
 ├── agg_resolver.py              # 聚合跨源兜底（gdstudio：酷我→网易） + 酷我独立源
 ├── local_music_server.py        # 本地音乐扫描 / 音频缓存 / 用户配置 / 字体 / 识曲缓存
-├── selfhost_service.py          # 自建服务三平台副进程托管（酷狗/QQ/网易云，3100/3200/3201 端口，NODE_OPTIONS 注入 vendor-loopback-guard 收口只绑回环）
+├── selfhost_service.py          # 自建服务四平台副进程托管（酷狗/QQ/网易云/汽水，3100/3200/3201/3300 端口，NODE_OPTIONS 注入 vendor-loopback-guard 收口只绑回环）
 ├── remote_bus.py                # 手机遥控器总线（/api/remote/*）
 ├── scripts/
 │   ├── shazam-server.mjs        # ★ Node 识曲 sidecar（18089：/health /proxy /recognize）
@@ -81,7 +81,7 @@
 │       ├── core/pvEngine/       # ★ PV 模式（PVEngine + PVLyricLayout + PVCamera + WordSegmenter 等）
 │       ├── core/pvEngine_backup/# PV 引擎旧版备份（已不再使用，勿删，可对照回滚）
 │       ├── core/tunnelEngine/   # ★ 流光隧道/格律（TunnelEngine 主时间线 + Director + Camera + DepthStack + Animations + AILyricSegmenter + mondrianTemplates）
-│       ├── core/visualizers/    # 可视化引擎：VisualizerBase + VisualizerManager + dimension/ + sonnet/（诗镜）+ tempera/（版画）+ scroll/（长卷）+ Letterpress/Neon
+│       ├── core/visualizers/    # 可视化引擎：VisualizerBase + VisualizerManager + dimension/ + sonnet/（诗镜）+ tempera/（版画）+ Letterpress/Neon
 │       ├── services/            # API、AI、本地音乐、收藏/歌单/字体、歌词匹配等
 │       ├── parsers/             # LRC/YRC/罗马音/KRC/增强LRC/多源合并
 │       ├── infrastructure/      # dom / eventBus / state（状态单一来源）/ globalBridge（globalThis 桥接过渡层）
@@ -308,6 +308,8 @@
 | `288-lyric-search.js` | 歌词内搜索面板 | — |
 | `292-toolbar.js` / `core/toolbarLayout.js` | 工具栏自定义（布局/显隐） | — |
 | `293-word-upgrade.js` | 行级歌词升级：普通行歌词后台升级为真逐字 | — |
+| `296-audio-output.js` | 「输出设备」下拉：WebView2 走 `setSinkId`，原生独占接管时整条链改道引擎（列表/写入目标都换，见 `Aria.__nativeOutputBackend`） | `refreshAudioOutput()`、`applyAudioSink()` |
+| `298-native-output.js` | ★ WASAPI 独占输出开关：端到端体检 → 顶替活跃 deck → Automix/变速显式让位；关掉时还原 HTML 播放并交还设备 | `enableExclusive/disableExclusive`、`listNativeDevices` |
 | `201-settings-ai.js` | ★ AI 设置面板（全项目最大单文件，~2400 行）：Key/反代/隐私确认/状态面板，全量 i18n | — |
 | `999-global-audit.js` | 全局审计收尾分片（globalThis 键登记核查） | — |
 
@@ -326,8 +328,12 @@
 | `aiAnalyzer.js` | AI 情绪分析入口（→ 主题 JSON） | `getLyricsTextForAI()`、`buildAIRequest()`、`extractAIStreamChunk()` |
 | `chorusDetector.js` | 纯 JS 高潮检测（降采样/FFT/band 聚合/重复检测，可走 Worker） | `_fft()`、`_cosineSim()` |
 | `stallDetector.js` | 播放停滞检测（轮询 currentTime + stalled/waiting/playing） | `startStallCheck/stopStallCheck/setBuffering` |
-| `equalizer.js` | 10 段 Web Audio EQ 图 | `initEqAudioGraph/cleanupEqAudioGraph` |
+| `equalizer.js` | 10 段 Web Audio EQ 图；**空间音频（HRTF 卷积）+ 虚拟声场（M/S + Haas）**支路也在这里（EQ 后 / compressor 前） | `initEqAudioGraph/cleanupEqAudioGraph`、`applySpatialAudio/applyVirtualStage` |
+| `spatialTuning.js` | ★ **自动生成**（`scripts/build_spatial_tuning.mjs`）：档位→参数表 + HRTF 冲激响应 + 两侧同算法的 `resampleLinear` | `SPATIAL_TUNING/STAGE_TUNING/SPATIAL_IRS`、`spatialTuningFor/stageTuningFor/irFor` |
 | `fadeController.js` | rAF 平滑音量淡入淡出 | `fadeOutVolume/fadeInVolume/cancelAllFades` |
+| `nativeBridge.js` | 原生引擎 IPC 收口：**每次调用重新解析** `window.__TAURI__.core.invoke`（注入可能晚于模块求值）+ 超时 + 可用性探测（区分「没外壳」与「命令被 ACL 拦」） | `probe()`、`call()`、`CMD` |
+| `nativeDeck.js` | 把原生引擎伪装成 `<audio>` 元素（鸭子类型）：20Hz 快照 + 墙钟线性插值时钟、合成 play/pause/ended/loadedmetadata/canplay/error 事件、音量推送合并、EQ 变化检测下发 | `createNativeDeck()`、`isNativeDeck()` |
+| `dualDeck.js` | 双 deck 管理（Automix）+ **`replaceActiveDeck()`**：把活跃 deck 换成原生替身或换回 HTML，常驻监听成对搬运 | `initDualDeck`、`swapRoles`、`replaceActiveDeck` |
 | `shortcutManager.js` | 键盘快捷键统一管理 | `initShortcutManager()` |
 | `visualizers/VisualizerBase.js` | 可视化渲染器基类：标准化生命周期（`init/setLyrics/update/start/stop/destroy`）+ 通用工具（建容器、resize、rAF 管理）；子类实现 `getModeId()/onInit()` | `VisualizerBase`（`init/update/resize`） |
 | `visualizers/VisualizerManager.js` | 可视化模式调度（dimension / letterpress / neon 注册切换） | `switchMode/setLyrics/update/applySettings` |
@@ -349,9 +355,8 @@
 | `tunnelEngine/TunnelAnimations.js` | 8 大类 WAAPI 入场/出场库、几何蒙版转场、37 种装饰库（`DECORATION_LIBRARY`）、`splitToCharAnimParams()` 每字独立参数 | `playEnterAnimation()`、`pickDecorationCombo()` |
 | `visualizers/sonnet/`（SonnetEngine 等 ~20 文件） | ★ 诗镜 · Verse 引擎（folia-major 移植）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜池、逐字色散、运镜跟随，纯时间轴驱动。样式选择器中占 `data-mode="pv"` 位 | `SonnetEngine` |
 | `visualizers/tempera/` | ★ 版画 · Tempera 引擎：网点印刷风——色块构图挖窗 + 歌词动态反色 + 121 种镜头变体；`data-mode="tempera"` | — |
-| `visualizers/scroll/` | ★ 长卷 · Scroll 引擎：整歌一幅横卷，时间左推，已唱句留卷成历史，章节色带分章；`data-mode="scroll"` | — |
 
-> **命名陷阱（改这里必读）**：样式选择器的显示名与 `data-mode` 不对应——「格律 · Mondrian」=`tunnel`、`穿行 · Tunnel`=`dimension`、`诗镜 · Verse`=`pv`。新模式 tempera/scroll 名实相符。这三个新引擎（sonnet/tempera/scroll）不走 VisualizerManager 注册链，由 `220-shortcuts-viewmode.js` 直接调度，切走时的清理由各模式自己的守卫分支负责（注意凝彩/长卷清理必须在 `mode!=='pv'` 守卫之外，见 220 内注释）。
+> **命名陷阱（改这里必读）**：样式选择器的显示名与 `data-mode` 不对应——「格律 · Mondrian」=`tunnel`、`穿行 · Tunnel`=`dimension`、`诗镜 · Verse`=`pv`。新模式 tempera 名实相符。这两个新引擎（sonnet/tempera）不走 VisualizerManager 注册链，由 `220-shortcuts-viewmode.js` 直接调度，切走时的清理由各模式自己的守卫分支负责（注意凝彩清理必须在 `mode!=='pv'` 守卫之外，见 220 内注释）。
 
 ### 6.4 服务层（web/src/services/）
 
@@ -407,6 +412,36 @@
 - `tauri.conf.json`：产品名 Aria、版本号由 `server.py` 的 `SERVER_VERSION` 同步而来（唯一来源，见 §5.1）、`frontendDist: dist-stub`（占位——两个窗口的 URL 都是 `http://localhost:8001/...`，前端由 server.exe 提供，exe 内不嵌 web/；曾指向 `../web` 时把 145MB 静态资源压缩塞进了二进制，白占 86MB）、主窗口 + `desktop_lyrics` 透明无边框窗口（`decorations:false, transparent:true, alwaysOnTop`）。
 - `capabilities/default.json`：core/window/shell 权限声明。
 - `build-dev.bat`：加载 VS2026 x64 环境 → `cargo build`。
+
+### 7.1 原生音频引擎（crate `aria-audio`，原生输出线）
+
+- 为什么有它：**WASAPI 独占在 WebView2 里做不到**（Web Audio 终点固定是系统共享混音，
+  Chromium 的 `--enable-exclusive-audio` 已被标 Won't Fix）。所以整条播放引擎搬进 Rust：
+  `src-tauri/audio/`（source / decoder / ring / output / engine / dsp），不依赖 Tauri，
+  可用 `cargo run --bin audio-probe` 脱离 WebView2 单跑。
+- IPC 契约在 `src-tauri/src/native_audio.rs`（只做 DTO 与 `src` 翻译，一行 DSP 都不写）；
+  前端 `core/nativeBridge.js` + `core/nativeDeck.js`，开关与接线在 `app/298`。
+- **加命令要改四处**：`native_audio.rs`、`lib.rs` 的 `generate_handler!`、`build.rs` 的
+  `AppManifest::commands`、`tauri.conf.json` 两个 capability 的 `allow-*`。
+  漏了不会编译失败，而是运行期 invoke 报 "not allowed"。
+- **时钟契约**：是前端 20Hz 来取快照、rAF 里插值，**不是引擎推送**；绝不要逐帧 invoke。
+- ★ 本机实测：独占端点**不消费缓冲**（格式被接受、`Initialize` S_OK、`Write` 不报错，
+  `GetCurrentPadding` 恒定不变；轮询/事件 × 2/4/8× 缓冲 × s16/s24 全试过；共享模式正常）
+  → 判定为设备/驱动/环境问题。代码的处理是**检测并如实报告**（`verify_streaming()` 体检 +
+  `check_exclusive_usable()` 前置体检），而不是静默播空气。
+- 完整记录见 `docs/原生输出-WASAPI独占.md`。
+- **DSP 链序**：`ring → EqChain（10 段 biquad）→ SpatialChain（HRTF + 虚拟声场）→ 音量 → WASAPI`。
+  顺序与 Web Audio 图刻意对齐（EQ 后 / 响度前）。`SpatialChain` 见 `dsp/spatial.rs`。
+- ★ **空间音频 / 虚拟声场双路径对齐**（2026-10-05）：
+  - 唯一参数源 `scripts/spatial/spatial_tuning.json` → `node scripts/build_spatial_tuning.mjs`
+    同时产出 `web/src/core/spatialTuning.js` 与 `dsp/spatial_tuning.rs`（表 + IR + 同算法重采样）。
+    **两个产物都勿手改**。
+  - 虚拟声场必须是 **M/S 形式**（`a=(1+S)/2`、`b=(1−S)/2`，`a+b≡1` ⇒ 单声道和不变）；
+    同相串音是 crossfeed = **收窄**，别写反。
+  - `taps` 取**重采样后**的实际长度（44.1k 下 512→470），用常量会越界。
+  - 一致性守门：`tests/js/test_spatial_tuning.js` 直接解析 Rust 源逐项比对。
+  - CPU 实测（`audio-probe spatialbench`）：48k 2.5% / 96k 8.8% / 192k 40% 单核。
+  - 完整记录见 `docs/空间音频与虚拟声场-技术方案.md` 文末「实现记录（P1/P2）」。
 
 ---
 
@@ -732,7 +767,7 @@ body::before {
 
 ---
 
-## 20. 自建音乐服务（酷狗 / QQ / 网易云）（2026-09-05）
+## 20. 自建音乐服务（酷狗 / QQ / 网易云 / 汽水）（2026-09-05，汽水 2026-10-03）
 
 ### 20.1 定位与原则
 - 以 Node 副进程跑各自音乐 API server（后端镜像），由 `server.py`（`/api/selfhost/*`）统一托管与代理。
@@ -745,8 +780,11 @@ body::before {
 | 酷狗 | `_eval/KuGouMusicApi`（MakcRe 概念版 lite） | 3100 | `node app.js` | 无（需 token） |
 | QQ | `_eval/qq-music-api-node`（sansenjian） | 3200 | `npx tsx src/app.ts` | 无（`getMusicPlay` 强制登录态） |
 | 网易云 | `_eval/NeteaseCloudMusicApi`（`nooblong/NeteaseCloudMusicApiBackup` fork，官方仓库已被举报下架） | 3201 | `node app.js` | 无（日推 `/recommend/songs` 通常需登录） |
+| 汽水 | `_eval/qishui-music-api`（npm 库 `ly-music-source` + 适配层 `scripts/qishui-server.mjs`） | 3300 | `node ../../scripts/qishui-server.mjs` | 无（上游 `resolve()` 未登录返回 `UNAUTHENTICATED`） |
 
 > 网易云官方主仓库 2023 前后被举报下架；本项目用活跃 fork `nooblong/NeteaseCloudMusicApiBackup`（其 GitHub 原始 URL 全小写会 404，正确为 `NeteaseCloudMusicApiBackup`）。
+
+> 汽水与前三个平台**形态不同**，见 §20.8：它的上游不是能直接跑的服务，而是一个库。
 
 ### 20.3 后端 `server.py` / `selfhost_service.py`
 - 新模块 `selfhost_service.py`（纯标准库）：`ensure_running(name)` 惰性拉起副进程（校验 Node、等端口、幂等）；`status_all()`；登录 `get_login_qr(name)` / `poll_login(name,key)`；通用代理 `proxy_request(name,method,path,body)`（qq 自动注入 `cookie=`；kugou 自动注入 `token&userid`；netease 自动注入 `Cookie` 头，并支持回读 Set-Cookie 供扫码用）。
@@ -760,7 +798,7 @@ body::before {
 - 登录态寿命：QQ 逆向登录态无标准 refresh_token，通常几小时~数周被风控/服务端吊销；**掉线不可静默续期，需重新扫码**。实现上靠 `/api/selfhost/status` 标记 loggedIn=false + 播放回退免费池兜底，避免一次掉线卡死 QQ 播放。
 
 ### 20.5 前端接入
-- `web/src/app/selfhost-settings.js`：设置页「自建服务」Tab（`index.html` 新增 `data-tab="selfhost"` 按钮 + `.settings-section` 空容器 + `#selfhostQrOverlay` 扫码弹窗）。三平台卡片（存活灯/启用开关/登录按钮/登出）+「每日推荐来源」下拉。扫码弹窗：`/qr` 取码 → 每 2s `/check` 轮询 → 成功写状态并刷新。
+- `web/src/app/selfhost-settings.js`：设置页「自建服务」Tab（`index.html` 新增 `data-tab="selfhost"` 按钮 + `.settings-section` 空容器 + `#selfhostQrOverlay` 扫码弹窗）。四平台卡片（存活灯/登录按钮/登出；前三者另有启用开关）+「每日推荐来源」下拉。扫码弹窗：`/qr` 取码 → 每 2s `/check` 轮询 → 成功写状态并刷新。
 - `web/src/app/selfhost-runtime.js`：`selfhostQQPlayUrl(mid,quality)`（**步骤0** 插到 `175-track-index-online.js` QQ 解析最前，`enabled+loggedIn` 才走，失败落回原链，且需 `checkAudioUrlPlayable` 复验）；`dayRecommend()` 归一化三家日推为 {song,singer,id,source}。
 - `web/src/app/258-rankings.js`：新增 `openDailyRecommend()`（复用榜单弹窗 `renderSongs` 渲染成普通歌单列表），右上角 `#openDailyBtn` 触发。
 
@@ -772,6 +810,36 @@ body::before {
 - 酷狗/QQ/网易云三家扫码登录均需真实账号方可端到端完整验证（取码/轮询逻辑已通，扫码授权与高音质/日推需你实测一次）。网易云登录图渲染依赖 python `qrcode`(+Pillow)，若换机器需 `pip install --user qrcode[pil]`。
 - 自建服务依赖本机 `node`（≥18）；副进程在 server.py 退出后被孤儿但端口保持占用，重启 server 时 `ensure_running` 会探测复用，不会重复拉起。
 - `_eval/` 目录仅为验证期目录，正式版可将 `_SERVICES[].dir` 指向 `vendor/<repo>` 稳定路径。
+
+### 20.8 汽水音乐（2026-10-03）
+上游是 npm 库 **`ly-music-source`**（GPL-3.0-only、零依赖、纯 ESM），不是可 `node app.js` 起的服务 → 多了一层 HTTP 适配层 `scripts/qishui-server.mjs`。
+
+- **适配层为什么在 `scripts/` 而不在 `_eval/`**：`.gitignore:19` 把整个 `_eval/` 排除了，我们自己的代码放进去会丢。库本身仍按 npm 惯例放 `_eval/qishui-music-api/vendor/node_modules/ly-music-source/`，由 `setup-vendors.bat` 第 5 节 `npm install ly-music-source@0.1.0` 重建。副进程 cwd 仍是 `_eval/qishui-music-api`（项目根下恰好两层），所以回环守卫的 `--require ../../scripts/vendor-loopback-guard.cjs` 相对路径推导与另三家一致（`selfhost_service.py:270`）。
+- **能力边界（逐条实测，非推断；2026-10-03 curl 实跑）**：
+  | 能力 | vendor 方法 | 上游端点 | 匿名可用 | Aria 是否已接 |
+  |---|---|---|---|---|
+  | 搜索 / 建议 | `searchSongs` / `searchSuggestions` | `/luna/pc/search/all`、`/sug` | ✅ | ✅ 搜索源按钮 |
+  | 逐字歌词 | `getLyric` | `/luna/pc/track_v2` | ✅ | ✅ 卡拉 OK 高亮 |
+  | **日推（推荐流）** | `getSongFeed` | `/luna/pc/feed/song-tab` | ✅（实际可用） | ✅ 每日推荐第 4 个 tab |
+  | **我的歌单** | `listUserPlaylists` | `/luna/pc/me/playlist` | ❌ 需登录 | ✅ 歌单页自建入口 |
+  | 歌单详情 | `getPlaylist` | `/luna/pc/playlist/detail` | ✅ | ✅ 同上（点卡片进曲目） |
+  | 播放 | `resolve` | 加密字节解密 | ❌ 需登录 | ✅ `/stream` + 跨源兜底 |
+  | 用户资料 / VIP | `getProfile` / `getMembership` | `/luna/pc/me` | ❌ | ✅ 仅供 `/status` |
+  | **排行榜 / 榜单** | **无此能力** | **无对应端点** | — | ❌ **接不了**（见下） |
+- **汽水没有「榜单」可接**：库的公开能力表（README「Capabilities」）只有 Search / Library / Catalog / Comments / **Discovery** / Playback 六类，`Discovery` 仅 `getSongFeed`、`getRelatedSongs`、`dislikeTrack` —— 全库 grep `chart|toplist|ranking|billboard` 零命中，端点清单里也没有任何榜单路径。所以榜单页的 `RANK_SRC_ORDER` 保持 `['qq','kugou','netease']` **不动**：**不是漏接，是上游没有这个东西**。若将来要做，只能用 `/feed` 或歌单搜索拼一个「热门」视图 —— 那属于自造语义，需产品决策，不该默默塞进"榜单"。
+- **「我的歌单」未登录必须显式报错**：vendor 内部 `ctx.requireCookie()` 抛 `UNAUTHENTICATED`，适配层经 `fail()` 转成 **HTTP 200 + `{ok:false,code:'UNAUTHENTICATED'}`**。前端 `shProxy` 只在非 2xx 抛错，所以 `selfhostPlaylists('qishui')` **必须显式判 `d.ok === false`**，否则会渲染成「该账号暂无歌单」——用户以为账号是空的，根本不会去登录。`tests/test_qishui_source.py` 第 6.7 节用打桩把这条钉住。
+- **日推失败不能说「去设置里启用」**：汽水没有平台开关（`selfhostEnabled('qishui')` 恒真），它失败只可能是本机副进程没起来 → 提示走「本机汽水服务未就绪」这条独立分支（`258-rankings.js` `loadDailyList`）。
+- **取链形状与其它平台根本不同**：vendor `resolve()` 返回解密后的字节，`/stream` 直接回 `audio/*` 流（含 Range）。前端拿到的仍是一个普通 URL（`http://127.0.0.1:3300/stream?id=..&quality=..`）→ 走原有 `getStreamCachedAudioUrl` → `/api/audio/stream`（Range + 磁盘缓存）链路，**播放链一行未改**。
+- **登录态归属**：会话在 vendor 侧（`_eval/qishui-music-api/.session.json`）。Python 的 `_STATE['qishui'].cookie` 只是自编标记串 `qishui-session`，**从不注入任何请求** → 不能沿用「cookie 非空即已登录」，`status_all()` 改为问 vendor `/status`（`_qishui_login_snapshot`，20s TTL 挡前端 5s 轮询）。
+- **歌词**：vendor 给的是**逐词** `type:'word'` 行式（`{timeMs, text, words:[{timeMs,text}]}`），经 `qishuiLinesToKrc()` 拼成 KRC 文本再交 `parseKrc()` —— 刻意复用酷狗那条链，下游 `parsedList` 形状字节级一致，渲染层零分支。
+- **无启用开关、无 Cookie 输入框**：汽水的搜索源与播放都只有本机这一条路，开关盖不到任何分支；会话由 vendor 落盘，粘 cookie 无从注入。摆一个按了没反应的开关 / 填了必失败的输入框是误导。
+- **无公网兜底**：汽水没有匿名公开搜索接口（第三方站实测见 `scripts/probes/qishui-source-probe.py`：BugPk ✓ / Star API △降级 / 灰狐 ✗SSL / nonebot ✗405 / 云智 △要 token）。因此搜索失败**明确报错**「汽水搜索暂无结果（需本机自建服务在线）」，不像 QQ/网易那样静默换源。
+- **回归**（三层，共 68 项，全绿）：
+  - `tests/test_qishui_source.py` —— 前端端到端 **45 项**（真 chromium + 真 server.py；无 vendor 的机器上自动走「明确报错」分支，所以 CI 也能真跑）。其中第 6.5 节用 fetch 打桩驱动扫码弹窗、第 6.7 节打桩驱动「我的歌单」的未登录分支 —— 这两条**不依赖 vendor 存在**，CI 上是真断言。
+  - `tests/js/test_qishui_adapter.js` —— 适配层 HTTP 契约 **8 项**（临时目录造一个假库 `ly-music-source`，把真实适配层进程拉起来，钉住 `/feed`、`/playlists`、`/playlist` 的出参形状与「业务失败 200 / 未知路径 404」的语义分界）。**这份是必需的**：`_eval/` 被 gitignore，CI 永远没有真 vendor，只靠 e2e 打桩等于端点契约无人看守。
+  - `tests/python/test_qishui_login.py` —— Python 侧登录态分支 **15 项**（离线，无需 vendor）。
+- **仍未做**：扫码登录后的播放端到端需真实汽水账号实测一次（当前只验到「未登录 → 跨源兜底」）；`_eval/` 下 `.session.json` 属敏感文件，勿入库。
+
 ### 21. 2026-09 更新（榜单/自建服务/歌单统一/桌面歌词）
 
 - **QQ 用户资料链路 TLS 风控**：c6.y.qq.com 按 TLS 指纹拒绝 node axios(code:1000)；_eval/qq-music-api-node/src/services/apis/user/getUserPlaylists.ts、getUserLikedSongs.ts 改用 undici etchWithTimeout；controllers/getUserLikedSongs.ts 必须 esolveRequestCookie 传 cookie。
@@ -968,9 +1036,9 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
 
 - **诗镜 · Verse**（`visualizers/sonnet/`，SonnetEngine + ~20 个分模块）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜、逐字色散、运镜跟随，纯时间轴驱动。占 `data-mode="pv"` 位。
 - **版画 · Tempera**（`visualizers/tempera/`）：网点印刷风，色块构图挖窗 + 歌词动态反色 + 121 种镜头变体。
-- **长卷 · Scroll**（`visualizers/scroll/`）：整歌一幅横卷，时间左推、已唱句留卷成历史、章节色带分章，连续无跳切。
-- 三者均不走 VisualizerManager，由 `220-shortcuts-viewmode.js` 直接调度；霓虹 Neon 引擎代码保留但已从样式选择器下线。
-- 待办：docs/screenshots 尚无三者截图；README/本 wiki 已按现状收录。
+- 长卷 Scroll 已于 2026-10-05 整体删除（引擎、模式卡、CSS、i18n、设置项、探针全清）。
+- 二者均不走 VisualizerManager，由 `220-shortcuts-viewmode.js` 直接调度；霓虹 Neon 引擎代码保留但已从样式选择器下线。
+- 待办：docs/screenshots 尚无二者截图；README/本 wiki 已按现状收录。
 
 ### 22.3 手机遥控器
 
@@ -985,3 +1053,64 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
 
 - 工具栏自定义（`292-toolbar.js` / `core/toolbarLayout.js`）、禅模式、A-B 循环、VFX 强度滑杆、主题色板、歌词内搜索（`288-lyric-search.js`）、取链透明化（`275-play-source.js` + `services/playSource.js`）、睡眠定时器、下一首预告、双语排版、动效强度滑杆、OSD——todos.md 一/二/三/五分区已勾选项。
 - 逐字兜底单点接线：`renderLyrics` 唯一入口，`words` 不再等于真实逐字，判真值走 `realWordsOf()`；`293-word-upgrade.js` 做行级后台升级。
+
+### 22.6 Automix 真实观感修正（2026-10-03）
+
+用户反馈「automix 能用了，但不像 Apple Music」。拆成四条独立根因，逐条修：
+
+- **交叉时机（写死的重叠）**：此前 beatmatch/breath 固定 6s，segue 更以 `outroSparsePointMs`（能量 ≤ 峰值 10%，已近静音）为起点——于是大量曲目听感是「等 A 没声了再淡入」。现改为**结构驱动**：新增 `scheduler._resolveOverlap()`，取 analyzer 的 `outroPointMs`（其文档定义本身就是「A **最早可以开始交叉的位置**」，能量已入衰减但仍有声），重叠 = `durationMs - outroPointMs`，钳制 `[minOverlapMs 3s, maxOverlapMs 16s]`；`outroSparsePointMs` 降为兜底链第二级，尾部突断（outroPoint = 全曲长）退固定 `overlapMs 8s`。`armLeadMs` 15s → **22s**（必须 > maxOverlapMs，否则自然重叠够长时 ARM 来不及取链/分析/预载）。
+- **交接点（Apple Music 式提前换歌）**：crossfader 新增 `onSwapPoint` —— 交叉进度过半（`CROSSFADE_SWAP_AT = 0.5`，等功率曲线的能量分界点，此处切换听感最平顺）即通知 scheduler **提前**做角色顶替：播放栏标题/封面/进度条整体切到下一首，而音频曲线继续走完。曲线走完的 `onSwapped` 只做收尾（停旧 A、复位、预分析新 A）。★ `abort` 在交接点后退化为「立即完成」——UI 已切到 B，回滚会造成「显示 B、声音回 A」的更严重不一致。
+- **图标 / 时长 / 进度不同步（三个独立根因）**：① `scheduler._completeSwap` 里 `oldA.pause()` 在 `swapRoles()` **之前**执行，此时常驻 `pause` 监听还挂在旧 A 上，被触发后把图标刷成「已暂停」；随后监听搬到已在播放的 B，但 **B 的 `play` 事件早在交叉开始时（它还是影子 deck、身上没监听）就派发过了**，不会重放 → 图标永久停在错的一侧（表现为「点一下方向反、点两下才对」）。修法：顺序改为先 `swapRoles` 再停旧 A（那时旧 A 已无常驻监听，pause 静默），并在 `70-audio-engine`（图标/isPlaying/模糊背景/stall，抽成 `applyPlayingState()`）与 `220-shortcuts-viewmode`（底栏图标+底栏时长）各挂一条 `onRoleSwap` 主动同步。② `135-crossfade.js` 的 `formatTime(audio.duration)` **单位错**——`formatTime` 收毫秒，传秒会让 209 秒的歌算成 0 秒、总时长恒显示 `00:00`（全库仅此一处误用）。③ swap 后不刷进度，等下一个 `timeupdate` 有最长 250ms 空窗；现 `syncAfterSwapTimeline()` 立刻对齐，duration 用 `Number.isFinite` 守卫（`Infinity` 会写出 `Infinity:NaN`）并挂一次性探针补写（B 的 `loadedmetadata` 发生在 ARM 预载期，常驻监听收不到）。
+- **过渡态与动画**：crossfader 暴露逐帧进度（`onProgress` / `crossfadeProgress()`；GainNode 与 volume 两条路径**共用同一个 rAF 循环**——前者原本没有 rAF，只靠 `setValueCurveAtTime`）。`289-next-up` 在交叉期把预告条改成「过渡中」（`--nu-progress` 驱动条底细线，撤掉倒计时与「换一首」，交接点后收起）；`96-automix` 用 `sin(p·π)` 写 `--automix-dip`（p=0.5 最深）驱动封面「先沉后升」，与 `setCoverImage` 的 0.4s 交叉淡入接力。模糊背景层**不加**同类规则——它的 opacity 由 JS 逐层写（inline 优先级更高，CSS 覆盖不了），过渡由自身 0.8s 双缓冲承担。
+- **B 侧干预探针**：交接点后「当前元素」变成 B，用户在交叉后半段按暂停作用在 B 上——探针必须双挂（A 三事件 + B 的 `pause`，且 B 侧只在交接点后生效：越点前 B 的 pause 多来自 `currentTime` 赋值/`load` 的噪声）。
+- **回归**：`test_automix_crossfader.js` +4（交接点唯一性、逐帧进度、越点后 abort 退化、B 探针越点前后语义），`test_automix_scheduler.js` +3（结构驱动重叠与两级钳制、segue 不再退静音尾部、提前换歌时 phase 仍为 CROSSING + 旧 A 停播不再触达常驻监听）。全量 JS 单测 558/558，ESLint 0 error，四道棘轮基线外新增 0。
+
+### 22.7 Automix 在线取链失败根因：队列条目字段名未归一（2026-10-03）
+
+用户贴出真机控制台日志，症状是「ARM 了却永远不交叉」：
+
+```
+[Preload] 开始预加载下一首: undefined
+[automix.scheduler] ARM 开始：A=? → B=2（在线，需取链）
+[automix.scheduler] 在线下一曲解析失败/超时，放弃本轮 automix
+```
+
+三处 `undefined` / `?` 指向同一根因：**automix 与预载链直读 `track.title` / `track.artist`，
+而队列条目的字段名本来就不统一**。
+
+- **队列为什么会是 `{song, singer}`**：榜单 / 自建歌单 / 历史播放的「播放全部」都是
+  `playlist.push(...songs)` 推进**原始接口对象**，再以 `loadOnlineSong(first, skipPlaylistUpdate=true)`
+  播放（`258-rankings.playAllRankSongs`、`259-selfhost-favorites.playAllFavSongs`、
+  `130-playlists` 自建平台与历史两处）。`175.loadOnlineSong` 会用 `titleOf/artistOf`
+  归一出一份 **`currentSongData`**，但**不改队列条目本身** —— 所以 UI 显示正常，
+  而读队列条目的 automix 拿到的是空标题。字段名差异是**已知且被文档化**的
+  （见 `core/nextUp.js` 的 `trackTitle/trackArtist`：`title/song/name`、`artist/singer`）。
+- **后果远不止日志难看**：`fetchPlayUrlForPreload(songId, mid, source, **songName**, dur, singer)`
+  的**跨源同名歌兜底链**（酷狗→网易→酷我）守卫正是 `if (!playUrl && songName)`；
+  `songName` 为空 ⇒ 这三条退路整条不掉用 ⇒ 本机自建/解析池/vkeys 一旦都没命中就
+  返回 null，预载与 ARM 取链一起失败。日志里紧跟的
+  `[KuGou Lyric] 搜索无同名结果，放弃酷狗取词` 也是同一件事的歌词侧表现。
+- **顺带查出第二处同类缺陷**：`175` 里预载与 automix 补词的歌词调用写的是
+  `fetchLyricWithFallback(String(track.id), src)` —— 该函数只在第一参是**对象**时
+  才读 `songName`（`typeof songInfo === 'object' ? songInfo.song || … : ''`），
+  传字符串 ⇒ `songName` 恒空 ⇒ 同名歌兜底同样失效。改为传 `{ ...track, source: 归一后平台键 }`。
+- **修法（单一归属）**：在 `core/automix/scheduler.js` 增加 `_normTrack()`
+  （基于 `core/nextUp.js` 的 `trackTitle/trackArtist`），并挂到**所有外部条目入口**：
+  `notifyTrackStarted`、`getCurrentTrack`/`getNextTrack`（`_prewarmNext` / `_armAndGo` /
+  `_applySwap` / `automixSnapshot`）。归一**复制一份再补字段**，不改调用方持有的队列条目。
+  该契约已写进 `initScheduler` 的 JSDoc：app 侧注入的条目允许字段名不统一，
+  scheduler 保证回调里拿到的 `track` 一定有 `title/artist`。
+  选择放在 scheduler 而非 app 分片，是为了让这条契约可被单测锁住（app 分片无单测）。
+  `175.preloadNextSong` 用同目录已在用的 `titleOf/artistOf` 同步修正。
+- **另修一处内部不一致**：`AUTOMIX_DEFAULTS.armLeadMs(22s) − maxOverlapMs(16s) = 6s < 取链超时 8s`
+  —— A 的自然尾声很长（重叠被钳到上限）时，「ARM 开始」到「最迟必须开交叉」之间的可用时间
+  比取链超时还短，取链走满超时则交叉必然迟到。抽出 `resolveTimeoutMs` 常量并把
+  `armLeadMs` 提到 **26s**，使 `armLeadMs − maxOverlapMs ≥ resolveTimeoutMs` 恒成立（差值 10s）。
+  同时把 ARM 失败日志拆成「取链超时（8s）」与「解析链返回空（所有渠道均无直链）」——
+  两者排查方向完全不同，此前共用一条文案无法区分。
+- **回归**：`test_automix_scheduler.js` +1（`{song, singer}` 形状的在线下一曲 ⇒
+  断言取链拿到的 `track.title/artist` 已归一、原字段保留、ARM 日志含真实歌名且不再出现 `A=?`），
+  并给 `setup()` 增加 `currentTrack`/`nextTrack` 覆盖参数。全量 JS 单测 **559/559**，
+  ESLint 0 error，motion / i18n-coverage / resolve-instrumentation / test-registry /
+  module-reachability 五道门禁全绿。
+- **未验证**：真机在线曲的「预载→ARM→交叉」端到端仍待用户实测（本机无法复现该网络路径）。

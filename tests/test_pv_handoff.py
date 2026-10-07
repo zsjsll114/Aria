@@ -34,7 +34,7 @@ with sync_playwright() as p:
     # 应用启动标记：themeEngine 引导后 root 变量落定（网络轮询多，不能用 networkidle）
     try:
         page.wait_for_function(
-            "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
+            "() => { const v = document.documentElement.style.getPropertyValue('--aria-accent'); return !!v && v.trim() !== ''; }",
             timeout=25000)
     except Exception as e:
         check("app-boot-marker", False, str(e)[:120])

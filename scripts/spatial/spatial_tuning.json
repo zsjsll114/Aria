@@ -1,0 +1,59 @@
+{
+    "_comment": "空间音频 / 虚拟声场 —— Web 与 Rust 两侧共用的唯一参数源。改本文件 → node scripts/build_spatial_tuning.mjs（会重写 web/src/core/spatialTuning.js 与 src-tauri/audio/src/dsp/spatial_tuning.rs）。绝不手改那两个产物。",
+    "_why": "docs/空间音频与虚拟声场-技术方案.md §5：档位→参数必须是同一张表，否则用户切到原生后端会听出不同音色，而两侧各自看都『对』，极难归因（参考 dsp/biquad.rs 的教训）。",
+
+    "_irNote": "IR 参考采样率固定 48k。taps 上限由 Rust 侧时域 FIR 成本决定（方案 §2.2/§6：≤512 taps 否则需引入 rustfft 做 FFT 分块卷积），因此这是『短 IR』——只含头相关早期反射，不含长房间混响尾。与 §1.1 推荐的『小房间/耳廓 IR』一致。两侧必须同一 taps，否则声音不一致。",
+    "irSampleRate": 48000,
+    "irTaps": 512,
+
+    "_spatialNote": "空间音频 = 双耳 HRTF 卷积（dry/wet 并联）。wet 即档位。方案 §1.1：wet ∈ {0.35, 0.6, 0.85}（轻/中/强），dry = 1 - wet。",
+    "spatialLevels": ["light", "medium", "strong"],
+    "spatialDefault": "light",
+    "spatialTuning": {
+        "light":  { "wet": 0.35 },
+        "medium": { "wet": 0.60 },
+        "strong": { "wet": 0.85 }
+    },
+
+    "_irOrderNote": "IR 预设（方案 §8.3 用户拍板：至少 3 组）。名字是用户定的（近场/厅堂/宽阔）。三者的差异体现在早期反射密度、双耳去相关度、HF 阻尼，而不是尾长（尾长被 taps 卡死）。",
+    "_tailRatioNote": "tailEnergyRatio = 扩散尾能量 / 直达+早期反射能量 的目标比。★ 这个参数很关键：若让尾段自然增长，能量归一化会把直达脉冲压到很小（实测 peak 仅 0.36），听感变成『糊』而不是『空间感』——违背 §1.1『不夸张、保留清晰度』。所以显式把尾段按比例缩到『直达为主』。",
+    "irOrder": ["near", "hall", "wide"],
+    "irDefault": "near",
+    "irs": {
+        "near": {
+            "label": "近场",
+            "preDelayMs": 0.0,  "itdMs": 0.30,
+            "pinnaCount": 2,    "pinnaGain": 0.30, "pinnaDecay": 0.62,
+            "reflections": 3,   "reflectMaxMs": 2.6, "reflectGain": 0.30, "reflectTauMs": 1.4,
+            "tailMs": 5.0,      "tailTauMs": 1.6,   "decorr": 0.35,      "damp": 0.30,
+            "tailEnergyRatio": 0.15,
+            "seed": 1013
+        },
+        "hall": {
+            "label": "厅堂",
+            "preDelayMs": 0.6,  "itdMs": 0.45,
+            "pinnaCount": 3,    "pinnaGain": 0.38, "pinnaDecay": 0.66,
+            "reflections": 9,   "reflectMaxMs": 9.0, "reflectGain": 0.55, "reflectTauMs": 4.0,
+            "tailMs": 10.6,     "tailTauMs": 4.2,   "decorr": 0.55,      "damp": 0.55,
+            "tailEnergyRatio": 0.45,
+            "seed": 2027
+        },
+        "wide": {
+            "label": "宽阔",
+            "preDelayMs": 0.2,  "itdMs": 0.60,
+            "pinnaCount": 3,    "pinnaGain": 0.34, "pinnaDecay": 0.64,
+            "reflections": 6,   "reflectMaxMs": 5.5, "reflectGain": 0.42, "reflectTauMs": 2.6,
+            "tailMs": 10.6,     "tailTauMs": 3.0,   "decorr": 0.90,      "damp": 0.28,
+            "tailEnergyRatio": 0.30,
+            "seed": 3041
+        }
+    },
+
+    "_stageNote": "虚拟声场（P1 已落 Web 侧）。档位枚举不含 strong（方案 §8.2 用户拍板：不上跨耳抵消）。P2 把它对齐到 Rust 侧。",
+    "stageLevels": ["light", "medium"],
+    "stageDefault": "light",
+    "stageTuning": {
+        "light":  { "stageS": 1.18, "haasMs": 0, "haasMix": 0 },
+        "medium": { "stageS": 1.32, "haasMs": 8, "haasMix": 0.18 }
+    }
+}

@@ -6,7 +6,7 @@
  *   · 音量是 0~100 百分比且要夹在 [0,100]（旧快照用的是 0~1，接上就失灵）；
  *   · prev/next 在按住 Ctrl 时要让位（Ctrl+←/→ 是逐段跳转）。
  * ============================================================ */
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 const st = await import('../../web/src/infrastructure/state.js');
@@ -20,6 +20,7 @@ function fakeKey(key, opts = {}) {
         ctrlKey: !!opts.ctrlKey,
         shiftKey: !!opts.shiftKey,
         altKey: !!opts.altKey,
+        repeat: !!opts.repeat,
         preventDefault: () => { prevented = true; },
         get prevented() { return prevented; },
     };
@@ -37,7 +38,7 @@ function makeCtx({ volume = 50, duration = 200, currentTime = 100, seekStep = 5 
         nextBtn: mk('next'),
         favoriteBtn: mk('fav'),
         moreBtn: mk('more'),
-        updateVolume: (v) => volumes.push(v),
+        updateVolume: (v) => { volumes.push(v); state.volume = v; },
         clicked,
         volumes,
     };
@@ -117,4 +118,68 @@ test('没有 appSettings 时不抛错（启动早期设置未加载）', () => {
     const ctx = makeCtx();
     state.appSettings = null;
     assert.equal(sm.handleShortcutKeys(fakeKey(' '), ctx), false);
+});
+
+/* ---------- 需求 21：Shift 细调 / 长按连续 ---------- */
+
+test('Shift+音量键 = 1% 细调（普通是 5%）', () => {
+    const ctx = makeCtx({ volume: 50 });
+    sm.handleShortcutKeys(fakeKey('=', { shiftKey: true }), ctx);
+    sm.stopVolumeHold();
+    assert.deepEqual(ctx.volumes, [51], 'Shift 步进应为 1');
+    const ctx2 = makeCtx({ volume: 50 });
+    sm.handleShortcutKeys(fakeKey('='), ctx2);
+    sm.stopVolumeHold();
+    assert.deepEqual(ctx2.volumes, [55], '普通步进仍为 5');
+});
+
+test('已到端点时不刷 OSD、不重复下发（100 +↑）', () => {
+    const ctx = makeCtx({ volume: 100 });
+    sm.handleShortcutKeys(fakeKey('='), ctx);
+    sm.stopVolumeHold();
+    assert.deepEqual(ctx.volumes, [], '已是 100，不应再下发');
+});
+
+test('event.repeat 被忽略（自建定时器接管长按，避免双倍速）', () => {
+    const ctx = makeCtx({ volume: 50 });
+    sm.handleShortcutKeys(fakeKey('=', { repeat: true }), ctx);
+    sm.stopVolumeHold();
+    assert.deepEqual(ctx.volumes, [], 'OS 重复帧不应步进');
+});
+
+test('长按：延迟 400ms 后按 70ms 连续步进', () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    try {
+        const ctx = makeCtx({ volume: 20 });
+        sm.handleShortcutKeys(fakeKey('='), ctx);
+        assert.deepEqual(ctx.volumes, [25], '首次立即步进一次');
+        mock.timers.tick(399);
+        assert.deepEqual(ctx.volumes, [25], '延迟未到不应重复');
+        mock.timers.tick(1);
+        mock.timers.tick(70);
+        assert.deepEqual(ctx.volumes, [25, 30], '延迟到点后开始连续');
+        mock.timers.tick(140);
+        assert.deepEqual(ctx.volumes, [25, 30, 35, 40], '每 70ms 一步');
+        sm.stopVolumeHold();
+        mock.timers.tick(500);
+        assert.equal(ctx.volumes.length, 4, 'stop 后必须停');
+    } finally {
+        mock.timers.reset();
+        sm.stopVolumeHold();
+    }
+});
+
+test('长按到端点自动停住（不越界）', () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    try {
+        const ctx = makeCtx({ volume: 97 });
+        sm.handleShortcutKeys(fakeKey('='), ctx);
+        mock.timers.tick(400);
+        mock.timers.tick(400);
+        assert.deepEqual(ctx.volumes, [100], '97+5 夹到 100 后不再下发');
+        sm.stopVolumeHold();
+    } finally {
+        mock.timers.reset();
+        sm.stopVolumeHold();
+    }
 });

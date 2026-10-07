@@ -38,7 +38,7 @@ def main():
         page.goto(URL, wait_until="load")
         try:
             page.wait_for_function(
-                "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
+                "() => { const v = document.documentElement.style.getPropertyValue('--aria-accent'); return !!v && v.trim() !== ''; }",
                 timeout=30000)
         except Exception: pass
         page.wait_for_timeout(2500)
@@ -116,8 +116,8 @@ def main():
         check("swatches-match-palette-source", pal["shown"] == pal["expected"], f'{pal["shown"]} vs {pal["expected"]}')
         check("no-old-palette-left", pal["oldHexAnywhere"] == False, "")
         # ★ 这里不能拿运行时 --theme-color 断言：它会被 AI/封面主题覆盖（实测 #009ccc）。
-        #   「默认值是不是新金色」是静态事实，Node 侧 A4b 已经钉过 base.css 的 :root 与
-        #   --theme-color-rgb 一致；浏览器侧只需确认出厂 appSettings 用的是色板首项。
+        #   「默认值是不是新金色」是静态事实，Node 侧 A4b 已经钉过 tokens.css 的
+        #   --aria-accent 与 --aria-accent-rgb 一致；浏览器侧只需确认出厂 appSettings 用的是色板首项。
         fresh = page.evaluate("""async () => {
             const t = await import('/src/config/themePalette.js');
             const d = await import('/src/config/defaults.js');

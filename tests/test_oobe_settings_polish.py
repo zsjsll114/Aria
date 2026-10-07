@@ -9,9 +9,11 @@
    而 .settings-overlay 一个容器就吃光它（实测单轮 15ms）→ 排在它后面的
    #ariaOobeOverlay 每轮都从第 1 个容器重新开始，永远轮不到（实测连扫 12 轮仍是中文）。
    现在：轮转游标保证公平 + 向导自己渲染完只扫自己那一个容器。
-3. **主题色只改文字/图标，控件背景不动**——向导里点色块只写 --theme-color，
-   而所有背景/描边读的是 rgba(var(--theme-color-rgb,…),α)。现在走 190 那份
-   唯一的 applyThemeColor（两个变量一起写），并且完成时把颜色落进
+3. **主题色只改文字/图标，控件背景不动**——向导里点色块只写强调色令牌，
+   而所有背景/描边读的是它的 rgb 形态 rgba(…,α)。现在走 190 那份
+   唯一的 applyThemeColor（两个变量一起写）。P1 起键名为 --aria-accent /
+   --aria-accent-rgb，--theme-color 已退化为只读别名（本用例改用新键名读
+   **行内**样式；计算值那条仍走 --theme-color，顺便验证别名有效），并且完成时把颜色落进
    appSettings.interface.themeColor（原先只写 aria_theme_color 这个没人读的键，
    重启就被旧值覆盖 = 选了等于没选）。
 4. **切页签时中间内容左右跳**——.settings-body 是 overflow-y:auto，短页没滚动条、
@@ -147,23 +149,35 @@ def main():
         )).map(e => e.textContent.trim()).join(' | ')""")
         check("oobe-step3-translated", step3 and not re.search(CJK, step3), step3[:160])
 
-        # —— 3. 点主题色：--theme-color 与 --theme-color-rgb 必须一起变 ——
+        # —— 3. 点主题色：--aria-accent 与 --aria-accent-rgb 必须一起变（行内写入）——
         before = page.evaluate("""() => ({
-            c: document.documentElement.style.getPropertyValue('--theme-color').trim(),
-            rgb: document.documentElement.style.getPropertyValue('--theme-color-rgb').trim(),
+            c: document.documentElement.style.getPropertyValue('--aria-accent').trim(),
+            rgb: document.documentElement.style.getPropertyValue('--aria-accent-rgb').trim(),
             stored: (window.appSettings && appSettings.interface && appSettings.interface.themeColor) || ''
         })""")
         picked = page.evaluate("""() => {
-            const cur = document.documentElement.style.getPropertyValue('--theme-color').trim().toLowerCase();
+            const cur = document.documentElement.style.getPropertyValue('--aria-accent').trim().toLowerCase();
             const chips = Array.from(document.querySelectorAll('.aria-oobe-colorchip'));
             const target = chips.find(c => c.dataset.c.toLowerCase() !== cur) || chips[chips.length - 1];
             target.click();
             return { hex: target.dataset.c, sel: target.classList.contains('sel'), n: chips.length };
         }""")
-        page.wait_for_timeout(600)
+        # ★ 不能固定睡眠后直接读（2026-10-05 用写入栈钩子定位）：
+        #   OOBE 点色块只把颜色写进令牌、暂存在向导局部变量里，appSettings 要到
+        #   「完成向导」才落盘；而点后约 1.37s，applyAllSettings() 会按**尚未更新**的
+        #   appSettings.interface.themeColor 重放 applyThemeColor 把预览色回写
+        #   （实测三条栈：190:57 applyInterfaceSettings / 190:244 applyModeSettings /
+        #    200-settings-panel.js:476 syncPreviewToMain）。
+        #   固定睡 600ms 正好可能落在回写之后 → 断言随机红。
+        #   改为有界轮询：令牌约 50ms 内写入，命中即通过，不等回写。
+        for _ in range(30):
+            if page.evaluate("() => document.documentElement.style.getPropertyValue('--aria-accent')"
+                             ".trim().toLowerCase()") == picked["hex"].lower():
+                break
+            page.wait_for_timeout(50)
         after = page.evaluate("""() => ({
-            c: document.documentElement.style.getPropertyValue('--theme-color').trim(),
-            rgb: document.documentElement.style.getPropertyValue('--theme-color-rgb').trim(),
+            c: document.documentElement.style.getPropertyValue('--aria-accent').trim(),
+            rgb: document.documentElement.style.getPropertyValue('--aria-accent-rgb').trim(),
             chipBg: (document.querySelector('.aria-oobe-colorchip.sel') || {}).textContent
         })""")
         want = page.evaluate("""(hex) => { const n = parseInt(hex.slice(1), 16);
@@ -171,6 +185,15 @@ def main():
         check("oobe-chip-click-selects", picked["sel"], picked)
         check("theme-color-var-follows", after["c"].lower() == picked["hex"].lower(), after)
         check("theme-color-rgb-follows", after["rgb"] == want, {"rgb": after["rgb"], "want": want})
+        # ★ 反向钉住「预览色被异步回写」的 bug（2026-10-05 修）：点后约 1.37s，
+        #   applyAllSettings() 会按 appSettings.interface.themeColor 重放主题色
+        #   （栈：190:57 applyInterfaceSettings / 190:244 applyModeSettings /
+        #    200-settings-panel.js:476 syncPreviewToMain）。修复前向导只把颜色存在
+        #   局部变量里、appSettings 要到「完成向导」才更新，重放就会把它回写成旧色。
+        #   这里跨过重放窗口再读一次，必须仍是选中色。
+        page.wait_for_timeout(2200)
+        survived = page.evaluate("() => document.documentElement.style.getPropertyValue('--aria-accent').trim()")
+        check("theme-color-survives-reapply", survived.lower() == picked["hex"].lower(), {"after": survived})
 
         # 完成向导：颜色要落进 appSettings（原先只写没人读的 aria_theme_color）
         page.evaluate("""async () => {

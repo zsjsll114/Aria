@@ -61,7 +61,7 @@ def main():
         page.goto(URL, wait_until="load")
         try:
             page.wait_for_function(
-                "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
+                "() => { const v = document.documentElement.style.getPropertyValue('--aria-accent'); return !!v && v.trim() !== ''; }",
                 timeout=30000)
         except Exception:
             pass

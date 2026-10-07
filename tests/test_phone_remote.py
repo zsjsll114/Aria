@@ -253,7 +253,7 @@ try:
         pm.on("pageerror", lambda e: print("  [主窗pageerror] " + str(e)[:180]))
         pm.goto(MAIN_URL, wait_until="domcontentloaded", timeout=40000)
         pm.wait_for_function(
-            "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
+            "() => { const v = document.documentElement.style.getPropertyValue('--aria-accent'); return !!v && v.trim() !== ''; }",
             timeout=30000)
         pm.wait_for_timeout(1200)
         # 关掉淡入淡出：fadeInOut 开着时 pause/换歌会触发音量渐变（rAF 持续把

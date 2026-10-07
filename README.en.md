@@ -8,8 +8,9 @@
 
 [![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
-**A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo search, nine full-screen lyric visual modes, a desktop lyrics overlay, a phone remote, and AI mood analysis**
+**A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo / Soda search, nine full-screen lyric visual modes, a desktop lyrics overlay, a phone remote, and AI mood analysis**
 
 Web app + Tauri 2 desktop shell — a player built for one person's long listening sessions.
 
@@ -69,7 +70,7 @@ RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every 
 | Module | Description |
 |---|---|
 | Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout; automatic alignment fallback when word timing is missing |
-| Multi-source search | QQ Music / KuGou / Netease / Kuwo, multi-tier racing & aggregated fallback with a transparent resolve pipeline; hi-fi & daily mixes via self-hosted services |
+| Multi-source search | QQ Music / KuGou / Netease / Kuwo, multi-tier racing & aggregated fallback with a transparent resolve pipeline; hi-fi & daily mixes via self-hosted services. Soda Music runs on the local self-hosted source: search and word-by-word lyrics need no login, its daily mix (ByteDance feed) and "My playlists" are wired up, playback needs a QR scan, and it has no charts — the charts page stays 3-platform |
 | AI mood analysis | Gemini or OpenAI-compatible APIs: per-line emotion tagging + chorus detection, driving layout & palette changes in visual modes |
 | Desktop lyrics | Standalone transparent window, free drag, click-through, local per-word interpolation |
 | Phone remote | Scan or type the address on your phone (same LAN) to control playback / track / volume (requires `--lan`) |
@@ -168,14 +169,14 @@ Tauri 2 shell (Rust) ── loads http://localhost:8001, spawns sidecars
         │
 Python backend (stdlib-only http.server, port 8001)
   ├ serves web/ statically + /proxy + /api/* (incl. /api/remote/* phone-remote bus)
-  └ selfhost_service.py: three Node music-source sidecars (3100/3200/3201, loopback-only)
+  └ selfhost_service.py: four Node music-source sidecars (3100/3200/3201/3300, loopback-only)
 ```
 
 The frontend is a framework-free sharded module system (`web/src/app/*.js`, loaded by number), with visual engines in `web/src/core/` (pvEngine / tunnelEngine / visualizers). See [AGENTS.md](AGENTS.md) and [CODE_WIKI.md](CODE_WIKI.md) for details.
 
 ## Third-Party Sources and Disclaimer
 
-The `_eval/` directory holds local mirrors of three third-party music-source API projects (KuGouMusicApi / NeteaseCloudMusicApi / qq-music-api-node), cloned and installed by `scripts/setup-vendors.bat`. They are **not part of this repository**, follow their original licenses, and are maintained independently upstream. This project merely calls them on 127.0.0.1 and does not modify their upstream logic (`patches/` contains local fixes for the QQ mirror, used by this project only).
+The `_eval/` directory holds local mirrors of third-party music-source API projects (KuGouMusicApi / NeteaseCloudMusicApi / qq-music-api-node, plus the npm library `ly-music-source` used for Soda), cloned and installed by `scripts/setup-vendors.bat`. They are **not part of this repository**, follow their original licenses, and are maintained independently upstream. This project merely calls them on 127.0.0.1 and does not modify their upstream logic (`patches/` contains local fixes for the QQ mirror, used by this project only). Soda needs an extra HTTP adapter, `scripts/qishui-server.mjs` (in-repo, version-controlled), because its upstream is a library rather than a service.
 
 On top of that:
 
@@ -185,14 +186,21 @@ On top of that:
 
 ## Acknowledgements
 
-- [folia-major](https://github.com/chthollyphile/folia-major) — reference for this project's visual storyboard design
+- [folia-major](https://github.com/chthollyphile/folia-major) (AGPL-3.0) — **source of the code for the "Verse" (`sonnet/`) and "Tempera" (`tempera/`) visual engines** (faithful line-by-line port); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full file list
+- [JPV Lyrics Motion Kit](https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit) (AGPL-3.0) — source of the tunnel mode's per-word entrance themes, the PV background shape field and the Cadenza per-word light sweep (adapted)
 - [KuGouMusicApi](https://github.com/makbkf/KuGouMusicApi) / [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) / [qq-music-api-node](https://github.com/jsososo/QQMusicApi) — music-source APIs
 - [Tauri](https://tauri.app/) · [segmentit](https://github.com/nekobato/segmentit) · [kuromoji.js](https://github.com/takuyaa/kuromoji.js)
 - Fonts: Noto Sans SC / Noto Serif SC (Noto CJK, SIL OFL) · LXGW family · Fangzheng Pixel · Cubic 11
 
 ## License
 
-[MIT](LICENSE). Covers this repository's own source code only; third-party projects under `_eval/` are excluded.
+[AGPL-3.0](LICENSE). The project as a whole is released under the GNU Affero General Public License v3.0.
+
+**Why not MIT**: the "Verse" (`web/src/core/visualizers/sonnet/`) and "Tempera" (`web/src/core/visualizers/tempera/`) visual engines, plus several utility modules (`pixiTextureBudget.js`, `utils/lyrics/*`, …), are **faithful line-by-line ports** of [chthollyphile/folia-major](https://github.com/chthollyphile/folia-major) (**AGPL-3.0**); some per-word entrance themes in the tunnel mode are adapted from JPV Lyrics Motion Kit (AGPL-3.0). AGPL's copyleft nature means the combined work must be released under AGPL-3.0 — the earlier MIT label did not hold for those parts and has been corrected.
+
+- Third-party licenses and a **per-file origin list**: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- Code that is original to this project may still be licensed separately by its copyright holder (e.g. under MIT), but this repository and its builds are an AGPL-3.0 combined work.
+- The music-source API projects under `_eval/` are fetched separately at runtime and are not covered by this repository's license.
 
 ## Related Docs
 

@@ -1,0 +1,116 @@
+{
+  "ariaTheme": 1,
+  "name": "Google 极简",
+  "author": "Aria",
+  "description": "Material 深色底 + Google 蓝，零毛玻璃、零摇摆、低动效、克制排版（左对齐、无行模糊、去装饰）",
+  "recipe": {
+    "sv": 1,
+    "mode": "lyrics",
+    "interface": {
+      "themeColor": "#8AB4F8",
+      "fontFamily": "default",
+      "glassStrength": 0,
+      "compactMode": true,
+      "vfxIntensity": 15
+    },
+    "lyrics": {
+      "fontSize": 1.15,
+      "blurLevel": 0,
+      "align": "left",
+      "highlightColor": "#FFFFFF",
+      "highlightInactiveColor": "rgba(255,255,255,0.6)",
+      "inactiveColor": "rgba(255,255,255,0.38)",
+      "showTranslation": true,
+      "showRomaji": false,
+      "autoScroll": true
+    },
+    "background": {
+      "dynamicBg": false,
+      "swayEnabled": false,
+      "swayAmp": 0,
+      "swayDuration": 20,
+      "blur": 0,
+      "brightness": 0.18
+    },
+    "modeSettings": {
+      "cover": {
+        "align": "left",
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "lyrics": {
+        "align": "left",
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "flyin": {
+        "align": "left",
+        "themeColor": "#8AB4F8",
+        "graphicColor": "#8AB4F8",
+        "flyinGlow": 0,
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "wordcloud": {
+        "align": "left",
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "pv": {
+        "align": "left",
+        "preset": "minimal",
+        "cameraSpeed": 1,
+        "cameraDamping": 0.06,
+        "showHud": false,
+        "showParticles": false,
+        "showDecorations": false,
+        "aiColorSync": false,
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "tunnel": {
+        "cameraSpeed": 1,
+        "cameraDamping": 0.06,
+        "showStreaks": false,
+        "showEcho": false,
+        "aiColorSync": false,
+        "themeColor": "#8AB4F8",
+        "bgBlur": 0,
+        "bgBrightness": 0.18,
+        "swayEnabled": false,
+        "emotionGlow": 0
+      },
+      "dimension": {
+        "themeColor": "#8AB4F8",
+        "bgColor": "#121212",
+        "emotionGlow": 0
+      },
+      "letterpress": {
+        "themeColor": "#8AB4F8",
+        "emotionGlow": 0
+      },
+      "tempera": {
+        "themeColor": "#8AB4F8",
+        "glyphMotion": 0,
+        "showDecor": false,
+        "showCornerMarks": false,
+        "enableTransitions": false,
+        "emotionGlow": 0
+      },
+      "neon": {
+        "themeColor": "#8AB4F8",
+        "emotionGlow": 0
+      }
+    }
+  }
+}

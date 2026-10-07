@@ -13,6 +13,9 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { fetchSameSongUrlFrom } from '../../web/src/services/musicApi.js';
+import { fetchQishuiLyric, qishuiLinesToKrc } from '../../web/src/services/musicApi.js';
+import { isTrustworthyCrossMatch, normSongName } from '../../web/src/services/musicApi.js';
+import { parseKrc } from '../../web/src/services/krcParser.js';
 
 const realFetch = globalThis.fetch;
 
@@ -157,4 +160,119 @@ test('未知音源与空标题直接返回 null', async () => {
     assert.equal(await fetchSameSongUrlFrom('migu', '雾里看花', '张三'), null);
     assert.equal(await fetchSameSongUrlFrom('netease', '', '张三'), null);
     assert.equal(await fetchSameSongUrlFrom('netease', '   ', '张三'), null);
+});
+
+/* ==================== 汽水（QRC 逐字 → KRC 文本） ====================
+ * 汽水只给每个字的**绝对起点**（timeMs），没有时长；转 KRC 时可以用相邻字/下一行
+ * 推出来。这里钉的是三件容易写错的事：
+ *   1) 相对偏移必须减去行起点（KRC 的 <a,b,0> 里 a 是行内相对值）；
+ *   2) 任何字都不能是 0 时长——高亮进度会拿它当分母（除零 → NaN → 整行不亮）；
+ *   3) 转出来的文本喂给真正的 parseKrc 必须能还原出绝对时间，否则渲染层会错位。
+ */
+test('qishuiLinesToKrc：相对偏移与逐字时长推算正确', () => {
+    const krc = qishuiLinesToKrc([
+        { timeMs: 1000, text: '甲乙', words: [{ timeMs: 1000, text: '甲' }, { timeMs: 1400, text: '乙' }] },
+        { timeMs: 2000, text: '丙', words: [{ timeMs: 2000, text: '丙' }] },
+    ]);
+    assert.equal(krc, '[1000,1000]<0,400,0>甲<400,600,0>乙\n[2000,800]<0,800,0>丙');
+    /* 行末字用下一行起点兜底（1400 → 2000）；末行没有下一行 → 固定 800ms */
+});
+
+test('qishuiLinesToKrc：缺 words 时退化为整行一个字，且时长永不为 0', () => {
+    const krc = qishuiLinesToKrc([{ timeMs: 500, text: '整行' }]);
+    assert.equal(krc, '[500,800]<0,800,0>整行');
+    const parsed = parseKrc(krc);
+    assert.equal(parsed.length, 1);
+    assert.ok(parsed[0].words.every(w => w.duration > 0));
+});
+
+test('qishuiLinesToKrc：剥掉会破坏 KRC 标签语法的尖括号', () => {
+    const krc = qishuiLinesToKrc([
+        { timeMs: 0, text: '<a>', words: [{ timeMs: 0, text: '<a>' }] },
+    ]);
+    assert.ok(!krc.includes('<a>'), `不应残留裸标签: ${krc}`);
+    assert.equal(parseKrc(krc)[0].original, 'a');
+});
+
+test('qishuiLinesToKrc → parseKrc：绝对时间与原文逐字还原', () => {
+    const lines = [
+        { timeMs: 1260, text: '灯火葳蕤', words: [
+            { timeMs: 1260, text: '灯' }, { timeMs: 1500, text: '火' },
+            { timeMs: 1740, text: '葳' }, { timeMs: 1980, text: '蕤' },
+        ] },
+        { timeMs: 2500, text: '揉皱你眼眉', words: [{ timeMs: 2500, text: '揉皱你眼眉' }] },
+    ];
+    const parsed = parseKrc(qishuiLinesToKrc(lines));
+    assert.equal(parsed.length, 2);
+    assert.equal(parsed[0].start, 1260);
+    assert.equal(parsed[0].original, '灯火葳蕤');
+    assert.deepEqual(parsed[0].words.map(w => w.start), [1260, 1500, 1740, 1980]);
+    assert.equal(parsed[1].start, 2500);
+    assert.equal(parsed[1].original, '揉皱你眼眉');
+});
+
+test('fetchQishuiLyric：解析 vendor 行式为逐字 parsedList', async () => {
+    installMock([
+        ['/api/selfhost/qishui/proxy', () => jsonRes({
+            ok: true, type: 'word', lines: [
+                { timeMs: 0, text: '作曲：银临', words: [{ timeMs: 0, text: '作曲：银临' }] },
+                { timeMs: 1260, text: '灯火葳蕤', words: [{ timeMs: 1260, text: '灯火葳蕤' }] },
+            ],
+        })],
+    ]);
+    const r = await fetchQishuiLyric({ id: '7409943692154816531', source: 'qishui' });
+    assert.ok(Array.isArray(r.parsedList) && r.parsedList.length === 2);
+    assert.equal(r.source, 'qishui');
+    assert.equal(r.parsedList[1].start, 1260);
+    assert.ok(r.parsedList.every(l => l.words.every(w => w.duration > 0)));
+});
+
+test('fetchQishuiLyric：vendor 未就绪/无词时返回空对象（不抛）', async () => {
+    installMock([['/api/selfhost/qishui/proxy', () => jsonRes({ ok: false, err: '副进程未运行' })]]);
+    assert.deepEqual(await fetchQishuiLyric({ id: '1' }), {});
+    installMock([['/api/selfhost/qishui/proxy', () => jsonRes({ ok: true, lines: [] })]]);
+    assert.deepEqual(await fetchQishuiLyric({ id: '1' }), {});
+    installMock([]);
+    assert.deepEqual(await fetchQishuiLyric({ id: '' }), {});
+});
+
+/* ============================================================
+ * 跨源候选可信度判据（2026-10-03 用户实测问题的回归钉）
+ * 用户原话：「下一曲后竟然从网易云取链，并且显示是纯音乐（上一首刚刚还有歌词）」
+ * 根因：跨源回退只查歌手名，网易/QQ 里「纯音乐 / 伴奏 / 钢琴版」这类**同歌手同歌名**
+ *       的换皮版本会直接过关 → 拿一段没歌词的伴奏当原曲播。
+ * 判据两段：① 归一化歌名对得上；② 原始标题不带换皮标记。
+ * ============================================================ */
+
+test('normSongName：去括号补充 / HTML 标记 / 空白，并小写', () => {
+    assert.equal(normSongName('晴天'), '晴天');
+    assert.equal(normSongName('晴天 (Live)'), '晴天');
+    assert.equal(normSongName('《起风了》（伴奏）'), '《起风了》');
+    assert.equal(normSongName('Hello [Remix]'), 'hello');
+    assert.equal(normSongName('A<b>B</b> C'), 'abc');
+    assert.equal(normSongName(null), '');
+    assert.equal(normSongName(undefined), '');
+});
+
+test('isTrustworthyCrossMatch：同歌手同名的纯音乐/伴奏版必须被否掉', () => {
+    const T = '晴天';
+    // ① 换皮标记一律否决（歌名完全一致也不行）
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天', singer: '周杰伦' }, T), true);
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天（纯音乐）', singer: '周杰伦' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ name: '晴天 官方伴奏', artist: '周杰伦' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ name: '晴天', artist: '周杰伦 钢琴版' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天 Instrumental', singer: 'Jay' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天 Off Vocal', singer: 'Jay' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天 试听', singer: 'Jay' }, T), false);
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天 无人声', singer: 'Jay' }, T), false);
+    // 注：候选同时给 song 与 name 时按仓库既有优先级取 song（同 titleOf/artistOf 约定），
+    //     故歌名/歌手都按「取到的那个字段」判；上面 name-only 的用例覆盖另一条通道。
+    // ② 歌名对不上 → 否决
+    assert.equal(isTrustworthyCrossMatch({ song: '七里香', singer: '周杰伦' }, T), false);
+    // ③ 含/被含都算对得上（同一首的不同写法）
+    assert.equal(isTrustworthyCrossMatch({ song: '晴天 (Live)', singer: '周杰伦' }, T), true);
+    // ④ 候选歌名缺失时不额外否决（由调用方的歌手判定兜底）
+    assert.equal(isTrustworthyCrossMatch({ singer: '周杰伦' }, T), true);
+    // ⑤ 空候选
+    assert.equal(isTrustworthyCrossMatch(null, T), false);
 });

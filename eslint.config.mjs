@@ -54,7 +54,7 @@ const PROJECT_GLOBAL_KEYS = [
     'currentPlaylistId', 'playlistViewMode', 'currentAiTheme', 'wordElementsByLine',
     'currentAiAbortController', 'isAiAnalyzing', 'wcTween', 'lyrics', 'aiEmotionWords',
     'preservesPitch', 'currentPlaybackRate', 'mainVisManager', 'pendingPlayAfterPreload',
-    'audioCtx', 'currentSource', 'currentTrackIndex', 'playlist', 'preloadedSongReady',
+    'audioCtx', 'currentSource', 'searchSource', 'currentTrackIndex', 'playlist', 'preloadedSongReady',
     'initSongStarted', 'currentSongKey', 'currentSongData', 'eqActivePreset', 'eqGains',
     'volume', 'playMode', 'localSongsCache', 'appSettings', 'customFonts',
     'multilangFontFaces', 'advFontsGeneration', 'currentViewMode', 'pvEngineInstance',

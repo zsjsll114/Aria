@@ -27,7 +27,7 @@ with sync_playwright() as p:
     page.goto(BASE, wait_until="domcontentloaded", timeout=30000)
     try:
         page.wait_for_function(
-            "() => { const v = document.documentElement.style.getPropertyValue('--theme-color'); return !!v && v.trim() !== ''; }",
+            "() => { const v = document.documentElement.style.getPropertyValue('--aria-accent'); return !!v && v.trim() !== ''; }",
             timeout=25000)
     except Exception as e:
         check("app-boot-marker", False, str(e)[:120])

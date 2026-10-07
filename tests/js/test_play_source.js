@@ -26,6 +26,7 @@ import {
     resolveSourceOf,
     sniffPlatform,
     sniffQuality,
+    songIdentityKey,
 } from '../../web/src/services/playSource.js';
 
 beforeEach(() => {
@@ -188,7 +189,7 @@ test('logCatch 只在实际输出那一次进缓冲（与 5s 去重同频）', (
 
 test('sniffPlatform 认得四个平台与本地', () => {
     assert.equal(sniffPlatform('https://r2.astyle.kugou.com/1.mp3'), '酷狗音乐');
-    assert.equal(sniffPlatform('https://m10.music.126.net/1.mp3'), '网易云');
+    assert.equal(sniffPlatform('https://m10.music.126.net/1.mp3'), '网易云音乐');
     assert.equal(sniffPlatform('https://otherweb.kuwo.cn/1.mp3'), '酷我音乐');
     assert.equal(sniffPlatform('blob:http://localhost:8001/x'), '本地');
     assert.equal(sniffPlatform('https://nope.example/1'), '');
@@ -262,4 +263,51 @@ test('resolveSourceOf：无 source / 非取链平台时退回全局，不会被�
 test('resolveSourceOf：入参缺字段不抛（历史里可能存着半截条目）', () => {
     assert.equal(resolveSourceOf(undefined, undefined), 'tencent');
     assert.equal(resolveSourceOf({ source: 42 }, ''), 'tencent');
+});
+
+/* ===== 歌曲身份键（BUG「不会自动匹配 MV 了 必须手动匹配」） =====
+   MV 动态背景用它做两件事：_followCache 的「同一首歌」复用判定、_manual 手动锁的
+   解锁判定。旧实现写的是 `song.id || song.song`，而 175 主路径落下的对象是
+   {title, artist, id, mid, …} —— **没有 song 字段**。id 一缺，键就塌缩成 `${src}::`，
+   同一平台所有缺 id 的歌共用一把键 ⇒ 切歌不换 MV + 手动点过之后整批歌不再自动铺。
+   下面的用例直接把这条锁死。 */
+
+test('songIdentityKey：id 缺失时用歌名回落，不同的歌绝不能并成一把键', () => {
+    /* 175 主路径的真实形状：只有 title，没有 song、id 为空 */
+    const a = { title: '泪海', artist: '许茹芸', source: 'kugou', id: '', mid: '' };
+    const b = { title: '海阔天空', artist: 'Beyond', source: 'kugou', id: '', mid: '' };
+    assert.notEqual(songIdentityKey(a), songIdentityKey(b), '修复前两者都塌缩成 kugou::');
+    assert.equal(songIdentityKey(a), 'kugou:泪海:');
+    assert.equal(songIdentityKey(b), 'kugou:海阔天空:');
+    /* song 写法（搜索页/歌单层）与 title 写法必须落到同一把键上 */
+    assert.equal(songIdentityKey({ song: '泪海', source: 'kugou' }), songIdentityKey(a));
+});
+
+test('songIdentityKey：id 优先，其次 mid，且 id 在场时 mid 不影响键', () => {
+    assert.equal(songIdentityKey({ title: '泪海', source: 'kugou', id: 'AAA' }), 'kugou:AAA:');
+    assert.equal(songIdentityKey({ title: '晴天', source: 'tencent', mid: '0039MnYb' }), 'tencent:0039MnYb:');
+    assert.equal(songIdentityKey({ title: '晴天', source: 'tencent', id: '1', mid: 'M' }), 'tencent:1:');
+});
+
+test('songIdentityKey：mvVid 只用于区分同一首歌的不同 MV，不能单独构成身份', () => {
+    const base = { title: '晴天', source: 'tencent', id: '1' };
+    assert.notEqual(songIdentityKey(base), songIdentityKey({ ...base, mvVid: 'w0026q7f01a' }));
+    assert.equal(songIdentityKey({ source: 'tencent', mvVid: 'w0026q7f01a' }), '');
+});
+
+test('songIdentityKey：平台写法归一，qq 与 tencent 不能生成两把键', () => {
+    assert.equal(
+        songIdentityKey({ title: '晴天', source: 'qq', id: '1' }),
+        songIdentityKey({ title: '晴天', source: 'tencent', id: '1' }),
+    );
+});
+
+test('songIdentityKey：身份全缺返回空串（调用方按"不可比较"处理 → 不缓存、不锁）', () => {
+    assert.equal(songIdentityKey(null), '');
+    assert.equal(songIdentityKey({}), '');
+    assert.equal(songIdentityKey({ source: 'kugou' }), '');
+    assert.equal(songIdentityKey({ id: '' }, ''), '');
+    /* 无 source 时用兜底平台，但歌名仍然构不成"有身份"的例外 —— 有了就算 */
+    assert.equal(songIdentityKey({ title: '泪海' }, 'kugou'), 'kugou:泪海:');
+    assert.equal(songIdentityKey({ title: '泪海' }, undefined), ':泪海:');
 });

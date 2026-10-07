@@ -93,25 +93,36 @@ test('A4 全仓只剩装饰色里的旧金色，主题色的两种写法都已�
        留下两个金色（pv-tunnel.css:545 实测就是 color:#E8BE6A 配 text-shadow:rgba(255,204,51,.85)）。
        允许残留的只有两处真装饰色：AI 面板的高亮笔 marker（=renderChorusMarkers 的副歌标记条，
        ★ 行号漂移史：2026-09-26 从 1636/1637 → 1658/1659（f4f6973 团队提交）；
-       2026-09-29 → 1654/1655（getLowQualityAudioUrl 删 ygking 死链块，行数 -9）。
+       2026-09-29 → 1654/1655（getLowQualityAudioUrl 删 ygking 死链块，行数 -9）；
+       2026-10-05 → 1663/1664（applyEmotionWordColors 补 ensureEmotionWordStyle 兜底，+8 行）。
        行号硬编码本就脆弱，这里先跟上）、回响视觉器自己的能量光。 */
     const DECORATIVE_RGB = new Set([
-        'web/src/app/201-settings-ai.js:1654',
-        'web/src/app/201-settings-ai.js:1655',
+        'web/src/app/201-settings-ai.js:1663',
+        'web/src/app/201-settings-ai.js:1664',
         'web/src/core/visualizers/dimension/DimensionBackground.js:22',
     ]);
     const unexpected = rgbHits.filter(h => !DECORATIVE_RGB.has(h));
     assert.deepEqual(unexpected, [], `主题色 rgb 形态没跟上: ${unexpected.join(', ')}`);
 });
 
-test('A4b base.css 的 --theme-color 与 --theme-color-rgb 必须表示同一个颜色', () => {
-    const css = fs.readFileSync(path.join(REPO, 'web/src/styles/base.css'), 'utf8');
-    const hex = /--theme-color:\s*(#[0-9a-fA-F]{6})/.exec(css);
-    const rgb = /--theme-color-rgb:\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(css);
-    assert.ok(hex && rgb, 'base.css 里两个变量都得有');
+test('A4b tokens.css 的 --aria-accent 与 --aria-accent-rgb 必须表示同一个颜色', () => {
+    /* P1（2026-10-05）：主题色的 CSS 单一来源从 base.css 的 :root 迁到
+       styles/tokens.css。base.css 那份已删——它 <link> 在 tokens.css 之后，
+       :root 同特异度后来者胜，留着会把 --theme-color 别名覆盖回字面量，
+       整个令牌层静默失效。这里同步改指 tokens.css 并加回归断言。 */
+    const css = fs.readFileSync(path.join(REPO, 'web/src/styles/tokens.css'), 'utf8');
+    const hex = /--aria-accent:\s*(#[0-9a-fA-F]{6})/.exec(css);
+    const rgb = /--aria-accent-rgb:\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(css);
+    assert.ok(hex && rgb, 'tokens.css 里两个变量都得有');
     assert.deepEqual([Number(rgb[1]), Number(rgb[2]), Number(rgb[3])], hexToRgb(hex[1]),
-        `--theme-color ${hex[1]} 与 --theme-color-rgb ${rgb[1]},${rgb[2]},${rgb[3]} 不是同一个颜色`);
+        `--aria-accent ${hex[1]} 与 --aria-accent-rgb ${rgb[1]},${rgb[2]},${rgb[3]} 不是同一个颜色`);
     assert.equal(hex[1].toUpperCase(), DEFAULT_ACCENT.toUpperCase());
+    /* 兼容别名必须指向令牌本体 */
+    assert.match(css, /--theme-color:\s*var\(--aria-accent\)/, '--theme-color 必须退化为 var(--aria-accent) 别名');
+    /* base.css 不得再定义 --theme-color */
+    const base = fs.readFileSync(path.join(REPO, 'web/src/styles/base.css'), 'utf8');
+    assert.ok(!/--theme-color\s*:/.test(base),
+        'base.css 不得再定义 --theme-color（它会覆盖 tokens.css 的别名）');
 });
 
 test('A5 isPresetAccent 大小写与空白都不敏感', () => {

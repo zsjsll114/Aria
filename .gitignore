@@ -4,6 +4,9 @@
 
 # ---------- 构建产物（可再生） ----------
 src-tauri/target/
+# 原生音频引擎是独立 crate（自己声明 workspace root），target 不共享，
+# 所以上面那条匹配不到它，必须单独忽略——实测漏掉会产生数 GB 的编译产物。
+src-tauri/audio/target/
 build/
 dist/
 dist_runtime/
@@ -80,6 +83,8 @@ aria_boot_*.png
 %~dp0tmp_repos.json
 # 临时/诊断产物归档目录（不入库；测试与工具类脚本在 tests/、tools/ 正常跟踪）
 scratch/
+# WASAPI 独占模式可行性探针（纯 Rust 独立 crate，验证完即弃）
+spike-wasapi/
 
 # ---------- macOS 遗留（Windows 项目中误入的 .app bundle） ----------
 test/
