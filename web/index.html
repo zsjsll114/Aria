@@ -57,6 +57,9 @@
       window.__ensureSegLibs = inject;
     })();
     </script>
+    <!-- ★ 设计令牌（P1）：必须排在一切组件样式之前。--aria-* 是公开契约，
+         也是未来社区外观 mod 的唯一覆盖点；--theme-color 是它的兼容别名（只减不增）。 -->
+    <link rel="stylesheet" href="src/styles/tokens.css">
     <!-- 动效令牌 + 浮层进出机制：必须在其它样式之前，后续文件才能引用 var(--e-*/--d-*) -->
     <link rel="stylesheet" href="src/styles/motion.css">
     <link rel="stylesheet" href="src/styles/base.css">
@@ -73,6 +76,7 @@
     <link rel="stylesheet" href="src/styles/pv-tunnel.css?v=tunnel_fix_2">
     <link rel="stylesheet" href="src/styles/letterpress.css?v=lp_4">
     <link rel="stylesheet" href="src/styles/neon.css?v=neon_3">
+    <link rel="stylesheet" href="src/styles/jizura.css?v=jizura_1">
 
     <link rel="stylesheet" href="src/styles/visualizers.css">
     <link rel="stylesheet" href="src/styles/appearance.css">
@@ -89,8 +93,12 @@
          否则浮层只借到 .search-modal 的玻璃底，内部结构完全裸奔（不能滚、无间距）。 -->
     <link rel="stylesheet" href="src/styles/lyric-search.css">
     <link rel="stylesheet" href="src/styles/vfx-recipe.css">
+    <!-- MV 动态背景 + 搜索页「歌手 / MV」卡片行（2026-10-03） -->
+    <link rel="stylesheet" href="src/styles/mv.css">
     <!-- 292 可自定义工具栏：隐藏态 .tb-ctl-hidden + 设置页「界面控件」那一组 -->
     <link rel="stylesheet" href="src/styles/toolbar.css">
+    <!-- 297 歌手页：从歌曲卡片的歌手名点进来的全屏页 -->
+    <link rel="stylesheet" href="src/styles/artist.css">
     <style>
     /* ★ 流光隧道修复：PV区域覆盖标题栏（栅格密度由 JS 按色块概率控制） */
     .tunnel-view-container {
@@ -157,6 +165,14 @@
     <!-- 模糊背景（双层交叉淡入淡出） -->
     <div class="blur-background" id="blurBackground"></div>
     <div class="blur-background" id="blurBackground2"></div>
+    <!-- MV 动态背景：搜索结果里点 MV 卡片 + 设置里开关打开时才可见。
+         ★ 必须排在两个 .blur-background 之后：同 z-index 下按树序绘制，后写的盖在上面。
+         ★ 不设 loop（2026-10-03）：MV 层跟随歌曲进度播放（暂停/拖进度/倍速全部对齐），
+           循环会和音频位置打架。视频比歌曲短就在末帧定格。 -->
+    <video class="mv-background" id="mvBgVideo" muted playsinline preload="auto" aria-hidden="true"></video>
+    <!-- Anime4K 上行渲染的输出层：video 只作解码源，画面由 WebGL 画在这里。
+         放在 video 之后 ⇒ 树序盖住它（与 .mv-background 同 z-index）。 -->
+    <canvas class="mv-background mv-bg-canvas" id="mvBgCanvas" aria-hidden="true"></canvas>
 
     <!-- 颜色遮罩层 -->
     <div class="color-overlay" id="colorOverlay"></div>
@@ -510,6 +526,12 @@
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             <span>下载</span>
                         </div>
+                        <!-- 歌词海报（需求 2）：★ 这个静态菜单才是「歌词/PV/隧道」等模式的唯一入口
+                             —— 那些模式下 .player-controls-wrapper 整列隐藏，#moreBtn 根本够不着。 -->
+                        <div class="more-item" id="moreLyricPosterItem">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            <span>歌词海报</span>
+                        </div>
                         <div class="more-item" id="moreLyricSourceItem">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
                             <span>切换歌词来源</span>
@@ -688,23 +710,6 @@
                         </svg>
                     </div>
                 </div>
-                <div class="view-mode-card" data-mode="scroll" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='scroll')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='scroll'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('scroll');})();">
-                    <div class="view-mode-preview view-mode-preview-scroll">
-                        <div class="vm-sc-past">过去句</div>
-                        <div class="vm-sc-current">当前一句居中</div>
-                        <div class="vm-sc-future">未来句底稿</div>
-                        <div class="vm-sc-band"></div>
-                    </div>
-                    <div class="view-mode-info">
-                        <div class="view-mode-name">长卷 · Scroll</div>
-                        <div class="view-mode-desc">整首歌一幅横卷：时间向左推进，已唱句留卷成历史，章节色带分章，连续无跳切</div>
-                    </div>
-                    <div class="view-mode-check">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                    </div>
-                </div>
                 <div class="view-mode-card" data-mode="tunnel" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='tunnel')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='tunnel'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('tunnel');})();">
                     <div class="view-mode-preview view-mode-preview-tunnel">
                         <div class="vm-t-blocks">
@@ -748,6 +753,24 @@
                         </svg>
                     </div>
                 </div>
+                <div class="view-mode-card" data-mode="jizura" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='jizura')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='jizura'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('jizura');})();">
+                    <div class="view-mode-preview view-mode-preview-jizura">
+                        <div class="vm-jz-frame">
+                            <div class="vm-jz-no">第 12 話</div>
+                            <div class="vm-jz-line"><span class="sung">夜色</span>沉进海面</div>
+                            <div class="vm-jz-sub">YORU GA SHIZUMU</div>
+                        </div>
+                    </div>
+                    <div class="view-mode-info">
+                        <div class="view-mode-name">字面 · Jizura</div>
+                        <div class="view-mode-desc">把歌词交给 JIZURA 引擎自动生成日系文字 PV：分镜、卡点、装饰与后处理全自动</div>
+                    </div>
+                    <div class="view-mode-check">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </div>
+                </div>
                 <div class="view-mode-card" data-mode="letterpress" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='letterpress')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='letterpress'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('letterpress');})();">
                     <div class="view-mode-preview view-mode-preview-letterpress">
                         <div class="vm-lp-paper">
@@ -779,9 +802,9 @@
             <div class="search-modal-header">
                 <div class="source-toggle">
                     <button class="source-btn active" data-source="tencent">QQ音乐</button>
-                    <button class="source-btn" data-source="netease">网易云</button>
+                    <button class="source-btn" data-source="netease">网易云音乐</button>
                     <button class="source-btn" data-source="kugou">酷狗音乐</button>
-                    <button class="source-btn" data-source="kuwo">酷我音乐</button>
+                    <button class="source-btn" data-source="qishui">汽水音乐</button>
                 </div>
                 <button class="search-close" id="searchCloseBtn" title="关闭">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -1000,7 +1023,7 @@
             </div>
             <div class="import-modal-body">
                 <div class="import-url-row">
-                    <input type="text" id="importUrlInput" placeholder="粘贴网易云/QQ音乐歌单链接..." autocomplete="off">
+                    <input type="text" id="importUrlInput" placeholder="粘贴网易云音乐/QQ音乐歌单链接..." autocomplete="off">
                     <button class="playlist-create-btn" id="importConfirmBtn">导入</button>
                 </div>
                 <div class="status-hint" id="importHint"></div>
@@ -1042,15 +1065,8 @@
 
     <!-- 通用右键/更多菜单 -->
     <div class="ctx-menu" id="ctxMenu"></div>
-    <!-- 确认对话框 -->
-    <div class="ctx-confirm" id="ctxConfirm">
-        <div class="ctx-confirm-title" id="ctxConfirmTitle"></div>
-        <div class="ctx-confirm-msg" id="ctxConfirmMsg"></div>
-        <div class="ctx-confirm-btns">
-            <button class="ctx-confirm-btn cancel" id="ctxConfirmCancel">取消</button>
-            <button class="ctx-confirm-btn confirm" id="ctxConfirmOk">确定</button>
-        </div>
-    </div>
+    <!-- 确认对话框：静态节点已于 2026-10-05（P3-a）退役，
+         改为 021-aria-dialog.js 的动态对话框（挂在 ui/overlay.js 的浮层契约上） -->
 
     <!-- 均衡器面板 -->
     <div class="eq-panel" id="eqPanel">
@@ -1151,10 +1167,10 @@
                             <button class="appearance-mode-btn" data-mode="wordcloud" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='wordcloud')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='wordcloud'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('wordcloud');})();">云涌 · WordCloud</button>
                             <button class="appearance-mode-btn" data-mode="pv" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='pv')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='pv'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('pv');})();">诗镜 · Verse</button>
                             <button class="appearance-mode-btn" data-mode="tempera" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='tempera')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='tempera'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('tempera');})();">版画 · Tempera</button>
-                            <button class="appearance-mode-btn" data-mode="scroll" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='scroll')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='scroll'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('scroll');})();">长卷 · Scroll</button>
                             <button class="appearance-mode-btn" data-mode="tunnel" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='tunnel')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='tunnel'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('tunnel');})();">格律 · Mondrian</button>
                             <button class="appearance-mode-btn" data-mode="dimension" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='dimension')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='dimension'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('dimension');})();">穿行 · Dimension</button>
-                            <button class="appearance-mode-btn" data-mode="letterpress" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='letterpress')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='letterpress'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('letterpress');})();">活字 · Letterpress</button>                        </div>
+                            <button class="appearance-mode-btn" data-mode="letterpress" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='letterpress')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='letterpress'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('letterpress');})();">活字 · Letterpress</button>
+                            <button class="appearance-mode-btn" data-mode="jizura" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='jizura')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='jizura'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});if(window.switchAppearanceMode)window.switchAppearanceMode('jizura');})();">字面 · Jizura</button>                        </div>
                         </div>
 
                     <div class="appearance-section active" data-mode-section="cover">
@@ -1310,6 +1326,37 @@
                         </div>
                     </div>
 
+                    <!-- ★ 字面 · Jizura（2026-10-06）：JIZURA 引擎移植（MIT © 2026 hakoniwa）。
+                         P1 只暴露能真正生效的参数：设计分辨率 / 帧率（动画时基）/ 翻译层 / 字体。
+                         风格（27 套）与おまかせ 情绪需要面板与 J.STYLE_ORDER 联动，排在 P2。 -->
+                    <div class="appearance-section" data-mode-section="jizura">
+                        <div class="settings-group"><div class="settings-group-title">字面 · Jizura</div>
+                        <div class="setting-row"><div><div class="setting-label">风格</div><div class="setting-desc">27 套版式语言；「自动匹配」会按歌词抽一套</div></div><div class="setting-control"><div class="setting-dropdown" data-var="style"><div class="setting-dropdown-trigger">noir</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item" data-value="auto">自动匹配</div><div class="setting-dropdown-item selected" data-value="noir">noir</div><div class="setting-dropdown-item" data-value="crimson">crimson</div><div class="setting-dropdown-item" data-value="caution">caution</div><div class="setting-dropdown-item" data-value="magenta">magenta</div><div class="setting-dropdown-item" data-value="paper">paper</div><div class="setting-dropdown-item" data-value="hud">hud</div><div class="setting-dropdown-item" data-value="mint">mint</div><div class="setting-dropdown-item" data-value="specimen">specimen</div><div class="setting-dropdown-item" data-value="transit">transit</div><div class="setting-dropdown-item" data-value="blueprint">blueprint</div><div class="setting-dropdown-item" data-value="rouge">rouge</div><div class="setting-dropdown-item" data-value="mono">mono</div><div class="setting-dropdown-item" data-value="hrRuin">hrRuin</div><div class="setting-dropdown-item" data-value="hrNightRec">hrNightRec</div><div class="setting-dropdown-item" data-value="hrCurse">hrCurse</div><div class="setting-dropdown-item" data-value="sakura">sakura</div><div class="setting-dropdown-item" data-value="ocean">ocean</div><div class="setting-dropdown-item" data-value="sunset">sunset</div><div class="setting-dropdown-item" data-value="forest">forest</div><div class="setting-dropdown-item" data-value="vapor">vapor</div><div class="setting-dropdown-item" data-value="newsprint">newsprint</div><div class="setting-dropdown-item" data-value="synth80">synth80</div><div class="setting-dropdown-item" data-value="kraft">kraft</div><div class="setting-dropdown-item" data-value="candy">candy</div><div class="setting-dropdown-item" data-value="acid">acid</div><div class="setting-dropdown-item" data-value="sumi">sumi</div><div class="setting-dropdown-item" data-value="gold">gold</div></div></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">情绪倾向</div><div class="setting-desc">只在「自动匹配」时参与抽签</div></div><div class="setting-control"><div class="setting-dropdown" data-var="mood"><div class="setting-dropdown-trigger">不限</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="">不限</div><div class="setting-dropdown-item" data-value="glitch">glitch</div><div class="setting-dropdown-item" data-value="calm">calm</div><div class="setting-dropdown-item" data-value="pop">pop</div><div class="setting-dropdown-item" data-value="graphic">graphic</div><div class="setting-dropdown-item" data-value="editorial">editorial</div><div class="setting-dropdown-item" data-value="emotional">emotional</div><div class="setting-dropdown-item" data-value="horror">horror</div><div class="setting-dropdown-item" data-value="chaos">chaos</div></div></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">性能档</div><div class="setting-desc">按实测帧耗时动态调整清晰度；旧机器可选省电</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="perf" data-val="auto">自动</button><button class="setting-btn" data-var="perf" data-val="eco">省电</button><button class="setting-btn" data-var="perf" data-val="hd">高清</button></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">动画节拍</div><div class="setting-desc">逐帧最顺；「一拍两格」是引擎原味的动画卡帧感（12 张/秒）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="beat" data-val="every">逐帧</button><button class="setting-btn" data-var="beat" data-val="onTwos">一拍两格</button></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">按字切分镜</div><div class="setting-desc">用真实字时间把一行拆成多个分镜，切点更贴唱到的字；但本引擎里一段就是一个画面，拆多了会显得碎（需要 KRC/YRC/QRC 逐字歌词，或已做过频谱对齐）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="wordSync" data-val="off">关</button><button class="setting-btn" data-var="wordSync" data-val="cuts">开</button></div></div></div>
+                        <div class="settings-group"><div class="settings-group-title">画面细节</div>
+                        <div class="setting-row"><div><div class="setting-label">动感</div><div class="setting-desc">镜头与元素的运动幅度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="motion" min="0" max="1" step="0.05" value="0.7"><span class="setting-value" data-val="motion">0.70</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">故障闪烁</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="glitch" min="0" max="1" step="0.05" value="0.55"><span class="setting-value" data-val="glitch">0.55</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">色散</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="chroma" min="0" max="1" step="0.05" value="0.7"><span class="setting-value" data-val="chroma">0.70</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">装饰</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="decor" min="0" max="1" step="0.05" value="0.5"><span class="setting-value" data-val="decor">0.50</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">密度</div><div class="setting-desc">影响一行切成几个分镜</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="density" min="0" max="1" step="0.05" value="0.55"><span class="setting-value" data-val="density">0.55</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">颗粒质感</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="texture" min="0" max="1" step="0.05" value="0.6"><span class="setting-value" data-val="texture">0.60</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">闪光</div></div><div class="setting-control"><button class="setting-toggle on" data-var="flash"></button></div></div>
+                        <div class="setting-row"><div><div class="setting-label">HUD</div><div class="setting-desc">画面里的角标与刻度</div></div><div class="setting-control"><div class="setting-dropdown" data-var="hud"><div class="setting-dropdown-trigger">自动</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="auto">自动</div><div class="setting-dropdown-item" data-value="on">显示</div><div class="setting-dropdown-item" data-value="off">隐藏</div></div></div></div></div>
+                        </div>
+                        <div class="settings-group"><div class="settings-group-title">日文字体包</div>
+                        <div class="setting-row"><div><div class="setting-label">导入日文字体</div><div class="setting-desc">导入上游原用的日文字体（可多选 .ttf/.otf/.woff/.woff2）；本模式会按上游原貌排版，导入的字体同样可用于其它模式</div></div><div class="setting-control"><button class="setting-btn jizura-font-pack-btn">选择字体文件</button></div></div>
+                        </div>
+                        <div class="setting-row"><div><div class="setting-label">帧率</div><div class="setting-desc">动画的输出帧率。12 最省电，24 最顺滑</div></div><div class="setting-control"><div class="setting-dropdown" data-var="fps"><div class="setting-dropdown-trigger">24 fps</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="24">24 fps</div><div class="setting-dropdown-item" data-value="12">12 fps</div></div></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">显示翻译</div></div><div class="setting-control"><button class="setting-toggle on" data-var="showTranslation"></button></div></div>
+                        </div>
+                        <div class="settings-group"><div class="settings-group-title">背景与字体</div>
+                        <div class="setting-row"><div><div class="setting-label">字体</div></div><div class="setting-control"><div class="setting-dropdown appearance-font-dropdown" data-var="fontFamily"><div class="setting-dropdown-trigger">系统默认</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="inherit">系统默认</div><div class="setting-dropdown-item" data-value="'Noto Sans SC', sans-serif">思源黑体</div><div class="setting-dropdown-item" data-value="'Noto Serif SC', serif">思源宋体</div><div class="setting-dropdown-item" data-value="'Microsoft YaHei', sans-serif">微软雅黑</div><div class="setting-dropdown-item" data-value="'SimHei', sans-serif">黑体</div><div class="setting-dropdown-item" data-value="'PingFang SC', sans-serif">苹方</div><div class="setting-dropdown-item" data-value="monospace">等宽字体</div></div></div></div></div><div class="setting-row"><div><div class="setting-label">导入自定义字体</div><div class="setting-desc">支持 .ttf .otf .woff .woff2</div></div><div class="setting-control"><button class="setting-btn appearance-import-font-btn">选择字体</button></div></div>
+                        </div>
+                    </div>
+
                     <div class="appearance-section" data-mode-section="tempera">
                         <div class="settings-group"><div class="settings-group-title">版画 · Tempera</div>
                         <div class="setting-row"><div><div class="setting-label">歌词字号</div><div class="setting-desc">版画文字基准大小的倍率</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.6" max="3.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
@@ -1321,19 +1368,6 @@
                         <div class="setting-row"><div><div class="setting-label">显示角标</div></div><div class="setting-control"><button class="setting-toggle on" data-var="showCornerMarks"></button></div></div>
                         <div class="setting-row"><div><div class="setting-label">镜头转场</div></div><div class="setting-control"><button class="setting-toggle on" data-var="enableTransitions"></button></div></div>
                         <div class="setting-row"><div><div class="setting-label">高亮颜色</div></div><div class="setting-control"><div class="setting-color-row" data-var="highlightColor" data-palette="accent+white" data-active="#E8BE6A"></div></div></div>
-                        </div>
-                        <div class="settings-group"><div class="settings-group-title">背景与字体</div>
-                        <div class="setting-row"><div><div class="setting-label">字体</div></div><div class="setting-control"><div class="setting-dropdown appearance-font-dropdown" data-var="fontFamily"><div class="setting-dropdown-trigger">系统默认</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="inherit">系统默认</div><div class="setting-dropdown-item" data-value="'Noto Sans SC', sans-serif">思源黑体</div><div class="setting-dropdown-item" data-value="'Noto Serif SC', serif">思源宋体</div><div class="setting-dropdown-item" data-value="'Microsoft YaHei', sans-serif">微软雅黑</div><div class="setting-dropdown-item" data-value="'SimHei', sans-serif">黑体</div><div class="setting-dropdown-item" data-value="'PingFang SC', sans-serif">苹方</div><div class="setting-dropdown-item" data-value="monospace">等宽字体</div></div></div></div></div><div class="setting-row"><div><div class="setting-label">导入自定义字体</div><div class="setting-desc">支持 .ttf .otf .woff .woff2</div></div><div class="setting-control"><button class="setting-btn appearance-import-font-btn">选择字体</button></div></div>
-                        </div>
-                    </div>
-
-                    <div class="appearance-section" data-mode-section="scroll">
-                        <div class="settings-group"><div class="settings-group-title">长卷 · Scroll</div>
-                        <div class="setting-row"><div><div class="setting-label">歌词字号</div><div class="setting-desc">当前句在卷面上的大小倍率</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.6" max="2.0" step="0.05" value="1.0"><span class="setting-value" data-val="fontSize">1.00x</span></div></div>
-                        <div class="setting-row"><div><div class="setting-label">卷动速度</div><div class="setting-desc">时间在卷面上的推进速度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="scrollSpeed" min="0.7" max="1.4" step="0.05" value="1.0"><span class="setting-value" data-val="scrollSpeed">1.00x</span></div></div>
-                        <div class="setting-row"><div><div class="setting-label">章节色带</div></div><div class="setting-control"><button class="setting-toggle on" data-var="showChapters"></button></div></div>
-                        <div class="setting-row"><div><div class="setting-label">高亮颜色</div></div><div class="setting-control"><div class="setting-color-row" data-var="highlightColor" data-palette="accent+white" data-active="#E8BE6A"></div></div></div>
-                        <div class="setting-row"><div><div class="setting-label">情感词发光强度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="emotionGlow" min="0" max="30" step="1" value="10"><span class="setting-value" data-val="emotionGlow">10px</span></div></div>
                         </div>
                         <div class="settings-group"><div class="settings-group-title">背景与字体</div>
                         <div class="setting-row"><div><div class="setting-label">字体</div></div><div class="setting-control"><div class="setting-dropdown appearance-font-dropdown" data-var="fontFamily"><div class="setting-dropdown-trigger">系统默认</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="inherit">系统默认</div><div class="setting-dropdown-item" data-value="'Noto Sans SC', sans-serif">思源黑体</div><div class="setting-dropdown-item" data-value="'Noto Serif SC', serif">思源宋体</div><div class="setting-dropdown-item" data-value="'Microsoft YaHei', sans-serif">微软雅黑</div><div class="setting-dropdown-item" data-value="'SimHei', sans-serif">黑体</div><div class="setting-dropdown-item" data-value="'PingFang SC', sans-serif">苹方</div><div class="setting-dropdown-item" data-value="monospace">等宽字体</div></div></div></div></div><div class="setting-row"><div><div class="setting-label">导入自定义字体</div><div class="setting-desc">支持 .ttf .otf .woff .woff2</div></div><div class="setting-control"><button class="setting-btn appearance-import-font-btn">选择字体</button></div></div>
@@ -1397,10 +1431,23 @@
                             <button class="setting-toggle" id="setAutoPlayNext"></button>
                         </div>
                     </div>
+                    <!-- 会话恢复（需求 17）：退出/崩溃后下次启动恢复当前歌与进度 -->
                     <div class="setting-row">
                         <div><div class="setting-label">切歌淡入淡出</div><div class="setting-desc">切换歌曲时音量渐变</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setFadeInOut"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">起播淡入</div><div class="setting-desc">点播放、切歌或从暂停恢复时，音量快速平滑升起（100~300 毫秒）</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setStartFade"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">智能混音（Automix）</div><div class="setting-desc">歌尾与下一曲开头无缝交叉（本地/缓存源）</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setAutomix"></button>
                         </div>
                     </div>
                     <div class="setting-row">
@@ -1423,6 +1470,35 @@
                             <span class="setting-value" id="setRetryCountVal">2</span>
                         </div>
                     </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">听力健康提醒</div><div class="setting-desc">连续播放 2 小时或音量长时间偏高时温和提示，不打断播放</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setHearingGuard"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">练习模式变速</div><div class="setting-desc">速度固定到指定值，0.5×~2.0× 每档 0.05；保持音高不变调（独占输出下仍会变调）</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setPracticeMode"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row" id="practiceRateRow" style="display:none">
+                        <div><div class="setting-label">练习速度</div><div class="setting-desc">退出练习模式会恢复 1.00×</div></div>
+                        <div class="setting-control">
+                            <input type="range" class="setting-slider" id="setPracticeRate" min="0.5" max="2" step="0.05">
+                            <span class="setting-value" id="setPracticeRateVal">1.00×</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">音源状态</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">音源连通性</div><div class="setting-desc">向各音源接口发一次轻量请求，显示成功失败与延迟</div></div>
+                        <div class="setting-control">
+                            <button class="setting-btn" id="btnSourceProbe">测试</button>
+                        </div>
+                    </div>
+                    <div class="source-status-list" id="sourceStatusList"></div>
                 </div>
                 <div class="settings-group">
                     <div class="settings-group-title">本机 Now Playing 接管</div>
@@ -1554,6 +1630,47 @@
                         </div>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">MV 动态背景</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">MV 动态背景</div><div class="setting-desc">在搜索结果里点 MV 卡片，把它铺成动态背景</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setMvBg"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">MV 压暗</div><div class="setting-desc">降低 MV 亮度，让歌词更清楚</div></div>
+                        <div class="setting-control">
+                            <input type="range" class="setting-slider" id="setMvDim" min="0" max="90" step="5">
+                            <span class="setting-value" id="setMvDimVal">45%</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">MV 模糊</div><div class="setting-desc">MV 背景模糊程度 (px)</div></div>
+                        <div class="setting-control">
+                            <input type="range" class="setting-slider" id="setMvBlur" min="0" max="30" step="2">
+                            <span class="setting-value" id="setMvBlurVal">8px</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">MV 画质增强</div><div class="setting-desc">Anime4K 超分与去压缩伪影，改善 MV 的模糊、噪点与边缘</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setMvUpscale"></button>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">增强强度</div><div class="setting-desc">S 轻快、M 更锐、L 最强；越强越吃显卡，顶不住会自动降级回原画</div></div>
+                        <div class="setting-control">
+                            <div class="setting-dropdown" id="dropdown-mvUpscaleTier" data-setting="mvUpscaleTier"></div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">音画偏移矫正</div><div class="setting-desc">自动对齐 MV 画面与歌曲进度；每首会多下约 10MB 做分析，关掉可省流量</div></div>
+                        <div class="setting-control">
+                            <button class="setting-toggle" id="setMvSync"></button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 5. 界面设置 -->
@@ -1678,6 +1795,34 @@
             <!-- 6. 音效设置 -->
             <div class="settings-section" data-section="audio">
                 <div class="settings-group">
+                    <div class="settings-group-title">输出</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">输出设备</div><div class="setting-desc">声音输出到哪个设备，切换后即时生效</div></div>
+                        <div class="setting-control">
+                            <div class="setting-dropdown" id="dropdown-audioOutput"></div>
+                        </div>
+                    </div>
+                    <!-- WASAPI 独占输出（原生输出线 Phase 2b）：仅在桌面壳 + 引擎可用时显示，
+                         显隐与开关状态由 app/298-native-output.js 接管（默认隐藏避免网页版露出死开关） -->
+                    <div class="setting-row" id="rowNativeExclusive" style="display:none">
+                        <div><div class="setting-label">WASAPI 独占输出</div><div class="setting-desc">绕过系统混音器直通声卡（比特完美）。开启后播放改由原生引擎接管，Automix 与变速暂不可用</div></div>
+                        <div class="setting-control"><button class="setting-toggle" id="setNativeExclusive"></button></div>
+                    </div>
+                    <!-- 输出声道（需求 20）：纯声道矩阵，链路最末端 -->
+                    <div class="setting-row">
+                        <div><div class="setting-label">输出声道</div><div class="setting-desc">立体声（默认）/ 单声道 / 只听左或右 / 交换左右。纯声道参数，不改音质</div></div>
+                        <div class="setting-control">
+                            <div class="setting-btn-group" id="setChannelMode">
+                                <button class="setting-btn" data-val="stereo">立体声</button>
+                                <button class="setting-btn" data-val="mono">单声道</button>
+                                <button class="setting-btn" data-val="left">左</button>
+                                <button class="setting-btn" data-val="right">右</button>
+                                <button class="setting-btn" data-val="swap">交换</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
                     <div class="settings-group-title">均衡器</div>
                     <div class="setting-row">
                         <div><div class="setting-label">默认 EQ 预设</div><div class="setting-desc">启动时应用的均衡器预设</div></div>
@@ -1689,6 +1834,56 @@
                         <div><div class="setting-label">打开均衡器面板</div><div class="setting-desc">手动调节 10 段音频均衡器</div></div>
                         <div class="setting-control">
                             <button class="setting-btn primary" id="setOpenEq">打开均衡器</button>
+                        </div>
+                    </div>
+                    <!-- AutoEQ PEQ 导入（需求 3）：粘贴文本 → 折算到 10 段 -->
+                    <div class="setting-row">
+                        <div><div class="setting-label">导入 AutoEQ PEQ</div><div class="setting-desc">粘贴 AutoEQ / Peace 导出的参数均衡文本，自动折算并写入 10 段均衡器</div></div>
+                        <div class="setting-control">
+                            <button class="setting-btn" id="setImportAutoEq">导入</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">空间音频</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">空间音频</div><div class="setting-desc">用双耳 HRTF 卷积让声音有前后深度与定位感（耳机效果最佳）</div></div>
+                        <div class="setting-control"><button class="setting-toggle" id="setSpatialAudio"></button></div>
+                    </div>
+                    <div class="setting-row" id="rowSpatialStrength">
+                        <div><div class="setting-label">强度</div><div class="setting-desc">轻 = 轻微染色；中 = 空间感明显；强 = 最强包围（干湿比）</div></div>
+                        <div class="setting-control">
+                            <div class="setting-btn-group" id="setSpatialStrength">
+                                <button class="setting-btn" data-val="light">轻</button>
+                                <button class="setting-btn" data-val="medium">中</button>
+                                <button class="setting-btn" data-val="strong">强</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row" id="rowSpatialIr">
+                        <div><div class="setting-label">空间类型</div><div class="setting-desc">近场 = 紧致；厅堂 = 更多早期反射；宽阔 = 双耳去相关最强</div></div>
+                        <div class="setting-control">
+                            <div class="setting-btn-group" id="setSpatialIr">
+                                <button class="setting-btn" data-val="near">近场</button>
+                                <button class="setting-btn" data-val="hall">厅堂</button>
+                                <button class="setting-btn" data-val="wide">宽阔</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">虚拟声场</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">虚拟声场</div><div class="setting-desc">横向拉宽声场、提升器乐分离度（人声位置不变，耳机效果更明显）</div></div>
+                        <div class="setting-control"><button class="setting-toggle" id="setVirtualStage"></button></div>
+                    </div>
+                    <div class="setting-row" id="rowStageStrength">
+                        <div><div class="setting-label">强度</div><div class="setting-desc">轻 = 仅展宽；中 = 展宽 + 微延时包围感</div></div>
+                        <div class="setting-control">
+                            <div class="setting-btn-group" id="setStageStrength">
+                                <button class="setting-btn" data-val="light">轻</button>
+                                <button class="setting-btn" data-val="medium">中</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1982,6 +2177,54 @@
                         <div class="setting-control"><button class="setting-btn danger" id="setClearAll">清除全部</button></div>
                     </div>
                 </div>
+                <!-- 存储空间（需求 13）：占用一览 + 上限 + 清理（绝不删歌单/收藏/记录） -->
+                <div class="settings-group">
+                    <div class="settings-group-title">存储空间</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">占用概览</div><div class="setting-desc" id="storageOverview">点「刷新」查看各类缓存占用</div></div>
+                        <div class="setting-control"><button class="setting-btn" id="setStorageRefresh">刷新</button></div>
+                    </div>
+                    <div id="storagePanel" class="storage-panel"></div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">存储上限</div><div class="setting-desc">超过该值自动清理最旧的缓存（0 = 不限；歌单/收藏/记录永不清理）</div></div>
+                        <div class="setting-control">
+                            <input type="number" id="setStorageLimit" min="0" max="4096" step="50" class="storage-num" style="width:88px">
+                            <span class="setting-value">MB</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">清理缓存</div><div class="setting-desc">按占用从低价值到高价值清理；高价值数据会先确认</div></div>
+                        <div class="setting-control"><button class="setting-btn" id="setStoragePrune">清理到上限</button></div>
+                    </div>
+                </div>
+                <!-- 自动备份（需求 23）：定期把数据写到指定文件夹 -->
+                <div class="settings-group">
+                    <div class="settings-group-title">自动备份</div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">定期自动备份</div><div class="setting-desc">按间隔把收藏/歌单/设置/歌词偏移写入备份文件夹</div></div>
+                        <div class="setting-control"><button class="setting-toggle" id="setAutoBackup"></button></div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">备份文件夹</div><div class="setting-desc" id="backupDirName">未选择</div></div>
+                        <div class="setting-control"><button class="setting-btn" id="setBackupDir">选择</button></div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">备份间隔</div><div class="setting-desc">小时</div></div>
+                        <div class="setting-control">
+                            <input type="range" class="setting-slider" id="setBackupInterval" min="1" max="168" step="1">
+                            <span class="setting-value" id="setBackupIntervalVal">24</span>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">立即备份</div><div class="setting-desc" id="backupLastInfo">上次：—</div></div>
+                        <div class="setting-control"><button class="setting-btn primary" id="setBackupNow">备份一次</button></div>
+                    </div>
+                    <div class="setting-row">
+                        <div><div class="setting-label">从备份恢复</div><div class="setting-desc">选择之前导出的备份 JSON，恢复收藏/歌单/设置</div></div>
+                        <div class="setting-control"><button class="setting-btn" id="setRestoreBtn">选择文件</button></div>
+                    </div>
+                    <input type="file" id="setRestoreFile" accept=".json" style="display:none">
+                </div>
             </div>
 
             <!-- 自建音乐服务 -->
@@ -2013,7 +2256,7 @@
                         <svg class="apc-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C21.938 6.5 17.5 2 12 2z"/></svg>
                         <span class="apc-text">
                             <b>folia-major</b>
-                            <small>开源歌词视觉项目 · 本项目视觉分镜设计的参考来源</small>
+                            <small>开源歌词视觉项目 · 「诗镜 · Verse」与「版画 · Tempera」引擎的代码来源（AGPL-3.0）</small>
                         </span>
                         <svg class="apc-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
                     </a>
@@ -2027,7 +2270,7 @@
                             <span data-i18n="settings.about.issues">反馈问题</span>
                         </button>
                     </div>
-                    <p class="about-fine">字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · Cubic 11　·　© 2026 Aria Lyrics Player</p>
+                    <p class="about-fine">字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · Cubic 11　·　© 2026 Aria Lyrics Player　·　本程序按 AGPL-3.0 发布，源码见 github.com/zsjsll114/Aria</p>
                 </div>
             </div>
         </div>
@@ -2217,7 +2460,7 @@
             <div class="source-toggle rank-source-toggle" id="rankTabs">
                 <button class="source-btn" data-rsrc="qq">QQ音乐</button>
                 <button class="source-btn" data-rsrc="kugou">酷狗音乐</button>
-                <button class="source-btn" data-rsrc="netease">网易云</button>
+                <button class="source-btn" data-rsrc="netease">网易云音乐</button>
             </div>
             <div class="rank-nav" id="rankNav" hidden>
                 <button class="rank-back" id="rankBackBtn" title="返回榜单列表">
@@ -2231,6 +2474,33 @@
         </div>
     </div>
 
+    <!-- ★ 歌手页（297）：从搜索结果/播放器的歌手名点进来。
+         结构与 rankingsOverlay 同款（search-overlay + search-modal 玻璃底），
+         独占显示由 openArtist() 负责关掉其它同层弹窗。 -->
+    <div class="search-overlay" id="artistOverlay">
+        <div class="search-modal artist-modal">
+            <div class="search-modal-header">
+                <div class="favorites-title" id="artistPageTitle">歌手</div>
+                <button class="search-close" id="artistCloseBtn" title="关闭">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="artist-profile">
+                <div class="artist-avatar" id="artistAvatar"></div>
+                <div class="artist-meta">
+                    <div class="artist-name" id="artistName"></div>
+                    <div class="artist-sub" id="artistSub"></div>
+                </div>
+            </div>
+            <div class="artist-desc" id="artistDesc" title="点击展开/收起"></div>
+            <div class="artist-tabs" id="artistTabs" style="display:none;">
+                <button class="artist-tab active" data-atab="songs">热门歌曲</button>
+                <button class="artist-tab" data-atab="albums">专辑</button>
+            </div>
+            <div class="artist-list" id="artistList"></div>
+        </div>
+    </div>
+
     <!-- ★ 自建收藏（我喜欢的歌 / 我的歌单，来源三平台自建服务） -->
     <div class="search-overlay" id="selfFavOverlay">
         <div class="search-modal">
@@ -2238,7 +2508,7 @@
                 <div class="source-toggle" id="selfFavTabs">
                     <button class="source-btn" data-fsrc="qq">QQ音乐</button>
                     <button class="source-btn" data-fsrc="kugou">酷狗音乐</button>
-                    <button class="source-btn" data-fsrc="netease">网易云</button>
+                    <button class="source-btn" data-fsrc="netease">网易云音乐</button>
                 </div>
                 <button class="search-close" id="selfFavCloseBtn" title="关闭">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>

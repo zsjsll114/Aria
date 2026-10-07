@@ -29,6 +29,7 @@ import { applyPerformanceProfile, autoDetectAndApplyPerformance, cleanGpuName, g
 import { applyAllSettings, applyModeSettings, getSettingValue, setSettingValue } from './190-settings-fontsize.js';
 import { bindBtnGroup } from './200-settings-panel.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
+import { registerAudioListener, onRoleSwap } from '../core/dualDeck.js';
 
 /* 快捷键录制 */
 globalThis.recordingShortcut = null;
@@ -98,6 +99,12 @@ function refreshSettingsUI() {
             refreshShortcutUI();
             refreshDropdowns();
             refreshPerformanceUI();
+            /* 输出设备（296 自挂载）：重开面板 / 切语言时重枚举设备并重译标签
+               —— 设备列表是运行时的，不重枚举会停在打开面板那一刻的快照 */
+            if (typeof Aria.__audioOutputRefresh === 'function') Aria.__audioOutputRefresh();
+            /* WASAPI 独占开关（298 自挂载）：重开面板时把 .on 拉回真实状态——
+               引擎可能因为体检失败/加载失败自行回退了，UI 不能停在用户点过的位置 */
+            if (typeof Aria.__nativeOutputRefresh === 'function') Aria.__nativeOutputRefresh();
             
             // 1. 播放设置
             const setInitialVolume = document.getElementById('setInitialVolume');
@@ -117,6 +124,10 @@ function refreshSettingsUI() {
             const setFadeInOut = document.getElementById('setFadeInOut');
             if (setFadeInOut && appSettings.playback) {
                 setFadeInOut.classList.toggle('on', !!appSettings.playback.fadeInOut);
+            }
+            const setAutomix = document.getElementById('setAutomix');
+            if (setAutomix && appSettings.playback) {
+                setAutomix.classList.toggle('on', !!(appSettings.playback.automix && appSettings.playback.automix.enabled));
             }
             const setFadeDuration = document.getElementById('setFadeDuration');
             const setFadeDurationVal = document.getElementById('setFadeDurationVal');
@@ -169,6 +180,30 @@ function refreshSettingsUI() {
                 setSwayDuration.value = appSettings.background.swayDuration ?? 16;
                 if (setSwayDurationVal) setSwayDurationVal.textContent = setSwayDuration.value + 's';
             }
+            /* MV 动态背景（2026-10-03）：开关默认视为**开**（与 101 的 bgSettings 同口径），
+               压暗 percent / 模糊 px 的换算也只在这里写一次。 */
+            const setMvBg = document.getElementById('setMvBg');
+            if (setMvBg && appSettings.background) {
+                setMvBg.classList.toggle('on', appSettings.background.mvBg !== false);
+            }
+            const setMvDim = document.getElementById('setMvDim');
+            const setMvDimVal = document.getElementById('setMvDimVal');
+            if (setMvDim && appSettings.background) {
+                const d = Math.round((appSettings.background.mvDim ?? 0.45) * 100);
+                setMvDim.value = d;
+                if (setMvDimVal) setMvDimVal.textContent = d + '%';
+            }
+            const setMvBlur = document.getElementById('setMvBlur');
+            const setMvBlurVal = document.getElementById('setMvBlurVal');
+            if (setMvBlur && appSettings.background) {
+                const b = appSettings.background.mvBlur ?? 8;
+                setMvBlur.value = b;
+                if (setMvBlurVal) setMvBlurVal.textContent = b + 'px';
+            }
+            const setMvUpscale = document.getElementById('setMvUpscale');
+            if (setMvUpscale && appSettings.background) {
+                setMvUpscale.classList.toggle('on', appSettings.background.mvUpscale !== false);
+            }
 
             // 3. 界面设置
             const setGlassStrength = document.getElementById('setGlassStrength');
@@ -199,6 +234,45 @@ function refreshSettingsUI() {
             const setVolumeNorm = document.getElementById('setVolumeNorm');
             if (setVolumeNorm && appSettings.audio) {
                 setVolumeNorm.classList.toggle('on', !!appSettings.audio.volumeNorm);
+            }
+            /* ★ 空间音频 + 虚拟声场（P1 虚拟声场 / P2 空间音频）：开关态回填 + 档位高亮。
+               直接操作 DOM 而不调 200 的内部函数 —— 220 不 import 200（既有分层），
+               且此处只需「把 UI 拉回 appSettings 的真实值」这一件事。
+               ★ P2 起**不再有独占置灰**：独占路径由 Rust 侧承担（native_audio_set_spatial），
+                 方案 §4「P2 补 Rust 侧后解除」已落地。 */
+            if (appSettings.audio) {
+                const backfillToggle = (id, on) => {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.toggle('on', !!on);
+                };
+                const backfillGroup = (id, cur) => {
+                    const g = document.getElementById(id);
+                    if (!g) return;
+                    g.querySelectorAll('.setting-btn').forEach(b => {
+                        b.classList.toggle('active', b.dataset.val === cur);
+                    });
+                };
+                const backfillRow = (id, on) => {
+                    const r = document.getElementById(id);
+                    if (r) r.style.display = on ? '' : 'none';
+                };
+
+                /* —— 空间音频（P2）—— */
+                const spOn = !!appSettings.audio.spatialAudio;
+                backfillToggle('setSpatialAudio', spOn);
+                backfillRow('rowSpatialStrength', spOn);
+                backfillRow('rowSpatialIr', spOn);
+                backfillGroup('setSpatialStrength', appSettings.audio.spatialStrength || 'light');
+                backfillGroup('setSpatialIr', appSettings.audio.spatialIr || 'near');
+
+                /* —— 虚拟声场（P1）—— */
+                const stOn = !!appSettings.audio.virtualStage;
+                backfillToggle('setVirtualStage', stOn);
+                backfillRow('rowStageStrength', stOn);
+                backfillGroup('setStageStrength', appSettings.audio.stageStrength || 'light');
+
+                /* —— 输出声道（需求 20）—— */
+                backfillGroup('setChannelMode', appSettings.audio.channelMode || 'stereo');
             }
 
             // 5. 快捷键与跳转步长
@@ -675,6 +749,13 @@ function showSettingsHint(text) {
             setTimeout(() => { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 300); }, 2000);
         }
 
+/* ★ 底部提示浮层挂到 Aria 命名空间（2026-10-03）：MV 背景/搜索卡片这类
+   「不在设置面板里」的模块也要给一次性反馈，各自复制一份 toast 会漂移。
+   唯一实现留在本模块的 showSettingsHint（它本来就是这个造型）。 */
+if (typeof Aria !== 'undefined') {
+    Aria.showHint = showSettingsHint;
+}
+
 if (typeof window !== "undefined") window.addEventListener('load', function() {
             /* 仅在欢迎页已关闭且仍无歌曲时才回退初始化 */
             const welcomeOverlay = typeof document !== 'undefined' ? document.getElementById('welcomeOverlay') : null;
@@ -826,7 +907,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 if (typeof window !== 'undefined') window.currentViewMode = mode;
                 
                 /* ★ 先移除并更新所有视图模式 class */
-                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-tempera', 'view-scroll');
+                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-tempera', 'view-jizura');
                 
                 if (mainVisManager && mainVisManager.has(mode)) {
                     playerContainer.classList.add(`view-${mode}`);
@@ -891,25 +972,6 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                     }).catch((err) => {
                         logError('shortcutsViewmode', '[Tempera Mode] 初始化失败:', err);
                     });
-                } else if (mode === 'scroll') {
-                    /* ★ 2026-10-01：长卷 · Scroll——连续横卷歌词（第三种 PV 形态）。
-                       已唱句留卷、三层视差、章节色带。 */
-                    playerContainer.classList.add('view-scroll');
-                    let scrollContainer = document.getElementById('scrollViewContainer');
-                    if (!scrollContainer) {
-                        scrollContainer = document.createElement('div');
-                        scrollContainer.id = 'scrollViewContainer';
-                        scrollContainer.className = 'scroll-view-container';
-                        playerContainer.appendChild(scrollContainer);
-                    }
-                    scrollContainer.style.display = 'block';
-                    import('../core/visualizers/scroll/scrollMode.js').then(async (m) => {
-                        await m.ensureScrollEngine(scrollContainer);
-                        m.updateScrollEngine(audio ? audio.currentTime : 0);
-                        logInfo('shortcutsViewmode', '[Scroll Mode] ScrollEngine 初始化完成, lyrics:', typeof lyrics !== 'undefined' ? lyrics.length : 0, '条');
-                    }).catch((err) => {
-                        logError('shortcutsViewmode', '[Scroll Mode] 初始化失败:', err);
-                    });
                 } else if (mode === 'tunnel') {
                     playerContainer.classList.add('view-tunnel');
                     let tunnelContainer = document.getElementById('tunnelViewContainer');
@@ -954,7 +1016,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 /* ★ P4：默认（封面）模式显式标记 view-cover，作为手机版双页布局的样式作用域；
                    可视化模式（星雾/光曜等）由 mainVisManager 添加各自的 view-* 类，不标记 */
                 const isDefaultCoverMode = !(mainVisManager && mainVisManager.has(mode))
-                    && mode !== 'lyrics' && mode !== 'flyin' && mode !== 'wordcloud' && mode !== 'pv' && mode !== 'tunnel' && mode !== 'tempera' && mode !== 'scroll';
+                    && mode !== 'lyrics' && mode !== 'flyin' && mode !== 'wordcloud' && mode !== 'pv' && mode !== 'tunnel' && mode !== 'tempera';
                 playerContainer.classList.toggle('view-cover', isDefaultCoverMode);
 
                 /* ★ P4：离开默认模式时退出手机版歌词页；每次切换后同步按钮态与预览文本 */
@@ -982,7 +1044,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                     /* sonnet（PV 引擎替身）切走时挂起 Pixi 渲染循环。
                        ★ 只在引擎已存在时才 import——否则每次切歌词/默认模式都会
                        拉起 1.5MB 的 Pixi bundle（实测会把歌词模式首屏拖住）。 */
-                    if (window.__sonnetProbe) {
+                    if (window.__sonnetEngineReady || window.__sonnetProbe) {
                         import('../core/visualizers/sonnet/sonnetMode.js').then(m => m.suspendSonnetEngine()).catch(() => {});
                     }
                 }
@@ -995,15 +1057,6 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                         import('../core/visualizers/tempera/temperaMode.js').then(m => m.suspendTemperaRuntime()).catch(() => {});
                     }
                 }
-                /* 长卷切走时挂起（同级清理，勿入 mode!=='pv' 守卫——同凝彩残留教训） */
-                if (mode !== 'scroll') {
-                    const scrollContainer = document.getElementById('scrollViewContainer');
-                    if (scrollContainer) scrollContainer.style.display = 'none';
-                    if (window.__scrollActive) {
-                        import('../core/visualizers/scroll/scrollMode.js').then(m => m.suspendScrollEngine()).catch(() => {});
-                    }
-                }
-
                 /* ★ 保存当前视图模式到本地存储 */
                 try { localStorage.setItem('player_view_mode', mode); } catch (e) { logCatch('shortcutsViewmode', e); }
 
@@ -1272,16 +1325,20 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
 
             /* ========== 底部进度条同步 ========== */
             function syncBottomProgress() {
-                if (!audio.duration) return;
-                const pct = (audio.currentTime / audio.duration) * 100;
+                /* ★ Number.isFinite 而非 truthy 判断：在线流未拿到 Content-Length 时
+                   duration 是 Infinity——truthy 会放过去，算出 pct=0 并把
+                   formatTime(Infinity) 写成「Infinity:NaN」。宁可不写。 */
+                const dur = audio.duration;
+                if (!Number.isFinite(dur) || dur <= 0) return;
+                const pct = (audio.currentTime / dur) * 100;
                 bottomProgressBar.style.width = pct + '%';
                 bottomCurrentTimeEl.textContent = formatTime(audio.currentTime * 1000).replace(/^0/, '');
-                bottomTotalTimeEl.textContent = formatTime(audio.duration * 1000).replace(/^0/, '');
+                bottomTotalTimeEl.textContent = formatTime(dur * 1000).replace(/^0/, '');
             }
 
             /* 监听原有进度更新 */
-            audio?.addEventListener('timeupdate', syncBottomProgress);
-            audio?.addEventListener('loadedmetadata', () => {
+            registerAudioListener('timeupdate', syncBottomProgress);
+            registerAudioListener('loadedmetadata', () => {
                 bottomTotalTimeEl.textContent = formatTime(getDuration()).replace(/^0/, '');
             });
 
@@ -1313,8 +1370,11 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
                     bottomPlayIcon.innerHTML = '<path d="M13.293 22.772c.955 0 1.436-.481 1.436-1.436V6.677c0-.98-.481-1.427-1.436-1.427h-2.457c-.954 0-1.436.473-1.436 1.427v14.66c-.008.954.473 1.435 1.436 1.435h2.457zm7.87 0c.954 0 1.427-.481 1.427-1.436V6.677c0-.98-.473-1.427-1.428-1.427h-2.465c-.955 0-1.428.473-1.428 1.427v14.66c0 .954.473 1.435 1.428 1.435h2.465z" fill-rule="nonzero"></path>';
                 }
             }
-            audio?.addEventListener('play', updateBottomPlayIcon);
-            audio?.addEventListener('pause', updateBottomPlayIcon);
+            registerAudioListener('play', updateBottomPlayIcon);
+            registerAudioListener('pause', updateBottomPlayIcon);
+            /* ★ 角色顶替后补一发：新 A 的 play 事件早于监听搬运（当时它还是影子
+               deck），不会再触发——不补的话底栏图标与时长会停留在上一首的值。 */
+            onRoleSwap(() => { updateBottomPlayIcon(); syncBottomProgress(); });
 
             bottomPlayBtn?.addEventListener('click', togglePlayPause);
             bottomPrevBtn?.addEventListener('click', prevTrack);
@@ -1408,7 +1468,7 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
                 const _pctInit = Math.max(0, Math.min(100, typeof volume !== 'undefined' ? volume : 80));
                 bottomVolumeBar.style.width = _pctInit + '%';
                 bottomVolumeValue.textContent = _pctInit;
-                audio?.addEventListener('volumechange', () => {
+                registerAudioListener('volumechange', () => {
                     /* 音量被外部（主音量条/键盘）修改时，底部条同步为手柄位置 */
                     const _cur = (typeof volume !== 'undefined') ? Math.max(0, Math.min(100, volume)) : 80;
                     bottomVolumeBar.style.width = _cur + '%';

@@ -1,5 +1,7 @@
 import { DimensionVisualizer } from './DimensionVisualizer.js';
 import { LetterpressVisualizer } from './LetterpressVisualizer.js';
+import { JizuraVisualizer } from './jizura/JizuraVisualizer.js';
+import { logCatch } from '../../services/log.js';
 
 
 /**
@@ -22,6 +24,10 @@ export class VisualizerManager {
   _registerBuiltins() {
     this.register('dimension', DimensionVisualizer);
         this.register('letterpress', LetterpressVisualizer);
+    /* ★ 字面 · Jizura（2026-10-06）：JIZURA 引擎移植（MIT © 2026 hakoniwa）。
+       注册在这里 = 自动获得容器/生命周期/歌词下发/每帧时钟/性能档/后台节流/设置分发
+       （见 JizuraVisualizer 头注释），以及 220 的 switchView 通用分支。 */
+    this.register('jizura', JizuraVisualizer);
 
   }
 
@@ -128,6 +134,27 @@ export class VisualizerManager {
   handleResize() {
     if (this.activeInstance) {
       this.activeInstance.handleResize();
+    }
+  }
+
+  /**
+   * 暂停当前视觉实例的动画循环（保留实例与 DOM，可被 start() 唤醒）。
+   * ★ 2026-10-03：此前本类**没有** stop/start。settings 面板预览引擎里
+   *   `previewEngine.stop()` 一直在调 `this.visManager.stop()` —— 那是 TypeError，
+   *   被 logCatch 吞掉，于是「诗镜(verse)/维度」这类走 VisualizerManager 的预览实例
+   *   在关闭设置后依旧满帧渲染（隐藏 overlay 后面），持续吃 GPU/帧预算，
+   *   表现为「打开外观设置后英文逐字歌词概率性变卡」。
+   */
+  stop() {
+    if (this.activeInstance && typeof this.activeInstance.stop === 'function') {
+      try { this.activeInstance.stop(); } catch (e) { logCatch('visManager', e); }
+    }
+  }
+
+  /** 唤醒当前视觉实例（与 stop() 配对，用于重新打开设置页/切回外观 Tab） */
+  start() {
+    if (this.activeInstance && typeof this.activeInstance.start === 'function') {
+      try { this.activeInstance.start(); } catch (e) { logCatch('visManager', e); }
     }
   }
 

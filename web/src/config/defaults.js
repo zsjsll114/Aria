@@ -34,8 +34,27 @@ export const DEFAULT_SETTINGS = {
         autoPlayNext: true,
         fadeInOut: false,
         fadeDuration: 300,
+        /* ★ 起播淡入（需求 18，2026-10-06）：默认开。点播放 / 切歌 / 从暂停恢复时
+           音量在 100~300ms 内从 0 平滑升到设定值（时长夹取在 core/fadeController.js）。
+           与 fadeInOut（切歌淡入淡出）是**两个独立偏好**：本项开启时，若 fadeInOut
+           也开着，则**让位**给后者（它已经在做淡入），避免两套斜坡抢写 audio.volume。
+           落地：core/fadeController.js 的 fadeInOnStart() + app/307-start-fade.js。 */
+        startFade: true,
+        /* Automix 智能交叉混音（Automix-技术方案.md）：默认关——开启后本地/缓存源
+           在歌尾自动进入等功率交叉，在线源 v1 仍走原生 ended。 */
+        automix: { enabled: false },
         retryOnFail: true,
-        retryCount: 3
+        retryCount: 3,
+        /* ★ 听力健康提醒（需求 16，2026-10-05）：默认开。连续播放 2 小时或音量
+           ≥85% 累计 30 分钟时弹一条温和提示（底部 toast，2 秒自动淡出），
+           **不打断播放、不自动降音量**。判定在 core/hearingGuard.js。 */
+        hearingGuard: true,
+        /* ★ 练习模式变速（需求 15，2026-10-05）：默认关。开启后速度固定到
+           `practiceRate`（0.5×~2.0×，0.05 一档），并**强制 preservesPitch=false** ——
+           独占路径的变速是 Rust 侧的线性重采样（音色随速度变，像黑胶），
+           Web 侧必须一致，否则两条路径听感不同。控制面在 app/85-rate-download.js。 */
+        practiceMode: false,
+        practiceRate: 1
     },
     lyrics: {
         fontSize: 1.0,
@@ -61,7 +80,33 @@ export const DEFAULT_SETTINGS = {
         swayAmp: 12,
         swayDuration: 16,
         blur: 60,
-        brightness: 0.35
+        brightness: 0.35,
+        /* MV 动态背景（搜索结果里点 MV 卡片 → 铺满整窗循环播放）。
+           默认开：点 MV 卡片本身就是一次明确动作，开着才有"点了就有反应"。
+           mvDim 是压暗比例(0~0.9)、mvBlur 是模糊像素(0~30)，
+           二者都作用在 video 的内联 filter 上，见 app/101-mv-background.js。 */
+        mvBg: true,
+        mvDim: 0.45,
+        mvBlur: 8,
+        /* MV 画质增强（2026-10-04）：Anime4K Restore+Upscale 的 WebGL 上行渲染。
+           MV 直链普遍只有 768x432 级别的低码率，铺满窗口后模糊/噪点明显 ——
+           默认开。见 services/mvUpscale.js 与 app/103-mv-upscale.js。
+           ★ 判定一律用 `!== false`（缺省即开）—— user_config.json 里的 background
+           是整对象覆盖，老配置没有这个键时不能因此变成"关"。 */
+        mvUpscale: true,
+        /* Anime4K 强度档（2026-10-04 用户需求「自行选择 S、M、L 强度」）。
+           S = 9 pass 最轻 / M = 17 / L = 19 最重（细节最强，也最容易把噪点当细节锐出来，
+           且明显更吃 GPU）。缺省 S：跑不动时它最不容易触发降级闸。
+           ★ 与 mvUpscale 同样**不能用"缺省即关"的判定**：老配置没有这个键时必须回落 S，
+             见 app/103-mv-upscale.js 的 currentTier()（非法值一律回落 S）。 */
+        mvUpscaleTier: 'S',
+        /* 音画偏移矫正（2026-10-04 用户报「感觉还是音画不同步…歌曲和 MV 的歌词总是
+           差了一句左右的时间」）。自动算出 MV 音轨相对歌曲音轨的恒定偏移，把画面
+           seek 到对齐的位置。成本：每首自动匹配的 MV 会多下 ≤12MB 做包络分析
+           （只取文件头，见 services/mvSync.js 的 ANALYZE_MAX_BYTES）。
+           默认开 —— 这个能力本来就是用户提的；担心流量/CPU 时可在设置里关掉。
+           ★ 缺省即开，判定一律 `!== false`（老配置没有这个键时不能变成"关"）。 */
+        mvSync: true
     },
     interface: {
         language: 'zh-CN',
@@ -71,6 +116,11 @@ export const DEFAULT_SETTINGS = {
            刻意挂在 interface 下——180 的 loadSettings 只全量展开 interface/shortcuts，
            顶层新键不补合并块就会重启后被静默丢掉（AGENTS.md 约束 11）。 */
         vfxIntensity: null,
+        /* 能量微动效（需求 19）：低频强时封面轻微放大（硬上限 +2%）+ 光晕增强再回弹。
+           默认开；但没有音频能量来源时完全静止（见 app/306-energy-motion.js 的头注释）。
+           挂在 interface 下 —— 180 的 loadSettings 只全量展开 interface/shortcuts，
+           顶层新键不补合并块会被静默丢掉（AGENTS.md 约束 11）。 */
+        energyMotion: true,
         lyricWidth: 'medium',
         lyricRadius: 12,
         themeColor: DEFAULT_ACCENT,
@@ -83,7 +133,31 @@ export const DEFAULT_SETTINGS = {
     },
     audio: {
         defaultEqPreset: 'default',
-        volumeNorm: false
+        volumeNorm: false,
+        /* ★ 虚拟声场（P1，2026-10-05，方案 §8 用户拍板）：
+           ① 默认关（false）；② 档位枚举 off|light|medium，**无 high**（不上跨耳抵消）。
+           落地见 core/spatialTuning.js（档位→参数的唯一源）与 core/equalizer.js 插点。 */
+        virtualStage: false,
+        stageStrength: 'light',
+        /* ★ 空间音频（P2，2026-10-05）：双耳 HRTF 卷积，dry/wet 并联。
+           ① 默认关；② 档位 off|light|medium|strong（wet 0.35/0.60/0.85）；
+           ③ IR 预设 near|hall|wide（方案 §8.3 用户拍板「多组可选」）。
+           WASAPI 独占下由 Rust 侧承担（native_audio_set_spatial），不再置灰。
+           ★ 与虚拟声场各自独立开关（用户拍板「两个独立开关 + 档位」）。 */
+        spatialAudio: false,
+        spatialStrength: 'light',
+        spatialIr: 'near',
+        /* ★ 输出声道（需求 20）：stereo（默认）/ mono / left / right / swap。
+           纯声道矩阵，接在链路最末端（compressor 之后）。stereo 逐样本透明。 */
+        channelMode: 'stereo'
+    },
+    /* ★ 自动备份（需求 23，2026-10-05）：默认关（要用户选文件夹才有意义）。
+       lastAt 是上次成功备份的时间戳，用于按间隔触发。目录句柄另存 IndexedDB
+       `aria_backup`（句柄是结构化克隆对象，塞不进 user_config.json）。 */
+    backup: {
+        autoEnabled: false,
+        intervalHours: 24,
+        lastAt: 0
     },
     sleepTimer: {
         lastMinutes: 30,
@@ -166,6 +240,48 @@ export const DEFAULT_SETTINGS = {
             fontSize: 1.0, highlightColor: '#ffffff', themeColor: DEFAULT_ACCENT,
             showTranslation: true, fontFamily: 'default', emotionGlow: 14
         },
+        /* ★ 字面 · Jizura（2026-10-06）：JIZURA 引擎移植（MIT © 2026 hakoniwa）。
+           `style` 是上游 27 套风格的键（J.STYLE_ORDER，默认 noir）；
+           res/fps 决定分镜设计尺寸与动画时基（24fps、on twos 取 12 拍，上游默认）；
+           `fast: null` 表示"按性能档自动"（低配/软件渲染自动关滤镜与色差通道）。
+           fontSize 为乘数口径（与 letterpress/neon 一致），但本模式画布字号由引擎
+           自持，这里只用于与其他模式共享的通用设置不至于缺键。 */
+        jizura: {
+            fontSize: 1.0, highlightColor: '#ffffff', themeColor: DEFAULT_ACCENT,
+            showTranslation: true, fontFamily: 'default', emotionGlow: 12,
+            /* ★ 这里**没有 res**（2026-10-07 撤掉）：引擎的画幅由 aspect 决定 ——
+               `08_planner.js:283 const [W,H] = J.designSize(project.aspect)`，
+               而 `J.designSize = (aspect) => …` 按 aspect 返回硬编码尺寸（16:9 → 1920×1080），
+               全程没人读 project.res。曾经它是个"改了没反应"的面板项（用户报障），
+               真正控制像素量的旋钮是 perf（DPR/渲染倍率）。 */
+            style: 'noir', mood: null, aspect: '16:9', fps: 24, fast: null,
+            /* ★ beat：动画节拍。'every' = **逐帧**（每个输出帧一张，节拍 = fps）；
+               'onTwos' = 引擎原味「一拍两格」（koma=12，12 张/秒）。
+               默认 'every' —— 上游默认是 onTwos，实测画面变化率只有 32/s 且单帧仅 4.2ms，
+               余量很大；用户要的也是"顺"而不是"省"（2026-10-06 决定）。
+               落地：JizuraVisualizer 把它翻成引擎的 fx.koma/onTwos 并纳入 plan 指纹；
+               帧节流也跟着走引擎的 stepDur（koma>0 → 按 koma Hz 采样，不白渲）。 */
+            beat: 'every',
+            /* wordSync：按真实字时间切分镜。**默认 off**（2026-10-07 用户实测：本引擎
+               一个 cut 就是一次分镜，切字 = 把一行拆成多个画面，切到每字一块观感崩）。
+               面板只暴露 off / cuts 两档，且文案写明"会把一行切成多个分镜"。 */
+            wordSync: 'off',
+            /* 画面细节（引擎 fx）：六个 0~1 数值 + flash/hud。默认值与上游
+               `J.defaultProject().fx` 对齐。★ 面板按**单键**下发（一个 data-var 一个键），
+               由 core/visualizers/jizura/jizuraBridge.js 的 collectJizuraFx 收敛成 fx 对象；
+               改这里的键必须同步 vfxRecipe 的 MODE_FIELD_POOL 与 190 的兜底表。 */
+            motion: 0.7, glitch: 0.55, chroma: 0.7, decor: 0.5,
+            density: 0.55, texture: 0.6, flash: true, hud: 'auto',
+            /* ★ fontFamily 的语义在本模式与其它模式**相反方向**，别照抄：
+               'default' / 'inherit' / '' = **不覆写**，用引擎自带的角色字体（那 27 套风格
+               本来就是围绕日文字面设计的，缺字自动回落到系统字体）；
+               给具体字体（键或整条 CSS 栈）= 覆写字形链，只换 family、保留各角色 weight。
+               见 core/visualizers/jizura/jizuraBridge.js 的 applyJizuraFontOverride。 */
+            /* perf：面板上的性能档。auto = 按实测帧耗时自动升降清晰度（推荐）；
+               eco = 钉在最低档（省电优先）；hd = DPR 上限放到 2（高 DPI 屏更锐利，更吃显卡）。
+               ★ 默认 auto 且 DPR 上限为 1 —— 实测 dpr2 单帧 43.5ms（≈23fps）而 dpr1 是 11.0ms。 */
+            perf: 'auto'
+        },
         /* ★ 版画 Tempera（2026-10-01 补设置面板）：fontSize 乘基准引擎字号；
            cameraIntensity/glyphMotion 对齐上游 DEFAULT_TEMPERA_TUNING；
            布尔项直通 tuning（textInversion/showBlocks/showDecor/showCornerMarks/enableTransitions） */
@@ -175,12 +291,6 @@ export const DEFAULT_SETTINGS = {
             cameraIntensity: 1.0, glyphMotion: 1.0,
             textInversion: true, showBlocks: true, showDecor: true,
             showCornerMarks: true, enableTransitions: true
-        },
-        /* ★ 长卷 Scroll（2026-10-01 补设置面板）：fontSize 乘卷面基准字号（屏高 8%）；
-           scrollSpeed 为时间→空间推进倍率；showChapters 控制章节色带 */
-        scroll: {
-            fontSize: 1.0, scrollSpeed: 1.0, highlightColor: '#ffffff',
-            themeColor: DEFAULT_ACCENT, showChapters: true, fontFamily: 'default', emotionGlow: 10
         }
     },
     ai: {

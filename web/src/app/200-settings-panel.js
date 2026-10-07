@@ -17,8 +17,9 @@ import { searchResultsEl } from './30-dom-refs.js';
 import { aiThemeCache } from './40-playback-state.js';
 import { wcApplyLerpToTween, wcLerpToDuration } from './55-wc-tuning.js';
 import { layoutWordCloud } from './56-playback-misc.js';
-import { applyPreservesPitch } from './85-rate-download.js';
-import { openEqPanel } from './90-eq.js';
+import { applyPreservesPitch, practiceRateOf, setPracticeMode, setPracticeRate } from './85-rate-download.js';
+import { PRACTICE_MAX, PRACTICE_MIN, PRACTICE_STEP, formatPracticeRate } from '../core/practiceRate.js';
+import { applyAutoEqText, applyChannelMode, applySpatialAudio, applyVirtualStage, ensureAudioGraph, initEqAudioGraph, openEqPanel } from './90-eq.js';
 import { getFavorites } from './120-search-results.js';
 import { getPlaylists, playlistsHintEl } from './130-playlists.js';
 import { saveSettings } from './180-boot-config.js';
@@ -33,7 +34,7 @@ import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { applyLyricSetting, applySharedSetting, ensureEmotionGlowSliders, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
 import { initSettingsAI } from './201-settings-ai.js'; // AI 域平铺绑定入口（initSettingsPanel 调用）
 import { initNowPlayingSettings } from './232-nowplaying-follow.js'; // Now Playing 接管配置绑定（initSettingsMisc 调用；232→175→180→200 属既有分片环，运行时才解引用）
-import { renderSettingsNav } from '../config/settingsNav.js'; // 设置声明式导航（分组侧栏唯一事实源）
+import { renderSettingsNav, refreshSectionAnchors } from '../config/settingsNav.js'; // 设置声明式导航（分组侧栏唯一事实源）+ 节内锚点
 import { conceal } from '../utils/motion.js'; // 分区交叉退场：演完才 display:none
 import { resetWordUpgradeTracker } from './293-word-upgrade.js'; // 开关联动后让当前这首歌重新走一次逐字升级
 
@@ -85,7 +86,25 @@ function initSettingsPanel() {
                 });
             }
 
-                        /* 打开/关闭 */
+                        /* ★ 预览收口（2026-10-03）：设置面板的**每一条**退出路径都必须走它。
+           此前只有「点关闭按钮」调了 _hideAllPvPreviewContainers；ESC / 点遮罩 /
+           切到别的 Tab / 打开 OOBE 四条路都只把 isPlaying 置 false —— 而诗镜(verse)/
+           维度这类走 VisualizerManager 的预览**根本没被暂停**（previewEngine.stop()
+           里调 visManager.stop() 一直抛异常，见 VisualizerManager 新增的 stop()）。
+           于是关闭设置后它们仍在隐藏的 overlay 后面满帧渲染、烧 GPU 与帧预算——
+           真机表现正是用户报的两条：「打开外观设置 verse/tempera/scroll 之后英文滚动
+           逐字歌词概率性变卡」与「预览框容器没被正确清掉，左半边不好操作」。 */
+        const pausePreview = () => {
+            if (!previewEngineInstance) return;
+            if (typeof previewEngineInstance.suspendPreviews === 'function') {
+                try { previewEngineInstance.suspendPreviews(); } catch (e) { logCatch('settingsPanel', e); }
+                return;
+            }
+            previewEngineInstance.isPlaying = false;
+            try { previewEngineInstance.updatePlayIcon(); } catch (e) { logCatch('settingsPanel', e); }
+        };
+
+        /* 打开/关闭 */
             openBtn?.addEventListener('click', () => {
                 overlay.classList.add('visible');
                 panel.classList.add('fullscreen-mode');
@@ -112,26 +131,14 @@ function initSettingsPanel() {
             });
             closeBtn?.addEventListener('click', () => {
                 overlay.classList.remove('visible');
-                /* 关闭时暂停预览引擎 */
-                if (previewEngineInstance) {
-                    previewEngineInstance.isPlaying = false;
-                    previewEngineInstance.updatePlayIcon();
-                    /* ★ 2026-10-02（用户实测「打开 tempera/scroll 预览框后概率性左侧
-                       无法点击」）：关闭只停了预览自己的 rAF，Pixi 引擎 ticker
-                       （tempera/scroll/sonnet/tunnel）在隐藏的 overlay 后面满帧渲染
-                       烧 GPU——WebView2 下足以造成概率性输入卡顿。统一走互斥收口：
-                       藏容器 + 全引擎暂停，重开设置时 setMode 会恢复。 */
-                    previewEngineInstance._hideAllPvPreviewContainers();
-                }
+                /* 关闭时暂停预览引擎（全部退出路径统一收口，见 pausePreview） */
+                pausePreview();
             });
 
             /* ★ 重新打开新手引导向导 (OOBE) 事件绑定 */
             const triggerOobe = () => {
                 if (overlay) overlay.classList.remove('visible');
-                if (previewEngineInstance) {
-                    previewEngineInstance.isPlaying = false;
-                    previewEngineInstance.updatePlayIcon();
-                }
+                pausePreview();
                 if (typeof window.showAriaOobe === 'function') {
                     window.showAriaOobe(true);
                 }
@@ -143,14 +150,14 @@ function initSettingsPanel() {
             overlay?.addEventListener('click', (e) => {
                 if (e.target === overlay) {
                     overlay.classList.remove('visible');
-                    if (previewEngineInstance) { previewEngineInstance.isPlaying = false; previewEngineInstance.updatePlayIcon(); }
+                    pausePreview();
                 }
             });
             /* ESC 关闭 */
             if (typeof document !== "undefined") document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && overlay.classList.contains('visible')) {
                     overlay.classList.remove('visible');
-                    if (previewEngineInstance) { previewEngineInstance.isPlaying = false; previewEngineInstance.updatePlayIcon(); }
+                    pausePreview();
                 }
             });
 
@@ -230,6 +237,10 @@ function initSettingsPanel() {
                 } else {
                     logWarn('settingsPanel', '[switchAppearanceMode] previewEngineInstance NOT ready:', previewEngineInstance);
                 }
+                /* ★ 节内锚点（阶段 2 收尾）：模式分栏换了，锚点列表必须跟着换 ——
+                   调用方（模式卡片/按钮的内联 onclick）在调本函数之前已经切好了
+                   显示态，所以这里派生到的就是新模式区块的组标题。 */
+                try { refreshSectionAnchors(); } catch (e) { logCatch('settingsPanel', e); }
             };
 
             /* ★ 注册全局主设置 Tab 切换函数（唯一生效版本；显隐切换收敛于此，
@@ -279,10 +290,9 @@ function initSettingsPanel() {
                     try { initPreviewEngine(); } catch(e) { logWarn('settingsPanel', e); }
                     try { buildAppearanceControls(); } catch(e) { logWarn('settingsPanel', e); }
                 } else {
-                    if (previewEngineInstance) {
-                        previewEngineInstance.isPlaying = false;
-                        try { previewEngineInstance.updatePlayIcon(); } catch (e) { logCatch('settingsPanel', e); }
-                    }
+                    /* ★ 离开外观页同样要停掉预览引擎（此前只置 isPlaying=false，
+                       诗镜/维度这类 VisualizerManager 预览会继续满帧跑） */
+                    pausePreview();
                     try { initCustomDropdowns(); } catch (e) { logCatch('settingsPanel', e); }
                     try { refreshSettingsUI(); } catch (e) { logCatch('settingsPanel', e); }
                     if (tabName === 'selfhost') {
@@ -298,9 +308,17 @@ function initSettingsPanel() {
                 /* ★ 语言包应用：每个 Tab 的 DOM 都是动态渲染的，切换后对新节点补跑一次
                    静态文本映射。从原重复 Tab 处理器搬进来——放这里程序化跳转
                    （130-playlists 直接调 switchSettingsTab('selfhost')）才同样享受到。 */
+                let langDone;
                 try {
-                    import('../core/i18n.js').then(mi => mi.applyLanguageToDocument()).catch((e) => logCatch('settingsPanel', e));
+                    langDone = import('../core/i18n.js').then(mi => mi.applyLanguageToDocument()).catch((e) => logCatch('settingsPanel', e));
                 } catch (e) { logWarn('settingsPanel', e); }
+                /* ★ 节内锚点（阶段 2 收尾）：必须在「显示态 + i18n 文案」都定下来之后再派生 ——
+                   早一步会拿到上一个模式的组标题、或还没翻译成英文的文案
+                   （applyLanguageToDocument 是异步的，所以同步刷一次打底、promise 收尾再刷一次定稿）。 */
+                try { refreshSectionAnchors(); } catch (e) { logCatch('settingsPanel', e); }
+                Promise.resolve(langDone).finally(() => {
+                    try { refreshSectionAnchors(); } catch (e) { logCatch('settingsPanel', e); }
+                });
             };
 
             /* ============================================================
@@ -457,7 +475,7 @@ function initSettingsPanel() {
                         const playerContainer = typeof document !== 'undefined' ? document.querySelector('.player-container:not(.preview-player)') : null;
                         let mainMode = 'cover';
                         if (playerContainer) {
-                            const modes = ['dimension', 'letterpress', 'pv', 'tempera', 'scroll', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
+                            const modes = ['jizura', 'dimension', 'letterpress', 'pv', 'tempera', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
                             for (const m of modes) {
                                 if (playerContainer.classList.contains(`view-${m}`)) {
                                     mainMode = m;
@@ -506,6 +524,16 @@ function initSettingsPanel() {
             try { initNowPlayingSettings(); } catch(e) { logWarn('settingsPanel', 'initNowPlayingSettings:', e); }
         }
 
+        /* 原生 WASAPI 独占是否正在接管输出。★ 不在本文件另存一份真相：
+           判据与 app/296 的 nativeActive 一致，都是问 298 暴露的后端。 */
+        function _nativeOutputActive() {
+            try {
+                const A = (typeof globalThis !== 'undefined' && globalThis.Aria) || null;
+                const b = A && A.__nativeOutputBackend;
+                return !!(b && typeof b.active === 'function' && b.active());
+            } catch { return false; }
+        }
+
         /* ★ 剩余设置绑定（原 initSettingsPanel 内平铺，收敛为模块级函数；panel 为 initSettingsPanel 局部，函数内自取） */
         function initSettingsMisc() {
             const panel = typeof document !== "undefined" ? document.getElementById("settingsPanel") : null;
@@ -534,6 +562,19 @@ function initSettingsPanel() {
                 appSettings.playback.fadeInOut = v;
                 saveSettings();
             });
+            /* ★ 起播淡入（需求 18，2026-10-06）：默认开。行为在 app/307-start-fade.js
+               （捕获阶段监听 play，三道触发路径统一）+ core/fadeController.js 的
+               fadeInOnStart()（时长夹在 100~300ms）。本处只落配置。 */
+            bindToggle('setStartFade', appSettings.playback.startFade !== false, (v) => {
+                appSettings.playback.startFade = v;
+                saveSettings();
+            });
+            bindToggle('setAutomix', !!(appSettings.playback.automix && appSettings.playback.automix.enabled), (v) => {
+                appSettings.playback.automix = appSettings.playback.automix || {};
+                appSettings.playback.automix.enabled = v;
+                saveSettings();
+                /* 开启瞬间无需重启：scheduler 每次 timeupdate 都会重读 isEnabled() */
+            });
 
             const sfd = typeof document !== 'undefined' ? document.getElementById('setFadeDuration') : null;
             const sfdVal = typeof document !== 'undefined' ? document.getElementById('setFadeDurationVal') : null;
@@ -547,6 +588,45 @@ function initSettingsPanel() {
 
             bindToggle('setRetryOnFail', appSettings.playback.retryOnFail, (v) => {
                 appSettings.playback.retryOnFail = v;
+                saveSettings();
+            });
+
+            /* ★ 听力健康提醒（需求 16，2026-10-05）：默认开。判定与提示在
+               300-hearing-guard.js（它自己按 SAMPLE_MS 轮询，本处只落配置）。 */
+            bindToggle('setHearingGuard', appSettings.playback.hearingGuard !== false, (v) => {
+                appSettings.playback.hearingGuard = v;
+                saveSettings();
+            });
+
+            /* ★ 练习模式变速（需求 15，2026-10-05）：默认关。速度固定 0.5×~2.0×、
+               0.05 一档，并强制 preservesPitch=false —— 独占路径的变速是 Rust 侧
+               线性重采样（音色随速度变），Web 侧必须一致。真正的落地点在
+               85-rate-download.js 的 applyPracticeState()。 */
+            const practiceRow = typeof document !== 'undefined' ? document.getElementById('practiceRateRow') : null;
+            const practiceSlider = typeof document !== 'undefined' ? document.getElementById('setPracticeRate') : null;
+            const practiceLabel = typeof document !== 'undefined' ? document.getElementById('setPracticeRateVal') : null;
+            const fmtPractice = formatPracticeRate;
+            if (practiceSlider) {
+                practiceSlider.min = String(PRACTICE_MIN);
+                practiceSlider.max = String(PRACTICE_MAX);
+                practiceSlider.step = String(PRACTICE_STEP);
+                practiceSlider.value = String(practiceRateOf());
+            }
+            if (practiceLabel) practiceLabel.textContent = fmtPractice(practiceRateOf());
+            const showPracticeRow = (on) => {
+                if (practiceRow) practiceRow.style.display = on ? '' : 'none';
+            };
+            showPracticeRow(appSettings.playback.practiceMode === true);
+            bindToggle('setPracticeMode', appSettings.playback.practiceMode === true, (v) => {
+                setPracticeMode(v);
+                saveSettings();
+                showPracticeRow(v);
+                if (v && practiceSlider) practiceSlider.value = String(practiceRateOf());
+                if (practiceLabel) practiceLabel.textContent = fmtPractice(practiceRateOf());
+            });
+            practiceSlider?.addEventListener('input', () => {
+                const v = setPracticeRate(practiceSlider.value);
+                if (practiceLabel) practiceLabel.textContent = fmtPractice(v);
                 saveSettings();
             });
 
@@ -660,6 +740,77 @@ function initSettingsPanel() {
                 sbbrVal.textContent = sbbr.value;
                 appSettings.background.brightness = parseFloat(sbbr.value);
                 applyBackgroundSettings();
+                saveSettings();
+            });
+
+            /* ---- MV 动态背景（2026-10-03）：开关 + 压暗 + 模糊 ----
+               三者都只影响 video 的内联 filter / 可见性，统一交给 101 的
+               applyMvBgSettings 落盘到 DOM（走 Aria 命名空间惰性调用，
+               不在分片间加静态依赖 —— 与 297 的 openArtist 同一套装配方式）。 */
+            const applyMvBg = () => {
+                if (typeof Aria !== 'undefined' && typeof Aria.applyMvBgSettings === 'function') {
+                    Aria.applyMvBgSettings();
+                }
+            };
+            bindToggle('setMvBg', appSettings.background.mvBg, (v) => {
+                appSettings.background.mvBg = v;
+                applyMvBg();
+                saveSettings();
+                /* ★ 刚把开关打开 → 立刻把「正在播的这首」的 MV 铺上（2026-10-03）。
+                   否则用户会以为开关失灵：背景一片不动，直到切歌才生效。
+                   关闭方向不用管 —— applyMvBgSettings 已经把 video 隐藏并暂停。 */
+                if (v && typeof Aria !== 'undefined' && typeof Aria.syncMvBackgroundToSong === 'function') {
+                    Aria.syncMvBackgroundToSong(typeof currentSongData !== 'undefined' ? currentSongData : null);
+                }
+            });
+
+            const smd = typeof document !== 'undefined' ? document.getElementById('setMvDim') : null;
+            const smdVal = typeof document !== 'undefined' ? document.getElementById('setMvDimVal') : null;
+            const dimPct = Math.round((appSettings.background.mvDim ?? 0.45) * 100);
+            if (smd) smd.value = dimPct;
+            if (smdVal) smdVal.textContent = dimPct + '%';
+            smd?.addEventListener('input', () => {
+                if (smdVal) smdVal.textContent = smd.value + '%';
+                appSettings.background.mvDim = parseInt(smd.value, 10) / 100;
+                applyMvBg();
+                saveSettings();
+            });
+
+            const smb = typeof document !== 'undefined' ? document.getElementById('setMvBlur') : null;
+            const smbVal = typeof document !== 'undefined' ? document.getElementById('setMvBlurVal') : null;
+            const blurPx = appSettings.background.mvBlur ?? 8;
+            if (smb) smb.value = blurPx;
+            if (smbVal) smbVal.textContent = blurPx + 'px';
+            smb?.addEventListener('input', () => {
+                if (smbVal) smbVal.textContent = smb.value + 'px';
+                appSettings.background.mvBlur = parseInt(smb.value, 10);
+                applyMvBg();
+                saveSettings();
+            });
+
+            /* MV 画质增强（Anime4K 上行渲染）。关掉时要**释放 WebGL 上下文**，
+               不能只停渲染 —— 那样每次开关都留一个 context 和十几张纹理。 */
+            bindToggle('setMvUpscale', appSettings.background.mvUpscale !== false, (v) => {
+                appSettings.background.mvUpscale = v;
+                if (v && typeof Aria !== 'undefined' && typeof Aria.resetMvUpscaleGuard === 'function') {
+                    /* 用户重新打开 = 再给降级闸一次机会（可能是上次偶发卡顿误判） */
+                    Aria.resetMvUpscaleGuard();
+                }
+                if (!v && typeof Aria !== 'undefined' && typeof Aria.disposeMvUpscale === 'function') {
+                    Aria.disposeMvUpscale();
+                }
+                applyMvBg();
+                saveSettings();
+            });
+
+            /* 音画偏移矫正（2026-10-04）。关掉 = mvSyncEnabled() 立刻返回 false，
+               之后一个分析请求都不发；同时把当前这支 MV 已经应用的偏移收回 0
+               （否则画面会一直停在偏移后的位置上，"关了还不对齐"）。 */
+            bindToggle('setMvSync', appSettings.background.mvSync !== false, (v) => {
+                appSettings.background.mvSync = v;
+                if (!v && typeof Aria !== 'undefined' && typeof Aria.resetMvOffset === 'function') {
+                    Aria.resetMvOffset();
+                }
                 saveSettings();
             });
 
@@ -819,6 +970,125 @@ document.getElementById('setOpenEq')?.addEventListener('click', () => {
                 saveSettings();
             });
 
+            /* ★ 空间音频（P2，2026-10-05）：开关 + 三档强度（light|medium|strong）
+               + IR 预设（near|hall|wide）。
+               参数应用走 core/equalizer 的 applySpatialAudio；图未建时它只记状态，
+               EQ 首次建图后会自己补铺一次（见 initEqAudioGraph 末尾）。
+               ★ WASAPI 独占下由 Rust 侧承担（native_audio_set_spatial），
+                 所以**不再置灰**——P1 的独占降级提示已随 P2 上线而解除（方案 §4）。 */
+            const refreshSpatialUI = () => {
+                const on = !!appSettings.audio.spatialAudio;
+                for (const id of ['rowSpatialStrength', 'rowSpatialIr']) {
+                    const row = document.getElementById(id);
+                    if (row) row.style.display = on ? '' : 'none';
+                }
+            };
+            bindToggle('setSpatialAudio', appSettings.audio.spatialAudio, (v) => {
+                appSettings.audio.spatialAudio = v;
+                saveSettings();
+                refreshSpatialUI();
+                applySpatialAudio(v, appSettings.audio.spatialStrength, appSettings.audio.spatialIr);
+                /* 同虚拟声场：EQ 懒初始化，主动触发一次建图，否则用户开了却听不到
+                   （建图失败由 initEqAudioGraph 自行回退，不阻断开关状态）。 */
+                if (v) { initEqAudioGraph().catch(() => {}); }
+            });
+            bindBtnGroup('setSpatialStrength', appSettings.audio.spatialStrength || 'light', (val) => {
+                appSettings.audio.spatialStrength = val;
+                saveSettings();
+                applySpatialAudio(!!appSettings.audio.spatialAudio, val, appSettings.audio.spatialIr);
+            });
+            bindBtnGroup('setSpatialIr', appSettings.audio.spatialIr || 'near', (val) => {
+                appSettings.audio.spatialIr = val;
+                saveSettings();
+                applySpatialAudio(!!appSettings.audio.spatialAudio, appSettings.audio.spatialStrength, val);
+            });
+            refreshSpatialUI();
+            applySpatialAudio(
+                !!appSettings.audio.spatialAudio,
+                appSettings.audio.spatialStrength || 'light',
+                appSettings.audio.spatialIr || 'near',
+            );
+
+            /* ★ 虚拟声场（P1，2026-10-05）：开关 + 两档强度（off|light|medium，无 high）。
+               参数应用走 core/equalizer 的 applyVirtualStage；图未建时它只记状态，
+               EQ 首次建图后会自己补铺一次（见 initEqAudioGraph 末尾）。 */
+            const refreshStageUI = () => {
+                const on = !!appSettings.audio.virtualStage;
+                const row = document.getElementById('rowStageStrength');
+                if (row) row.style.display = on ? '' : 'none';
+            };
+            bindToggle('setVirtualStage', appSettings.audio.virtualStage, (v) => {
+                appSettings.audio.virtualStage = v;
+                saveSettings();
+                refreshStageUI();
+                applyVirtualStage(v, appSettings.audio.stageStrength);
+                /* ★ 打开时需要音频图存在才有意义。EQ 是懒初始化的（只有开 EQ 面板才建图），
+                   所以这里主动触发一次建图——否则用户开了虚拟声场却什么都听不到，
+                   且没有任何提示（方案 §2.1「首次建图时就把节点建好」）。
+                   建图失败（无 src / CORS）由 initEqAudioGraph 自行回退，不阻断开关状态。 */
+                if (v) { initEqAudioGraph().catch(() => {}); }
+            });
+            bindBtnGroup('setStageStrength', appSettings.audio.stageStrength || 'light', (val) => {
+                appSettings.audio.stageStrength = val;
+                saveSettings();
+                applyVirtualStage(!!appSettings.audio.virtualStage, val);
+            });
+            refreshStageUI();
+            /* 启动/重开面板时把已保存的状态铺到音频图（EQ 未建则只记状态，
+               建图后 initEqAudioGraph 会补铺）。 */
+            applyVirtualStage(!!appSettings.audio.virtualStage, appSettings.audio.stageStrength || 'light');
+
+            /* ★ 输出声道（需求 20）：立体声 / 单声道 / 只听左 / 只听右 / 交换左右。
+               纯声道矩阵接在链路最末端；图未建时 applyChannelMode 只记状态，
+               建图后 initEqAudioGraph 会补铺。 */
+            bindBtnGroup('setChannelMode', appSettings.audio.channelMode || 'stereo', async (val) => {
+                appSettings.audio.channelMode = val;
+                saveSettings();
+                applyChannelMode(val);
+                /* ★ 2026-10-06 修「立体声/切换声道没用」：声道矩阵挂在 Web Audio 图上，
+                   而那张图此前只有"打开过均衡器面板"才会建 —— 没开过的机器上
+                   这个按钮就是装饰（只写状态、零处理）。现在需要就**当场建图**。
+                   独占输出（native）下音频不经 WebAudio，建图也没用，直接提示。 */
+                if (val === 'stereo') return;
+                if (_nativeOutputActive()) { showSettingsHint('独占输出下声道设置不生效，请先关闭独占'); return; }
+                const ok = await ensureAudioGraph('channelMode');
+                if (!ok) showSettingsHint('当前音源不支持音效处理（跨域限制），声道设置未生效');
+            });
+            /* 开机把非默认声道真正铺上：此前只写状态不建图，重启后设置"看着在、实际不生效"。
+               建图需要已加载的音频（initEqAudioGraph 要读 audio.src），所以此刻若还没歌，
+               这次会失败——由 175 的加载流程（wantsAudioGraph）在下一首就绪时补上。 */
+            applyChannelMode(appSettings.audio.channelMode || 'stereo');
+            if ((appSettings.audio.channelMode || 'stereo') !== 'stereo') {
+                void ensureAudioGraph('channelMode-boot');
+            }
+
+            /* ★ AutoEQ PEQ 导入（需求 3）：粘贴 AutoEQ/Peace 文本 → 折算到 10 段。
+               解析与折算全在 core/autoeqImport.js（标准 RBJ 公式），这里只管收文本与提示。 */
+            document.getElementById('setImportAutoEq')?.addEventListener('click', async () => {
+                if (typeof window.showGlassPrompt !== 'function') return;
+                const text = await window.showGlassPrompt({
+                    title: '导入 AutoEQ PEQ',
+                    desc: '粘贴 AutoEQ / Peace 导出的参数均衡文本，自动折算并写入 10 段均衡器',
+                    placeholder: 'Preamp: -6.1 dB\nFilter 1: ON PK Fc 105 Hz Gain 6.1 dB Q 0.70\nFilter 2: ON LSC Fc 105 Hz Gain 5.0 dB Q 0.70',
+                    multiline: true,
+                    okText: '导入',
+                });
+                if (text == null) return;
+                const r = applyAutoEqText(text);
+                if (!r.ok) {
+                    const msg = r.error === 'empty' ? '没有内容'
+                        : (r.error === 'no-filter' ? '未识别到任何滤波器，请检查格式' : '无法应用');
+                    if (typeof window.showGlassAlert === 'function') window.showGlassAlert({ title: '导入失败', desc: msg });
+                    return;
+                }
+                const rep = r.report || {};
+                let desc = `已写入 10 段均衡器（识别 ${rep.count || 0} 个滤波器`;
+                if (rep.skipped) desc += `，跳过 ${rep.skipped} 个不支持项`;
+                desc += '）。';
+                if (rep.preampDb != null) desc += `原文本的前级增益 ${rep.preampDb} dB 已忽略（均衡器各段不含整体增益）。`;
+                if (typeof window.showGlassAlert === 'function') window.showGlassAlert({ title: '导入完成', desc });
+            });
+
             /* ========== 快捷键设置 ========== */
             initShortcutRecording();
 
@@ -894,9 +1164,15 @@ document.getElementById('setImportFile')?.addEventListener('change', (e) => {
             });
 
 document.getElementById('setClearSearch')?.addEventListener('click', () => {
-                lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '' };
-                searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null };
-                searchPagingBusy = false;
+                /* ★ 补 qishui（此前漏掉 → 清缓存后 searchPageCache.qishui 变成 undefined，
+                   该源的缓存判断会从「无缓存」变成「未知键」）。
+                   注意：**不动 searchSource** —— 清缓存不该顺手把用户选的音源换掉。 */
+                lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '', qishui: '' };
+                searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null, qishui: null };
+                /* 这里原先还有一句 `searchPagingBusy = false;`。2026-10-03 把"翻页在飞"
+                   标志从全局单变量改成挂在 cache 对象上（cache.busy）后就不需要了：
+                   上一行把旧 cache 整个丢掉，标记随之消失；搜索飞行中的旧请求在
+                   finally 里写的也是那个已被丢弃的对象，不会误伤新搜索。 */
                 searchResultsCache = [];
                 if (searchResultsEl) searchResultsEl.innerHTML = '';
                 showSettingsHint('搜索缓存已清除');
@@ -1003,5 +1279,9 @@ function initAboutLinks() {
         });
     }
 }
+
+/* ★ 注（P2，2026-10-05）：原先这里注册的 `__stageAvailabilityRefresh`（虚拟声场 ×
+   WASAPI 独占置灰）已随 P2 上线删除——独占路径现在由 Rust 侧承担（dsp/spatial.rs +
+   native_audio_set_spatial），方案 §4「P2 补 Rust 侧后解除」已完成。 */
 
 export { bindBtnGroup, bindToggle, initSettingsPanel, initAboutLinks, openExternalUrl };

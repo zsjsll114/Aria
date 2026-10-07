@@ -10,11 +10,12 @@ import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { audio, renderLyrics } from './20-lyrics-render.js';
 import { volumeBar } from './30-dom-refs.js';
 import { setPlayMode, updatePlayModeIcon } from './75-play-mode.js';
-import { applyPlaybackRate, applyPreservesPitch } from './85-rate-download.js';
+import { applyPlaybackRate, applyPreservesPitch, applyPracticeState } from './85-rate-download.js';
 import { applyEqPreset, saveEqSettings } from './90-eq.js';
 import { applyColorOverlay, generatePrebakedBlurBackground, getActiveBgLayer, shouldUsePrebakedBlur } from './100-cover-background.js';
 import { saveSettings } from './180-boot-config.js';
-import { applyFontFamily, applyGlassStrength } from './210-color-multilang.js';
+import { applyFontFamily, applyModeFontFamily, applyGlassStrength } from './210-color-multilang.js';
+import { applyAppearanceTokens } from '../core/appearanceMod.js';
 import { getLanguage, setLanguage } from '../core/i18n.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
@@ -39,6 +40,11 @@ function applyAllSettings() {
             if (typeof updatePlayModeIcon === 'function') updatePlayModeIcon();
             applyPlaybackRate(p.defaultRate);
             applyPreservesPitch(p.preservesPitch);
+            /* ★ 练习模式（需求 15）优先级最高，必须放在上面两行**之后**：
+               开启时把速度钉到 practiceRate 并强制关闭保音高
+               （与独占路径的 Rust 线性重采样保持一致），否则会被 defaultRate 覆盖回去。
+               启动恢复也靠这一句 —— 用户上次开着练习模式关掉 App，这次要还在。 */
+            applyPracticeState();
 
             /* 歌词设置 */
             applyLyricFontSize(l.fontSize);
@@ -139,6 +145,22 @@ function applyHighlightColor(color) {
             const transformOrigin = align === 'left' ? 'left center'
                                   : align === 'right' ? 'right center'
                                   : 'center center';
+            /* ★ 2026-10-05：把「行缩放原点」升格为设计令牌，收敛为**唯一来源**。
+               起因（用户实测）：默认模式左对齐正常（左端不动），但右对齐"右端都没对齐"；
+               歌词模式连左对齐都不对。
+               机制：每一行的缩放比各不相同（57-wordcloud-camera.js:454 —— 激活行 1.05、
+               按与激活行的距离衰减到 0.92），所以**缩放原点必须与该行的对齐侧一致**，
+               否则被缩放的那一侧会随缩放比各飘各的。
+               而此前原点有**三个写入者**，且相机的判定是错的：
+                 · base.css 的 `.line{transform-origin:left center}` + `.view-lyrics .line{center center}`
+                 · 本文件 `.line.active .lrc-original`（这份是对的）
+                 · 57-wordcloud-camera.js 每帧给每行**内联**写 `.line` 的原点，判定却是
+                   「非居中一律算左对齐」+「view-lyrics 一律算居中」→ 右对齐拿到左原点、
+                   歌词模式拿到居中原点，两个症状完全对上。
+               现在：本变量是唯一来源（CSS 消费，相机不再写内联），值恒与对齐侧一致。 */
+            if (typeof document !== 'undefined') {
+                document.documentElement.style.setProperty('--aria-lyric-origin', transformOrigin);
+            }
             /* 时间标签位置：右对齐时在左侧，左/居中对齐时在右侧 */
             const timePosition = align === 'right'
                 ? '.line .line-time { left: 15px; right: auto; }'
@@ -202,7 +224,10 @@ function applyModeSettings(mode) {
                        （错档的字号/字体设置被错误应用），与 defaults.js 保持同键 */
                     neon: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
                     letterpress: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
-                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 }
+                    dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
+                    /* ★ 字面 · Jizura 缺席时的兜底——不补就会 fallback 到 cover 档
+                       （错档的字号/字体被错误应用），与 defaults.js 保持同键 */
+                    jizura: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 12, style: 'noir', mood: null, aspect: '16:9', fps: 24, fast: null, perf: 'auto', beat: 'every', wordSync: 'off', motion: 0.7, glitch: 0.55, chroma: 0.7, decor: 0.5, density: 0.55, texture: 0.6, flash: true, hud: 'auto' }
                 };
             }
             const s = appSettings.modeSettings[mode] || appSettings.modeSettings.cover;
@@ -221,17 +246,27 @@ function applyModeSettings(mode) {
             /* 翻译与罗马音 */
             if (s.showTranslation !== undefined && appSettings.lyrics.showTranslation !== s.showTranslation) { appSettings.lyrics.showTranslation = s.showTranslation; needRender = true; }
             if (s.showRomaji !== undefined && appSettings.lyrics.showRomaji !== s.showRomaji) { appSettings.lyrics.showRomaji = s.showRomaji; needRender = true; }
-            /* 字号 */
-            if (s.fontSize !== undefined) {
-                /* ★ 迁移旧像素值到倍率系统 */
-                let fsVal = s.fontSize;
+            /* 字号 —— ★ 2026-10-05 修「从词云切回默认/歌词后，歌词字号变成词云大小」。
+               两个叠加的缺陷，缺一个都修不干净：
+               ① 原实现**只在** s.fontSize !== undefined 时才重写 #lyric-font-style，
+                  于是"目标模式没有自己的 fontSize"时，这条 style 会**留着上一个模式的档位**
+                  （词云写的是 rem 级大字号），字号就此跨模式残留；
+               ② 更隐蔽：模式字号被写进了**共享**的 appSettings.lyrics.fontSize ——
+                  而那是"全局歌词字号"，由设置页全局滑杆（202:52-57 / 200:621-624）拥有。
+                  模式字号写进去 = 污染全局，于是即使回落也落到被污染的值，症状照旧。
+               现在：本模式有值用本模式的，否则回落到**未被污染**的全局值；且**总是**重写
+               style（不留残留）；模式字号只留在 modeSettings，不再回写全局字段。
+               ⚠ 优先级刻意不改（模式值仍然优先）——改优先级会让"全局滑杆在该模式失效"，
+               那是另一个 bug。这里只修残留与污染。 */
+            {
+                const raw = (s.fontSize !== undefined) ? s.fontSize : appSettings.lyrics.fontSize;
+                let fsVal = (raw === undefined || raw === null || raw === '') ? 1 : raw;
                 const fsNum = parseFloat(fsVal);
                 if (!isNaN(fsNum) && fsNum > 3) {
                     /* 旧像素值 → 倍率 (FONT_BASE_ORIGINAL = 24) */
                     fsVal = fsNum / 24;
-                    s.fontSize = fsVal; /* 同步回 modeSettings 避免反复迁移 */
+                    if (s.fontSize !== undefined) s.fontSize = fsVal; /* 同步回 modeSettings 避免反复迁移 */
                 }
-                appSettings.lyrics.fontSize = fsVal;
                 applyLyricFontSize(fsVal);
             }
             /* 全局主题色：控制全局控件/按钮/强调色 */
@@ -247,13 +282,11 @@ function applyModeSettings(mode) {
             /* 字体 — ★ 每个模式独立字体设置
                「跟随字体设置」(default/inherit)：应用全局字体，不覆盖 interface.fontFamily
                设置具体字体(宋体/楷体/黑体/仿宋/等宽/自定义)：该模式内独立生效 */
-            if (typeof applyFontFamily === 'function') {
-                if (s.fontFamily !== undefined && s.fontFamily !== 'default' && s.fontFamily !== 'inherit') {
-                    applyFontFamily(s.fontFamily);
-                } else {
-                    applyFontFamily((appSettings.interface && appSettings.interface.fontFamily) || 'default');
-                }
-            }
+            /* 字体 —— ★ 2026-10-05 改为**作用域**应用（见 210 的 applyModeFontFamily）：
+               模式字体只写播放器容器，不再写根节点。此前它写根节点，等于"在歌曲模式里
+               改字体就改了全局字体（设置页字体跟着变）"，且每次切模式都覆盖根变量
+               → "切了突然又变回去"。"跟随字体设置"(default/inherit) 现在只清容器覆盖。 */
+            applyModeFontFamily(s.fontFamily);
 
             /* 各模式专有变量导出到根 CSS 变量 */
             if (typeof document !== 'undefined') {
@@ -284,20 +317,17 @@ function applyModeSettings(mode) {
                 pvEngineInstance.applySettings(s);
             }
             /* ★ 2026-09-29：PV 引擎已替换为 folia sonnet——设置同路下发 */
-            if (mode === 'pv' && typeof window !== 'undefined' && window.__sonnetProbe) {
+            /* ★ 2026-10-03 就绪判断改用 __sonnetEngineReady：此前依赖调试探针名，
+              探针一被清理设置下发就整条断掉（verse 设置项「调了没用」的隐患） */
+            if (mode === 'pv' && typeof window !== 'undefined' && (window.__sonnetEngineReady || window.__sonnetProbe)) {
                 import('../core/visualizers/sonnet/sonnetMode.js').then(m => {
                     m.applySonnetSettings(s);
                 }).catch(e => logCatch('settingsFontsize', e));
             }
-            /* ★ 2026-10-01：版画/长卷设置下发（设置面板补齐 tempera/scroll 区块） */
+            /* ★ 2026-10-01：凝彩设置下发（设置面板 tempera 区块） */
             if (mode === 'tempera') {
                 import('../core/visualizers/tempera/temperaMode.js').then(m => {
                     m.applyTemperaSettings(s);
-                }).catch(e => logCatch('settingsFontsize', e));
-            }
-            if (mode === 'scroll') {
-                import('../core/visualizers/scroll/scrollMode.js').then(m => {
-                    m.applyScrollSettings(s);
                 }).catch(e => logCatch('settingsFontsize', e));
             }
             if (mode === 'tunnel' && tunnelEngineInstance) {
@@ -312,14 +342,21 @@ function applyModeSettings(mode) {
 function applyThemeColor(color) {
             if (!color || typeof document === 'undefined') return;
             const root = document.documentElement;
-            root.style.setProperty('--theme-color', color);
+            /* ★ P1（2026-10-05）：写入口统一到 --aria-accent。
+               不能再写 --theme-color —— 它在 tokens.css 里已退化为
+               var(--aria-accent) 的别名；这里再写一次行内值会盖掉别名，
+               未来社区 mod 覆盖 --aria-accent 时会被这行行内值顶掉（mod 静默失效）。
+               ⚠ 同步约束：PVEngine.js 读的是**行内** --aria-accent
+               （.style.getPropertyValue，不是 getComputedStyle），改这里的键名
+               必须与那边同步，否则主题色会静默丢失。 */
+            root.style.setProperty('--aria-accent', color);
             let hex = color.replace('#', '');
             if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
             if (hex.length === 6) {
                 const r = parseInt(hex.slice(0, 2), 16);
                 const g = parseInt(hex.slice(2, 4), 16);
                 const b = parseInt(hex.slice(4, 6), 16);
-                root.style.setProperty('--theme-color-rgb', `${r}, ${g}, ${b}`);
+                root.style.setProperty('--aria-accent-rgb', `${r}, ${g}, ${b}`);
             }
             /* ★ 不再碰 --dim-highlight-color（2026-09-26）：这是 dimension（穿行）专属的
                文字高亮变量，应由 modeSettings.dimension.highlightColor 经
@@ -391,6 +428,14 @@ function applyInterfaceSettings() {
             applyThemeColor(i.themeColor);
             applyGlassStrength(i.glassStrength);
             applyFontFamily(i.fontFamily);
+            /* ★ 外观令牌（2026-10-06）：配方/外观 mod 的 `tokens` 段落在这里统一落地。
+               这是**唯一的受管写入口** —— 白名单（vfxRecipe.TOKEN_FIELDS）只收
+               「没有其它写入者」的令牌（圆角 / 毛玻璃 / 文字三档色 / 间距字号 /
+               焦点环 / 语义色），所以不会与 applyThemeColor、ui/overlay 的层级、
+               250 推送的桌面歌词色打架。
+               存储位置是 interface.appearanceTokens：interface 下的额外键会被
+               loadSettings 全量展开，而新开顶层键会被静默丢掉（AGENTS 记过这个坑）。 */
+            try { applyAppearanceTokens(i.appearanceTokens); } catch (e) { logCatch('settingsFontsize', e); }
             let style = document.getElementById('interface-style');
             if (!style) {
                 style = document.createElement('style');
@@ -441,6 +486,10 @@ function getSettingValue(key) {
                     return appSettings.quality?.kugouPlayback || '320';
                 case 'kugouDownloadQuality':
                     return appSettings.quality?.kugouDownload || 'flac';
+                /* ★ 缺省 S：老配置里没有这个键时不能变成空串（那会让 103 的
+                   currentTier() 回落 S —— 行为一致，但 trigger 文案会空白）。 */
+                case 'mvUpscaleTier':
+                    return appSettings.background?.mvUpscaleTier || 'S';
                 default:
                     return '';
             }
@@ -509,6 +558,20 @@ function setSettingValue(key, value) {
                 case 'kugouDownloadQuality':
                     if (!appSettings.quality) appSettings.quality = {};
                     appSettings.quality.kugouDownload = value;
+                    break;
+                /* ★ 换档必须让渲染器重建：S/M/L 的 pass 图与纹理编号完全不同
+                   （9 / 17 / 19 pass），拿旧实例画新档等于用错权重。
+                   先复位降级闸 —— 上一档可能已经因为吃不下被自动关掉，
+                   不复位的话用户换到更轻的档也不会重新生效。 */
+                case 'mvUpscaleTier':
+                    if (!appSettings.background) appSettings.background = {};
+                    appSettings.background.mvUpscaleTier = value;
+                    if (typeof Aria !== 'undefined') {
+                        if (typeof Aria.resetMvUpscaleGuard === 'function') Aria.resetMvUpscaleGuard();
+                        /* applyMvBgSettings 会走 103 的 startMvUpscale，
+                           发现 info.tier 与设置不符就 dispose 重建 */
+                        if (typeof Aria.applyMvBgSettings === 'function') Aria.applyMvBgSettings();
+                    }
                     break;
             }
             saveSettings();

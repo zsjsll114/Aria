@@ -70,7 +70,7 @@ export const DICTIONARY = {
     'playlist.import': '导入歌单',
     'playlist.saveQueue': '保存当前队列为新歌单',
     'playlist.inputName': '输入歌单名称...',
-    'playlist.pasteLink': '粘贴网易云/QQ音乐歌单链接...',
+    'playlist.pasteLink': '粘贴网易云音乐/QQ音乐歌单链接...',
     'playlist.addTo': '添加到歌单',
 
     // 播放模式
@@ -189,6 +189,101 @@ const STATIC_PHRASE_MAP = {
   // 设置导航
   '外观': 'Appearance',
   '视觉模式': 'Visual Modes',
+  /* 配方分组：外观令牌（2026-10-06 新增，静态中文必须登记，否则 i18n 门禁会拦） */
+  '外观令牌': 'Appearance Tokens',
+  '圆角（窗口直角）、毛玻璃模糊、文字三档色、间距字号、焦点环、语义色': 'Corner radius (square windows), glass blur, the three text levels, spacing and font sizes, focus ring, semantic colors',
+  /* 智能播放列表（需求 7，2026-10-06）：静态中文必须登记，否则 i18n 门禁会拦 */
+  '智能歌单': 'Smart Playlist',
+  /* 起播淡入（需求 18，2026-10-06） */
+  '起播淡入': 'Fade In On Start',
+  /* 字面 · Jizura（第 10 种视觉模式，2026-10-06）：上游 JIZURA 引擎移植 */
+  '字面 · Jizura': 'Jizura',
+  '把歌词交给 JIZURA 引擎自动生成日系文字 PV：分镜、卡点、装饰与后处理全自动': 'Hand the lyrics to the JIZURA engine for an automatic Japanese-style text PV: shots, beat cuts, decorations and post-processing all automated',
+  '设计分辨率': 'Design resolution',
+  '引擎的画幅尺寸。720p 更省电，1080p 更锐利': 'Canvas size of the engine. 720p saves power, 1080p is sharper',
+  '帧率（动画时基）': 'Frame rate (animation base)',
+  '24 为标准（上游默认），12 会让动画按"一拍两格"运行，更省电': '24 is standard (upstream default); 12 runs the animation on twos and costs less',
+  /* 字面 · Jizura 的风格/情绪/性能档（2026-10-06 P2）：
+     风格与情绪的取值是上游的 ASCII 键名（noir / calm…），直接当标签用**不进词表**，
+     只有我们自己的中文说明需要登记。 */
+  '风格': 'Style',
+  '27 套版式语言；「自动匹配」会按歌词抽一套': 'Twenty-seven layout languages; "Auto match" draws one to fit the lyrics',
+  '自动匹配': 'Auto match',
+  '情绪倾向': 'Mood bias',
+  '只在「自动匹配」时参与抽签': 'Only used together with Auto match',
+  '不限': 'Any',
+  '性能档': 'Performance profile',
+  '按实测帧耗时动态调整清晰度；旧机器可选省电': 'Sharpness adapts to the measured frame time; pick Power saver on older machines',
+  '自动': 'Auto',
+  '省电': 'Power saver',
+  '高清': 'High definition',
+  /* 动画节拍与逐字跟唱（2026-10-06 P3） */
+  '帧率': 'Frame rate',
+  '动画的输出帧率。12 最省电，24 最顺滑': 'Output frame rate. 12 is the lightest, 24 the smoothest',
+  '动画节拍': 'Animation beat',
+  '逐帧最顺；「一拍两格」是引擎原味的动画卡帧感（12 张/秒）': 'Frame-by-frame is smoothest; "On twos" is the engine\'s original staccato look (12 drawings per second)',
+  '逐帧': 'Frame-by-frame',
+  '一拍两格': 'On twos',
+  '块级': 'Blocks',
+  '按字切分镜': 'Split shots by syllable',
+  /* 画面细节（引擎 fx）：面板暴露的六个数值 + 两个开关 */
+  '画面细节': 'Composition detail',
+  '动感': 'Motion',
+  '镜头与元素的运动幅度': 'How far the camera and elements travel',
+  '故障闪烁': 'Glitch',
+  '色散': 'Chromatic aberration',
+  '装饰': 'Decorations',
+  '密度': 'Density',
+  '影响一行切成几个分镜': 'How many shots one lyric line is split into',
+  '颗粒质感': 'Grain',
+  '闪光': 'Flash',
+  'HUD': 'HUD',
+  '画面里的角标与刻度': 'Corner marks and tickers drawn on the frame',
+  /* 日文字体包 */
+  '日文字体包': 'Japanese font pack',
+  '导入日文字体': 'Import Japanese fonts',
+  '导入上游原用的日文字体（可多选 .ttf/.otf/.woff/.woff2）；本模式会按上游原貌排版，导入的字体同样可用于其它模式': 'Import the Japanese fonts the upstream engine uses (multi-select .ttf/.otf/.woff/.woff2). This mode then typesets exactly like upstream, and the imported fonts are available to the other modes too',
+  '选择字体文件': 'Choose font files',
+  '正在导入日文字体…': 'Importing Japanese fonts…',
+  '字体导入失败，请看日志': 'Font import failed — see the logs',
+  '字体导入出错，请看日志': 'Font import errored out — see the logs',
+  '日文字体已导入，画面将按上游原貌排版': 'Japanese fonts imported — the visuals now typeset like upstream',
+  '字体已导入，但没有命中引擎用的日文字族（文件名需含 Noto Sans JP 等家族名）': 'Fonts imported, but none matched the Japanese families the engine uses (the file name should contain a family name such as Noto Sans JP)',
+  '用真实字时间把一行拆成多个分镜，切点更贴唱到的字；但本引擎里一段就是一个画面，拆多了会显得碎（需要 KRC/YRC/QRC 逐字歌词，或已做过频谱对齐）': 'Splits one lyric line into several shots using the real syllable timings, so the cuts land closer to what is actually being sung. In this engine one cut is one composition, so too many cuts look choppy (needs KRC/YRC/QRC word lyrics, or a completed spectral alignment)',
+  '按真实逐字时间对齐分镜切点；「逐字」每字一块最精确，但分镜更碎、更吃性能（需要 KRC/YRC/QRC 逐字歌词，或已做过频谱对齐）': 'Aligns the shot cuts to the real per-character timings. "Per character" is the most accurate but fragments the shots and costs more (needs KRC/YRC/QRC word lyrics, or a completed spectral alignment)',
+  /* 歌单迁移：未匹配清单（需求 6，2026-10-06） */
+  '未匹配的歌曲': 'Unmatched Songs',
+  '这些歌请手动搜索，或换一个歌单来源再导入': 'Search for these manually, or import from another playlist source',
+  /* 练习变速保音高（需求 15，2026-10-06）：独占路径的已知边界 */
+  '独占输出下变速会改变音调（保音高需关闭独占输出）': 'Playback rate changes pitch in exclusive output — turn exclusive mode off to keep the pitch',
+  '速度固定到指定值，0.5×~2.0× 每档 0.05；保持音高不变调（独占输出下仍会变调）': 'Locks the speed to a fixed value, 0.5×–2.0× in 0.05 steps; pitch is preserved (exclusive output still shifts it)',
+  /* 声道设置（需求 20，2026-10-06）修复后新增的失败提示 */
+  '独占输出下声道设置不生效，请先关闭独占': 'Channel settings have no effect in exclusive output — turn exclusive mode off first',
+  '当前音源不支持音效处理（跨域限制），声道设置未生效': 'This source does not support audio processing (cross-origin restriction) — channel settings were not applied',
+  /* 输出设备切换超时（需求 4，2026-10-06） */
+  '切换输出设备超时，已保持原设备': 'Switching output device timed out — keeping the previous device',
+  '点播放、切歌或从暂停恢复时，音量快速平滑升起（100~300 毫秒）': 'When you hit play, change track or resume from pause, the volume rises smoothly from zero (100–300 ms)',
+  '用一句话描述你想听什么。AI 只把它翻译成规则，之后在本地曲库里筛歌，不再调用 AI。': 'Describe what you want to hear in one sentence. AI only turns it into rules; the songs are picked from your local library afterwards, with no further AI calls.',
+  '例如：深夜适合听的慢歌，BPM 80 以下，别要现场版': 'e.g. slow songs for late at night, under 80 BPM, no live versions',
+  '解析': 'Parse',
+  '请先描述你想要什么样的歌单': 'Describe the playlist you want first',
+  '请先在 设置 → AI 分析 里配置 API Key': 'Configure an API Key in Settings → AI Analysis first',
+  'AI 正在解析你的描述…': 'AI is reading your description…',
+  'AI 解析失败': 'AI parsing failed',
+  '没能从 AI 回复里读出规则，请再试一次': 'Could not read any rules from the AI reply — please try again',
+  '确认规则': 'Confirm Rules',
+  '可以直接改这份 JSON，改完点"生成歌单"。': 'You can edit this JSON directly, then click "Generate Playlist".',
+  '生成歌单': 'Generate Playlist',
+  '规则 JSON 格式有误，已取消': 'The rules JSON is malformed — cancelled',
+  '这份规则没有任何筛选条件，已取消': 'These rules have no filters at all — cancelled',
+  '正在本地曲库里筛歌…': 'Picking songs from your local library…',
+  '本地曲库是空的，先去收藏或歌单里攒点歌吧': 'Your local library is empty — add some favourites or playlists first',
+  '没有匹配到歌曲': 'No matching songs',
+  '首已检查': 'songs checked',
+  '已生成': 'Created',
+  '首不匹配': 'songs did not match',
+  '首超出上限未收录': 'songs over the limit were left out',
+  '智能歌单生成失败，请看日志': 'Smart playlist generation failed — check the logs',
   '背景': 'Background',
   '字体': 'Fonts',
   '播放': 'Playback',
@@ -233,6 +328,30 @@ const STATIC_PHRASE_MAP = {
   '移动范围 (px)': 'Range (px)',
   '摇摆周期': 'Sway Period',
   '一个完整循环的秒数': 'Seconds per cycle',
+  /* MV 动态背景（2026-10-03）：设置项 3 条 + 搜索页卡片 5 条 */
+  'MV': 'MV',
+  'MV 动态背景': 'MV Background',
+  '在搜索结果里点 MV 卡片，把它铺成动态背景': 'Click an MV card in search results to use it as a live background',
+  'MV 压暗': 'MV Dim',
+  '降低 MV 亮度，让歌词更清楚': 'Dim the MV so lyrics stay readable',
+  'MV 模糊': 'MV Blur',
+  'MV 背景模糊程度 (px)': 'MV background blur (px)',
+  'MV 画质增强': 'MV Quality Boost',
+  'Anime4K 超分与去压缩伪影，改善 MV 的模糊、噪点与边缘': 'Anime4K upscaling + de-artifacting for sharper, cleaner MV',
+  '增强强度': 'Strength',
+  'S 轻快、M 更锐、L 最强；越强越吃显卡，顶不住会自动降级回原画': 'S is lightest, M is sharper, L is strongest — heavier tiers use more GPU and fall back automatically if too slow',
+  '轻 S': 'Light S',
+  '中 M': 'Medium M',
+  '强 L': 'Strong L',
+  '音画偏移矫正': 'A/V Sync Correction',
+  '自动对齐 MV 画面与歌曲进度；每首会多下约 10MB 做分析，关掉可省流量': 'Align the MV picture with the song automatically; each MV costs ~10MB of analysis, turn off to save data',
+  '点卡片设为动态背景': 'Click a card to set as background',
+  '背景中': 'In use',
+  'MV 取址中...': 'Resolving MV…',
+  '这支 MV 暂时取不到播放地址': 'No playable source for this MV right now',
+  '这支 MV 的地址播不出来（源站限制），已回退封面背景': 'This MV resolved but will not play (source restriction) · fell back to cover',
+  '当前性能模式下已停用 MV 动态背景': 'MV background is disabled in the current performance mode',
+  '该音源暂不支持 MV · 切到 QQ 音乐／网易云音乐／酷狗音乐试试': 'MV is unavailable for this source · try QQ Music / NetEase Cloud Music / Kugou Music',
   '全局默认字体': 'Global Font',
   '主界面与默认歌词渲染字体': 'Font for UI and default lyrics',
   '多语言字体匹配': 'Per-Language Fonts',
@@ -312,8 +431,6 @@ const STATIC_PHRASE_MAP = {
   '流字 · Tunnel': 'Tunnel',
   '活字 · Letterpress': 'Letterpress',
   '霓虹 · Neon': 'Neon',
-  /* ★ 2026-10-02：长卷 HUD 题字（ScrollEngine 画布内角标）——i18n 覆盖门禁要求登记 */
-  '[ 長卷 ] SCROLL': '[ Scroll ] SCROLL',
 
   // 按钮
   '搜索': 'Search',
@@ -321,7 +438,7 @@ const STATIC_PHRASE_MAP = {
   '歌单': 'Playlists',
   '设置': 'Settings',
   '在 GitHub 上点个 Star': 'Star on GitHub',
-  '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。注意：扫码只是「登录」，各平台的启用开关还决定「哪些功能真的走自建」——QQ 的取播放链接也受其开关控制，酷狗目前只有日推/收藏走自建（播放链接仍走公网）。酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。': 'After login, daily mix / favorites / hi-res go through self-hosted APIs; without VIP, trial links fall back to the free pool. Scan once — the login state is saved. Note: scanning only logs you in; each platforms enable switch also controls which features actually use the self-hosted channel — QQ play-URL fetching respects it, while KuGou currently routes only daily mix / favorites (play URLs stay public). If KuGou asks for verification after scanning, switch to SMS login in the dialog.',
+  '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。注意：扫码只是「登录」，各平台的启用开关还决定「哪些功能真的走自建」——QQ 的取播放链接也受其开关控制，酷狗目前只有日推/收藏走自建（播放链接仍走公网）。酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。汽水音乐的搜索与逐字歌词匿名就能用，只有播放需要扫码登录；登录态由本机服务保管，重启不用重扫。': 'After login, daily mix / favorites / hi-res go through self-hosted APIs; without VIP, trial links fall back to the free pool. Scan once — the login state is saved. Note: scanning only logs you in; each platforms enable switch also controls which features actually use the self-hosted channel — QQ play-URL fetching respects it, while KuGou currently routes only daily mix / favorites (play URLs stay public). If KuGou asks for verification after scanning, switch to SMS login in the dialog. For Soda, search and per-word lyrics work anonymously; only playback needs a scan, and the session is kept by the local service so you will not need to rescan after a restart.',
   '反馈问题': 'Report Issues',
   '播放全部': 'Play All',
   '上一页': 'Prev',
@@ -358,16 +475,18 @@ const STATIC_PHRASE_MAP = {
   '保存当前队列为新歌单': 'Save Queue as Playlist',
   '输入歌单名称...': 'Enter playlist name...',
   '输入新歌单名称以保存当前队列...': 'Name the new playlist...',
-  '粘贴网易云/QQ音乐歌单链接...': 'Paste a Netease / QQ Music playlist link...',
+  '粘贴网易云音乐/QQ音乐歌单链接...': 'Paste a Netease / QQ Music playlist link...',
   '搜索歌曲或歌手...': 'Search songs or artists...',
   '搜索QQ音乐歌曲...': 'Search QQ Music...',
-  '搜索网易云歌曲...': 'Search Netease Music...',
+  '搜索网易云音乐歌曲...': 'Search Netease Music...',
   '搜索酷狗音乐歌曲...': 'Search KuGou Music...',
   '已恢复出厂默认性能配置（高性能）': 'Factory performance config restored (High)',
   '恢复出厂性能配置？': 'Restore factory performance config?',
   '恢复出厂性能配置？将清空全部手动微调，此操作不可撤销。': 'Restore factory performance config? All manual tuning will be cleared. This cannot be undone.',
   '恢复': 'Restore',
   '搜索酷我音乐歌曲...': 'Search Kuwo Music...',
+  '搜索汽水音乐歌曲...': 'Search Soda Music...',
+  '汽水音乐搜索暂无结果（需本机自建服务在线）': 'No Soda results (self-hosted service must be running)',
   '添加到歌单': 'Add to Playlist',
   '请输入关键词': 'Type a keyword first',
   '搜索中...': 'Searching...',
@@ -438,12 +557,44 @@ const STATIC_PHRASE_MAP = {
   '网易云': 'Netease',
   '酷狗音乐': 'KuGou Music',
   '酷我音乐': 'Kuwo Music',
+  '汽水音乐': 'Soda Music',
+  '汽水': 'Soda',
   '多源音源': 'Multi-Source',
   '音乐榜单': 'Charts',
   '每日推荐': 'Daily Mix',
   '最近播放': 'Recent',
   '播放统计': 'Stats',
   '均衡器': 'Equalizer',
+  /* 输出设备（原生输出线 Phase 1：app/296-audio-output.js + core/audioOutput.js） */
+  '输出': 'Output',
+  '输出设备': 'Output Device',
+  '声音输出到哪个设备，切换后即时生效': 'Which device audio plays through (applies immediately)',
+  /* 「系统默认」复用上方既有词条，勿重复登记（no-dupe-keys 会拦） */
+  '输出设备已切换': 'Output device switched',
+  '应用未被允许使用该输出设备': 'This output device is not allowed for the app',
+  '该输出设备已不可用': 'That output device is no longer available',
+  '切换输出设备失败': 'Failed to switch the output device',
+  /* WASAPI 独占输出（原生输出线 Phase 2b：app/298-native-output.js） */
+  'WASAPI 独占输出': 'WASAPI Exclusive Output',
+  '绕过系统混音器直通声卡（比特完美）。开启后播放改由原生引擎接管，Automix 与变速暂不可用':
+    'Bypass the system mixer and feed the sound card directly (bit-perfect). Playback is handed to the native engine; Automix and speed changes are unavailable',
+  '当前环境不支持原生输出': 'Native output is not available in this environment',
+  '原生输出不可用': 'Native output unavailable',
+  '独占模式在本机不可用': 'Exclusive mode does not work on this machine',
+  '独占模式在本机不可用，已保持系统默认输出':
+    'Exclusive mode does not work on this machine; staying on the system default output',
+  '已启用 WASAPI 独占输出': 'WASAPI exclusive output enabled',
+  '已停用 WASAPI 独占输出，回到系统混音': 'WASAPI exclusive output disabled; back to the system mixer',
+  '原生输出初始化失败，已回到浏览器播放':
+    'Native output failed to start; playback fell back to the browser engine',
+  '原生独占模式下 Automix 暂不可用，已临时让位':
+    'Automix is unavailable under native exclusive output and has been suspended',
+  '原生独占模式暂不支持变速，已按原速播放':
+    'Native exclusive output does not support speed changes; playing at 1x',
+  /* Automix 过渡态（app/289-next-up.js 的交叉期预告条） */
+  '过渡中': 'Mixing',
+  '正在交叉混音': 'Crossfading into the next track',
+  '当前环境不支持选择输出设备': 'Selecting an output device is not supported here',
   '更多': 'More',
   '更多菜单': 'More Menu',
   '最小化': 'Minimize',
@@ -466,6 +617,13 @@ const STATIC_PHRASE_MAP = {
   '加载中...': 'Loading...',
   '未知歌曲': 'Unknown Song',
   '未知歌手': 'Unknown Artist',
+  /* 歌手页（app/297-artist-page.js） */
+  '热门歌曲': 'Top Songs',
+  '专辑': 'Albums',
+  '暂无作品': 'No tracks yet',
+  '暂无专辑': 'No albums yet',
+  '歌手信息暂时不可用': 'Artist info unavailable',
+  '作品暂时拉不到，稍后再试': 'Tracks unavailable, try again later',
   '立即分析': 'Analyze Now',
   '立即分析当前歌曲': 'Analyze the current song now',
   '重新分析当前播放的歌曲': 'Re-analyze the current song',
@@ -513,9 +671,180 @@ const STATIC_PHRASE_MAP = {
   '音量+': 'Vol +',
   '音量-': 'Vol -',
   '音量标准化': 'Volume Normalization',
+  /* ★ 2026-10-05：空间音频（P2）+ 虚拟声场（P1）设置项。
+     ★ 登记前先 grep：'中' / '轻' 等单字词已在别处登记，重复键会直接报 eslint
+       no-dupe-keys。P1 那两条「独占输出下不可用」已随 P2 解除置灰而删除（不再被引用）。 */
+  '空间音频': 'Spatial Audio',
+  '用双耳 HRTF 卷积让声音有前后深度与定位感（耳机效果最佳）': 'Binaural HRTF convolution adds front-back depth and localisation (best on headphones)',
+  '轻 = 轻微染色；中 = 空间感明显；强 = 最强包围（干湿比）': 'Light = subtle colouration; Medium = clearly spatial; Strong = maximum envelopment (wet/dry)',
+  '空间类型': 'Space type',
+  '近场 = 紧致；厅堂 = 更多早期反射；宽阔 = 双耳去相关最强': 'Near = tight; Hall = more early reflections; Wide = strongest binaural decorrelation',
+  '近场': 'Near',
+  '厅堂': 'Hall',
+  '宽阔': 'Wide',
+  '强': 'Strong',
+  '虚拟声场': 'Virtual Soundstage',
+  '横向拉宽声场、提升器乐分离度（人声位置不变，耳机效果更明显）': 'Widen the soundstage and improve instrument separation (vocal stays centered; most noticeable on headphones)',
+  '强度': 'Strength',
+  '轻': 'Light',
+  '轻 = 仅展宽；中 = 展宽 + 微延时包围感': 'Light = widening only; Medium = widening + micro-delay ambience',
+  /* ★ 2026-10-05：输出声道（需求 20）+ AutoEQ PEQ 导入（需求 3）。
+     ★ 登记前 grep 过：'导入' / '左' / '右' 已存在，勿重复登记（no-dupe-keys）。 */
+  '输出声道': 'Output channels',
+  '立体声（默认）/ 单声道 / 只听左或右 / 交换左右。纯声道参数，不改音质': 'Stereo (default) / Mono / Left only / Right only / Swap L-R. Pure routing, no effect on audio quality',
+  '立体声': 'Stereo',
+  '单声道': 'Mono',
+  '交换': 'Swap',
+  '导入 AutoEQ PEQ': 'Import AutoEQ PEQ',
+  '粘贴 AutoEQ / Peace 导出的参数均衡文本，自动折算并写入 10 段均衡器': 'Paste a parametric EQ export from AutoEQ or Peace, folded onto the 10-band equalizer',
+  '没有内容': 'Nothing to import',
+  '未识别到任何滤波器，请检查格式': 'No filters recognised; check the format',
+  '无法应用': 'Could not apply',
+  '导入失败': 'Import failed',
+  '导入完成': 'Import complete',
+  /* ★ 2026-10-05：会话恢复（需求 17）。 */
+  '记住播放进度': 'Remember playback position',
+  '下次启动恢复上次的歌、进度与队列（异常退出也能恢复）': 'Restore the last song, position and queue on next launch (works after a crash too)',
+  /* ★ 2026-10-05：存储空间（需求 13）+ 自动备份（需求 23）。
+     ★ 登记前 grep 过：'刷新' / '选择' / '选择文件' / '确定' / '取消' 已存在，勿重复登记。 */
+  '存储空间': 'Storage',
+  '占用概览': 'Usage overview',
+  '点「刷新」查看各类缓存占用': 'Press Refresh to see how much each cache takes',
+  '总占用': 'Total',
+  '高价值数据（清理需确认）': 'High-value data (confirmation required)',
+  '可清理缓存': 'Rebuildable caches',
+  '受保护（永不自动清理）': 'Protected (never auto-cleared)',
+  '其他键': 'Other keys',
+  '高价值': 'High value',
+  '存储上限': 'Storage limit',
+  '超过该值自动清理最旧的缓存（0 = 不限；歌单/收藏/记录永不清理）': 'Above this, the oldest caches are cleared automatically (0 = no limit; playlists, favourites and history are never cleared)',
+  '清理缓存': 'Clear caches',
+  '按占用从低价值到高价值清理；高价值数据会先确认': 'Clears from low-value to high-value; high-value data asks first',
+  '清理到上限': 'Clear to limit',
+  '已刷新': 'Refreshed',
+  '未超过上限，无需清理': 'Under the limit, nothing to clear',
+  '自动备份': 'Auto backup',
+  '定期自动备份': 'Scheduled auto backup',
+  '按间隔把收藏/歌单/设置/歌词偏移写入备份文件夹': 'Writes favourites, playlists, settings and lyric offsets to the backup folder on a schedule',
+  '备份文件夹': 'Backup folder',
+  '未选择': 'Not selected',
+  '已选择': 'Selected',
+  '当前环境不支持，将下载到默认位置': 'Not supported here; backups will be downloaded instead',
+  '备份间隔': 'Backup interval',
+  '小时': 'hours',
+  '立即备份': 'Back up now',
+  '上次：—': 'Last: —',
+  '备份一次': 'Back up',
+  '从备份恢复': 'Restore from backup',
+  '选择之前导出的备份 JSON，恢复收藏/歌单/设置': 'Pick a previously exported backup JSON to restore favourites, playlists and settings',
+  '已设置备份文件夹': 'Backup folder set',
+  '请先选择备份文件夹': 'Pick a backup folder first',
+  '当前环境不支持选择文件夹，备份将下载为文件': 'This environment cannot pick a folder; backups will be downloaded as files',
+  '正在备份…': 'Backing up…',
+  '已备份到所选文件夹': 'Backed up to the selected folder',
+  '文件不是合法 JSON': 'Not a valid JSON file',
+  '未识别到有效备份内容': 'No recognisable backup content',
+  '已从备份恢复': 'Restored from backup',
+  /* ★ 2026-10-05：存储清单里的分组/缓存名（storageManager 的 label，会直接显示在面板上）。
+     ★ '收藏' / '歌单' 已存在，勿重复登记。 */
+  '应用设置': 'App settings',
+  '均衡器设置': 'Equalizer settings',
+  '歌词偏移': 'Lyric offset',
+  '播放会话': 'Playback session',
+  '性能偏好': 'Performance preference',
+  '界面偏好': 'Interface preference',
+  'AI 情绪分析结果': 'AI mood analysis',
+  '逐字对齐数据': 'Word-timing alignment',
+  '高潮检测缓存': 'Chorus detection cache',
+  '混音分析缓存': 'Mix analysis cache',
+  '歌词索引': 'Lyric index',
+  /* ★ 2026-10-05：歌词海报（需求 2）。登记前 grep 过：'默认' 已存在（勿重复），
+     '格律'/'活字'/'霓虹'/'词云' 只以「XX · English」长键存在，短名是新键。 */
+  '歌词海报': 'Lyric poster',
+  '原画幅': 'Original',
+  '保留播放器画面比例': 'Keep the player frame ratio',
+  '无法获取当前画面': 'Could not capture the current view',
+  '画面是空的，请先播放': 'The view is empty — start playback first',
+  '方图': 'Square',
+  '竖图': 'Portrait',
+  '1:1 · 朋友圈 / Instagram': '1:1 · Moments / Instagram',
+  '9:16 · 小红书 / 故事': '9:16 · RED / Stories',
+  '请先播放一首歌': 'Play a song first',
+  '正在生成歌词海报…': 'Generating lyric poster…',
+  '海报已保存': 'Poster saved',
+  /* 「已保存 / 下载已开始」是「打开文件所在位置」确认框的标题（core/revealPath.js
+     与 85-rate-download.js），两个词条都要有英文，否则 i18n 棘轮会拦下来。 */
+  '已保存': 'Saved',
+  '下载已开始': 'Download started',
+  '打开所在位置': 'Show in folder',
+  '海报已保存（未取到封面）': 'Poster saved (cover unavailable)',
+  '海报保存失败': 'Failed to save poster',
+  '海报生成失败': 'Failed to generate poster',
+  /* 海报右下角角标用的视觉模式短名（与样式选择器显示名一致） */
+  '歌词': 'Lyrics',
+  '飞白': 'Fly-In',
+  '词云': 'WordCloud',
+  '诗镜': 'Verse',
+  '版画': 'Tempera',
+  '格律': 'Mondrian',
+  '穿行': 'Tunnel',
+  '活字': 'Letterpress',
+  '霓虹': 'Neon',
+  /* ★ 2026-10-05：应用诊断页「音频输出与音效链路」段（专治「有时候放歌没声音」）。
+     登记前先 grep 过：'正常' / '音量' / '静音' / '正在播放' / '无' / '开' / '关' / '是' / '否'
+     均已存在，勿重复登记（no-dupe-keys）。 */
+  '音频输出与音效链路': 'Audio output & effects chain',
+  '音频链路': 'Audio chain',
+  '输出去向': 'Output path',
+  'WASAPI 独占（原生引擎，声音不经 Web 音频图）': 'WASAPI exclusive (native engine; audio bypasses the Web Audio graph)',
+  '共享输出（WebView2 音频图）': 'Shared output (WebView2 audio graph)',
+  'AudioContext 状态': 'AudioContext state',
+  '无（音效图从未建立）': 'none (graph never built)',
+  '采样率': 'Sample rate',
+  '音效图': 'Effects graph',
+  '未建立（没开过均衡器 / 虚拟声场 / 空间音频）': 'not built (EQ / virtual soundstage / spatial audio never enabled)',
+  '初始化失败（本进程内不会出声，请重启 Aria）': 'initialisation failed (no sound for this process; restart Aria)',
+  '已建立': 'built',
+  '已拆（元素仍被捕获 → 靠直连旁通保声，音效此时不生效）': 'torn down (element still captured → passthrough keeps sound; effects inactive)',
+  '元素已改道进音效图': 'Element routed into the effects graph',
+  'deck 增益（非交叉期应为 1.000）': 'deck gain (should be 1.000 outside crossfade)',
+  '音频元素': 'Audio element',
+  '原生 deck（nativeDeck）': 'native deck (nativeDeck)',
+  '播放状态': 'Playback state',
+  '已暂停': 'Paused',
+  '元素音量': 'Element volume',
+  '元素静音 muted': 'Element muted',
+  '解码/网络错误': 'Decode / network error',
+  '当前音源': 'Current source',
+  '未取得（播放链路可能未初始化）': 'unavailable (playback chain may not be initialised)',
+  '链路判定': 'Chain verdict',
+  '检测到可能静音的因素：从上往下看第一处非 ok 项': 'Possible mute factor detected: check the first non-ok row above',
+  '未发现静音因素': 'No mute factor found',
+  '异常（详见下面「音频输出与音效链路」段）': 'abnormal (see the "Audio output & effects chain" section below)',
+  '「有时候放歌没声音」先看这一段：AudioContext 非 running、元素已改道但音效图被拆掉、deck 增益为 0 —— 三者都会让界面一切正常却完全没声。': 'For "sometimes no sound": check this section first. A non-running AudioContext, a captured element whose effects graph was torn down, or a deck gain of 0 will all leave the UI perfectly normal while producing no sound at all.',
+  /* ★ 2026-10-05：音源状态面板（需求 1）+ 听力健康提醒（需求 16）。
+     ★ 登记前已 grep：'QQ 音乐' / '酷狗音乐' / '网易云音乐' / '汽水音乐' 四个词**已存在**，不再登记。 */
+  '音源状态': 'Source status',
+  '音源连通性': 'Source connectivity',
+  '向各音源接口发一次轻量请求，显示成功失败与延迟': 'Send one lightweight request to each source and report success/failure with latency',
+  '测试': 'Test',
+  '测试中…': 'Testing…',
+  '超时': 'Timeout',
+  '不可达': 'Unreachable',
+  '探测失败': 'Probe failed',
+  '点「测试」向各音源发一次轻量请求': 'Click "Test" to send one lightweight request to each source',
+  '个音源不可用': 'sources unavailable',
+  '本机主服务': 'Local service',
+  '公网兜底（vkeys）': 'Public fallback (vkeys)',
+  '听力健康提醒': 'Hearing health reminder',
+  '连续播放 2 小时或音量长时间偏高时温和提示，不打断播放': 'A gentle nudge after 2 hours of continuous playback or sustained high volume; never interrupts playback',
+  '已经连续播放 2 小时了，建议歇一会儿，让耳朵透透气': "You've been playing for 2 hours straight — take a break and let your ears breathe",
+  '音量偏高已持续 30 分钟': 'Volume has stayed high for 30 minutes',
   '自动播放下一曲': 'Auto-play Next',
   '播放结束后自动切换': 'Auto-advance after playback',
   '切歌淡入淡出': 'Crossfade',
+  '智能混音（Automix）': 'Automix',
+  '歌尾与下一曲开头无缝交叉（本地/缓存源）': 'Seamless crossfade into the next track (local/cached sources)',
   '切歌时自动调整音量到默认值': 'Reset volume to default on song change',
   '播放失败重试': 'Retry on Failure',
   '最大重试次数': 'Max Retries',
@@ -834,7 +1163,9 @@ const STATIC_PHRASE_MAP = {
   '只读 listGlobals()，未跑 auditGlobals()（后者会灌日志缓冲，挤掉取链轨迹）': 'Read-only listGlobals(); auditGlobals() is not called because it would flood the log ring and push out the resolve trail.',
   /* 表外补登记：原来写死在渲染处的三元分支与常量表 */
   '酷狗 KuGouMusicApi': 'KuGou KuGouMusicApi',
-  '网易云 NeteaseCloudMusicApi': 'Netease NeteaseCloudMusicApi',
+  '网易云音乐 NeteaseCloudMusicApi': 'Netease NeteaseCloudMusicApi',
+  '正在检索酷狗 / 网易云音乐 / QQ / LRCLIB…': 'Searching KuGou / Netease / QQ / LRCLIB…',
+  'QQ 日推可能需要登录，可切到网易云音乐/酷狗': 'QQ daily mix may require login — try Netease or KuGou',
   '重新采集数据': 'Reload diagnostics',
   '复制为纯文本，便于粘贴到 issue': 'Copy as plain text for an issue report',
   // 可读性一键修正（todos #11，283-readability.js）
@@ -906,6 +1237,8 @@ const STATIC_PHRASE_MAP = {
   '本机自建 QQ 服务': 'Self-hosted QQ',
   '本机自建网易服务': 'Self-hosted Netease',
   '本机自建酷狗服务': 'Self-hosted KuGou',
+  '本机自建汽水服务': 'Self-hosted Soda',
+  '汽水音乐 qishui-music-api': 'Soda qishui-music-api',
   '本机解析池': 'Local resolve pool',
   '酷狗取链接口': 'KuGou API',
   '酷我官方取链': 'KuWo official',
@@ -950,7 +1283,8 @@ const STATIC_PHRASE_MAP = {
   '本地优先的多源歌词播放器 · 网页版 + Tauri 桌面壳': 'Local-first multi-source lyric player · Web + Tauri desktop',
   '本地音乐 · 歌单导入 · 均衡器 · RTL 适配': 'Local music · playlist import · EQ · RTL support',
   'QQ / 酷狗 / 网易 / 酷我 · 自建服务高音质': 'QQ / KuGou / Netease / Kuwo · self-hosted hi-fi',
-  '开源歌词视觉项目 · 本项目视觉分镜设计的参考来源': 'Open-source lyric visual project · reference for our visual storyboard',
+  '开源歌词视觉项目 · 「诗镜 · Verse」与「版画 · Tempera」引擎的代码来源（AGPL-3.0）': 'Open-source lyric visual project · source of the code for our Verse and Tempera engines (AGPL-3.0)',
+  '字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · Cubic 11　·　© 2026 Aria Lyrics Player　·　本程序按 AGPL-3.0 发布，源码见 github.com/zsjsll114/Aria': 'Fonts: Noto Sans/Serif SC (Noto CJK, SIL OFL) · LXGW family · Cubic 11 · © 2026 Aria Lyrics Player · Released under AGPL-3.0, source at github.com/zsjsll114/Aria',
   '享受音乐': 'Enjoy Music',
   '点击进入音乐世界': 'Click to enter',
 
@@ -1217,6 +1551,14 @@ const STATIC_PHRASE_MAP = {
   '点击上传 / 暂无歌曲': 'Click to upload / empty',
   '首结构化单曲': 'tracks',
   '· 3 平台': '· 3 platforms',
+  /* 歌单页底部的「· N 平台」随自建平台数量变化（加入汽水后为 4）。
+     数字变一下就是一个新字面量，门禁会当作新文案拦下 —— 这里按同一口径登记。 */
+  '· 4 平台': '· 4 platforms',
+  /* 汽水日推走字节推荐流（匿名可用、无平台开关），失败只可能是本机服务没起来，
+     所以不能套用另三家的「去设置里启用」引导。 */
+  '本机汽水服务未就绪': 'Local Soda service is not ready',
+  '每日推荐 · 汽水音乐': 'Daily Mix · Soda Music',
+  '歌单 · 汽水音乐': 'Playlist · Soda Music',
   '获取失败': 'Fetch failed',
   '队列为空': 'Queue empty',
   '首歌曲': 'songs',
@@ -1333,6 +1675,9 @@ const STATIC_PHRASE_MAP = {
   // 自建服务页
   '自建服务（本地副进程，需 Node.js）': 'Self-Hosted (local sidecar, Node.js required)',
   '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。': 'After login, daily mix/favorites/hi-fi use self-hosted APIs; preview links auto-fallback to free pool. Login persists after one scan.',
+  '汽水音乐的搜索与逐字歌词匿名就能用，只有播放需要扫码登录；登录态由本机服务保管，重启不用重扫。': 'Soda search and per-word lyrics work anonymously; only playback needs a scan. The session is kept by the local service, so no rescan after a restart.',
+  '登录会话由本机服务保管，无需手动填 Cookie；换设备重新扫码即可': 'The session is kept by the local service — no manual cookie needed. Rescan on a new device.',
+  '无平台开关（搜索与播放始终走本机）': 'No platform switch (search & playback always use the local service)',
   '酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。': 'If KuGou scan still asks verification, use phone SMS login instead.',
   '· 已登录': '· Logged in',
   '源码目录缺失': 'Source directory missing',
@@ -1385,6 +1730,7 @@ const STATIC_PHRASE_MAP = {
   '取码失败': 'QR fetch failed',
   '请用网易云音乐 App 扫码授权（若扫码无效，请改用上方「手机号 / 邮箱」登录）': 'Scan with Netease Music App (or use Phone / Email above)',
   '请用酷狗音乐 App 扫码授权（若扫码不行，点上方「手机号」用短信验证码登录）': 'Scan with KuGou Music App (or use Phone SMS above)',
+  '请用汽水音乐 App 扫码授权（搜索与逐字歌词匿名可用，播放需登录）': 'Scan with Soda Music App (search & per-word lyrics work anonymously; playback needs login)',
   '请用对应 App 扫码授权（QQ App 或 微信）': 'Scan with the matching App (QQ or WeChat)',
   '二维码已失效，点击右上角关闭后重新扫码': 'QR expired — close and rescan',
   '二维码已过期，点击右上角关闭后重新扫码': 'QR expired — close and rescan',
@@ -1557,6 +1903,7 @@ const STATIC_PHRASE_MAP = {
   '酷狗音乐 · 已登录': 'KuGou · Logged in',
   'QQ音乐 · 已登录': 'QQ Music · Logged in',
   '网易云音乐 · 已登录': 'Netease · Logged in',
+  '汽水音乐 · 已登录': 'Soda · Logged in',
   '点击查看我的网易云歌单': 'View my Netease playlists',
   '点击查看我的酷狗歌单': 'View my KuGou playlists',
   '点击查看我的QQ音乐歌单': 'View my QQ playlists',
@@ -1665,6 +2012,20 @@ const STATIC_PHRASE_MAP = {
   '导入失败：配方不合法': 'Import failed: invalid recipe',
   '这份配方不合法，生成不了分享码': 'This recipe is invalid; cannot generate a share code',
   '配方不合法，已拒绝应用': 'Invalid recipe — rejected',
+  /* —— 外观 mod 文件（.aria-theme.json）导入导出（2026-10-05）：带插值的整句走动态桶，
+     这里只登记真正的静态串（按钮 / 标题 / 短提示）—— */
+  '外观 mod 文件': 'Appearance mod file',
+  '选择 mod 文件…': 'Choose mod file…',
+  '导出当前外观': 'Export current look',
+  'mod 文件是一段带名字的配方（.aria-theme.json），与分享码走同一套白名单校验，任何一项不合格就整份拒绝；文件内容只按数据读，不会被当作代码执行。': 'A mod file is a named recipe (.aria-theme.json). It goes through the same whitelist checks as a share code: any invalid entry rejects the whole file. Its contents are read as data only — never executed.',
+  '导入 mod 文件失败': 'Failed to import mod file',
+  'mod 文件校验通过': 'Mod file validated',
+  'mod 文件被拒绝，详见面板里的逐条原因': 'Mod file rejected — see per-entry reasons in the panel',
+  '读取 mod 文件失败': 'Failed to read mod file',
+  '当前外观不合法，导出失败': 'Current look is invalid; export failed',
+  '导出失败：无法创建下载': 'Export failed: could not start the download',
+  /* —— 海报：抓帧就绪守卫（hint 出口，复扫不强制登记，一并补上以免英文模式留中文）—— */
+  '当前画面还没准备好，等歌词或视觉引擎出现后再试': 'The view is not ready yet — try again once the lyrics or the visual engine shows up',
   '歌词可读性增强已开启': 'Lyric readability boost enabled',
   '切歌前多少秒浮出提示条（3~15 秒）': 'Seconds before track end to pop up the next-up bar (3–15 s)',
   /* 拼接句碎片（见上注释） */
@@ -1839,6 +2200,14 @@ function translateTextNode(text) {
   if (m) return `Remove "${m[1]}" from the local library? The files will be permanently deleted.`;
   m = /^播放全部：/.exec(t0);
   if (m) return 'Play All: ' + t0.slice(5);
+  /* 歌手页副标题：平台名 + 作品统计/粉丝数（平台名前缀保持原文，与其它音源标签一致）。
+     先匹配三段复合句，再匹配单段——顺序反了会把「x · 44 张专辑 · 568 首歌」截成专辑句。 */
+  m = /^(.+?)\s*·\s*(\d+)\s*张专辑\s*·\s*(\d+)\s*首歌$/.exec(t0);
+  if (m) return `${m[1]} · ${m[2]} albums · ${m[3]} tracks`;
+  m = /^(.+?)\s*·\s*(.+?)\s*粉丝$/.exec(t0);
+  if (m) return `${m[1]} · ${m[2]} followers`;
+  m = /^(.+?)\s*·\s*(\d+)\s*张专辑$/.exec(t0);
+  if (m) return `${m[1]} · ${m[2]} albums`;
   /* 视觉配方 toast 动态插值句（290，配方名嵌中间，碎片前缀拼不出英文引号闭合） */
   m = /^已保存配方「(.+)」$/.exec(t0);
   if (m) return `Saved recipe "${m[1]}"`;
@@ -1915,7 +2284,7 @@ function _scanI18n(root, deadline) {
        类名不在本名单，_scanI18n 永远扫不到。.aria-oobe-sub 是旧版残留死选择器 */
     '.aria-oobe-hero-title, .aria-oobe-hero-sub, .aria-oobe-step-tag, .aria-oobe-btn, ' +
     '.aria-oobe-label, .aria-oobe-scan-btn, .aria-oobe-colorchip span, ' +
-    '.ctx-confirm-title, .ctx-confirm-msg, .ctx-confirm-btn, .apc-text small, ' +
+    '.aria-dialog-title, .aria-dialog-desc, .aria-dialog-btn, .apc-text small, ' +
     /* 外观设置：分区标题「视图模式」+ 模式分段按钮（词条早就在表里，类名一直不在名单） */
     '.appearance-section-title, .appearance-mode-btn';
   root.querySelectorAll?.(textSel).forEach(el => {
@@ -1977,7 +2346,7 @@ function _scanI18n(root, deadline) {
       类根（index.html 里 5 个元素，#selfhostQrOverlay 本来就单列过），此前不在名单上 →
       这四种面板在英文模式下**完全没人翻译**，只能靠分片自己逐条查词表。补进来之后
       JS 自译（284）与 observer 兜底（275/170）叠加是幂等的：翻成英文的文本不再命中词表。 */
-const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, .ctx-confirm, ' +
+const UI_ROOT_SELECTOR = '.search-overlay, .settings-overlay, .ctx-menu, ' +
   '.ai-status-panel, .aria-dialog-overlay, #ariaOobeOverlay, #welcomeOverlay, #selfhostQrOverlay, #plmPanel, #favoritesOverlay, #rankTabs, ' +
   '.lyric-source-overlay';
 

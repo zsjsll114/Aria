@@ -1,0 +1,336 @@
+/* ============================================================
+ * mv.css — MV 动态背景 + 搜索结果页的「歌手 / MV」卡片行（2026-10-03）
+ *
+ * 背景层本体（.mv-background）的定位写在 base.css（与 .blur-background 同层，
+ * 必须靠树序盖住它）；这里只放搜索页的两排横向卡片。
+ * 单开一份而不是塞进 ai.css：AI 那份已经 600+ 行，卡片是独立特性
+ * （与 next-up.css / vfx-recipe.css 同一约定）。
+ * ============================================================ */
+
+/* ---- 卡片容器：无内容时整块不占位 ---- */
+.search-extra:empty {
+    display: none;
+}
+
+.search-shelf {
+    margin-bottom: 6px;
+}
+
+.search-shelf-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.52);
+    margin: 6px 0 8px;
+}
+
+.search-shelf-note {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: rgba(255, 255, 255, 0.32);
+}
+
+.search-shelf-row {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 10px;
+    scrollbar-width: thin;
+}
+
+.search-shelf-row::-webkit-scrollbar {
+    height: 6px;
+}
+
+.search-shelf-row::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 3px;
+}
+
+/* ---- 两排卡片的骨架（★ 2026-10-04）----
+   用户报：「搜索的骨架屏不太对吧 只有底下的歌曲卡片的骨架 而上面歌手、mv 却没有骨架屏
+   而且歌手、mv、歌曲卡片不是同时出现」。骨架尺寸必须与真实卡片一致
+   （歌手 92px/圆头像 64px、MV 168px/16:9 缩略图），否则内容填进来会「跳一下」。 */
+.search-shelf-row .sk-shelf-card {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.search-shelf-row .sk-shelf-card.is-artist {
+    width: 92px;
+    align-items: center;
+}
+
+.search-shelf-row .sk-shelf-card.is-artist .sk-banner {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+}
+
+.search-shelf-row .sk-shelf-card.is-mv {
+    width: 168px;
+}
+
+.search-shelf-row .sk-shelf-card.is-mv .sk-banner {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+}
+
+.search-shelf-row .sk-shelf-card .sk-line {
+    height: 12px;
+    border-radius: 6px;
+    width: 70%;
+}
+
+.search-shelf-row .sk-shelf-card.is-artist .sk-line {
+    width: 62px;
+}
+
+.search-shelf-empty {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.34);
+    padding: 2px 2px 10px;
+}
+
+/* ---- 歌手卡片 ---- */
+.artist-card {
+    flex: 0 0 auto;
+    width: 92px;
+    padding: 8px 6px;
+    border-radius: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.artist-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.artist-card-avatar {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 8px;
+    border-radius: 50%;
+    /* ★ 纯色底（不是渐变，2026-10-03 用户要求）取自歌手名散列的色相 --ah：
+       没有头像、或头像图挂了时，这一层 + 首字就是最终观感；有头像时被 <img> 完全盖住。
+       原来的 rgba(255,255,255,.08) 灰底只在"确实没头像"时露出来，看着像加载失败。 */
+    background-color: hsl(var(--ah, 210) 52% 40%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* 首字：绝对铺满居中，恒在 <img> 之下（图挂了就自己露出来，无需 JS 兜底） */
+.artist-card-avatar .artist-card-initial {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.94);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+
+/* 头像图填满外圈：外层 div 负责圆角与兜底底色/首字，图挂了 onerror=remove 即露出首字 */
+.artist-card-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.artist-card-name {
+    font-size: 12px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.artist-card-sub {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- MV 卡片 ---- */
+.mv-card {
+    flex: 0 0 auto;
+    width: 168px;
+    padding: 6px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.mv-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.mv-card-thumb {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.mv-card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.mv-card-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.16);
+    color: #fff;
+}
+
+.mv-card-dur {
+    position: absolute;
+    right: 6px;
+    bottom: 5px;
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+}
+
+.mv-card-badge {
+    position: absolute;
+    left: 6px;
+    top: 5px;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.62);
+    color: var(--aria-accent);
+    display: none;
+}
+
+.mv-card.playing .mv-card-badge {
+    display: block;
+}
+
+.mv-card.playing .mv-card-thumb {
+    outline: 2px solid var(--aria-accent);
+    outline-offset: -2px;
+}
+
+.mv-card.playing .mv-card-play {
+    background: rgba(0, 0, 0, 0.34);
+}
+
+.mv-card-name {
+    font-size: 12px;
+    color: #fff;
+    margin-top: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mv-card-singer {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.42);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+   MV 背景 × 全景视图模式（2026-10-03 用户反馈：
+   「除了歌词、默认模式，其他模式都不会显示 mv 背景」）
+   ------------------------------------------------------------
+   原因：MV 铺在 body 层级（z-index -2），而 tempera / pv / dimension /
+   neon / letterpress / tunnel / wordcloud 这些全景模式各自在自己的舞台上刷了一层
+   **不透明底**（#0e0e10 / #0b0d12 / #09090b / 0.9+ 的暗幕…），把 MV 整块盖住。
+   做法：**只在 body.mv-bg-on（MV 真的在播）时**把这些底透明化 / 把半透明幕压薄。
+   全部限定在这个作用域内 ⇒ 不开 MV 时各模式的原始观感一个像素都不变。
+   色值只动"底"，不动文字与图形，所以歌词可读性由 MV 自己的压暗+模糊负责。
+   ============================================================ */
+body.mv-bg-on .player-container:not(.preview-player).view-pv,
+body.mv-bg-on .player-container:not(.preview-player).view-tempera,
+body.mv-bg-on .player-container:not(.preview-player).view-jizura {
+    /* 两者的底都是「给引擎垫的深色画布」，引擎自身内容（canvas/纸纹）照旧绘在它上面 */
+    background: transparent !important;
+}
+
+/* 舞台级深底（维度 / 霓虹 / 活字 / 字面） */
+body.mv-bg-on .vis-dimension-stage,
+body.mv-bg-on .visualizer-stage-neon,
+body.mv-bg-on .visualizer-stage-letterpress,
+body.mv-bg-on .visualizer-stage-jizura {
+    background: transparent !important;
+}
+
+/* 维度模式的背景色块画布：本身画的就是"底"，压薄而不是关闭，保留色晕层次 */
+body.mv-bg-on .dim-bg-canvas {
+    opacity: 0.4;
+}
+
+/* 隧道：底色由引擎逐组写内联 CSS 变量（--tunnel-bg-*），改变量会被内联样式压过，
+   所以直接对承载层降不透明度 —— 组色、流光、过渡全部保留，只是不再"糊死"背景。
+   ★ 0.42 → 0.2（2026-10-04 实测）：蒙德里安一支 MV 上会叠三层（这层暗幕 × 满屏底
+   `.t-m-bg` × 色块及 `::after` 影晕），0.42 时单这一层就吃掉 ~39%，
+   三层合成 0.74 ⇒ MV 只剩四分之一可见，用户看到的还是"背景不透明"。
+   （数值写在下面那条带 `:not(.preview-player)` 的规则里，这里只留说明。） */
+
+/* ★ 2026-10-04 蒙德里安的满屏色板：`.tunnel-layer-bg` 只是最底下那层渐变，
+   真正盖住 MV 的是它上面的 mosaicLayer —— `.t-m-bg`（实心渐变，inset -10%）+
+   `.t-m-block`（近实心色块，透明度烘焙进 background-color，另带 `::after` 影晕）。
+   `.t-m-bg` 是一整块实心垫底、本身没有任何结构信息（色板由色块承载），
+   MV 在播时整块让位；剩下的色块那份 CSS 够不着（inline background-color），
+   由 TunnelEngine._paintMosaicBlocks 乘 mvBackdropAlpha() 处理 —— 两处必须一起，
+   漏一边 MV 还是出不来。
+   ★ 两条都排除 .preview-player：设置面板里的预览隧道底下没有 MV，
+     压薄只会让它变透明、露出设置面板本身（主播放器与预览共用同一个 TunnelEngine）。 */
+body.mv-bg-on .player-container:not(.preview-player) .tunnel-layer-bg {
+    opacity: 0.2;
+}
+
+body.mv-bg-on .player-container:not(.preview-player) .t-m-bg {
+    opacity: 0;
+}
+
+/* 词云 / 飞入的暗幕：从 0.72~0.82 压到 0.34~0.44，既能压住 MV 保证歌词对比度，
+   又不至于把 MV 又盖没了。同样排除预览窗（它底下没有 MV，压薄只会露出设置面板）。 */
+body.mv-bg-on .player-container:not(.preview-player).view-wordcloud::before {
+    background: linear-gradient(135deg, rgba(5, 4, 12, 0.46), rgba(12, 10, 22, 0.36)) !important;
+}
+
+body.mv-bg-on .player-container:not(.preview-player).view-flyin::before {
+    background: linear-gradient(135deg, rgba(10, 8, 20, 0.26), rgba(20, 18, 30, 0.2)) !important;
+}

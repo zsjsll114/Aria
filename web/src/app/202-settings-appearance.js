@@ -15,6 +15,7 @@ import { aiCacheGetAll } from '../services/aiCache.js';
 import { DEFAULT_SETTINGS } from '../config/defaults.js'; // 模式设置默认值兜底
 import { isPresetAccent } from '../config/themePalette.js'; // 预设色唯一登记处
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
+import { refreshSectionAnchors } from '../config/settingsNav.js'; // 节内锚点（阶段 2 收尾）
 
 /* 外观面板容器引用（原为 initSettingsPanel 内局部，重构提升到本模块共享） */
 let appearanceControlsEl = null;
@@ -177,6 +178,9 @@ function applyLyricSetting(name, value) {
                         sec.style.display = 'none';
                     }
                 });
+                /* ★ 节内锚点（阶段 2 收尾）：锚点按"当前可见的模式区块"派生，
+                   不在这里重算就会留着上一个模式的组标题。 */
+                try { refreshSectionAnchors(); } catch (e) { logCatch('settingsAppearance', e); }
             }
 
                         /* ★ 绑定右侧控件事件 — 使用事件委托保障模式切换 100% 响应 */
@@ -289,6 +293,47 @@ function applyLyricSetting(name, value) {
                     });
                 });
 
+                /* 下拉 — 使用 .setting-dropdown[data-var]（2026-10-07 补）
+                   ★ 这是一处**功能性缺口**，不是样式问题：此前这里只绑了滑杆/按钮组/开关，
+                     而面板里的下拉分三套来源 —— `data-setting` 型由 220 绑、字体下拉由 215 绑、
+                     **手写 `data-var` 型谁也没绑**。表现为：菜单能展开（220 挂了开合）、
+                     点选项毫无反应，设置也写不进去（用户报障"设计分辨率/帧率没用"）。
+                   ★ 开合刻意"只挂一次"（沿用 220 的 _ariaToggleBound 约定）：
+                     220 已经遍历所有 .setting-dropdown 挂过触发器的开合，
+                     这里再挂一份会与它互相 toggle 抵消（表现为点一下打不开）。 */
+                controls.querySelectorAll('.setting-dropdown[data-var]').forEach(dd => {
+                    const trigger = dd.querySelector('.setting-dropdown-trigger');
+                    if (trigger && !trigger._ariaToggleBound) {
+                        trigger._ariaToggleBound = true;
+                        trigger.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const willOpen = !dd.classList.contains('open');
+                            document.querySelectorAll('.setting-dropdown.open').forEach(d => d.classList.remove('open'));
+                            dd.classList.toggle('open', willOpen);
+                        });
+                    }
+                    if (dd._hasAppEvent) return;
+                    dd._hasAppEvent = true;
+                    const varName = dd.dataset.var;
+                    const isGlobal = dd.dataset.scope === 'global';
+                    const items = [...dd.querySelectorAll('.setting-dropdown-item')];
+                    items.forEach(item => {
+                        if (item._hasAppEvent) return;
+                        item._hasAppEvent = true;
+                        item.addEventListener('click', () => {
+                            items.forEach(i => i.classList.remove('selected'));
+                            item.classList.add('selected');
+                            if (trigger) trigger.textContent = item.textContent;
+                            dd.classList.remove('open');
+                            const val = item.dataset.value;
+                            if (previewEngineInstance) {
+                                if (isGlobal) previewEngineInstance.setGlobalVar(varName, val);
+                                else previewEngineInstance.setModeVar(varName, val);
+                            }
+                        });
+                    });
+                });
+
                 /* 兼容原生字体下拉（若存在） */
                 controls.querySelectorAll('.appearance-font-select[data-var="fontFamily"]').forEach(sel => {
                     if (sel._hasAppEvent) return;
@@ -391,6 +436,21 @@ function applyLyricSetting(name, value) {
                         btns[0].classList.add('active');
                     }
                 });
+                /* 下拉的回显（2026-10-07 补）：没有这一支，用户切模式/重开面板后
+                   trigger 仍停在 HTML 里写死的初始值，与真实设置不一致。 */
+                section.querySelectorAll('.setting-dropdown[data-var]').forEach(dd => {
+                    const vn = dd.dataset.var;
+                    const val = mv[vn];
+                    if (val === undefined || val === null) return;
+                    const items = [...dd.querySelectorAll('.setting-dropdown-item')];
+                    const hit = items.find(i => String(i.dataset.value) === String(val));
+                    if (!hit) return;
+                    items.forEach(i => i.classList.remove('selected'));
+                    hit.classList.add('selected');
+                    const trigger = dd.querySelector('.setting-dropdown-trigger');
+                    if (trigger) trigger.textContent = hit.textContent;
+                });
+
                 section.querySelectorAll('.color-swatch').forEach(sw => {
                     const vn = sw.dataset.var;
                     if (mv[vn] !== undefined) sw.classList.toggle('active', sw.dataset.color === String(mv[vn]));

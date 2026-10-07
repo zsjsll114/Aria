@@ -85,6 +85,10 @@ function resolveFontFamilyInner(fontKey) {
             this.container = containerEl;
             this.visManager = new VisualizerManager();
             this.lyrics = []; this.activeLineIndex = -1; this.currentMode = 'cover';
+            /* ★ 挂起标志 + 释放代际号（见 suspendPreviews / releasePreviews）。
+               代际号用于作废"关闭设置时仍在飞的异步引擎创建"——否则它们 resolve 后
+               会把刚释放的引擎又挂回来，WebGL 上下文跟着复活。 */
+            this._previewsSuspended = false; this._previewGen = 0;
             this.startTime = 0; this.isPlaying = true; this.rafId = null;
             this.lineElements = []; this.wordElementsByLine = []; this.wordHighlightElementsByLine = [];
             this.wcCanvasW = 0; this.wcCanvasH = 0; this.wcCurrentX = 0; this.wcCurrentY = 0;
@@ -240,8 +244,11 @@ function resolveFontFamilyInner(fontKey) {
                     fontFamily: getMS('tunnel', 'fontFamily', globalFontKey),
                     emotionGlow: getMS('tunnel','emotionGlow', 12)
                 },
-                dimension: defaultVisModeVar('dimension')
-            };
+                dimension: defaultVisModeVar('dimension'),
+                /* ★ 字面 · Jizura：预览区拿的是通用版式变量（本模式真正画什么由引擎决定，
+                   预览只保证"参数改动有回响"与切模式不串档）。 */
+                jizura: defaultVisModeVar('jizura')
+                };
             this.globalVars = { 
                 glassStrength: (intf.glassStrength != null ? intf.glassStrength : 40),
                 themeColor: tc
@@ -275,6 +282,9 @@ function resolveFontFamilyInner(fontKey) {
                 requestAnimationFrame(check);
             });
             await waitForLayout();
+            /* ★ 等布局期间设置页可能已经关闭（并 release 过）：此时绝不能再 setMode
+               ——它会清掉挂起标志，把预览循环在关闭之后重新拉起来。 */
+            if (this.destroyed || this._previewsSuspended) return;
             this.setMode(this.currentMode || 'cover');
             this.start();
 
@@ -295,6 +305,9 @@ function resolveFontFamilyInner(fontKey) {
 
             /* ★ 多次延迟重渲染，覆盖面板动画展开的各种时序 */
             const reRender = () => {
+                /* ★ 这三个定时器最长 600ms，必然跨过"开了设置马上关"的操作：
+                   挂起/已销毁时直接退出，别把 setMode 又跑起来（会清挂起标志）。 */
+                if (this.destroyed || this._previewsSuspended) return;
                 if (this.currentMode) {
                     this.setMode(this.currentMode);
                     this.update(this.lastTime || 0);
@@ -967,6 +980,9 @@ function resolveFontFamilyInner(fontKey) {
                 cancelAnimationFrame(this.rafId);
                 this.rafId = null;
             }
+            /* ★ 挂起态（设置页已关闭并 release 过）不允许自启动：任何异步续体或误调用
+               都不能把预览循环从释放后的状态里拉回来。解除挂起只认 setMode()。 */
+            if (this._previewsSuspended) { this.isPlaying = false; this.updatePlayIcon(); return; }
             this.startTime = performance.now() - (this.lastTime || 0);
             this.isPlaying = true;
             this.updatePlayIcon();
@@ -1093,10 +1109,6 @@ function resolveFontFamilyInner(fontKey) {
             if (this.currentMode === 'tempera' && this.temperaPreview) {
                 this.temperaPreview.setTime(t / 1000);
             }
-            /* 长卷模式推进 */
-            if (this.currentMode === 'scroll' && this.scrollPreview) {
-                this.scrollPreview.setTime(t / 1000);
-            }
             /* 流光隧道模式推进 */
             if (this.currentMode === 'tunnel' && this.tunnelEngine) {
                 this.tunnelEngine.update(t / 1000);
@@ -1119,23 +1131,136 @@ function resolveFontFamilyInner(fontKey) {
         }
 
         /* ★ 2026-10-01 预览容器互斥收口（用户实测「预览被别的模式预览背景遮挡」）：
-           pv/tempera/scroll/tunnel 四个容器同 z-index 叠在 playerEl 里，此前各分支
-           只管自己显示——pv 的不透明底色、scroll/tempera 的 canvas 会盖住兄弟模式，
+           pv/tempera/tunnel 三个容器同 z-index 叠在 playerEl 里，此前各分支
+           只管自己显示——pv 的不透明底色、tempera 的 canvas 会盖住兄弟模式，
            且未激活引擎也不暂停（白烧 GPU + 透明 canvas 混叠）。切模式统一全藏+全暂停。 */
         _hideAllPvPreviewContainers() {
-            ['pvPreviewContainer', 'temperaPreviewContainer', 'scrollPreviewContainer', 'tunnelPreviewContainer'].forEach(k => {
+            ['pvPreviewContainer', 'temperaPreviewContainer', 'tunnelPreviewContainer'].forEach(k => {
                 if (this[k]) this[k].style.display = 'none';
             });
             if (this.sonnetPreviewEngine) this.sonnetPreviewEngine.setPaused(true);
             if (this.temperaPreview) this.temperaPreview.setPaused(true);
-            if (this.scrollPreview) this.scrollPreview.setPaused(true);
             if (this.tunnelEngine) this.tunnelEngine.stop();
+            /* ★ 2026-10-03：补齐走 VisualizerManager 的预览（诗镜 verse / 维度…）。
+               它们挂在 playerEl 上、不在上面四个容器里，此前完全不受本函数管辖——
+               关掉设置后仍在隐藏 overlay 后面满帧渲染。见 VisualizerManager.stop()。 */
+            if (this.visManager) {
+                try { this.visManager.stop(); } catch (e) { logCatch('previewEngine', e); }
+            }
+        }
+
+        /**
+         * ★ 2026-10-03：真正**释放**预览引擎（不只是暂停）。
+         *
+         * 根因（devtools 实测，非推断）：外观预览每切过一个 Pixi 模式就新建一个
+         * pixi.Application，而关闭设置页此前只 display:none + setPaused(true)，
+         * **从不 destroy**。后果有二，且互相独立：
+         *
+         *   1. WebGL 上下文常驻。实测「未开设置」1 个上下文 → 「开过并关闭」7 个，
+         *      关掉后一个没少；仍挂在 DOM 上的活上下文 3 个
+         *      （tempera-view-container 480×360、pv-view-container 596×817 等），
+         *      连同 renderer / 纹理池一起白占显存。
+         *      —— 用户报的「外观设置预览框未删除/释放占用」就是这一条。
+         *   2. vendor/pixi 的**全局单例** Ticker.system 永久空转。它由
+         *      `SchedulerSystem.init`（pixi.mjs:40337，每建一个 WebGLRenderer 一次）
+         *      与 `EventsTicker.addTickerListener`（pixi.mjs:7206，每建一个 EventSystem
+         *      一次）挂上监听并 start()；而摘除只发生在 renderer/EventSystem 的
+         *      destroy() 里，且该单例 `_protected=true`（自己 destroy() 直接 return）。
+         *      实测：关掉设置后 vendor/pixi 仍以 Δ432~453 帧/1.5s 跑（基线 0），
+         *      与关闭时机无关。
+         *
+         * 实测验证：对手工 destroy 四个引擎后，DOM 里活上下文 3 → 0、
+         * Ticker.system listener 4 → 0、pixi rAF 447 → 0。所以**释放引擎即可同时
+         * 收回上下文与那条全局空转循环**，无需（也不该）手动去 stop 那个受保护单例。
+         *
+         * 重开设置时各模式分支的 `if (!this.xxxPreview)` 守卫会按需重建。
+         */
+        releasePreviews() {
+            /* 先作废在飞的异步创建：它们 resolve 时拿到旧 gen 会自毁（见各模式分支） */
+            this._previewGen = (this._previewGen || 0) + 1;
+            const kill = (fn) => { try { fn(); } catch (e) { logCatch('previewEngine', e); } };
+            if (this.sonnetPreviewEngine) { kill(() => this.sonnetPreviewEngine.destroy()); this.sonnetPreviewEngine = null; }
+            if (this.temperaPreview) { kill(() => this.temperaPreview.destroy()); this.temperaPreview = null; }
+            if (this.tunnelEngine) { kill(() => this.tunnelEngine.stop()); this.tunnelEngine = null; }
+            /* 走 VisualizerManager 的预览（verse/dimension/letterpress/neon）：destroy()
+               会销毁 activeInstance 并把 currentMode 置空，之后 switchMode 可重建。 */
+            if (this.visManager) kill(() => this.visManager.destroy());
+            /* 清掉创建中标志，否则重开设置时守卫会以为"正在建"而永不重建 */
+            this._pvCreating = false; this._temperaCreating = false;
+            /* 容器里残留的 canvas 一并摘掉（destroy 已释放 GL 资源，这里只收 DOM） */
+            ['pvPreviewContainer', 'temperaPreviewContainer', 'tunnelPreviewContainer']
+                .forEach(k => { if (this[k]) this[k].innerHTML = ''; });
+        }
+
+        /**
+         * 预览根容器（#lyricPreviewContainer）的显隐。
+         *
+         * ★ 2026-10-03 二修（用户实测：「开了设置页预览框之后…歌词滚动还是卡，
+         *   而且左边部分无法点击，就是预览框容器没有彻底删掉」）。上一层只做了
+         *   `releasePreviews()`（销毁引擎 + 释放 WebGL 上下文），**不够**：
+         *
+         *   1. 命中测试：浮层是靠 `opacity:0 / visibility:hidden` 收起的，而
+         *      `opacity:0` **不拦点击**；只要子树里有人写了 `visibility:visible`
+         *      就会整块"复活"成一块看不见的玻璃板。预览里恰好有：
+         *      `setMode()` 会给 `.preview-lyrics-container` 写 inline
+         *      `visibility:visible`（visualizerLike 取反时）。实测关掉设置后
+         *      `document.elementsFromPoint(360,270)` 顶层就是
+         *      `#previewLyricsScroll` —— 用户点的就是它。
+         *   2. 渲染：trace（3s 窗口）实测基线 `Paint` 3 次、关掉设置后 132~612 次
+         *      （≈每帧一次全屏 paint）、`DrawRenderPass` 2000→2437、
+         *      `Graphics.Pipeline` 494→999ms。诱因是 `.preview-blur-bg`
+         *      （`filter:blur(60px)` + 无限 sway 动画）：opacity:0 的祖先并不阻止
+         *      它继续光栅化。把根容器 `display:none` 后 Paint 归零。
+         *
+         * ★ 判据取**浮层自身是否可见**（唯一真值），不取调用方意图：键盘快捷键
+         *   也能在设置关着的时候调 `switchAppearanceMode → setMode`，那时同样
+         *   不能把预览露出来。
+         */
+        _syncPreviewRootVisibility() {
+            const root = this.container;
+            if (!root) return;
+            const ov = root.closest ? root.closest('.settings-overlay') : null;
+            const shown = !ov || ov.classList.contains('visible');
+            this._previewRootHidden = !shown;
+            const want = shown ? '' : 'none';
+            if (root.style.display !== want) root.style.display = want;
+        }
+
+        /**
+         * 暂停整台预览（设置页关闭 / 离开外观 Tab 时调用）。
+         * 三条退出路径（关闭按钮、ESC、点遮罩）与 Tab 切换、OOBE 跳转统一走这里，
+         * 不再各自手写「isPlaying=false」——漏掉 _hideAllPvPreviewContainers 的那几条，
+         * 正是「关掉设置后画面还在后台渲染、主播放器逐字歌词变卡」的根因。
+         * 重开设置时 setMode() 会清掉 _previewsSuspended 并恢复各引擎。
+         */
+        suspendPreviews() {
+            this._previewsSuspended = true;
+            this.isPlaying = false;
+            if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
+            try { this.updatePlayIcon(); } catch (e) { logCatch('previewEngine', e); }
+            this._hideAllPvPreviewContainers();
+            /* ★ 2026-10-03：藏起来还不够——必须把这批引擎连 WebGL 上下文一起释放，
+               否则它们连同 pixi 的全局 Ticker.system 会一直挂在这个隐藏的 overlay
+               后面（详见 releasePreviews 的实测数据）。 */
+            this.releasePreviews();
+            /* ★ 2026-10-03 二修：最后把整个预览子树 display:none。
+               只释放引擎还不够——残留的 DOM（模糊背景 / 歌词滚动层）仍在
+               每帧被光栅化、并且吞掉主界面左侧的点击。详见 _syncPreviewRootVisibility。 */
+            this._syncPreviewRootVisibility();
         }
 
         setMode(mode) {
             this.currentMode = mode;
+            /* ★ 进入模式 = 解除挂起（suspendPreviews 的反向操作）：设置页重开 /
+               切回外观 Tab 都走 setMode，若不清零，异步建好的预览会被误判为
+               「已挂起」而永远保持暂停。 */
+            this._previewsSuspended = false;
+            /* 先把预览容器放回布局再往下走：隐藏态下量出来的都是 0，
+               歌词滚动/相机那些 waitForLayout 之后的测量会拿到错的值。
+               （浮层没打开时它还是会保持 none，见 _syncPreviewRootVisibility。） */
+            this._syncPreviewRootVisibility();
             this._wcLastTransform = '';   /* 切模式后 scrollEl 的 transform 可能被其他模式改写，强制相机重写 */
-            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tempera', 'view-scroll', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon');
+            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tempera', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-jizura');
 
             const ca = this.playerEl.querySelector('.preview-cover-area');
             if (ca) ca.style.display = (mode === 'cover') ? '' : 'none';
@@ -1184,11 +1309,12 @@ function resolveFontFamilyInner(fontKey) {
                改为同步占位 _pvCreating + 立即赋 sonnetPreviewEngine。 */
             if (!this.sonnetPreviewEngine && !this._pvCreating) {
                 this._pvCreating = true;
+                const gen = this._previewGen;   /* ★ 关闭设置会 release 并作废本次创建 */
                 if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
                 this._sonnetModulePromise = this._sonnetModulePromise
                     || import('./visualizers/sonnet/SonnetEngine.js');
                 this._sonnetModulePromise.then(({ SonnetEngine, deriveCoverBackground }) => {
-                    if (this.destroyed || this.sonnetPreviewEngine) {
+                    if (this.destroyed || this.sonnetPreviewEngine || gen !== this._previewGen) {
                         this._pvCreating = false;
                         return;
                     }
@@ -1217,6 +1343,18 @@ function resolveFontFamilyInner(fontKey) {
                     eng.lyricsFontScale = (this.modeVars.pv && this.modeVars.pv.fontSize) || 1.2;
                     eng.init().then(() => {
                         this._pvCreating = false;
+                        /* ★ 建好之前设置页已被关掉并 release 过：直接销毁，别把
+                           WebGL 上下文和 pixi 全局 ticker 又挂回来。 */
+                        if (this.destroyed || gen !== this._previewGen) {
+                            try { eng.destroy(); } catch (e) { logCatch('previewEngine', e); }
+                            return;
+                        }
+                        /* ★ 建好之前设置页可能已经被关掉：此时必须直接置暂停，
+                           否则新引擎会在隐藏 overlay 后面满帧空转。 */
+                        if (this._previewsSuspended) {
+                            try { eng.setPaused(true); } catch (e) { logCatch('previewEngine', e); }
+                            return;
+                        }
                         eng.setLyrics(this.lyrics || []);
                         eng.applySettings(this.modeVars.pv || {});
                         eng.update((this.lastTime || 0) / 1000);
@@ -1250,46 +1388,19 @@ function resolveFontFamilyInner(fontKey) {
             if (!this.temperaPreview && !this._temperaCreating) {
                 if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
                 this._temperaCreating = true;
+                const gen = this._previewGen;   /* ★ 关闭设置会 release 并作废本次创建 */
                 import('./visualizers/tempera/temperaMode.js').then(m => {
                     /* FALLBACK_SONGS 是 loadLyrics 局部变量，此处拿不到——credits 元数据可省 */
                     return m.createDetachedTemperaRuntime(this.temperaPreviewContainer, this.lyrics || [], {});
                 }).then(handle => {
-                    if (this.destroyed) { handle.destroy(); return; }
+                    if (this.destroyed || gen !== this._previewGen) { handle.destroy(); return; }
                     this.temperaPreview = handle;
+                    /* ★ 创建是异步的：期间设置页可能已关闭 → 直接暂停，别在后台空转 */
+                    if (this._previewsSuspended) { handle.setPaused(true); return; }
                     handle.setTime((this.lastTime || 0) / 1000);
                 }).catch(e => { this._temperaCreating = false; logCatch('previewEngine', e); });
             }
             if (this.temperaPreview) this.temperaPreview.setPaused(false);
-        } else if (mode === 'scroll') {
-            /* ★ 2026-10-01：长卷预览——ScrollEngine 独立实例 */
-            if (this.visManager) this.visManager.destroy();
-            this._hideAllPvPreviewContainers();
-            this.playerEl.classList.add('view-scroll');
-            if (!this.scrollPreviewContainer) {
-                this.scrollPreviewContainer = document.createElement('div');
-                this.scrollPreviewContainer.className = 'scroll-view-container';
-                this.scrollPreviewContainer.style.position = 'absolute';
-                this.scrollPreviewContainer.style.inset = '0';
-                this.scrollPreviewContainer.style.width = '100%';
-                this.scrollPreviewContainer.style.height = '100%';
-                this.scrollPreviewContainer.style.zIndex = '20';
-                this.playerEl.appendChild(this.scrollPreviewContainer);
-            }
-            this.scrollPreviewContainer.style.display = 'block';
-            if (this.scrollEl) this.scrollEl.style.display = 'none';
-            if (this.wireframesEl) this.wireframesEl.style.display = 'none';
-            if (!this.scrollPreview && !this._scrollCreating) {
-                if (!this.lyrics || !this.lyrics.length) this.loadLyrics();
-                this._scrollCreating = true;
-                import('./visualizers/scroll/scrollMode.js').then(m => {
-                    return m.createDetachedScrollEngine(this.scrollPreviewContainer, this.lyrics || []);
-                }).then(handle => {
-                    if (this.destroyed) { handle.destroy(); return; }
-                    this.scrollPreview = handle;
-                    handle.setTime((this.lastTime || 0) / 1000);
-                }).catch(e => { this._scrollCreating = false; logCatch('previewEngine', e); });
-            }
-            if (this.scrollPreview) this.scrollPreview.setPaused(false);
         } else if (mode === 'tunnel') {
             if (this.visManager) this.visManager.destroy();
             this._hideAllPvPreviewContainers();
@@ -1361,7 +1472,7 @@ function resolveFontFamilyInner(fontKey) {
                pv/tempera/scroll/tunnel 及全景视觉模式的 Pixi canvas 是透明或局部底色，
                预览播放器自己的模糊封面背景 + 歌词 DOM 会从底下透出来。此前只有
                pv/tunnel 藏了歌词容器、背景从未藏——统一在此收口，回默认类模式恢复。 */
-            const visualizerLike = mode === 'pv' || mode === 'tempera' || mode === 'scroll' || mode === 'tunnel'
+            const visualizerLike = mode === 'pv' || mode === 'tempera' || mode === 'tunnel'
                 || (this.visManager && this.visManager.has(mode));
             if (this.bgEl) this.bgEl.style.visibility = visualizerLike ? 'hidden' : 'visible';
             if (this.lyricsContainerEl) {
@@ -1458,9 +1569,13 @@ function resolveFontFamilyInner(fontKey) {
             const rgbStr = this.hexToRgb(globalThemeCol);
 
             r.style.setProperty('--preview-theme-color', globalThemeCol);
-            r.style.setProperty('--theme-color', globalThemeCol);
+            /* P1：改写到 --aria-accent。别名 var(--theme-color) 在使用处解析，
+               所以在预览根节点 r 上覆盖 --aria-accent，r 子树里所有
+               var(--theme-color) / rgba(var(--theme-color-rgb), α) 会自动跟着变，
+               无需再手写第二对变量（这正是别名机制的价值）。 */
+            r.style.setProperty('--aria-accent', globalThemeCol);
             r.style.setProperty('--preview-theme-color-rgb', rgbStr);
-            r.style.setProperty('--theme-color-rgb', rgbStr);
+            r.style.setProperty('--aria-accent-rgb', rgbStr);
             r.style.setProperty('--preview-highlight-color', highlightCol);
             r.style.setProperty('--highlight-color', highlightCol);
             r.style.setProperty('--preview-graphic-color', graphicCol);
@@ -1715,19 +1830,13 @@ function resolveFontFamilyInner(fontKey) {
             const rerenderKeys = ['align', 'fontFamily', 'showTranslation', 'showRomaji'];
             if (rerenderKeys.includes(name)) {
                 /* ★ 2026-10-01 夜（用户实测「设置里 tempera 预览字体永远黑体」）：
-                   tempera/scroll 预览实例的字体烘焙在 Pixi 场景里，fontFamily 变化
+                   tempera 预览实例的字体烘焙在 Pixi 场景里，fontFamily 变化
                    必须销毁重建预览实例（render() 只重建 DOM 歌词，动不到 Pixi）。 */
                 if (name === 'fontFamily' && this.currentMode === 'tempera' && this.temperaPreview) {
                     try { this.temperaPreview.destroy(); } catch (e) { logCatch('previewEngine', e); }
                     this.temperaPreview = null;
                     this._temperaCreating = false;
                     this.setMode('tempera');
-                }
-                if (name === 'fontFamily' && this.currentMode === 'scroll' && this.scrollPreview) {
-                    try { this.scrollPreview.destroy(); } catch (e) { logCatch('previewEngine', e); }
-                    this.scrollPreview = null;
-                    this._scrollCreating = false;
-                    this.setMode('scroll');
                 }
                 this.render();
                 requestAnimationFrame(() => {

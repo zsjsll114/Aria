@@ -27,7 +27,7 @@ const HOTKEY = 't';
 
 /* 与 syncPreviewToMain 同一份名单：名单外的 view-* 一律按 cover 处理，
    否则会写进一个 applyModeSettings 认不出来的模式键 */
-const KNOWN_MODES = ['dimension', 'letterpress', 'neon', 'pv', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
+const KNOWN_MODES = ['jizura', 'dimension', 'letterpress', 'neon', 'pv', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
 
 /* 四态定义：trans → showTranslation，roma → showRomaji（顺序即循环顺序） */
 const LAYOUTS = [

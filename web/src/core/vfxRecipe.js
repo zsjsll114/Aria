@@ -60,6 +60,11 @@ export const BUILTIN_FONTS = ['default', 'inherit', 'serif', 'kai', 'hei', 'fang
 
 const ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 
+/** 宽高比："16:9" / "9:16" / "4:3"… —— 给"画幅"这类字段用。
+    刻意不用 id 类型（含冒号，ID_RE 会拒）也不用 enum（引擎的画幅表会随版本增删，
+    枚举写死就等于以后加一档画幅要 bump schema、老分享码全废）。 */
+const RATIO_RE = /^\d{1,2}:[1-9]\d?$/;
+
 /**
  * 校验单个值。返回 `{ ok, value }`（value 是归一化后的值）或 `{ ok:false, code, expect }`。
  * 归一化只做「数字字符串 → 数字」这一件事：设置面板的滑块写进 modeSettings 的
@@ -121,6 +126,12 @@ export function validateValue(spec, raw) {
             }
             return { ok: true, value: raw };
         }
+        case 'ratio': {
+            if (typeof raw !== 'string' || !RATIO_RE.test(raw.trim())) {
+                return { ok: false, code: 'bad-ratio', expect: '宽:高（如 16:9）' };
+            }
+            return { ok: true, value: raw.trim() };
+        }
         default:
             return { ok: false, code: 'bad-spec' };
     }
@@ -132,13 +143,18 @@ const tNum = (min, max) => ({ type: 'number', min, max });
 const tEnum = (...values) => ({ type: 'enum', values });
 const tColor = (opts) => ({ type: 'color', ...(opts || {}) });
 const tFont = () => ({ type: 'font' });
+/* ★ 标识符类型：给"键名由上游定义、集合会随版本增删"的字段用（风格键/情绪键）。
+   用它而不是 tEnum 的理由：枚举写死在 schema 里，上游加一套风格就要 bump 版本、
+   老分享码全部作废；id 只约束"是个合法标识符"，形状由取值侧保证。 */
+const tId = () => ({ type: 'id' });
+const tRatio = () => ({ type: 'ratio' });
 
 /* ---------- 视图模式清单 ---------- */
 
-/** 与 index.html 的 .view-mode-card[data-mode] 九个卡片一致；220 的 switchView 只认这些。 */
+/** 与 index.html 的 .view-mode-card[data-mode] 卡片一致；220 的 switchView 只认这些。 */
 export const VIEW_MODES = [
     'cover', 'lyrics', 'flyin', 'wordcloud', 'pv', 'tunnel', 'dimension', 'letterpress', 'neon',
-    'tempera', 'scroll',
+    'tempera', 'jizura',
 ];
 
 /* ---------- 命名空间字段表 ---------- */
@@ -179,7 +195,103 @@ export const INTERFACE_FIELDS = {
     compactMode: tBool(),
     themeColor: tColor(),
     fontFamily: tFont(),
+    /* ★ 2026-10-05 补：动效强度是纯观感项，此前漏在配方外——于是「极简风」这类
+       外观 mod 没法把自己的一半（低动效、少缩放）带上，只能分享颜色和字体。
+       取值 0~100；`null`（= 跟随性能档）**不进配方**：那是"用户没表过态"，
+       不是"就要这个值"，收进来会把它当成显式覆盖，把朋友原来的"跟随"档位钉死。 */
+    vfxIntensity: tInt(0, 100),
 };
+
+/**
+ * 外观令牌白名单（2026-10-06 新增 `tokens` 段）。
+ *
+ * ★ 为什么只有这一批：见本文件末尾关于「为什么不给 mod 直接覆盖 --aria-*」的说明 ——
+ *   **只有「没有其它写入者」的令牌才允许进配方**。有受管写入口的令牌一律不在表内：
+ *     --aria-accent / --aria-accent-rgb  → 190 applyThemeColor 写
+ *     --theme-color / -rgb（别名）        → 同上，且它是别名不该被写
+ *     --aria-z-modal / -welcome           → ui/overlay 与首跑层按令牌算层级
+ *     --dtk-hl / -glow                    → 250-desktop-lyrics 推送桌面歌词色
+ *     --aria-lyric-origin                 → 190 按对齐方向写
+ *   这些被 mod 再写一遍行内值只会与受管写入打架，谁赢取决于时序 ——
+ *   那正是「导了没反应 / 过一会儿被改回去」的形状（OOBE 主题色回写就是这个形状）。
+ *   主题色要改走 interface.themeColor（它本来就驱动 --aria-accent）。
+ *
+ * ★ 这一批恰好覆盖用户点名的能力：**圆角（窗口直角）、模糊、颜色、排版**。
+ *   值类型：length / percent / color / rgb / shadow / focus-ring。
+ */
+export const TOKEN_FIELDS = {
+    '--aria-radius-sm': 'length',
+    '--aria-radius-md': 'length',
+    '--aria-radius-xl': 'length',
+    '--aria-radius-lg': 'length',
+    '--aria-radius-full': 'length',
+    '--aria-glass-blur': 'length',
+    '--aria-glass-saturate': 'percent',
+    '--aria-glass-bg': 'color',
+    '--aria-glass-border': 'color',
+    '--aria-glass-shadow': 'shadow',
+    '--aria-text-1': 'color',
+    '--aria-text-2': 'color',
+    '--aria-text-3': 'color',
+    '--aria-space-1': 'length',
+    '--aria-space-2': 'length',
+    '--aria-space-3': 'length',
+    '--aria-space-4': 'length',
+    '--aria-space-5': 'length',
+    '--aria-space-6': 'length',
+    '--aria-font-xs': 'length',
+    '--aria-font-sm': 'length',
+    '--aria-font-md': 'length',
+    '--aria-font-lg': 'length',
+    '--aria-font-title': 'length',
+    '--aria-focus-ring': 'focus-ring',
+    '--aria-focus-offset': 'length',
+    '--aria-danger': 'color',
+    '--aria-danger-rgb': 'rgb',
+    '--aria-success': 'color',
+    '--aria-warning': 'color',
+};
+
+const RE_LENGTH = /^(?:0|\d+(?:\.\d+)?(?:px|rem|em))$/;
+const RE_PERCENT = /^\d+(?:\.\d+)?%$/;
+const RE_HEX = /^#(?:[0-9a-fA-F]{3,8})$/;
+const RE_RGBFN = /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/;
+const RE_TRIPLE = /^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$/;
+const RE_FOCUS_RING = /^\d+(?:\.\d+)?px solid (?:#[0-9a-fA-F]{3,8}|var\(--[a-z0-9-]+\))$/;
+/** shadow 是自由度最高的一项：只做「字符白名单 + 安全扫描」，不解析语法。 */
+const RE_SHADOW_CHARS = /^[a-zA-Z0-9#%.,()\s-]+$/;
+
+/**
+ * 令牌值安全扫描（与外观 mod 加载器同一套判据）。
+ * 令牌值会写进 `style.setProperty()`，含 `;` / `{}` 能"跑出声明"开新规则；
+ * `url(` / `expression(` / `javascript:` 是外部加载与脚本执行面。
+ */
+export function tokenValueSafe(v) {
+    const s = typeof v === 'number' ? String(v) : v;
+    if (typeof s !== 'string') return false;
+    if (s.length === 0 || s.length > 120) return false;
+    if (/[;{}\\]/.test(s)) return false;
+    if (/url\s*\(/i.test(s)) return false;
+    if (/expression\s*\(/i.test(s)) return false;
+    if (/javascript:/i.test(s)) return false;
+    if (s.includes('</') || /@import/i.test(s)) return false;
+    return true;
+}
+
+function checkTokenValue(kind, raw) {
+    if (!tokenValueSafe(raw)) {
+        return { ok: false, code: 'unsafe-token', expect: '不含 ; { } \\ url() expression() 的安全值' };
+    }
+    const s = String(raw).trim();
+    const bad = (expect) => ({ ok: false, code: 'bad-token-value', expect });
+    if (kind === 'length') return RE_LENGTH.test(s) ? { ok: true, value: s } : bad('长度值，如 28px / 0 / 0.8rem');
+    if (kind === 'percent') return RE_PERCENT.test(s) ? { ok: true, value: s } : bad('百分比，如 100% / 180%');
+    if (kind === 'color') return (RE_HEX.test(s) || RE_RGBFN.test(s)) ? { ok: true, value: s } : bad('颜色，如 #8AB4F8 / rgba(32,33,36,0.98)');
+    if (kind === 'rgb') return RE_TRIPLE.test(s) ? { ok: true, value: s } : bad('逗号分隔的三个通道值，如 138, 180, 248');
+    if (kind === 'focus-ring') return RE_FOCUS_RING.test(s) ? { ok: true, value: s } : bad('形如 2px solid #8AB4F8 / 2px solid var(--aria-accent)');
+    if (kind === 'shadow') return (s === 'none' || RE_SHADOW_CHARS.test(s)) ? { ok: true, value: s } : bad('阴影值或 none');
+    return bad('未知类型');
+}
 
 /** 分模式版式里所有出现过的可调项（各模式再各自挑自己那份子集）。 */
 export const MODE_FIELD_POOL = {
@@ -244,9 +356,33 @@ export const MODE_FIELD_POOL = {
     showDecor: tBool(),
     showCornerMarks: tBool(),
     enableTransitions: tBool(),
-    /* 长卷 Scroll */
-    scrollSpeed: tNum(0.1, 4),
-    showChapters: tBool(),
+    /* 字面 · Jizura（2026-10-06 补 schema：defaults.js 已收录，漏一个键就存不进配方）。
+       style/mood 用 id 而不是 enum —— 上游风格 27 套、情绪键随版本增删，写死枚举
+       等于"以后加一套风格就得 bump schema、老分享码全废"。 */
+    style: tId(),
+    mood: tId(),
+    aspect: tRatio(),
+    res: tInt(360, 2160),
+    fps: tInt(6, 60),
+    fast: tBool(),
+    /* 性能档是三档枚举（不是 id）：这三档对应面板上的三个按钮，值域由我们定义，
+       不像上游风格键那样会增删 —— 用 enum 才能把拼错的值挡在配方之外。 */
+    perf: tEnum('auto', 'eco', 'hd'),
+    /* 动画节拍：'every' = 逐帧（默认），'onTwos' = 引擎原味一拍两格 */
+    beat: tEnum('every', 'onTwos'),
+    /* 画面细节（引擎 fx）：六个 0~1 数值 + 闪光开关 + HUD 三档 */
+    motion: tNum(0, 1),
+    glitch: tNum(0, 1),
+    chroma: tNum(0, 1),
+    decor: tNum(0, 1),
+    density: tNum(0, 1),
+    texture: tNum(0, 1),
+    flash: tBool(),
+    hud: tEnum('auto', 'on', 'off'),
+    /* 按字切分镜：'off' / 'cuts'（最多 12 块）。
+       ★ 曾经有第三档 'chars'（每字一块）已从面板与配方撤下：实测一个 cut 就是一次分镜，
+       每字一块 = 一个字一个画面，观感不可接受（2026-10-07）。留着的代码只做能力验证。 */
+    wordSync: tEnum('off', 'cuts'),
 };
 
 /**
@@ -282,12 +418,19 @@ export const MODE_FIELDS_BY_MODE = {
         'themeColor', 'fontFamily', 'emotionGlow'],
     letterpress: ['fontSize', 'highlightColor', 'showTranslation', 'themeColor', 'fontFamily', 'emotionGlow'],
     neon: ['fontSize', 'highlightColor', 'showTranslation', 'themeColor', 'fontFamily', 'emotionGlow'],
-    /* ★ 2026-10-02 补版画/长卷（defaults.js 早已收录，schema 缺席 = 设置存不下来） */
+    /* ★ 2026-10-02 补版画（defaults.js 早已收录，schema 缺席 = 设置存不下来） */
     tempera: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily',
         'cameraIntensity', 'glyphMotion', 'textInversion', 'showBlocks', 'showDecor',
         'showCornerMarks', 'enableTransitions', 'emotionGlow'],
-    scroll: ['fontSize', 'scrollSpeed', 'highlightColor', 'themeColor', 'showChapters',
-        'fontFamily', 'emotionGlow'],
+    /* ★ 2026-10-06 补字面 · Jizura。
+       `aspect` 虽然 P1 的面板还没暴露（恒为上游默认 16:9），也必须进 schema：
+       defaults.js 里有这个键，schema 不收 = 它**永远存不进配方**，一旦 P2 给出画幅
+       下拉，用户设置会在分享/导入时静默丢失（test_vfx_recipe 的"schema 覆盖 defaults
+       每个键"就是在拦这个，别绕）。 */
+    jizura: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
+        'showTranslation', 'style', 'mood', 'aspect', 'fps', 'fast', 'perf',
+        'beat', 'wordSync',
+        'motion', 'glitch', 'chroma', 'decor', 'density', 'texture', 'flash', 'hud'],
 };
 
 /** 配方的四个组，UI 说明与统计共用这一份顺序。 */
@@ -297,6 +440,7 @@ export const RECIPE_GROUPS = [
     { key: 'background', label: '背景', desc: '动态背景开关、模糊半径、亮度、呼吸摇摆的开关/幅度/周期' },
     { key: 'interface', label: '界面观感', desc: '主题色、毛玻璃强度、紧凑模式、界面字体（只这几个，语言与本机字体库不含）' },
     { key: 'modeSettings', label: '各模式版式偏好', desc: '每个视觉模式独立记住的那套参数（镜头、阻尼、行距、词云字号区间、发光强度…）' },
+    { key: 'tokens', label: '外观令牌', desc: '圆角（窗口直角）、毛玻璃模糊、文字三档色、间距字号、焦点环、语义色' },
 ];
 
 /**
@@ -495,6 +639,20 @@ export function collectRecipe(settings, mode, modes) {
 
     const iface = {};
     if (pickInto(s.interface, INTERFACE_FIELDS, iface)) recipe.interface = iface;
+    /* 当前生效的外观令牌也进「导出当前外观」（只收白名单内的，且滤掉非法/越界值） */
+    {
+        const stored = s.interface && isPlainObject(s.interface.appearanceTokens) ? s.interface.appearanceTokens : null;
+        if (stored) {
+            const tk = {};
+            for (const k of Object.keys(stored)) {
+                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, k) ? TOKEN_FIELDS[k] : null;
+                if (!kind) continue;
+                const r = checkTokenValue(kind, stored[k]);
+                if (r.ok) tk[k] = r.value;
+            }
+            if (Object.keys(tk).length) recipe.tokens = tk;
+        }
+    }
 
     const wanted = (Array.isArray(modes) && modes.length ? modes : VIEW_MODES).filter(m => VIEW_MODES.indexOf(m) >= 0);
     const ms = (s.modeSettings && typeof s.modeSettings === 'object') ? s.modeSettings : null;
@@ -537,9 +695,9 @@ export function validateRecipe(input) {
 
     for (const key of Object.keys(input)) {
         if (key !== 'sv' && key !== 'mode' && key !== 'lyrics' && key !== 'background'
-            && key !== 'interface' && key !== 'modeSettings') {
+            && key !== 'interface' && key !== 'modeSettings' && key !== 'tokens') {
             fail(errors, key, isForbiddenKey(key) ? 'forbidden-key' : 'unknown-field',
-                isForbiddenKey(key) ? '不允许出现（见「配方不含哪些设置」）' : 'sv / mode / lyrics / background / interface / modeSettings', key);
+                isForbiddenKey(key) ? '不允许出现（见「配方不含哪些设置」）' : 'sv / mode / lyrics / background / interface / modeSettings / tokens', key);
         }
     }
 
@@ -617,6 +775,29 @@ export function validateRecipe(input) {
         }
     }
 
+    /* tokens：键是令牌名，走自己的白名单与值类型（不是「对象里每个键都用同一个 validator」）。
+       ★ 不在白名单 = 明确拒绝，并说明"这批令牌不在允许范围内"而不是含糊的"未知参数" ——
+       用户粘一份写着 --aria-accent 的 mod 进来时，最需要知道的就是"主题色要改走 interface.themeColor"。 */
+    if (input.tokens !== undefined) {
+        const src = input.tokens;
+        if (!isPlainObject(src)) fail(errors, 'tokens', 'bad-shape', '一个对象', typeof src);
+        else {
+            const target = {};
+            for (const key of Object.keys(src)) {
+                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, key) ? TOKEN_FIELDS[key] : null;
+                if (!kind) {
+                    fail(errors, 'tokens.' + key, 'token-not-allowed',
+                        '本段只收没有其它写入者的令牌；主题色走 interface.themeColor', key);
+                    continue;
+                }
+                const r = checkTokenValue(kind, src[key]);
+                if (r.ok) target[key] = r.value;
+                else fail(errors, 'tokens.' + key, r.code, r.expect, src[key]);
+            }
+            if (Object.keys(target).length) out.tokens = target;
+        }
+    }
+
     if (errors.length) return { ok: false, errors };
     /* 全空配方没意义：明确拒掉，免得 UI 显示「导入成功」却什么都没变 */
     if (Object.keys(out).length <= 1) return { ok: false, errors: [{ path: '$', code: 'empty', expect: '至少一项视觉参数', got: '' }] };
@@ -671,6 +852,9 @@ export const ERROR_TEXT = {
     'bad-spec': '内部校验规则缺失',
     'unknown': '无法解析',
     empty: '配方里没有任何视觉参数',
+    /* 外观 mod 文件（.aria-theme.json）专用 —— 复用 too-large / bad-json，不新造同义词 */
+    'empty-text': '文件是空的',
+    'bad-mod-version': 'mod 文件版本与本程序不一致',
 };
 
 /**
@@ -804,6 +988,16 @@ export function applyRecipeToSettings(settings, recipe, activeMode) {
         Object.assign(s.interface, r.interface);
         counts.interface = Object.keys(r.interface).length;
     }
+    /* ★ tokens 落在 interface.appearanceTokens 下，**不新开顶层键**：
+       loadSettings 只展开它认识的键，顶层新键会被静默丢掉（AGENTS 记过这个坑）；
+       而 interface 下的额外键是全量展开的。写入后由 190 applyInterfaceSettings
+       统一落到 documentElement 的行内自定义属性 —— 单一受管写入者，别处不再补写。 */
+    if (r.tokens) {
+        if (!isPlainObject(s.interface)) s.interface = {};
+        const cur = isPlainObject(s.interface.appearanceTokens) ? s.interface.appearanceTokens : {};
+        s.interface.appearanceTokens = Object.assign({}, cur, r.tokens);
+        counts.tokens = Object.keys(r.tokens).length;
+    }
     if (r.modeSettings) {
         if (!isPlainObject(s.modeSettings)) s.modeSettings = {};
         let n = 0;
@@ -851,7 +1045,7 @@ export function summarizeRecipe(recipe) {
     const groups = {};
     for (const g of RECIPE_GROUPS) groups[g.key] = 0;
     if (r.mode) groups.mode = 1;
-    for (const key of ['lyrics', 'background', 'interface']) {
+    for (const key of ['lyrics', 'background', 'interface', 'tokens']) {
         if (isPlainObject(r[key])) groups[key] = Object.keys(r[key]).length;
     }
     if (isPlainObject(r.modeSettings)) {
@@ -968,4 +1162,106 @@ export function normalizePresetList(raw) {
         if (out.length >= MAX_PRESETS) break;
     }
     return out;
+}
+
+/* ---------- 外观 mod 文件（.aria-theme.json） ---------- */
+
+/**
+ * 外观 mod 文件格式（2026-10-05）：
+ *   {
+ *     "ariaTheme": 1,              // 文件格式版本（独立于配方的 sv）
+ *     "name": "Google 极简",        // 展示用；导入时作为配方名
+ *     "author": "...",             // 可选
+ *     "description": "...",        // 可选，导入成功后展示
+ *     "recipe": { ...配方对象... }
+ *   }
+ * 同时接受**裸配方对象**（就是分享码里那段 JSON）——于是 encodeRecipe 的产物可以直接
+ * 存成 .json 分发：分享码与 mod 文件是同一份数据的两种载体，共用同一套校验，不必维护两份。
+ *
+ * ★ 为什么不给 mod 一个「直接覆盖 --aria-* 令牌」的入口（尽管令牌层已建好）：
+ *   当前 active 的令牌（--aria-accent/-rgb、--aria-z-modal、--aria-z-welcome、--dtk-*）
+ *   每一个都已经有**受管的写入口**（190 applyThemeColor 写 accent、ui/overlay.js 按令牌
+ *   算层级、250-desktop-lyrics 推送桌面歌词色）。mod 再写一遍行内值只会与它们打架，
+ *   而且谁赢取决于时序 —— 那正是"导了没反应"或"过一会儿被改回去"的经典成因
+ *   （OOBE 主题色回写 bug 就是这个形状）。
+ *   外观 mod 现在通过配方字段表达：主题色走 interface.themeColor（它本来就驱动 --aria-accent）。
+ *   将来 P2/P3 引入的 --aria-glass-* / --aria-radius-* 等**没有其它写入者**的令牌，
+ *   再按 scripts/audits/token-registry.json 的 reserved 名单开白名单 token 段，那时才有意义。
+ */
+export const THEME_MOD_KIND = 'ariaTheme';
+export const THEME_MOD_VERSION = 1;
+const MOD_AUTHOR_MAX = 40;
+const MOD_DESC_MAX = 160;
+
+/** mod 的展示字段是外部输入：去控制字符 + 限长（与预设名同一套处理） */
+function cleanModText(v, max) {
+    if (typeof v !== 'string') return '';
+    return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
+}
+
+/**
+ * 解析一份 mod 文件文本。
+ * @returns {{ok:true, recipe:Object, meta:{name:string,author:string,description:string}}
+ *          |{ok:false, errors:Array}}
+ */
+export function parseThemeMod(text) {
+    if (typeof text !== 'string' || !text.trim()) {
+        return { ok: false, errors: [{ path: '$', code: 'empty-text', expect: '一个 JSON 文件的内容', got: '' }] };
+    }
+    if (text.length > MAX_CODE_CHARS) {
+        return { ok: false, errors: [{ path: '$', code: 'too-large', expect: '不超过 ' + MAX_CODE_CHARS + ' 字符', got: String(text.length) }] };
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    } catch (e) {
+        return { ok: false, errors: [{ path: '$', code: 'bad-json', expect: '合法 JSON', got: '解析失败' }] };
+    }
+
+    let raw = parsed;
+    let meta = { name: '', author: '', description: '' };
+    if (isPlainObject(parsed) && parsed[THEME_MOD_KIND] !== undefined) {
+        const errors = [];
+        if (parsed[THEME_MOD_KIND] !== THEME_MOD_VERSION) {
+            return { ok: false, errors: [{ path: THEME_MOD_KIND, code: 'bad-mod-version', expect: '本版本支持 ' + THEME_MOD_VERSION, got: String(parsed[THEME_MOD_KIND]) }] };
+        }
+        for (const key of Object.keys(parsed)) {
+            if (key === THEME_MOD_KIND || key === 'name' || key === 'author' || key === 'description' || key === 'recipe') continue;
+            fail(errors, key, isForbiddenKey(key) ? 'forbidden-key' : 'unknown-field',
+                isForbiddenKey(key) ? '不允许出现' : THEME_MOD_KIND + ' / name / author / description / recipe', key);
+        }
+        if (errors.length) return { ok: false, errors };
+        raw = parsed.recipe;
+        meta = {
+            name: cleanModText(parsed.name, MAX_NAME_CHARS),
+            author: cleanModText(parsed.author, MOD_AUTHOR_MAX),
+            description: cleanModText(parsed.description, MOD_DESC_MAX),
+        };
+    }
+
+    const v = validateRecipe(raw);
+    if (!v.ok) return { ok: false, errors: v.errors };
+    return { ok: true, recipe: v.recipe, meta };
+}
+
+/** 配方 → mod 文件文本（导出用）。产物可直接被 parseThemeMod 读回（往返有测试钉住）。 */
+export function serializeThemeMod(recipe, meta) {
+    const v = validateRecipe(recipe);
+    if (!v.ok) {
+        const e = new Error('配方不合法，无法导出为 mod 文件');
+        e.code = 'invalid-recipe';
+        e.errors = v.errors;
+        throw e;
+    }
+    const m = meta || {};
+    const out = {};
+    out[THEME_MOD_KIND] = THEME_MOD_VERSION;
+    const name = cleanModText(m.name, MAX_NAME_CHARS);
+    if (name) out.name = name;
+    const author = cleanModText(m.author, MOD_AUTHOR_MAX);
+    if (author) out.author = author;
+    const description = cleanModText(m.description, MOD_DESC_MAX);
+    if (description) out.description = description;
+    out.recipe = v.recipe;
+    return JSON.stringify(out, null, 2);
 }

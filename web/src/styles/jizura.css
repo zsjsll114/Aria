@@ -1,0 +1,159 @@
+/* ============================================================
+ * jizura.css — 「字面 · Jizura」模式（JIZURA 引擎移植，MIT © 2026 hakoniwa）
+ *
+ * 与其它全屏舞台模式（pv / tempera / dimension）同构，三条不变量必须同时满足
+ * （见 tests/js/test_view_mode_stage.js 的 V2/V3/V4）：
+ *   ① 整列播放器与歌词区**成对** display:none —— 只藏一个，MV 透明化时另一个穿帮；
+ *   ② 必须用 display:none，不能用 visibility/opacity（仍占 340~420px flex 宽度）；
+ *   ③ 舞台底由 mv.css 在 body.mv-bg-on 时透明化（引擎侧同步走 transparent 通道）。
+ * ============================================================ */
+
+.player-container.view-jizura {
+    flex-direction: column;
+    padding-bottom: 0;
+    /* 引擎自带纸感/网点底，这里给同调深底，避免 contain 留白处露出默认布局 */
+    background: #0b0b0e !important;
+}
+
+/* ① 成对隐藏：播放列 + 歌词区 */
+.player-container.view-jizura .player-controls-wrapper,
+.player-container.view-jizura .lyrics-area-wrapper {
+    display: none !important;
+}
+
+/* 顶部操作按钮（右上角）保持可用——与其它全景模式一致的安全距离
+   （--titlebar-top-offset 是 Tauri 标题栏高度，漏了会与三大金刚键重叠） */
+.player-container.view-jizura .top-action-buttons {
+    display: flex !important;
+    position: absolute !important;
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px)) !important;
+    right: clamp(10px, 2vw, 30px) !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+}
+
+/* 底部控制栏居中浮动 */
+.player-container.view-jizura .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+    margin: 0 !important;
+    background: rgba(18, 14, 30, 0.82) !important;
+    backdrop-filter: blur(28px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    border-radius: 24px !important;
+    pointer-events: auto !important;
+}
+
+/* 翻译悬浮在底栏上方（本模式画布自己排歌词，这里只承接「飞入样式翻译」那一层；
+   引擎的画幅已有 contain 留白，位置与其它全景模式保持一致以免切模式时跳动） */
+.player-container.view-jizura .flyin-translation-area {
+    display: block !important;
+    position: absolute !important;
+    bottom: 140px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90% !important;
+    max-width: 700px !important;
+    text-align: center !important;
+    z-index: 85 !important;
+    pointer-events: none !important;
+    transition: opacity 0.4s ease !important;
+}
+
+/* 默认歌词列必须彻底让位（引擎在 canvas 上自己画字） */
+.player-container.view-jizura .lyrics-scroll,
+.player-container.view-jizura .lyrics-line,
+.player-container.view-jizura #lyricsScroll {
+    visibility: hidden !important;
+}
+
+/* 舞台：整屏 absolute，画布等比居中（contain 留白左右或上下对称） */
+.player-container.view-jizura .visualizer-stage-jizura {
+    display: flex !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    overflow: hidden;
+}
+
+.jizura-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    /* 画布自身不做 CSS 缩放（尺寸由 JS 按 DPR 算好），避免二次插值糊掉笔触 */
+    image-rendering: auto;
+}
+
+/* ============================================================
+ * MV 动态背景适配
+ * ★ 透明化规则写在 mv.css（与其余 5 个全景模式同一处约定），本文件不重复声明。
+ * 这里只做「MV 开着时」的表现层微调：引擎不铺底后，文字直接压在视频上，
+ * 需要一点对比度支撑才能读清 —— 用 text-shadow 走画布上层的翻译层即可，
+ * 画布本身的字由引擎的描边（style 自带）负责，不在这里插手。
+ * ============================================================ */
+body.mv-bg-on .player-container.view-jizura .flyin-translation-area {
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+}
+
+/* ============================================================
+ * 模式选择弹窗的缩略图（与 pv / tempera 的 vm-* 同构）：
+ * 静态示意"日系文字 PV"的排版语汇 —— 话数角标 + 逐字点亮的一行 + 罗马音副标。
+ * ============================================================ */
+.view-mode-preview-jizura {
+    background: #101014;
+    overflow: hidden;
+}
+
+.view-mode-preview-jizura .vm-jz-frame {
+    position: absolute;
+    inset: 8% 10%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4%;
+    color: #f2ede4;
+}
+
+.view-mode-preview-jizura .vm-jz-no {
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    color: rgba(242, 237, 228, 0.55);
+}
+
+.view-mode-preview-jizura .vm-jz-line {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.15;
+}
+
+.view-mode-preview-jizura .vm-jz-line .sung {
+    color: var(--aria-accent, #e8be6a);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--aria-accent, #e8be6a) 55%, transparent);
+}
+
+.view-mode-preview-jizura .vm-jz-sub {
+    font-size: 7px;
+    letter-spacing: 0.32em;
+    color: rgba(242, 237, 228, 0.4);
+}
+
+/* 缩略图里给一层极淡的网点纹理，呼应引擎的印刷质感 */
+.view-mode-preview-jizura::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 0.6px, transparent 0.7px);
+    background-size: 3px 3px;
+    pointer-events: none;
+}
