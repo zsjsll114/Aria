@@ -75,6 +75,9 @@ export function renderSettingsNav(container) {
     input.dataset.q = q;
     const deep = q.length >= 2;
 
+    /* 搜索时锚点让位：过滤结果与锚点是两套高亮，同时在侧栏会互相打架 */
+    container.querySelectorAll('.settings-nav-anchors').forEach(r => { r.style.display = q ? 'none' : ''; });
+
     /* 先跑深搜（nav 过滤要用命中数） */
     const secHits = new Map();
     if (typeof document !== 'undefined') {
@@ -112,4 +115,102 @@ export function renderSettingsNav(container) {
       if (title) title.style.display = any ? '' : 'none';
     });
   });
+}
+
+/* ============================================================
+ * 阶段 2 收尾：节内锚点（2026-10-07）
+ *
+ * 长区块（外观页共 22 组、「字面 · Jizura」单块 4 组 20 行）在侧栏给出二级锚点：
+ * 挂在当前激活节下面，点击滚到该组并闪烁，滚动时跟随高亮。
+ *
+ * ★ 锚点从 DOM 派生（组标题 → 锚点），刻意**不**写进 SETTINGS_NAV：
+ *   组标题已在 HTML 里且是 i18n 的既有键，再抄一份到 nav 表必然漂移 ——
+ *   本仓库已被"两份清单不同步"咬过（vfxRecipe 的 schema 漏收 defaults 键）。
+ *   派生 = 新增一个组就自动有锚点，文案随语言切换自动正确。
+ *
+ * @returns {number} 生成的锚点数；0 表示该节不足两组（不值得出锚点）
+ * ============================================================ */
+export function refreshSectionAnchors() {
+  if (typeof document === 'undefined') return 0;
+  const navEl = document.getElementById('settingsTabs');
+  const bodyEl = document.getElementById('settingsBody');
+  if (!navEl || !bodyEl) return 0;
+  navEl.querySelectorAll('.settings-nav-anchors').forEach((r) => r.remove());
+  const sec = bodyEl.querySelector('.settings-section.active');
+  if (!sec) return 0;
+  /* 外观页是二级分栏（模式按钮 + [data-mode-section]）：锚点取**当前可见**的模式区块，
+     而不是整节 22 组 —— 否则侧栏会被别的模式的组标题灌满。 */
+  const scope = sec.querySelector('[data-mode-section].active') || sec;
+  const groups = [...scope.querySelectorAll('.settings-group')]
+    .map((g) => ({ group: g, title: g.querySelector('.settings-group-title') }))
+    .filter((x) => x.title && x.title.textContent.trim());
+  if (groups.length < 2) return 0;
+  const activeBtn = navEl.querySelector('.settings-tab.active');
+  if (!activeBtn) return 0;
+
+  const row = document.createElement('div');
+  row.className = 'settings-nav-anchors';
+  groups.forEach((x, i) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'settings-nav-anchor' + (i === 0 ? ' active' : '');
+    chip.textContent = x.title.textContent.trim();
+    chip.__anchorTarget = x.group;   /* 滚动跟随时要用（见下方 scroll 监听） */
+    chip.addEventListener('click', () => {
+      /* ★ 用 scrollIntoView 而不是"自己算 scrollTop"（初版就是栽在这）：
+         设置页**不是单一滚动容器** —— 外观页是 flex 分栏、块内由 .appearance-controls
+         自己滚，其余节才是 #settingsBody 滚。手算就得先猜对容器，猜错就"点了没反应"。
+         现有深搜跳转（200）用的也是 scrollIntoView，这里保持一致。
+         缝隙由 CSS 的 scroll-margin-top 给，不需要 JS 加偏移。 */
+      x.group.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      x.group.classList.add('settings-flash');
+      setTimeout(() => x.group.classList.remove('settings-flash'), 1600);
+      row.querySelectorAll('.settings-nav-anchor').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      /* 点击是明确意图：短暂锁住滚动跟随，别让随后的 scroll 事件把高亮抢回上一组
+         （最后一组永远跨不过判定线，实测点了"背景与字体"会立刻被标回"日文字体包"） */
+      try { scroller.__anchorClickLock = Date.now() + 900; } catch (e) { /* scroller 见下方，闭包内可达 */ }
+    });
+    row.appendChild(chip);
+  });
+  activeBtn.after(row);
+
+  /* 滚动跟随：绑在**真正的滚动容器**上（见上一条注释：外观页不是 #settingsBody 在滚）。
+     每个容器只挂一次（标记挂在元素上，不随刷新堆积）。 */
+  const scroller = (() => {
+    let e = scope.parentElement;
+    while (e && e !== document.body) {
+      const ov = getComputedStyle(e).overflowY;
+      if ((ov === 'auto' || ov === 'scroll') && e.scrollHeight > e.clientHeight) return e;
+      e = e.parentElement;
+    }
+    return bodyEl;
+  })();
+  if (!scroller.__anchorSpyBound) {
+    scroller.__anchorSpyBound = true;
+    let pend = false;
+    scroller.addEventListener('scroll', () => {
+      if (pend) return;
+      pend = true;
+      requestAnimationFrame(() => {
+        pend = false;
+        const r = navEl.querySelector('.settings-nav-anchors');
+        if (!r) return;
+        const chips = [...r.querySelectorAll('.settings-nav-anchor')];
+        if (!chips.length) return;
+        if (scroller.__anchorClickLock && Date.now() < scroller.__anchorClickLock) return;
+        /* 判定线取滚动容器顶部稍下：谁跨过这条线，谁就是"当前所在组" */
+        const line = scroller.getBoundingClientRect().top + 16;
+        let cur = 0;
+        chips.forEach((c, i) => {
+          if (c.__anchorTarget && c.__anchorTarget.getBoundingClientRect().top <= line) cur = i;
+        });
+        /* ★ 触底特例：滚到底后最后一组仍跨不过判定线（容器已无内容可滚），
+           不特判就会把"当前组"永久停在倒数第二组。 */
+        if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) cur = chips.length - 1;
+        chips.forEach((c, i) => c.classList.toggle('active', i === cur));
+      });
+    }, { passive: true });
+  }
+  return groups.length;
 }

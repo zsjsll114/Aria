@@ -3,9 +3,11 @@
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
+            /* 遮罩的底色是 scrim（不是 surface），刻意不用 --aria-glass-bg；
+               模糊则走令牌，这样 mod 把模糊调 0 时整层遮罩也跟着变平面。 */
             background: rgba(0, 0, 0, 0.45);
-            backdrop-filter: saturate(180%) blur(40px);
-            -webkit-backdrop-filter: saturate(180%) blur(40px);
+            backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            -webkit-backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
             /* display 由 motion.css 的浮层机制接管，见 base.css .search-overlay 同款注释 */
             align-items: center; justify-content: center;
             z-index: 10000;
@@ -21,12 +23,17 @@
         .settings-panel {
             width: min(780px, 100%);
             height: min(80vh, 700px);
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: saturate(200%) blur(60px);
-            -webkit-backdrop-filter: saturate(200%) blur(60px);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 24px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+            /* ★ 令牌消费（2026-10-06）：面板族的玻璃与圆角改由令牌驱动，
+               于是外观 mod 的 tokens 段（圆角/模糊/颜色）才开始真正可见。
+               ⚠ 唯一一处观感变化：毛玻璃从 200%/60px 归一到 180%/40px ——
+               这正是 P1 决策「取搜索页配方（saturate(180%) blur(40px)）」的落地，
+               此前 `.aria-dialog` 与 `.search-modal` 已是这套，只有这几个面板是例外。 */
+            background: var(--aria-glass-bg);
+            backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            -webkit-backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            border: 1px solid var(--aria-glass-border);
+            border-radius: var(--aria-radius-lg);
+            box-shadow: var(--aria-glass-shadow);
             /* ★ v2 声明式侧栏：header 全宽 + 下方「导航 | 内容」两列（上游参考项目 settingsNav 对齐） */
             display: grid;
             grid-template-columns: 150px 1fr;
@@ -65,7 +72,7 @@
         }
         .settings-nav-search::placeholder { color: rgba(255, 255, 255, 0.3); }
         .settings-nav-search:focus {
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.45);
+            border-color: rgba(var(--aria-accent-rgb), 0.45);
             background: rgba(255, 255, 255, 0.09);
         }
         .settings-nav-list { display: flex; flex-direction: column; gap: 2px; }
@@ -88,6 +95,39 @@
             text-align: left;
             white-space: nowrap;
         }
+        /* ★ 阶段 2 收尾：节内锚点（长区块的二级导航，由 refreshSectionAnchors 派生）。
+           挂在激活节下面、缩进 + 左侧细线，与一级节明确分层。 */
+        .settings-nav-anchors {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            margin: 2px 0 4px 12px;
+            padding-left: 8px;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .settings-nav-anchor {
+            background: none;
+            border: none;
+            text-align: left;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: inherit;
+            color: rgba(255, 255, 255, 0.42);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .settings-nav-anchor:hover {
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .settings-nav-anchor.active {
+            color: rgb(var(--aria-accent-rgb));
+            background: rgba(var(--aria-accent-rgb), 0.1);
+        }
         /* 窄屏：侧栏回落为顶部横滑胶囊条 */
         @media (max-width: 640px) {
             .settings-panel { grid-template-columns: 1fr; }
@@ -102,6 +142,9 @@
             .settings-nav-group-title { display: none; }
             .settings-nav-search { width: 130px; margin-bottom: 0; flex-shrink: 0; }
             .settings-nav-list { flex-direction: row; gap: 4px; }
+            /* 窄屏侧栏是横滑胶囊条，纵深锚点塞不下也不该塞：直接不显示
+               （长区块在手机上的定位靠搜索框，见 200 的深搜跳转） */
+            .settings-nav-anchors { display: none !important; }
             .settings-body-wrapper { grid-row: 3; grid-column: 1; }
         }
         .settings-body-wrapper {
@@ -206,8 +249,8 @@
             color: rgba(255, 255, 255, 0.9);
         }
         .settings-tab.active {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.18);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.18);
+            color: var(--aria-accent);
             box-shadow: 0 1px 3px rgba(0,0,0,0.15);
         }
         .settings-body-wrapper {
@@ -262,6 +305,8 @@
             padding: 12px 14px 4px;
             margin-bottom: 14px;
             transition: border-color 0.2s ease;
+            /* 节内锚点跳转时留出缝隙（scrollIntoView block:'start'，见 settingsNav.js） */
+            scroll-margin-top: 10px;
         }
         .settings-group:hover { border-color: rgba(255, 255, 255, 0.1); }
         .settings-group-title {
@@ -327,7 +372,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .setting-toggle.on {
-            background: var(--theme-color);
+            background: var(--aria-accent);
         }
         .setting-toggle.on::after {
             transform: translateX(18px);
@@ -347,14 +392,14 @@
             -webkit-appearance: none;
             appearance: none;
             width: 16px; height: 16px;
-            background: var(--theme-color);
+            background: var(--aria-accent);
             border-radius: 50%;
             cursor: pointer;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
         .setting-slider::-moz-range-thumb {
             width: 16px; height: 16px;
-            background: var(--theme-color);
+            background: var(--aria-accent);
             border-radius: 50%;
             cursor: pointer;
             border: none;
@@ -451,8 +496,8 @@
             color: #fff;
         }
         .setting-dropdown-item.selected {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            color: var(--aria-accent);
         }
         /* 高级字体设置 */
         .advanced-fonts-section {
@@ -525,7 +570,7 @@
         }
         .font-card:hover {
             background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.35);
+            border-color: rgba(var(--aria-accent-rgb), 0.35);
             transform: translateY(-2px);
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
         }
@@ -555,8 +600,8 @@
             font-size: 10px;
             padding: 2px 6px;
             border-radius: 4px;
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            color: var(--aria-accent);
             font-weight: 500;
             flex-shrink: 0;
         }
@@ -594,11 +639,11 @@
             transition: var(--t-base);
         }
         .font-card-btn.apply-btn {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.18);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.18);
+            color: var(--aria-accent);
         }
         .font-card-btn.apply-btn:hover {
-            background: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
             color: #000;
         }
         .font-card-btn.delete-btn {
@@ -620,8 +665,8 @@
             margin-top: 8px;
         }
         .font-upload-dropzone:hover, .font-upload-dropzone.dragover {
-            border-color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.06);
+            border-color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.06);
         }
         .font-upload-icon {
             margin-bottom: 6px;
@@ -653,8 +698,8 @@
             transform: scale(1.12);
         }
         .color-swatch.active {
-            border-color: var(--theme-color);
-            box-shadow: 0 0 0 2px rgba(var(--theme-color-rgb),0.3);
+            border-color: var(--aria-accent);
+            box-shadow: 0 0 0 2px rgba(var(--aria-accent-rgb),0.3);
         }
         .color-swatch.custom {
             background: transparent;
@@ -685,12 +730,12 @@
         /* display 由 motion.css 的浮层机制接管 */
         .color-picker-panel {
             width: min(360px, 100%);
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: saturate(200%) blur(60px);
-            -webkit-backdrop-filter: saturate(200%) blur(60px);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 20px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+            background: var(--aria-glass-bg);
+            backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            -webkit-backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            border: 1px solid var(--aria-glass-border);
+            border-radius: var(--aria-radius-xl);
+            box-shadow: var(--aria-glass-shadow);
             padding: 20px;
         }
         .color-picker-title {
@@ -757,7 +802,7 @@
             text-transform: uppercase;
         }
         .color-picker-hex:focus {
-            border-color: var(--theme-color);
+            border-color: var(--aria-accent);
             background: rgba(255, 255, 255, 0.15);
         }
 
@@ -782,17 +827,17 @@
             color: #fff;
         }
         .setting-btn.active {
-            background: rgba(var(--theme-color-rgb),0.2);
-            border-color: rgba(var(--theme-color-rgb),0.5);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb),0.2);
+            border-color: rgba(var(--aria-accent-rgb),0.5);
+            color: var(--aria-accent);
         }
         .setting-btn.primary {
-            background: rgba(var(--theme-color-rgb),0.2);
-            border-color: rgba(var(--theme-color-rgb),0.4);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb),0.2);
+            border-color: rgba(var(--aria-accent-rgb),0.4);
+            color: var(--aria-accent);
         }
         .setting-btn.primary:hover {
-            background: rgba(var(--theme-color-rgb),0.3);
+            background: rgba(var(--aria-accent-rgb),0.3);
         }
         .setting-btn.danger {
             background: rgba(255, 80, 80, 0.15);
@@ -831,9 +876,9 @@
             transition: var(--t-base);
         }
         .shortcut-key.recording {
-            background: rgba(var(--theme-color-rgb),0.2);
-            border-color: var(--theme-color);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb),0.2);
+            border-color: var(--aria-accent);
+            color: var(--aria-accent);
         }
         .shortcut-key:hover {
             background: rgba(255, 255, 255, 0.25);
@@ -858,8 +903,8 @@
         }
         .about-version {
             display: inline-block;
-            background: rgba(var(--theme-color-rgb), 0.15);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb), 0.15);
+            color: var(--aria-accent);
             padding: 3px 12px;
             border-radius: 12px;
             font-size: 12px;
@@ -867,7 +912,7 @@
             cursor: pointer;
             transition: background 0.2s ease;
         }
-        .about-version:hover { background: rgba(var(--theme-color-rgb), 0.28); }
+        .about-version:hover { background: rgba(var(--aria-accent-rgb), 0.28); }
         .about-tagline {
             font-size: 12px;
             color: rgba(255, 255, 255, 0.55);
@@ -924,8 +969,8 @@
             transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
         .about-link-card:hover {
-            background: rgba(var(--theme-color-rgb), 0.16);
-            border-color: rgba(var(--theme-color-rgb), 0.4);
+            background: rgba(var(--aria-accent-rgb), 0.16);
+            border-color: rgba(var(--aria-accent-rgb), 0.4);
             color: #fff;
         }
         .about-fine {
@@ -953,9 +998,9 @@
         }
         .about-project-card:hover {
             background: rgba(255, 255, 255, 0.09);
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.45);
+            border-color: rgba(var(--aria-accent-rgb), 0.45);
         }
-        .apc-icon { color: var(--theme-color, #E8BE6A); flex-shrink: 0; }
+        .apc-icon { color: var(--aria-accent); flex-shrink: 0; }
         .apc-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
         .apc-text b { font-size: 13.5px; color: rgba(255, 255, 255, 0.92); }
         .apc-text small { font-size: 11px; color: rgba(255, 255, 255, 0.45); line-height: 1.5; }
@@ -987,8 +1032,8 @@
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.5px;
-            color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12);
+            color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.12);
             border-radius: 6px;
             padding: 2px 8px;
         }
@@ -1001,7 +1046,7 @@
         .font-cat-arrow.collapsed { transform: rotate(-90deg); }
         /* ★ 设置小项深搜：命中行高亮 + 跳转闪烁 + nav 命中计数徽章 */
         .settings-hit {
-            outline: 1px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.55);
+            outline: 1px solid rgba(var(--aria-accent-rgb), 0.55);
             outline-offset: -1px;
             border-radius: 6px;
         }
@@ -1009,14 +1054,14 @@
             animation: settings-row-flash 1.5s ease;
         }
         @keyframes settings-row-flash {
-            0%, 55%  { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.22); }
+            0%, 55%  { background: rgba(var(--aria-accent-rgb), 0.22); }
             100%     { background: transparent; }
         }
         .nav-hit-badge {
             display: inline-block;
             min-width: 16px;
             text-align: center;
-            background: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
             color: #1a1a1a;
             font-size: 10.5px;
             font-weight: 700;
@@ -1072,11 +1117,11 @@
         }
 
         .result-action-btn.active-fav {
-            color: var(--theme-color);
+            color: var(--aria-accent);
         }
 
         .result-action-btn.active-fav svg {
-            fill: var(--theme-color);
+            fill: var(--aria-accent);
         }
 
         .result-info {
@@ -1125,12 +1170,12 @@
         }
         .lyric-source-panel {
             width: min(380px, 100%);
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: saturate(200%) blur(60px);
-            -webkit-backdrop-filter: saturate(200%) blur(60px);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 20px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+            background: var(--aria-glass-bg);
+            backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            -webkit-backdrop-filter: saturate(var(--aria-glass-saturate)) blur(var(--aria-glass-blur));
+            border: 1px solid var(--aria-glass-border);
+            border-radius: var(--aria-radius-xl);
+            box-shadow: var(--aria-glass-shadow);
             overflow: hidden;
         }
         .lyric-source-header {
@@ -1174,8 +1219,8 @@
             background: rgba(255, 255, 255, 0.1);
         }
         .lyric-source-option.active {
-            background: rgba(var(--theme-color-rgb), 0.15);
-            border-color: rgba(var(--theme-color-rgb), 0.3);
+            background: rgba(var(--aria-accent-rgb), 0.15);
+            border-color: rgba(var(--aria-accent-rgb), 0.3);
         }
         .lyric-source-info { flex: 1; }
         .lyric-source-name {
@@ -1303,9 +1348,9 @@
             border: 1px solid rgba(0, 210, 211, 0.3);
         }
         .lyric-badge.feat-active {
-            background: rgba(var(--theme-color-rgb), 0.25);
-            color: var(--theme-color);
-            border: 1px solid rgba(var(--theme-color-rgb), 0.4);
+            background: rgba(var(--aria-accent-rgb), 0.25);
+            color: var(--aria-accent);
+            border: 1px solid rgba(var(--aria-accent-rgb), 0.4);
             font-weight: 600;
         }
         .lyric-custom-upload-btn {
@@ -1337,20 +1382,20 @@
             flex-shrink: 0;
         }
         .lyric-source-option.active .lyric-source-check {
-            border-color: var(--theme-color);
-            background: var(--theme-color);
+            border-color: var(--aria-accent);
+            background: var(--aria-accent);
             box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.9);
         }
         .lyric-source-option.loading {
             pointer-events: none;
             opacity: 0.8;
-            border-color: var(--theme-color);
+            border-color: var(--aria-accent);
         }
         .lyric-source-spinner {
             width: 18px;
             height: 18px;
             border: 2px solid rgba(255, 255, 255, 0.2);
-            border-top-color: var(--theme-color, #E8BE6A);
+            border-top-color: var(--aria-accent);
             border-radius: 50%;
             animation: lyricSourceSpin 0.7s linear infinite;
             flex-shrink: 0;
@@ -1383,7 +1428,7 @@
             content: '';
             width: 6px; height: 6px;
             border-radius: 2px;
-            background: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
             flex-shrink: 0;
         }
         .lyric-download-sources .lyric-source-option {
@@ -1401,7 +1446,7 @@
         .lyric-source-option.loading .lyric-download-check {
             width: 18px; height: 18px;
             border: 2px solid rgba(255, 255, 255, 0.2);
-            border-top-color: var(--theme-color, #E8BE6A);
+            border-top-color: var(--aria-accent);
             border-radius: 50%;
             animation: lyricSourceSpin 0.7s linear infinite;
             flex-shrink: 0;
@@ -1429,7 +1474,7 @@
         }
         .lyric-download-format:hover {
             background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(var(--theme-color-rgb), 0.45);
+            border-color: rgba(var(--aria-accent-rgb), 0.45);
             transform: translateY(-1px);
         }
         .lyric-download-format:active { transform: scale(0.97); }
@@ -1444,7 +1489,7 @@
         .lyric-download-format-name::after {
             content: '↓';
             font-size: 14px;
-            color: var(--theme-color, #E8BE6A);
+            color: var(--aria-accent);
             opacity: 0.85;
         }
         .lyric-download-format-desc {
@@ -1863,9 +1908,9 @@
             width: 64px;
             height: 64px;
             border-radius: 50%;
-            border: 2px solid var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12);
-            color: var(--theme-color, #E8BE6A);
+            border: 2px solid var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.12);
+            color: var(--aria-accent);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -1875,8 +1920,8 @@
 
         .rec-toggle-btn:hover {
             transform: scale(1.06);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            box-shadow: 0 0 24px rgba(var(--theme-color-rgb, 232, 190, 106), 0.25);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            box-shadow: 0 0 24px rgba(var(--aria-accent-rgb), 0.25);
         }
 
         .rec-toggle-btn:active { transform: scale(0.97); }
@@ -1886,8 +1931,8 @@
         }
 
         @keyframes rec-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(var(--theme-color-rgb, 232, 190, 106), 0.35); }
-            50%      { box-shadow: 0 0 0 14px rgba(var(--theme-color-rgb, 232, 190, 106), 0); }
+            0%, 100% { box-shadow: 0 0 0 0 rgba(var(--aria-accent-rgb), 0.35); }
+            50%      { box-shadow: 0 0 0 14px rgba(var(--aria-accent-rgb), 0); }
         }
 
         .rec-timer-badge {
@@ -1923,16 +1968,16 @@
             padding: 12px 18px;
             margin: 0 22px;
             border-radius: 12px;
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.08);
-            border: 1px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
+            background: rgba(var(--aria-accent-rgb), 0.08);
+            border: 1px solid rgba(var(--aria-accent-rgb), 0.2);
         }
 
         .rec-spinner {
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            border: 2px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.25);
-            border-top-color: var(--theme-color, #E8BE6A);
+            border: 2px solid rgba(var(--aria-accent-rgb), 0.25);
+            border-top-color: var(--aria-accent);
             animation: rec-spin 0.8s linear infinite;
             flex-shrink: 0;
         }
@@ -2003,9 +2048,9 @@
             align-self: flex-start;
             font-size: 10.5px;
             font-weight: 700;
-            color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12);
-            border: 1px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.25);
+            color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.12);
+            border: 1px solid rgba(var(--aria-accent-rgb), 0.25);
             padding: 3px 9px;
             border-radius: 999px;
             letter-spacing: 0.4px;
@@ -2103,7 +2148,7 @@
         }
 
         .rec-match-score {
-            color: var(--theme-color, #E8BE6A);
+            color: var(--aria-accent);
             font-weight: 700;
             font-variant-numeric: tabular-nums;
             flex-shrink: 0;
@@ -2125,7 +2170,7 @@
         }
 
         .rec-play-btn:hover {
-            background: var(--theme-color, #E8BE6A);
-            border-color: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
+            border-color: var(--aria-accent);
             color: #150f04;
         }
