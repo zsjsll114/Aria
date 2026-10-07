@@ -21,16 +21,17 @@ const CHANNELS = {
     selfhostQQ:      { name: '本机自建 QQ 服务',   platform: 'QQ音乐',   tier: 'selfhost' },
     selfhostNetease: { name: '本机自建网易服务',   platform: '网易云',   tier: 'selfhost' },
     selfhostKugou:   { name: '本机自建酷狗服务',   platform: '酷狗音乐', tier: 'selfhost' },
+    selfhostQishui:  { name: '本机自建汽水服务',   platform: '汽水音乐', tier: 'selfhost' },
     qqResolve:       { name: '本机解析池',         platform: 'QQ音乐',   tier: 'local' },
     kugou:           { name: '酷狗取链接口',       platform: '酷狗音乐', tier: 'api' },
     kuwo:            { name: '酷我官方取链',       platform: '酷我音乐', tier: 'api' },
     ygking:          { name: 'ygking 公网接口',    platform: 'QQ音乐',   tier: 'public' },
     vkeysPrefetch:   { name: 'vkeys 预取链接',     platform: 'QQ音乐',   tier: 'public' },
     vkeys:           { name: 'vkeys 公网接口',     platform: 'QQ音乐',   tier: 'public' },
-    byfuns:          { name: 'byfuns 公网接口',    platform: '网易云',   tier: 'public' },
-    neteaseOuter:    { name: '网易云外链',         platform: '网易云',   tier: 'public' },
+    byfuns:          { name: 'byfuns 公网接口',    platform: '网易云音乐',   tier: 'public' },
+    neteaseOuter:    { name: '网易云外链',         platform: '网易云音乐',   tier: 'public' },
     crossKugou:      { name: '跨源·酷狗同名歌',    platform: '酷狗音乐', tier: 'fallback' },
-    crossNetease:    { name: '跨源·网易同名歌',    platform: '网易云',   tier: 'fallback' },
+    crossNetease:    { name: '跨源·网易同名歌',    platform: '网易云音乐',   tier: 'fallback' },
     crossKuwo:       { name: '跨源·酷我同名歌',    platform: '酷我音乐', tier: 'fallback' },
     direct:          { name: '歌曲自带直链',       platform: '',         tier: 'direct' },
     local:           { name: '本地文件',           platform: '本地',     tier: 'direct' },
@@ -66,6 +67,8 @@ const PLATFORM_ALIAS = {
     kugou: 'kugou', kg: 'kugou',
     kuwo: 'kuwo', kw: 'kuwo',
     migu: 'migu', mg: 'migu',
+    /* 汽水：抖音系（Soda / Luna）在第三方字段里有 qishui / soda / douyin 几种写法 */
+    qishui: 'qishui', soda: 'qishui', qs: 'qishui',
     local: 'local',
 };
 
@@ -76,9 +79,30 @@ export function platformKeyOf(source) {
     return PLATFORM_ALIAS[raw] || raw;
 }
 
-/* 有专门取链分支的四个平台。'local' / 'selfhost' / 拼写错的值都不在这里——
-   把它们也当成一个平台，会被 175 末尾的 else 塞进「未知音源 → vkeys」，比按全局判定更糟。 */
-export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo']);
+/* ★ 规范平台键 → **自建服务后端进程键**（selfhost_service._SERVICES 的键）。
+   方向与 PLATFORM_ALIAS 相反，所以不能并进那张表：PLATFORM_ALIAS 回答「这是哪个前端
+   平台」，这张表回答「后端副进程叫什么名字」。两者只有 QQ 不一致。
+
+   ★ 2026-10-03 定位的真实缺陷：150-search-engine.js 与 services/musicApi.js 直接拼
+   `/api/selfhost/${source}/proxy`，而搜索页签的 source 是 'tencent' —— 后端按
+   `platform not in _SERVICES` 判 404（server.py:1414），又被上层的 `catch { return null }`
+   静默吞掉。后果是 **QQ 自建 vendor 的搜索与歌词从未真正生效过**，一路悄悄回退公网
+   vkeys —— 这正是 AGENTS.md 里「QQ 单页从 100 缩水到 60、公网上游不稳」那条现象的
+   真实原因（自建服务明明在线且毫秒级）。 */
+const SELFHOST_KEYS = { tencent: 'qq' };
+
+/** 任意来源标识 → 自建服务后端平台键（'qq'/'netease'/'kugou'/'qishui'；'' 表示无此平台） */
+export function selfhostKeyOf(source) {
+    const key = platformKeyOf(source);
+    return SELFHOST_KEYS[key] || key || '';
+}
+
+/* 有专门取链分支的平台。'local' / 'selfhost' / 拼写错的值都不在这里——
+   把它们也当成一个平台，会被 175 末尾的 else 塞进「未知音源 → vkeys」，比按全局判定更糟。
+   ★ 汽水（2026-10-03）在这里是**必须**的：它的取链不是「调接口拿直链」而是
+   「本机 vendor 解密后吐流」，只能走 175 里那条专属分支；漏登记就会掉进
+   `else`（未知音源）去调 vkeys 的 /qishui 接口 —— 那个接口不存在。 */
+export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo', 'qishui']);
 
 /**
  * 这首歌该走哪条取链分支。
@@ -93,6 +117,38 @@ export function resolveSourceOf(songInfo, fallbackSource) {
     const fromSong = platformKeyOf(songInfo && songInfo.source);
     if (RESOLVE_SOURCES.has(fromSong)) return fromSong;
     return platformKeyOf(fallbackSource) || 'tencent';
+}
+
+/**
+ * 一曲一身份键：回答「这两个 currentSongData 是不是同一首歌」。
+ * 使用者是 MV 动态背景（app/101）：`_followCache`（同曲复用解析结果）与 `_manual`
+ * （手动选过 MV 后不放自动跟随接管）都靠它比对。
+ *
+ * ★ 2026-10-04 修的真实缺陷：这个键原先写死为 `${source}:${song.id || song.song}:${mvVid}`，
+ *   而 175 主路径落下的对象形状是 `{title, artist, id, mid, mvVid, …}` ——
+ *   **根本没有 `song` 字段**（`song` 是搜索层/歌单层的写法）。于是只要 `id` 缺失
+ *   （歌单/最近播放恢复、部分音源没有稳定 id），键就塌缩成 `${source}::`，
+ *   **同一平台所有缺 id 的歌共用一把键**，两个后果都很难查：
+ *     · `_followCache` 会把上一首的解析结果当成本曲的 → 切歌不换画面；
+ *     · `_manual` 按这把塌缩键比对 → 用户点过一次 MV 后，这些歌全部返回
+ *       `reason:'manual'`，**再也不自动铺**（原话：「不会自动匹配 MV 了 必须手动匹配」）。
+ *   实测 scratch/probe_mv_follow_event.mjs：空 id 的两首不同的歌，第二首仍铺第一首的 MV；
+ *   手动点过之后切歌完全不再自动换。
+ *   ⇒ 现在按 id → mid → 歌名 依次回落；**三者全缺就返回空串**（空键不参与缓存、不承认领，
+ *     宁可多解析一次，也不要张冠李戴）。mvVid/vid 进键是为了「同一首歌换了一支 MV」能区分。
+ *
+ * @param {Object} song 任意形状的歌曲对象（title/song/name、artist/singer、id/mid…）
+ * @param {string} [fallbackSource] 歌曲自身没写 source 时的兜底平台
+ * @returns {string} 身份键；'' 表示身份不明（调用方必须按"不可比较"处理）
+ */
+export function songIdentityKey(song, fallbackSource) {
+    if (!song) return '';
+    const src = platformKeyOf(song.source || fallbackSource);
+    const name = song.song || song.title || song.name || '';
+    const uid = song.id || song.mid || '';
+    if (!uid && !name) return '';
+    /* 独奏（mvVid/vid）只用于区分同一首歌的不同 MV，不能单独构成身份 */
+    return `${src}:${uid || name}:${song.mvVid || song.vid || ''}`;
 }
 
 /* 解析池的 quality 字段其实是 provider 的档位标识，实测见过 'song_play_url'（API 字段名）。
@@ -210,7 +266,7 @@ export function sniffPlatform(url) {
     if (/:3200\b/.test(url) || /stream\.qqmusic|qq\.com|y\.gtimg|qqmusic/.test(url)) return 'QQ音乐';
     if (/kugou|kg-test|ymdata|fsg\.kugou/.test(url)) return '酷狗音乐';
     if (/kuwo/.test(url)) return '酷我音乐';
-    if (/163\.com|126\.net/.test(url)) return '网易云';
+    if (/163\.com|126\.net/.test(url)) return '网易云音乐';
     return '';
 }
 

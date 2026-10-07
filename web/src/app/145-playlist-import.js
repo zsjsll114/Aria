@@ -262,11 +262,12 @@ async function fetchPlaylistTracks(url) {
             }
         }
 
-/* 搜索单首歌并返回匹配结果 */
-async function searchSingleTrack(title, artist, preferredSource) {
+/* 跨音源匹配的尝试顺序（需求 6）：先原来源，再其它音源里找**可用版本** */
+const IMPORT_SOURCE_ORDER = ['netease', 'qq', 'kugou', 'qishui'];
+
+/** 在**单个**音源里搜一首，返回 { ...歌曲, quality } 或 null。quality: exact|title|loose */
+async function searchOneSource(title, artist, searchSource) {
             const word = `${title} ${artist}`.trim();
-            /* 优先用来源对应的曲库搜索 */
-            const searchSource = preferredSource;
             const url = `${API_BASE}/${searchSource}?word=${encodeURIComponent(word)}&num=5`;
             const res = await fetch(url);
             const json = await res.json();
@@ -274,6 +275,7 @@ async function searchSingleTrack(title, artist, preferredSource) {
             const list = Array.isArray(json.data) ? json.data : [json.data];
             if (list.length === 0) return null;
             /* 精确匹配：标题和歌手都包含 */
+            let quality = 'exact';
             let best = list.find(item => {
                 const t = (item.song || '').toLowerCase();
                 const s = (item.singer || '').toLowerCase();
@@ -281,10 +283,11 @@ async function searchSingleTrack(title, artist, preferredSource) {
             });
             /* 模糊匹配：标题包含 */
             if (!best) {
+                quality = 'title';
                 best = list.find(item => (item.song || '').toLowerCase().includes(title.toLowerCase()));
             }
-            /* 取第一个 */
-            if (!best) best = list[0];
+            /* 取第一个（只在**原来源**里允许这么宽松，见 searchSingleTrack） */
+            if (!best) { quality = 'loose'; best = list[0]; }
             return {
                 title: best.song || title,
                 artist: best.singer || artist,
@@ -292,8 +295,68 @@ async function searchSingleTrack(title, artist, preferredSource) {
                 source: searchSource,
                 id: best.id || '',
                 mid: best.mid || '',
-                key: `${searchSource}:${best.id}`
+                key: `${searchSource}:${best.id}`,
+                quality
             };
+        }
+
+/* 搜索单首歌并返回匹配结果。
+   ★ 需求 6「用歌名+歌手去其他音源匹配可用版本」：原来源搜不到时**继续试其它音源**。
+   两个刻意的收紧：
+     ① 其它音源**只收** exact/title 两级命中 —— 原来源允许"取第一个"（用户选的来源，
+        差一点也认），但换个平台还把第一条硬塞进来，等于凭空造出一首错歌；
+     ② 顺序固定（netease → qq → kugou → qishui，原来源优先），保证同一份歌单
+        每次导入结果一致（否则"同一个链接导两次不一样"没法解释）。 */
+async function searchSingleTrack(title, artist, preferredSource) {
+            const order = [preferredSource, ...IMPORT_SOURCE_ORDER.filter(s => s !== preferredSource)];
+            for (const src of order) {
+                let hit = null;
+                try {
+                    hit = await searchOneSource(title, artist, src);
+                } catch (e) {
+                    logWarn('playlistImport', `音源 ${src} 搜索失败: ${title}`, e);
+                }
+                if (!hit) continue;
+                if (src !== preferredSource && hit.quality === 'loose') continue;
+                if (src !== preferredSource) {
+                    hit.crossSource = true;
+                    logInfo('playlistImport', `跨音源补齐：「${title} - ${artist}」→ ${src}(${hit.quality})`);
+                }
+                return hit;
+            }
+            return null;
+        }
+
+/**
+ * 把没匹配到的歌逐首列出来（需求 6「匹配不到的标记出来」）。
+ *
+ * ★ 为什么用只读文本弹层，而不是"塞进歌单并置灰"：这些歌**在所有音源里都没有可用版本**，
+ *   放进歌单只会在每次播放到这里时再失败一次；用户真正需要的是"拿到这份清单去手动找"。
+ *   弹层里带序号与"搜索出错"区分，便于他把清单直接贴到别处搜。
+ */
+function showUnmatchedList(unmatched) {
+            const lines = unmatched.map((u, i) => {
+                const tail = u.reason === 'error' ? '（搜索出错）' : '';
+                return `${i + 1}. ${u.title} - ${u.artist}${tail}`;
+            });
+            const text = `以下 ${unmatched.length} 首没有在任何音源里找到可用版本：\n\n` + lines.join('\n');
+            try {
+                if (typeof window !== 'undefined' && typeof window.showGlassPrompt === 'function') {
+                    const p = window.showGlassPrompt({
+                        title: '未匹配的歌曲',
+                        desc: '这些歌请手动搜索，或换一个歌单来源再导入',
+                        multiline: true,
+                        rows: 12,
+                        value: text,
+                        okText: '知道了'
+                    });
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                    return;
+                }
+            } catch (e) {
+                logError('playlistImport', '未匹配清单弹层失败:', e);
+            }
+            setHint(`有 ${unmatched.length} 首未匹配到可用音源`);
         }
 
 /* 主导入函数 */
@@ -335,6 +398,11 @@ async function importPlaylistFromUrl(url) {
                     songs: [],
                     createdAt: Date.now()
                 };
+
+                /* ★ 匹配不到的逐首记下来（需求 6「匹配不到的标记出来」）：
+                   只报一句"成功 12/30"没法判断是链接坏了、音源挂了还是曲库里确实没有，
+                   用户唯一能做的只有再导一次。 */
+                const unmatched = [];
 
                 /* 检查是否已有歌曲ID（网易云/QQ API直接返回） */
                 const hasIds = tracks.every(t => t.id);
@@ -380,9 +448,13 @@ async function importPlaylistFromUrl(url) {
                                 newPlaylist.songs.push(matched);
                                 if (!newPlaylist.cover && matched.cover) newPlaylist.cover = matched.cover;
                                 successCount++;
+                            } else {
+                                /* 所有音源都没找到可用版本 */
+                                unmatched.push({ title: t.title, artist: t.artist, reason: 'no-match' });
                             }
                         } catch (e) {
                             logError('playlistImport', `搜索失败: ${t.title}`, e);
+                            unmatched.push({ title: t.title, artist: t.artist, reason: 'error' });
                         }
                         if (i < tracks.length - 1) {
                             await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
@@ -395,14 +467,20 @@ async function importPlaylistFromUrl(url) {
 
                 /* 保存歌单 */
                 if (newPlaylist.songs.length > 0) {
+                    /* 未匹配清单跟着歌单一起落盘：用户下次打开这份歌单时
+                       仍然看得到"当时哪些歌没进来"，而不是只有一串少掉的数量。 */
+                    if (unmatched.length) newPlaylist.importUnmatched = unmatched.slice(0, 200);
                     playlists.unshift(newPlaylist);
                     savePlaylists(playlists);
-                    importHintEl.textContent = `导入完成：成功 ${newPlaylist.songs.length}/${tracks.length} 首`;
+                    importHintEl.textContent = `导入完成：成功 ${newPlaylist.songs.length}/${tracks.length} 首`
+                        + (unmatched.length ? `，${unmatched.length} 首未匹配` : '');
                     importPlaylistOverlay.classList.remove('visible');
                     importUrlInput.value = '';
                     renderPlaylistsView();
+                    if (unmatched.length) showUnmatchedList(unmatched);
                 } else {
                     importHintEl.textContent = `导入失败：${tracks.length} 首歌曲均未匹配到`;
+                    if (unmatched.length) showUnmatchedList(unmatched);
                 }
             } catch (err) {
                 logError('playlistImport', '导入歌单失败:', err);

@@ -6,12 +6,14 @@
  * indexedDB.open，否则并发 open 竞争会漏建 store（历史上 chorusCache 缺失即由此而来）。
  */
 import { AI_DB_NAME, AI_DB_VERSION, AI_STORE_NAME } from '../config/constants.js';
-import { logInfo, logWarn, logError } from './log.js';
+import { logInfo, logWarn, logError, logCatch } from './log.js';
 
 /* 高潮检测缓存 store（v4 起统一在本文件创建，不再由 200-settings-panel 私建） */
 const CHORUS_STORE_NAME = 'chorusCache';
 /* 频谱逐字对齐结果缓存 store（v5 起）：一首歌 × 一份歌词只算一次 */
 const WORD_TIMING_STORE_NAME = 'wordTimingCache';
+/* Automix 轨道分析结果缓存 store（v6 起）：core/automix/analyzer.js 消费 */
+const AUTOMIX_STORE_NAME = 'automixCache';
 
 let aiDbReady = null;
 
@@ -36,6 +38,9 @@ function getAiDb() {
             }
             if (!db.objectStoreNames.contains(WORD_TIMING_STORE_NAME)) {
                 db.createObjectStore(WORD_TIMING_STORE_NAME, { keyPath: 'key' });
+            }
+            if (!db.objectStoreNames.contains(AUTOMIX_STORE_NAME)) {
+                db.createObjectStore(AUTOMIX_STORE_NAME, { keyPath: 'key' });
             }
         };
     });
@@ -239,4 +244,58 @@ export async function wordTimingCacheCount() {
             req.onerror = () => resolve(0);
         });
     } catch (e) { return 0; }
+}
+
+/* ========== Automix 分析结果缓存（v6 起）：core/automix/analyzer.js 专用 ========== */
+
+/** 读取单条 Automix 分析缓存 */
+export async function automixCacheGet(key) {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(AUTOMIX_STORE_NAME, 'readonly');
+            const req = tx.objectStore(AUTOMIX_STORE_NAME).get(key);
+            req.onsuccess = () => resolve(req.result ? req.result.data : null);
+            req.onerror = () => resolve(null);
+        });
+    } catch (e) { logCatch('aiCache', e); return null; }
+}
+
+/** 写入单条 Automix 分析缓存 */
+export async function automixCacheSet(key, data) {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(AUTOMIX_STORE_NAME, 'readwrite');
+            tx.objectStore(AUTOMIX_STORE_NAME).put({ key, data, ts: Date.now() });
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
+    } catch (e) { logCatch('aiCache', e); return false; }
+}
+
+/** 清空 Automix 分析缓存 */
+export async function automixCacheClear() {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(AUTOMIX_STORE_NAME, 'readwrite');
+            tx.objectStore(AUTOMIX_STORE_NAME).clear();
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
+    } catch (e) { logCatch('aiCache', e); return false; }
+}
+
+/** 获取 Automix 分析缓存条数 */
+export async function automixCacheCount() {
+    try {
+        const db = await getAiDb();
+        return new Promise((resolve) => {
+            const tx = db.transaction(AUTOMIX_STORE_NAME, 'readonly');
+            const req = tx.objectStore(AUTOMIX_STORE_NAME).count();
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+    } catch (e) { logCatch('aiCache', e); return 0; }
 }

@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * SonnetEngine.js — folia sonnet 的 PixiJS 运行时（M1：文字管线 + 7 shot 布局 + 相机 + 呼吸）
  *
@@ -22,8 +23,10 @@ import { buildSonnetShotMg } from './sonnetShotMgFull.js';
 import { resolveSonnetPostProcessProfile, applySonnetScenePostProcess, createSonnetHaloLayer } from './sonnetPostProcess.js';
 import {
     resolveSonnetShotTransitionFrame, resolveSonnetEnterTransitionFrame,
-    resolveSonnetTransitionEffectFrame, IDLE_SONNET_TRANSITION_FRAME,
+    resolveSonnetExitTransitionFrame, resolveSonnetTransitionEffectFrame,
+    IDLE_SONNET_TRANSITION_FRAME,
 } from './sonnetTransitions.js';
+import { unloadPixiDisplayTree } from '../pixiDisplayResources.js';
 import { createSonnetGlitchEffect } from './sonnetGlitchFilter.js';
 import { resolveSonnetCreditsFrame, hasSonnetCreditsMetadata, buildSonnetCreditsPoster } from './sonnetCredits.js';
 import {
@@ -35,6 +38,8 @@ import { resolveSonnetSegmentCameraFocus } from './sonnetCameraTracking.js';
 import { hashSonnetSeed } from './sonnetRandom.js';
 
 const FALLBACK_FONT = '"Noto Sans SC", "Microsoft YaHei", sans-serif';
+/* CJK 判定（汉字/假名/谚文）——中文歌词的 hero 归一处理用 */
+const CJK_TEXT_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
 
 /** 封面主色 → 背景色派生：主色混入 75% 黑（保 hue、压亮度，背景不被正文压住）。
     sonnetMode 与 Engine 共用 */
@@ -139,7 +144,12 @@ export class SonnetEngine {
         if (settings.highlightColor) this.theme.accentColor = settings.highlightColor;
         if (settings.fontFamily) this.fontFamily = settings.fontFamily;
         if (typeof settings.fontSize === 'number' && settings.fontSize > 0) {
-            this.lyricsFontScale = settings.fontSize;
+            /* ★ 2026-10-02（用户实测「verse 焦点偏上/巨字溢顶」）：fontSize 1.5 原样
+               灌进字号公式——自适应基数几乎每个 shot 顶到上限，hero ×4~5.5 后
+               500~690px 巨字必然溢出画面（布局 fitScale 只保宽度 82%，高度无保护，
+               上游亦然；上游 lyricsFontScale 是 tuning 调试项，用户场景恒为 1）。
+               用户设置软施加：clamp [0.8,1.2]，调大能感觉到但不破坏溢出保护。 */
+            this.lyricsFontScale = Math.min(1.2, Math.max(0.8, settings.fontSize));
         }
         /* ★ 2026-09-30：PV 设置区控件全量接通（此前只接 2 项，用户实测「设置项没用」） */
         if (typeof settings.cameraZoom === 'number' && settings.cameraZoom > 0) {
@@ -254,8 +264,16 @@ export class SonnetEngine {
            renderer.width=0 → 文字以 24px 烘焙在原点并随 scenes 缓存永久固化
            （Pixi resizeTo 只改 canvas，容器尺寸变化不触发 window.resize）。
            每帧比对 renderer 尺寸，变化即作废缓存，下一帧按新尺寸重建。 */
-        const rw = this.app.renderer.width / this.app.renderer.resolution;
-        const rh = this.app.renderer.height / this.app.renderer.resolution;
+        /* ★★★ 2026-10-02 场景尺寸源统一为「容器 CSS 尺寸」（用户第八轮「偏左上」的
+           真根因）：此前用 renderer.width/resolution 反推布局尺寸——用户窗口从
+           1732×564 变成 1138×680 后，renderer 反推值与实际画布显示尺寸脱钩
+           （水印实证 pos=(866,282)=1732/2 与 564/2，而画布是 1138×680），场景按旧
+           尺寸烘焙 → 布局原点落在画布外 → 内容被裁到左上。容器 clientWidth/Height
+           与画布显示尺寸必然一致，作为唯一尺寸源。 */
+        const cw = this.container ? this.container.clientWidth : 0;
+        const ch = this.container ? this.container.clientHeight : 0;
+        const rw = cw || (this.app.renderer.width / this.app.renderer.resolution);
+        const rh = ch || (this.app.renderer.height / this.app.renderer.resolution);
         /* ★ 2026-09-30 下限 320×240→160×120：设置页预览窗比旧守卫小，场景永不建立
            （用户实测「verse 的预览框没有歌词」） */
         if ((rw !== this._lastSceneW || rh !== this._lastSceneH) && rw >= 160 && rh >= 120) {
@@ -270,108 +288,82 @@ export class SonnetEngine {
         const paragraph = this.program.paragraphs[paragraphIndex];
         if (!paragraph) return;
 
-        // 场景懒建：激活段落 ±1 预建；其余剪除
-        this._ensureScene(paragraphIndex);
-        if (paragraphIndex + 1 < this.program.paragraphs.length) this._ensureScene(paragraphIndex + 1);
-
-        /* ★ 2026-09-30 段落切换交叉淡化（用户实测「有一段东西突然消失的真空时间」）：
-           硬切 + 新段 0.3s 淡入 = 旧词瞬间消失后画面近乎全空。保留上一段落场景 0.35s
-           同步淡出，与新段淡入交叠。 */
+        /* ★ 2026-10-02 照抄 folia（createSonnetPixiRuntime.ts 707-760）：上游没有
+           fadeScene/交叉淡化/textFade——段落间是**硬切**，退场软化只有段落自身的
+           transitionOut 时间窗（exit 转场帧）。此前自创的 hold/压暗/文本复位全是
+           「闪黑→闪回」的来源。邻居场景每帧只预建一个（上游 718-733：场景构建要
+           跑全量字形布局，一帧三个会掉帧）。 */
         if (this.activeParagraphIndex !== paragraphIndex) {
-            const outgoing = this.activeParagraphIndex >= 0 ? this.scenes.get(this.activeParagraphIndex) : null;
-            if (outgoing) {
-                this._fadeScene = outgoing;
-                this._fadeStart = time;
-                /* ★ 2026-10-02 闪黑根修（用户实测「歌词行闪黑而不是渐隐」）：段尾
-                   textFade 已把文本层压到 0.45，fadeScene 的容器 alpha 再 ramp
-                   1→0.45——两层相乘 ≈0.2，观感即「突然黑掉」。接管时把 outgoing
-                   的文本层复位 1，明暗全部交给容器 alpha 单层承担。 */
-                outgoing.shots.forEach(sv => {
-                    if (sv.textLayer) sv.textLayer.alpha = 1;
-                    if (sv.guideLayer) sv.guideLayer.alpha = 1;
-                });
-                /* ★ 2026-10-01 真空根治（用户视频实测「最后一个词没唱完就闪黑，黑 1.5s+」）：
-                   新段 startTime=line.start，但首个字形按 WORD 时间入场——首词可能比行头晚
-                   1s+（yrc 行头早于人声 / LRC 时间戳偏移）。旧逻辑固定 0.35s 淡出 = 新段
-                   首字入场前全黑。改为：旧场景先压暗到 0.45 **保持**，直到新段首个字形
-                   真正入场才开始退场（上限 3.5s 防超长间奏悬挂）。 */
-                const incomingFirst = this._getParagraphFirstGlyphTime(paragraph, paragraphIndex);
-                this._fadeHoldUntil = Math.min(time + 2, Math.max(time + 0.35, incomingFirst));
-            }
-            // 离开旧段落：剪除远端缓存（正在淡出的场景保住不剪）
+            /* ★★★ 2026-10-03 修「verse 有时没有歌词（~50% 概率）」：此前是
+               「先提交 activeParagraphIndex、再 _ensureScene」——而建场景可能失败
+               （切模式瞬间容器 clientWidth=0 且布局未就绪 → _ensureScene 返回 null；
+               或构建中抛异常被帧级 try 捕获）。失败后索引已提交，下一帧
+               activeParagraphIndex === paragraphIndex，**永远不会重试** → 整段无歌词。
+               容器就绪时机随机 ⇒ 概率性地「有/没有歌词」。
+               改为：场景构建成功才提交索引；失败直接返回本帧（旧场景继续显示，
+               比黑屏好），下一帧自动重试。 */
+            const built = this._ensureScene(paragraphIndex);
+            if (!built) return;
+            this.activeParagraphIndex = paragraphIndex;
             this.scenes.forEach((scene, index) => {
-                if (Math.abs(index - paragraphIndex) > 1 && scene !== this._fadeScene) {
+                if (Math.abs(index - paragraphIndex) > 1) {
                     this._destroyScene(scene);
                     this.scenes.delete(index);
                 }
             });
-            this.activeParagraphIndex = paragraphIndex;
+        } else if (!this.songSwap) {
+            const next = paragraphIndex + 1;
+            const previous = paragraphIndex - 1;
+            if (next < this.program.paragraphs.length && !this.scenes.has(next)) {
+                this._ensureScene(next);
+            } else if (previous >= 0 && !this.scenes.has(previous)) {
+                this._ensureScene(previous);
+            }
         }
-        let fadeScene = this._fadeScene;
-        if (fadeScene && (!this.scenes.has(fadeScene.index) || time - this._fadeStart >= 0.35 && time > (this._fadeHoldUntil || 0))) {
-            fadeScene = this._fadeScene = null;
-        }
-        if (fadeScene) {
-            /* 两段式退场：0.35s 内 1→0.45 压暗保持；holdUntil 后 0.45→0 退场 */
-            const holdAlpha = 0.45;
-            const holdUntil = this._fadeHoldUntil || (this._fadeStart + 0.35);
-            const rampP = clamp01((time - this._fadeStart) / 0.35);
-            fadeScene.container.alpha = time <= holdUntil
-                ? 1 - rampP * (1 - holdAlpha)
-                : holdAlpha * (1 - clamp01((time - holdUntil) / 0.35));
-        }
+
+        /* 上游 740-746：严格只画激活场景。失活场景卸载显示树（释放 GPU 纹理，
+           树保留可 seek），并记住当时激活的 shot 以便卸载。 */
         this.scenes.forEach((scene, index) => {
-            const visible = index === paragraphIndex || scene === fadeScene;
-            scene.container.visible = visible;
+            const isActive = index === paragraphIndex;
+            scene.container.visible = isActive;
+            if (!isActive) {
+                const lastShot = scene.activeShotId != null ? scene.shots.get(scene.activeShotId) : null;
+                if (lastShot) unloadPixiDisplayTree(lastShot.container);
+                scene.activeShotId = null;
+            }
         });
 
-        // 激活 shot（findIndex 供转场 API 使用）
-        let shotIndex = paragraph.shots.findIndex(s => time >= s.startTime && time < s.endTime);
-        if (shotIndex < 0) {
-            /* ★ 2026-09-30 修「真空/跳镜」：shot 间隙（prev.endTime ≤ t < next.startTime）
-               落到这里时旧代码 fallback 到 shot 0——画面跳回第一个镜头的文本（用户实测
-               「东西突然消失」的观感来源之一）。改为取时间线上最后一个已开始的 shot。 */
-            for (let i = paragraph.shots.length - 1; i >= 0; i--) {
-                if (time >= paragraph.shots[i].startTime) { shotIndex = i; break; }
-            }
-            if (shotIndex < 0) shotIndex = 0;
+        // 激活 shot（上游 773-781：时间线上最后一个已开始的 shot）
+        let shotIndex = 0;
+        for (let i = paragraph.shots.length - 1; i >= 0; i--) {
+            if (time >= paragraph.shots[i].startTime) { shotIndex = i; break; }
         }
         const shot = paragraph.shots[shotIndex];
         if (!shot) return;
         const scene = this.scenes.get(paragraphIndex);
         if (!scene) return;
 
-        // shot 边界转场（上游 resolveSonnetShotTransitionFrame 等价）
+        /* 上游 747-766：转场帧 = shot 转场，否则段落转场（enter 窗口取上一段
+           transitionOut 时长 0.16-0.3s；非 enter 窗口给段尾 exit 帧）。 */
         const sceneSeed = hashSonnetSeed(`${this.program.seed}:${paragraph.id}`);
         let transition = this.transitionsEnabled
             ? resolveSonnetShotTransitionFrame(paragraph.shots, shotIndex, time, true, sceneSeed)
             : IDLE_SONNET_TRANSITION_FRAME;
-
-        /* ★ 2026-09-30 段落级转场 + 段尾文本退场（真空修复核心）：
-           - 段尾唱完后：文本层（text/guide）在 exitDur 内淡出并**保持 0**——MG/背景
-             续存，不再「突然消失」也不弹回；exitDur 与段间 gap 挂钩。
-           - 新段开头：上一段 transitionKind 的 enter 只出 blur/glitch（alpha 明暗全部
-             由段落交叉淡化 + shot 进入淡入承担——此前 enter alpha 叠加 shot 淡入造成
-             双重压暗，切换点画面近乎全空）。 */
-        scene.textFade = 1;
-        if (transition === IDLE_SONNET_TRANSITION_FRAME && this.transitionsEnabled) {
-            const paraAge = time - paragraph.startTime;
-            if (paragraphIndex > 0 && paraAge >= 0 && paraAge <= 0.45) {
-                const prevPara = this.program.paragraphs[paragraphIndex - 1];
-                if (prevPara && prevPara.transitionKind) {
-                    transition = resolveSonnetEnterTransitionFrame(
-                        prevPara.transitionKind, paraAge, 0.45, true, sceneSeed + 31);
-                }
-            }
-        }
-        if (time > paragraph.endTime) {
-            const nextPara = this.program.paragraphs[paragraphIndex + 1];
-            const gap = nextPara ? Math.max(0.2, nextPara.startTime - paragraph.endTime) : 1.2;
-            const exitDur = Math.min(1.2, Math.max(0.35, gap * 0.5));
-            /* ★ 真空修复（用户实测「两句间隔过大时会有真空」）：文本只收到 0.45 并
-               保持——唱完的句子留在画面上变暗（歌词软件惯例），MG/背景续存。
-               此前收到 0 = 间隔越长空屏越久。 */
-            scene.textFade = 0.45 + 0.55 * clamp01(1 - (time - paragraph.endTime) / exitDur);
+        if (transition === IDLE_SONNET_TRANSITION_FRAME) {
+            const previousTransition = paragraphIndex > 0
+                ? this.program.paragraphs[paragraphIndex - 1]?.transitionOut
+                : null;
+            const enterDuration = previousTransition
+                ? Math.max(0.16, Math.min(0.3, previousTransition.endTime - previousTransition.startTime))
+                : 0;
+            const entering = this.transitionsEnabled
+                && previousTransition != null
+                && time >= paragraph.startTime
+                && time <= paragraph.startTime + enterDuration;
+            transition = entering
+                ? resolveSonnetEnterTransitionFrame(
+                    previousTransition.kind, time - paragraph.startTime, enterDuration, true, sceneSeed)
+                : resolveSonnetExitTransitionFrame(paragraph, time, this.transitionsEnabled, sceneSeed);
         }
         this._updateScene(scene, shot, shotIndex, time, paragraph, transition);
 
@@ -399,9 +391,13 @@ export class SonnetEngine {
         if (this.scenes.has(paragraphIndex)) return this.scenes.get(paragraphIndex);
         const paragraph = this.program.paragraphs[paragraphIndex];
         if (!paragraph) return null;
-        /* 布局未就绪（容器 0 尺寸）不建场景——坐标按 0 烘焙会固化（见 _tickInner 守卫） */
-        const width = this.app.renderer.width / this.app.renderer.resolution;
-        const rawHeight = this.app.renderer.height / this.app.renderer.resolution;
+        /* 布局未就绪（容器 0 尺寸）不建场景——坐标按 0 烘焙会固化（见 _tickInner 守卫）。
+           ★★★ 尺寸源 = 容器 CSS 尺寸（与画布显示必然一致）；renderer 反推值在
+           DPR/窗口变化后会与实际画布脱钩（用户第八轮偏左上根因）。 */
+        const width = (this.container && this.container.clientWidth)
+            || (this.app.renderer.width / this.app.renderer.resolution);
+        const rawHeight = (this.container && this.container.clientHeight)
+            || (this.app.renderer.height / this.app.renderer.resolution);
         if (width < 160 || rawHeight < 120) return null;
         /* ★ 布局高度 = 视口高 − 底部播放器栏（96px）：canvas 全高（halftone 网点等
            滤镜铺满视口），内容安全区收敛到栏之上。 */
@@ -517,10 +513,12 @@ export class SonnetEngine {
             const lineGroups = shot.lineIndices.map(sourceIndex => paragraph.lines[sourceIndex].segments);
             const flatSegments = lineGroups.flat();
             /* ★ 字号公式（上游 sonnetSceneBuilder 1:1）：按 shot 词数自适应 + heroScale。
-               2026-09-29 下限 24→30、上限 112→126（用户实测 support 词太小） */
+               ★ 2026-10-02 上限 126→112 对齐上游（用户 fontSize=1.5 时基数顶格 126，
+               hero 巨字溢顶；112 也缓解「support 词太小」的原始诉求——那是缩放被
+               clamp 后的连带观感，见 applySettings 的软施加）。 */
             const wordCount = Math.max(1, flatSegments.filter(s => s.isWordLike !== false && s.text.trim()).length);
             const heroScale = shot.kind === 'type-impact' ? 1.55 : shot.kind === 'quiet-tableau' ? 0.82 : 1;
-            const shotFontSize = Math.max(30, Math.min(126,
+            const shotFontSize = Math.max(30, Math.min(112,
                 (width / Math.max(7, wordCount * 2.15)) * heroScale * (this.lyricsFontScale || 1)));
 
             /* ★ 上游 per-shot 容器（sceneBuilder 280-316 形态）：
@@ -552,6 +550,55 @@ export class SonnetEngine {
                 fontFamily,
                 fontWeight: null,
             });
+            /* ★ 2026-10-02 内容安全区自适应（用户实测「焦点偏左上/画面空荡」）：
+               上游布局把词散布在完整画布上（tracking-ribbon x 游走 ±0.28w、长句词链
+               更远），运行时 pivot 追当前词后其余词全在画外——画面只剩 1-2 个字 +
+               露出的背景 MG 碎片（用户看到「左上角一个方框」）。此处把非装饰词块的
+               包围盒在超出安全区（0.88w × 0.84h）时整体等比缩放并平移，使整句内容
+               恒完整落在画中；装饰巨字（刻意偏移的背景大字）不参与包围盒但跟随变换，
+               以免它们把包围盒撑爆。 */
+            const fitContentToSafeArea = (boxes, safeW, safeH) => {
+                const content = boxes.filter(b => b.role !== 'decoration');
+                if (content.length === 0) return;
+                let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+                content.forEach(b => {
+                    minX = Math.min(minX, b.x - b.measuredWidth / 2);
+                    maxX = Math.max(maxX, b.x + b.measuredWidth / 2);
+                    minY = Math.min(minY, b.y - b.measuredHeight / 2);
+                    maxY = Math.max(maxY, b.y + b.measuredHeight / 2);
+                });
+                const boxW = Math.max(1, maxX - minX);
+                const boxH = Math.max(1, maxY - minY);
+                /* ★ 2026-10-02 「设置项调了没用」修复：此前一律 fit 到安全区——用户调大
+                   字号/焦距后内容变大，fit 又把它缩回去，等于白调。改为只在**严重超界**
+                   （>1.25 倍安全区）时才缩放，且保底 0.7（不缩成看不见）；轻微超界只做
+                   居中平移（平移永远执行，零副作用）。 */
+                const rawScale = Math.min(1, safeW / boxW, safeH / boxH);
+                const scale = rawScale < 0.8 ? Math.max(rawScale, 0.7) : 1;
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                boxes.forEach(b => {
+                    b.x = (b.x - centerX) * scale;
+                    b.y = (b.y - centerY) * scale;
+                    /* 拟合缩放同步作用于测量框/字号/入场向量：字形按 placement.fontScale
+                       生成（大小 = baseFontSize × fontScale × measured），只缩框不缩字号
+                       会出现「框缩了字没缩」的溢出。 */
+                    b.measuredWidth *= scale;
+                    b.measuredHeight *= scale;
+                    b.fontScale *= scale;
+                    b.enterX *= scale;
+                    b.enterY *= scale;
+                });
+            };
+            /* ★ 2026-10-02 安全区按本镜头 zoom 反向补偿（用户截图实锤「巨字顶部被裁」）：
+               fit 后内容占 0.88w×0.84h，但相机 zoom 1.02~1.48 × motion.scale ±9% ——
+               0.84h × 1.48 ≈ 1.24h，必然顶底溢出。安全区除以 (zoom×1.1) 后，
+               内容 × zoom 恰好回到 0.88w/0.84h 内；短句镜头 zoom 低则字更大。 */
+            /* ★ 2026-10-02 zoom 补偿上限 1.2（用户实测「歌词有时候很小」）：此前
+               安全区 ÷ (zoom×1.1)，zoom 1.48 时安全区只剩 54%，字被缩得很小。
+               现在最多 ÷1.2——允许高 zoom 镜头轻微裁切（folia 电影感），保字号。 */
+            const zoomComp = Math.min(1.2, Math.max(1, (shot.camera.zoom || 1) * (this.cameraZoomScale || 1) * 1.1));
+            fitContentToSafeArea(placements, width * 0.88 / zoomComp, height * 0.84 / zoomComp);
             const shotView = {
                 shot, container: shotContainer, segments: [], mg,
                 textLayer, guideLayer,
@@ -584,20 +631,25 @@ export class SonnetEngine {
                 shotView.segments.push(view);
             });
 
-            /* ★ 上游摆位（sceneBuilder 295-307）：pivot=hero 焦点、position=相机偏移 */
+            /* ★ 2026-10-02 摆位终版·锚 hero（水印铁证：shot=(580,345)+pivot=(0,0) 全居中
+               但「只是」巨字仍偏左上 235px——偏的不是容器而是内容：pivot 锚「包围盒
+               中心」时 bbox 被侧边支撑词拉偏，视觉主体 hero 不在中心。用户语义的
+               「中心」= 正在唱的那个大词在中心 ⇒ pivot 直接锚 fit 后的 hero placement，
+               hero 恒居画面正中，support/装饰围绕（fit 已保证整体在安全区）。
+               追踪出发点=hero（applyShotCamera 里 ×0.2+clamp）。 */
             const heroPlacement = placements.find(p => p.role === 'hero');
             const focusX = shot.kind === 'poster-blocks'
                 ? 0
-                : heroPlacement ? heroPlacement.x : width / 2;
+                : heroPlacement ? heroPlacement.x : 0;
             const focusY = shot.kind === 'poster-blocks'
                 ? 0
-                : heroPlacement ? heroPlacement.y : height / 2;
+                : heroPlacement ? heroPlacement.y : 0;
             shotContainer.pivot.set(focusX, focusY);
             shotContainer.position.set(
                 width * (shot.kind === 'poster-blocks' ? 0.5 : 0.5 + shot.camera.x),
-                height * (shot.kind === 'poster-blocks'
-                    ? 0.5
-                    : 0.48 + shot.camera.y + (shotIndex % 2 ? 0.025 : -0.025)),
+                shot.kind === 'poster-blocks'
+                    ? height / 2
+                    : rawHeight / 2 + shot.camera.y * height * 0.2,
             );
             shotView.baseX = shotContainer.x;
             shotView.baseY = shotContainer.y;
@@ -635,75 +687,104 @@ export class SonnetEngine {
 
         /* ★ 上游相机模型（createSonnetPixiRuntime.ts 451-560 形态）：
            per-shot 容器 + pivot 跟随「当前唱到的词」焦点（平滑加权） +
-           镜头路径 motion + 呼吸 + shake + 转场帧
-           ★ 2026-10-02 行尾停滞根修（用户实测「最后一个字播完整句动画冻结，
-           根本不像 folia」）：shotProgress 用 shot.endTime 归一——最后一句词唱完
-           progress=1，运镜/焦点流全部冻结到下一镜接管。运镜窗延伸到下一镜
-           startTime（或 +1.2s 兜底），镜头流动覆盖整段悬挂期。 */
-        const nextShotForFlow = paragraph.shots[shotIndex + 1];
-        const motionEnd = nextShotForFlow
-            ? Math.max(shot.endTime, nextShotForFlow.startTime)
-            : shot.endTime + 1.2;
-        const shotProgress = resolveShotProgress({ ...shot, endTime: motionEnd }, time);
+           镜头路径 motion + 呼吸 + shake + 转场帧。
+           ★ 2026-10-02 照抄上游 gapTime 尾段漂移（createSonnetPixiRuntime.ts 458-472）：
+           行唱完后（gapTime>0）镜头沿尾段（progress 0.8→1.0）的运动方向继续慢速
+           漂移——speed = (1-e^(-gap×0.4)) × 2.0，饱和式渐慢。这才是上游「行尾
+           不冻结」的实现；此前自创的运镜窗延伸已删。 */
+        const shotProgress = resolveShotProgress(shot, time);
         const motion = resolveShotMotionFrame(shot.kind, shotProgress);
+        const gapTime = Math.max(0, time - shot.endTime);
+        if (gapTime > 0) {
+            const tailStart = resolveShotMotionFrame(shot.kind, 0.8);
+            const driftSpeed = (1 - Math.exp(-gapTime * 0.4)) * 2.0;
+            motion.x += (motion.x - tailStart.x) * driftSpeed;
+            motion.y += (motion.y - tailStart.y) * driftSpeed;
+            motion.scale += (motion.scale - tailStart.scale) * driftSpeed;
+            motion.rotation += (motion.rotation - tailStart.rotation) * driftSpeed;
+        }
 
         let trackSegments = shotView.segments.filter(s => s.role !== 'decoration' && s.trackingGlyphs && s.trackingGlyphs.length > 0);
         if (trackSegments.length === 0) {
             trackSegments = shotView.segments.filter(s => s.trackingGlyphs && s.trackingGlyphs.length > 0);
-        }
-        const revealDoneTime = trackSegments.length > 0
-            ? Math.max(...trackSegments.map(segment => segment.trackingGlyphs.at(-1)?.startTime ?? shot.endTime))
-            : shot.endTime;
-        const breathWeight = resolveSonnetBreathWeight(time, revealDoneTime);
-        const breathPhase = (hashSonnetSeed(shot.id) % 1024) / 1024 * Math.PI * 2;
-        const breath = resolveSonnetCameraBreath(time, breathPhase);
-
-        let focusX = shotView.basePivotX;
-        let focusY = shotView.basePivotY;
-        if (trackSegments.length > 0) {
-            const focusRanges = trackSegments.map(segment => ({
-                startTime: segment.trackingGlyphs[0]?.startTime ?? shot.startTime,
-                endTime: segment.trackingGlyphs.at(-1)?.startTime ?? shot.endTime,
-            }));
-            const resolveFocusAtTime = (focusTime) => {
-                let fx = 0;
-                let fy = 0;
-                const focusWeights = resolveSonnetFocusWeights(focusRanges, focusTime);
-                for (let i = 0; i < trackSegments.length; i++) {
-                    const seg = trackSegments[i];
-                    if (seg.trackingGlyphs.length === 0) continue;
-                    const weight = focusWeights[i] ?? 0;
-                    const pos = resolveSonnetSegmentCameraFocus(seg.trackingGlyphs, focusTime);
-                    fx += pos.x * weight;
-                    fy += pos.y * weight;
-                }
-                return { x: fx, y: fy };
-            };
-            const focusTime = Math.max(shot.startTime, Math.min(time, shot.endTime));
-            const smoothWindow = 0.12 / (this.cameraSpeed || 1);
-            const smoothed = resolveSonnetSmoothedCameraFocus(
-                focusTime, shot.startTime, shot.endTime, resolveFocusAtTime, smoothWindow,
-            );
-            focusX = smoothed.x;
-            focusY = smoothed.y;
         }
 
         const shake = resolveTimelineShake(time, 0);
         const camera = 1; // 上游 tuning mod('camera') 强度，默认 1
         const zoomScale = this.cameraZoomScale || 1; // 「默认焦距(镜头特写)」滑条
 
-        shotView.container.pivot.set(
-            shotView.basePivotX + (focusX - shotView.basePivotX) * camera,
-            shotView.basePivotY + (focusY - shotView.basePivotY) * camera,
-        );
-        shotView.container.scale.set(
-            shot.camera.zoom * zoomScale * (1 + ((motion.scale + breath.scale * breathWeight) - 1) * camera),
-        );
-        shotView.container.rotation = (
-            shot.camera.rotation + motion.rotation + breath.rotation * breathWeight + shake.rotation
-        ) * camera;
-        shotView.container.x = shotView.baseX + ((motion.x + breath.x * breathWeight) * width + shake.x * width) * camera;
-        shotView.container.y = shotView.baseY + ((motion.y + breath.y * breathWeight) * height + shake.y * height) * camera;
+        /* ★ 2026-10-02 相机管线抽成闭包（用户实测「切镜突然把上一句内容移动，
+           且上一句动画基本没有」）：上一版给旧镜单独写 transform，pivot 被重置成
+           basePivot（丢焦点追踪）→ 交接帧跳变。现在激活镜与旧镜走**同一条管线**，
+           唯一差异是 motion 帧：激活镜用延伸窗进度（交接瞬间恰 =1.0），旧镜用
+           clamp 进度（=1.0）——两者在交接帧数值完全相等，零跳变；此后旧镜的
+           呼吸/震颤/焦点（冻结在末词）/MG 全部按自己的时间函数继续，即 folia 的
+           「旧构图活着退场」。 */
+        const applyShotCamera = (view, shotData, motionFrame) => {
+            let segs = view.segments.filter(s => s.role !== 'decoration' && s.trackingGlyphs && s.trackingGlyphs.length > 0);
+            if (segs.length === 0) {
+                segs = view.segments.filter(s => s.trackingGlyphs && s.trackingGlyphs.length > 0);
+            }
+            const revealDone = segs.length > 0
+                ? Math.max(...segs.map(segment => segment.trackingGlyphs.at(-1)?.startTime ?? shotData.endTime))
+                : shotData.endTime;
+            const breathW = resolveSonnetBreathWeight(time, revealDone);
+            const breathPhase = (hashSonnetSeed(shotData.id) % 1024) / 1024 * Math.PI * 2;
+            const breath = resolveSonnetCameraBreath(time, breathPhase);
+
+            let focusX = view.basePivotX;
+            let focusY = view.basePivotY;
+            if (segs.length > 0) {
+                const focusRanges = segs.map(segment => ({
+                    startTime: segment.trackingGlyphs[0]?.startTime ?? shotData.startTime,
+                    endTime: segment.trackingGlyphs.at(-1)?.startTime ?? shotData.endTime,
+                }));
+                const resolveFocusAtTime = (focusTime) => {
+                    let fx = 0;
+                    let fy = 0;
+                    const focusWeights = resolveSonnetFocusWeights(focusRanges, focusTime);
+                    for (let i = 0; i < segs.length; i++) {
+                        const seg = segs[i];
+                        if (seg.trackingGlyphs.length === 0) continue;
+                        const weight = focusWeights[i] ?? 0;
+                        const pos = resolveSonnetSegmentCameraFocus(seg.trackingGlyphs, focusTime);
+                        fx += pos.x * weight;
+                        fy += pos.y * weight;
+                    }
+                    return { x: fx, y: fy };
+                };
+                const focusTime = Math.max(shotData.startTime, Math.min(time, shotData.endTime));
+                const smoothWindow = 0.12 / (this.cameraSpeed || 1);
+                const smoothed = resolveSonnetSmoothedCameraFocus(
+                    focusTime, shotData.startTime, shotData.endTime, resolveFocusAtTime, smoothWindow,
+                );
+                focusX = smoothed.x;
+                focusY = smoothed.y;
+            }
+
+            /* ★ 2026-10-02 恢复 folia 原生运镜（用户「运镜不像 folia」）：场景尺寸根因
+               已修，收敛不再必要——追踪回满幅（镜头跟词）、motion 回满幅。 */
+            view.container.pivot.set(
+                view.basePivotX + (focusX - view.basePivotX) * camera,
+                view.basePivotY + (focusY - view.basePivotY) * camera,
+            );
+            view.container.scale.set(
+                shotData.camera.zoom * zoomScale * (1 + ((motionFrame.scale + breath.scale * breathW) - 1) * camera),
+            );
+            view.container.rotation = (
+                shotData.camera.rotation + motionFrame.rotation + breath.rotation * breathW + shake.rotation
+            ) * camera;
+            /* ★ 2026-10-02 运镜满幅（恢复 folia） */
+            view.container.x = view.baseX + ((motionFrame.x + breath.x * breathW) * width + shake.x * width) * camera;
+            view.container.y = view.baseY + ((motionFrame.y + breath.y * breathW) * height + shake.y * height) * camera;
+        };
+
+        applyShotCamera(shotView, shot, motion);
+
+        /* ★ 2026-10-02 闭环自校正已撤除（用户「运镜不像 folia」）：它是「偏左上」
+           根因未定位时的权宜（每帧把内容拉回中心），而真根因是场景尺寸脱钩
+           （已由 container 尺寸源修复）。留着会把 folia 的镜头游走死死拉回中心，
+           运镜变得死板。居中基线改由 fitContentToSafeArea（平移）+ pivot 锚 hero 保证。
 
         /* MG 全量驱动：updateTime 传播到 bg/geo/fixed/particle 全部件。
            ★ 2026-09-30 修「背景图形不会自己做动画」：Full 版 updateTime 签名是
@@ -713,127 +794,47 @@ export class SonnetEngine {
         if (shotView.mg && typeof shotView.mg.updateTime === 'function') {
             const audio = (typeof globalThis !== 'undefined' && globalThis.__sonnetAudioLevels) || null;
             shotView.mg.updateTime(
-                time, shot.cues, shot.startTime, motionEnd,
+                time, shot.cues, shot.startTime, shot.endTime,
                 audio ? audio.bass || 0 : 0,
                 audio ? audio.power || 0 : 0,
                 audio ? audio.vocal || 0 : 0,
             );
         }
 
-        /* 转场帧：blur/glitch 作用于段落容器。★ alpha 不再压场景（2026-09-30 真空修复）：
-           此前 exit 1→0 + enter 0.18→1 串行，每次切镜 0.6-1s 的低亮度真空。
-           现在段内明暗全部由 per-shot 容器交叉淡化承担，场景恒 1（credits 仍可乘）。 */
-        scene.container.alpha = 1;
-        scene.container.position.set(width / 2, height / 2);
+        /* 转场帧（上游 810-830 一比一）：alpha/位移/缩放/旋转/blur/glitch 全部来自
+           转场帧——shot 边界窗口或段落 transitionOut 窗口。这是上游唯一的切镜软化，
+           没有第二层压暗。 */
+        scene.container.alpha = tf.alpha;
+        scene.container.pivot.set(width / 2, height / 2);
+        scene.container.position.set(width / 2 + tf.x * width, height / 2 + tf.y * height);
         scene.container.scale.set(tf.scale);
-        scene.container.pivot.set(0, 0);
+        scene.container.rotation = tf.rotation;
         scene.blurFilter.blur = tf.blur;
         if (scene.transitionGlitchEffect && scene.transitionGlitchEffect.filter) {
             scene.transitionGlitchEffect.update(tf.glitch, tf.glitchSeed);
             scene.transitionGlitchEffect.filter.enabled = tf.glitch > 0.01;
         }
 
-        // 逐 shot 显隐 + 设置开关（HUD/粒子/装饰，PV 设置区直连）
-        // ★ 2026-09-30 交叉淡化（用户实测「前个词都没展示完就隐藏了」+ 真空感）：
-        //   硬切瞬间旧词消失、新镜 0.3s 从 0 淡入 → 切换点前后画面近乎全空。
-        //   进入窗口内保留上一 shot 容器同步淡出，与新镜淡入交叠成真正的 cross-fade。
+        /* 逐 shot 显隐（上游 792-803 一比一）：严格只有激活镜可见，其余直接 return；
+           shot 切换时对旧镜 unload 显示树（释放 GPU 纹理，树保留可 seek）。
+           ★ 无交叉淡化、无旧镜保留、无文本压暗——上游就是硬切 + 转场帧软化。 */
         const flags = this.settingsFlags || {};
-        let prevShotView = null;
-        let prevShot = null;
-        let crossFadeP = 1;
-        {
-            const enterAge = time - shot.startTime;
-            if (shotIndex > 0 && enterAge >= 0) {
-                const prevShotCand = paragraph.shots[shotIndex - 1];
-                const cand = scene.shots.get(prevShotCand.id);
-                if (cand && cand !== shotView) {
-                    prevShot = prevShotCand;
-                    /* ★ 动态淡出窗口（2026-09-30 夜，用户实测「尾词显示不全就突然
-                       停止动画一阵内隐藏」）：窗口覆盖到上一镜头最后一个字形定格
-                       为止（0.3–1.0s），窗口内旧镜字形继续播完动画（下方
-                       updateGlyphs 复用）——即上游「继续播放 + 渐隐切镜」的观感。 */
-                    let settleEnd = prevShot.endTime;
-                    cand.segments.forEach(sv => sv.glyphs.forEach(g => {
-                        if (g.settleTime > settleEnd) settleEnd = g.settleTime;
-                    }));
-                    /* ★ 2026-10-01 真空根治（同段落级）：新镜 startTime=line.start 但
-                       首个字形按词时间入场，可能晚 1s+——旧镜 1.0s 窗口淡到 0 后全黑。
-                       改三段式：1→0.45 压暗 → 保持到新镜首字形入场（上限 +4s）→
-                       0.45→0 退场。
-                       ★ 2026-10-02 调优（用户实测「切句后上一句词语不消失，叠在新句上」）：
-                       holdEnd 不再取 max(settleEnd, incomingFirst)——settleEnd 是旧镜
-                       自身入场动画的定格点，会把重叠拖进新句演唱期；旧镜动画在渐隐期
-                       由 updateGlyphs(prev) 继续播，无须为此延长 hold。退场一律锚
-                       incomingFirst（真空防护由场景字形真实时间保证）。 */
-                    const incomingFirst = this._getShotFirstGlyphTime(paragraph, shot, scene);
-                    const holdEnd = Math.min(shot.startTime + 3, incomingFirst);
-                    const holdAlpha = 0.45;
-                    const enterDur = Math.min(1.0, Math.max(0.3, settleEnd - shot.startTime));
-                    const fadeTail = 0.35;
-                    if (enterAge <= enterDur) {
-                        prevShotView = cand;
-                        crossFadeP = clamp01(enterAge / enterDur) * (1 - holdAlpha);
-                    } else if (time <= holdEnd) {
-                        prevShotView = cand;
-                        crossFadeP = 1 - holdAlpha;
-                    } else if (time <= holdEnd + fadeTail) {
-                        prevShotView = cand;
-                        crossFadeP = 1 - holdAlpha * (1 - (time - holdEnd) / fadeTail);
-                    }
-                }
-            }
-        }
         scene.shots.forEach((sv, shotId) => {
             const isActive = shotId === shot.id;
-            const isPrev = sv === prevShotView;
-            sv.container.visible = isActive || isPrev;
-            if (isActive) {
-                /* ★ 2026-09-30 夜：容器进入淡入退役——它与字形入场基础 alpha 叠加
-                   （0.35 × 0.16 ≈ 0.06），切句瞬间正文几乎不可见（用户实测仍有真空）。
-                   过渡感由旧镜 0.3s 交叉淡化独自承担，新镜文字立即以入场亮度出现。 */
-                sv.container.alpha = 1;
-                /* ★ 段尾文本退场：text/guide 淡出并保持 0，MG/背景续存 */
-                const textFade = scene.textFade === undefined ? 1 : scene.textFade;
-                if (sv.textLayer) sv.textLayer.alpha = textFade;
-                if (sv.guideLayer) sv.guideLayer.alpha = textFade;
-                if (sv.mg) {
-                    if (sv.mg.bgLayer) sv.mg.bgLayer.visible = flags.showHud !== false;
-                    if (sv.mg.particleLayer) sv.mg.particleLayer.visible = flags.showParticles !== false;
-                    if (sv.mg.geoLayer) sv.mg.geoLayer.visible = flags.showDecorations !== false;
-                    if (sv.mg.fixedGeoLayer) sv.mg.fixedGeoLayer.visible = flags.showDecorations !== false;
-                }
-            } else if (isPrev) {
-                sv.container.alpha = 1 - crossFadeP;
+            sv.container.visible = isActive;
+            if (!isActive) return;
+            sv.container.alpha = 1;
+            if (sv.mg) {
+                if (sv.mg.bgLayer) sv.mg.bgLayer.visible = flags.showHud !== false;
+                if (sv.mg.particleLayer) sv.mg.particleLayer.visible = flags.showParticles !== false;
+                if (sv.mg.geoLayer) sv.mg.geoLayer.visible = flags.showDecorations !== false;
+                if (sv.mg.fixedGeoLayer) sv.mg.fixedGeoLayer.visible = flags.showDecorations !== false;
             }
         });
-
-        /* ★ 2026-10-02 旧镜续动（用户实测「切句后上一句整句动画停滞，不像 folia」）：
-           容器 transform（pivot/scale/rotation/position）此前只驱动激活镜——交叉淡化
-           窗口内的旧镜整句冻结成贴图。给它自己的呼吸/震颤 + 自身 motion 帧，
-           MG 也继续 updateTime，旧镜在淡出期保持 folia 的「继续活着」观感。 */
-        if (prevShotView && prevShot) {
-            const prevMotion = resolveShotMotionFrame(prevShot.kind, resolveShotProgress(prevShot, time));
-            const prevBreathPhase = (hashSonnetSeed(prevShot.id) % 1024) / 1024 * Math.PI * 2;
-            const prevBreath = resolveSonnetCameraBreath(time, prevBreathPhase);
-            const prevBreathWeight = resolveSonnetBreathWeight(time, prevShot.endTime);
-            prevShotView.container.pivot.set(prevShotView.basePivotX, prevShotView.basePivotY);
-            prevShotView.container.scale.set(
-                prevShot.camera.zoom * zoomScale * (1 + ((prevMotion.scale + prevBreath.scale * prevBreathWeight) - 1) * camera),
-            );
-            prevShotView.container.rotation = (
-                prevShot.camera.rotation + prevMotion.rotation + prevBreath.rotation * prevBreathWeight + shake.rotation
-            ) * camera;
-            prevShotView.container.x = prevShotView.baseX + ((prevMotion.x + prevBreath.x * prevBreathWeight) * width + shake.x * width) * camera;
-            prevShotView.container.y = prevShotView.baseY + ((prevMotion.y + prevBreath.y * prevBreathWeight) * height + shake.y * height) * camera;
-            if (prevShotView.mg && typeof prevShotView.mg.updateTime === 'function') {
-                const audio = (typeof globalThis !== 'undefined' && globalThis.__sonnetAudioLevels) || null;
-                prevShotView.mg.updateTime(
-                    time, prevShot.cues, prevShot.startTime, Math.max(prevShot.endTime, time + 0.5),
-                    audio ? audio.bass || 0 : 0,
-                    audio ? audio.power || 0 : 0,
-                    audio ? audio.vocal || 0 : 0,
-                );
-            }
+        if (scene.activeShotId !== shot.id) {
+            const previousShot = scene.activeShotId != null ? scene.shots.get(scene.activeShotId) : null;
+            if (previousShot) unloadPixiDisplayTree(previousShot.container);
+            scene.activeShotId = shot.id;
         }
 
         // 激活 shot 的逐字动画（上游 620-660 公式：waiting→0、depth 视差、emphasis 起步更小）
@@ -900,15 +901,7 @@ export class SonnetEngine {
         });
         };
         updateGlyphs(shotView);
-        /* ★ 交叉淡化窗口内的旧镜头：字形继续播完入场动画再淡出，而非冻结帧硬隐 */
-        if (prevShotView) updateGlyphs(prevShotView);
-        /* ★ 2026-10-01 夜（用户实测「一句播完后 2.5D 透视/移动/回弹全消失，只剩运镜」）：
-           播完的 shot 此后不再跑 updateGlyphs——parallax/深度缩放是相机运动的函数，
-           冻结即「上一句变成贴图」。段内所有可见 shot 每帧都更新（当前句逐字、
-           已唱句只动视差项），成本为每帧多 1-2 个 shot 的 glyph 循环。 */
-        scene.shots.forEach(sv => {
-            if (sv.container.visible && sv !== shotView && sv !== prevShotView) updateGlyphs(sv);
-        });
+        /* 上游只更新激活 shot（旧镜在切镜时已 unload）。 */
     }
 
     /* ★ 2026-10-01 真空根治辅助：取段落/镜头首个字形的入场时间（秒）。

@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // 机械移植自 chthollyphile/folia-major src/components/visualizer/pixiTextureBudget.ts
 // Snaps a renderer resolution down to Pixi's power-of-two texture pool, so a full-viewport
 // filter pass stops paying for pixels nothing ever draws into.

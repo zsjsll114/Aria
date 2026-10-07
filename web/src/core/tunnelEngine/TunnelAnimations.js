@@ -1,3 +1,4 @@
+/* Portions adapted from JPV Lyrics Motion Kit (AGPL-3.0). See THIRD_PARTY_NOTICES.md */
 /**
  * TunnelAnimations.js — 「流光隧道」动画/装饰/拆字系统
  * 忠实落地 PV-技术方案.md 第 10 / 11 / 13.4 / 8.3 章：

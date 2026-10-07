@@ -83,7 +83,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--theme-color, #E8BE6A);
+    color: var(--aria-accent);
     white-space: nowrap;
 }
 
@@ -159,7 +159,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
                 border-color var(--d-instant) var(--e-enter-soft);
 }
 .next-up-cta:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.32); }
-.next-up-cta:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: 2px; }
+.next-up-cta:focus-visible { outline: 2px solid var(--aria-accent); outline-offset: 2px; }
 .next-up-cta.nu-empty { display: none; }
 
 .next-up-dismiss {
@@ -181,7 +181,7 @@ html#ariaRoot .next-up-layer.nu-on .next-up-bar {
                 color var(--d-instant) var(--e-enter-soft);
 }
 .next-up-dismiss:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.next-up-dismiss:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: 2px; }
+.next-up-dismiss:focus-visible { outline: 2px solid var(--aria-accent); outline-offset: 2px; }
 
 /* ---------- 候选面板（在提示条上方展开，绝对定位 → 不推动提示条） ---------- */
 .next-up-panel {
@@ -265,7 +265,7 @@ html#ariaRoot body.perf-low .next-up-item-title {
     transition: background var(--d-instant) var(--e-enter-soft);
 }
 .next-up-item:hover { background: rgba(255, 255, 255, 0.12); }
-.next-up-item:focus-visible { outline: 2px solid var(--theme-color, #E8BE6A); outline-offset: -2px; }
+.next-up-item:focus-visible { outline: 2px solid var(--aria-accent); outline-offset: -2px; }
 
 .next-up-item-no {
     flex: none;
@@ -301,6 +301,34 @@ html#ariaRoot body.perf-low .next-up-item-title {
     text-overflow: ellipsis;
     font-size: 11px;
     color: rgba(255, 255, 255, 0.58);
+}
+
+/* ---------- Automix 交叉期：预告条 → 「过渡中」 ----------
+   与常规预告只差三处：标签换语义、撤掉倒计时与「换一首」、条底挂一条随
+   --nu-progress（0~1，289 每帧写入）生长的细线。容器/毛玻璃/入场动画全部
+   复用上方定义，不另起一套。
+   ★ 不给 .next-up-bar 加 overflow:hidden——候选面板是它的绝对定位子元素、
+     浮在条上方，会被一起裁掉；进度线改用圆角自己收边。 */
+.next-up-layer.nu-crossing .next-up-tag {
+    color: var(--aria-accent);
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.next-up-layer.nu-crossing .next-up-bar::after {
+    content: '';
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    height: 2px;
+    border-radius: 0 0 22px 22px;
+    background: var(--aria-accent);
+    opacity: 0.9;
+    transform: scaleX(var(--nu-progress, 0));
+    transform-origin: left center;
+    transition: transform 0.16s linear;
+    pointer-events: none;
 }
 
 /* ---------- 窄屏 / 触控 ---------- */

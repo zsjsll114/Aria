@@ -89,6 +89,20 @@ async function pickWordSource(currentLines) {
             logInfo(TAG, `[WordUpgrade] ${src} 有逐字但覆盖 ${(coverage * 100).toFixed(0)}% / 行数和 ${(rate * 100).toFixed(0)}%（${matched}/${total}），不换`);
             continue;
         }
+        /* ★ 2026-10-03 时长一致性校验（用户实测「自动替换总是替成别的歌」）：文本
+           匹配率对短句/重复副歌会虚高（阈值 0.6 偏松），再加一道最硬的——候选歌词的
+           时间轴终点必须与音频时长接近（±35%）。不同歌的时长几乎必然对不上，能拦住
+           「同歌手另一首/同名不同版本」这类误替换。时长未知（直播流/未加载）时跳过校验。 */
+        const durMs = (typeof globalThis !== 'undefined' && globalThis.audio
+            && Number.isFinite(globalThis.audio.duration)) ? globalThis.audio.duration * 1000 : 0;
+        const candEnd = originals.reduce((mx, l) => Math.max(mx, Number(l.start) || 0), 0);
+        if (durMs > 30000 && candEnd > 0) {
+            const drift = Math.abs(candEnd - durMs) / durMs;
+            if (drift > 0.35) {
+                logInfo(TAG, `[WordUpgrade] ${src} 候选时长 ${(candEnd / 1000).toFixed(0)}s 与音频 ${(durMs / 1000).toFixed(0)}s 差 ${(drift * 100).toFixed(0)}%，疑似别的歌，不换`);
+                continue;
+            }
+        }
         /* ★ 不静默：换歌词是「用户看不见就会以为功能没做」的动作（本轮反馈的
            「还是不触发」有一半是这种——其实换了但没有任何提示）。
            只在真的换上时响一次，失败不打扰（失败原因留在日志轨迹里）。

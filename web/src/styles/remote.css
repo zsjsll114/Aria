@@ -16,7 +16,7 @@
 
 :root {
     --tap: 48px;                 /* 最小触控目标（要求 ≥44，留 4px 余量） */
-    --accent: #E8BE6A;           /* 运行时由主窗 --theme-color 覆盖 */
+    --accent: var(--aria-accent); /* P1：统一到设计令牌（本页在 remote.html 里 link 了 tokens.css） */
     --bg: #0b0d12;
     --bg-2: #12151d;
     --txt: #f3f5fa;

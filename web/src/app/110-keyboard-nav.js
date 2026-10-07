@@ -105,7 +105,7 @@ const KB_INTERACTIVE_SELECTOR = [
             '[tabindex]:not([tabindex="-1"])',
             '.setting-toggle', '.color-swatch', '.setting-btn', '.shortcut-key',
             '.setting-dropdown-trigger', '.setting-dropdown-item',
-            '.ctx-item', '.ctx-confirm-btn', '.source-btn',
+            '.ctx-item', '.aria-dialog-btn', '.aria-dialog-pick-item', '.source-btn',
             '.result-item', '.playlist-item', '.add-to-playlist-item',
             '.settings-tab', '.eq-preset', '.view-mode-card', '.welcome-btn',
             '.speed-option', '.more-item', '#mobileLyricPreview'
@@ -172,12 +172,16 @@ function getKbFocusGroups() {
 
             /* === 弹窗/面板优先 === */
 
-            /* 确认对话框（最高优先级） */
-            const ctxConfirm = typeof document !== 'undefined' ? document.getElementById('ctxConfirm') : null;
-            if (ctxConfirm && ctxConfirm.classList.contains('visible')) {
-                const btns = Array.from(ctxConfirm.querySelectorAll('.ctx-confirm-btn')).filter(kbIsVisible);
+            /* ★ 通用模态（P3 浮层契约，最高优先级）：任何经 ui/overlay.js 打开的浮层
+               （alert / confirm / prompt / pick）都带 .aria-modal-shell，
+               打开时只聚焦它、屏蔽其余快捷键。
+               原先这里硬编码 #ctxConfirm，只覆盖那套静态确认框；换成通用选择器后
+               四种对话框自动全部纳入，静态节点也已退役。 */
+            const modalShell = typeof document !== 'undefined' ? document.querySelector('.aria-modal-shell') : null;
+            if (modalShell) {
+                const btns = Array.from(modalShell.querySelectorAll(KB_INTERACTIVE_SELECTOR)).filter(kbIsVisible);
                 if (btns.length) groups.push(btns);
-                return groups; /* 确认框打开时只聚焦它 */
+                return groups; /* 模态打开时只聚焦它 */
             }
 
             /* 右键菜单 */

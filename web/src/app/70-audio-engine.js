@@ -19,11 +19,35 @@ import { initStallDetector, startStallCheck, stopStallCheck, setBuffering } from
 /* ★ 帧时埋点（todos #21）：逐字高亮 rAF 是播放期间每帧都要跑的循环，
    滚动卡顿时它与 57 的弹簧循环谁是瓶颈，只能靠设备自己回传帧时区分。 */
 import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
+import { registerAudioListener, onRoleSwap } from '../core/dualDeck.js';
+import { crossfaderPhase, abortCrossfade, automixSwapJustCompleted } from '../core/automix/crossfader.js';
 
-audio?.addEventListener('play', () => {
-            isPlaying = true;
-            playIcon.innerHTML = PAUSE_ICON_PATH;
-            getBlurBgLayers().forEach(l => l.classList.remove('paused'));
+/* ★ 播放态 UI 同步（Automix 角色顶替专用入口）。
+   为什么需要它：Automix 交接时 dualDeck.swapRoles() 会把常驻监听搬到新活跃
+   元素，但新元素的 play 事件早在交叉开始时（它还是影子 deck、身上没有任何
+   监听）就派发过了——不会再触发。若不主动同步一次，图标会永久停在旧状态：
+   用户看到「明明在播却显示暂停图标，点一下方向反、点两下才对」。 */
+function applyPlayingState() {
+            if (!audio) return;
+            if (audio.paused) {
+                isPlaying = false;
+                if (playIcon) playIcon.innerHTML = PLAY_ICON_PATH;
+                getBlurBgLayers().forEach(l => l.classList.add('paused'));
+                stopStallCheck();
+            } else {
+                isPlaying = true;
+                if (playIcon) playIcon.innerHTML = PAUSE_ICON_PATH;
+                getBlurBgLayers().forEach(l => l.classList.remove('paused'));
+                /* 启动卡死检测 */
+                startStallCheck();
+            }
+        }
+
+/* 角色顶替后立刻对齐一次（新 A 已在播放，见上方注释） */
+onRoleSwap(() => applyPlayingState());
+
+registerAudioListener('play', () => {
+            applyPlayingState();
             /* 音量保护：如果音量被淡出到0但未恢复，播放时立即恢复 */
             if (audio.volume === 0 && volume > 0) {
                 if (appSettings.playback.fadeInOut) {
@@ -32,15 +56,10 @@ audio?.addEventListener('play', () => {
                     audio.volume = volumePercentToGain(volume);
                 }
             }
-            /* 启动卡死检测 */
-            startStallCheck();
         });
 
-audio?.addEventListener('pause', () => {
-            isPlaying = false;
-            playIcon.innerHTML = PLAY_ICON_PATH;
-            getBlurBgLayers().forEach(l => l.classList.add('paused'));
-            stopStallCheck();
+registerAudioListener('pause', () => {
+            applyPlayingState();
         });
 
 /* 卡死检测本体已迁入 core/stallDetector.js（core 层接管第 1 个模块，2026-09-25）。
@@ -67,7 +86,7 @@ function handleAudioPlayError() {
         }
 
 /* 音频加载/播放错误（403/404/网络错误/CORS/解码错误） */
-audio?.addEventListener('error', () => {
+registerAudioListener('error', () => {
             if (audio.src && audio.error) {
                 logError('audioEngine', '音频错误:', audio.error.code, audio.error.message);
                 /* 即使 isPlaying 为 false 也处理，因为浏览器可能在后台暂停了音频 */
@@ -105,7 +124,7 @@ if (typeof document !== 'undefined') {
             });
         }
 
-audio?.addEventListener('timeupdate', () => {
+registerAudioListener('timeupdate', () => {
             currentTime = audio.currentTime * 1000;
             if (pvEngineInstance && currentViewMode === 'pv') {
                 pvEngineInstance.update((currentTime + lyricOffset) / 1000);
@@ -189,18 +208,28 @@ function stopLyricsLoop() {
         }
 
 /* 音频播放时启动歌词循环 */
-audio?.addEventListener('play', startLyricsLoop);
+registerAudioListener('play', startLyricsLoop);
 
 /* 音频暂停时停止歌词循环（但保留当前高亮） */
-audio?.addEventListener('pause', stopLyricsLoop);
+registerAudioListener('pause', stopLyricsLoop);
 
-audio?.addEventListener('loadedmetadata', () => {
+registerAudioListener('loadedmetadata', () => {
             totalTimeEl.textContent = formatTime(getDuration());
             /* duration 就绪后渲染高潮标记 */
             if (typeof renderChorusMarkers === 'function') renderChorusMarkers();
         });
 
-audio?.addEventListener('ended', () => {
+registerAudioListener('ended', () => {
+            /* ★ Automix：CROSSING 期 A 的自然 ended 由 crossfader 接管——
+               此刻 B 正在淡入，原生 nextTrack 会把 B 的起播逻辑再跑一遍，直接打架。
+               交叉完成后 swapRoles 才是正统切歌路径。
+               ARMED 期 A 就到头了 = B 没赶上就绪，放弃本轮 automix 归位 IDLE，
+               **继续走下面的原生切歌**（否则既不交叉也不切歌，播放直接卡死）。 */
+            if (crossfaderPhase() === 'CROSSING') return;
+            if (crossfaderPhase() === 'ARMED') abortCrossfade('a-ended-before-crossing');
+            /* swap 刚完成时 A 的 ended 事件晚到（与曲线完成毫秒级竞态）：
+               此刻 automix 已交接下一首，再走 autoPlayNext 会把它整个重载 */
+            if (automixSwapJustCompleted()) return;
             if (playMode === 'loop' && playlist.length > 0) {
                 /* 单曲循环：直接重播，无需重新加载 */
                 audio.currentTime = 0;
@@ -212,7 +241,7 @@ audio?.addEventListener('ended', () => {
 
 /* ★ 修复：统一的 seeked 事件处理，确保所有跳转方式（键盘、进度条拖拽、程序跳转）
            都能正确重置滚动状态、更新虚拟渲染、滚动到正确位置 */
-audio?.addEventListener('seeked', () => {
+registerAudioListener('seeked', () => {
             currentTime = audio.currentTime * 1000;
             isUserScrolling = false;
             if (scrollTimeout) { clearTimeout(scrollTimeout); }

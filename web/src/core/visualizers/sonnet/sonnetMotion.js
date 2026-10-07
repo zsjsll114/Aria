@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * sonnetMotion.js — folia sonnet 运动系统（sonnetMotion.ts 的 JS 移植）
  *

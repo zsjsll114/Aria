@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/temperaDifferenceFilter.ts
  * 逐行保真移植：仅删除类型标注，不改任何逻辑/数值/分支。
@@ -204,7 +205,10 @@ export const createTemperaDifferenceFilter = (
         uTintC: { value: new Float32Array(stops[2]), type: 'vec3<f32>' },
         uTintD: { value: new Float32Array(stops[3]), type: 'vec3<f32>' },
         uTintAmount: { value: tint ? 1 : 0, type: 'f32' },
-        uMinContrast: { value: 0.28, type: 'f32' },
+        /* ★ 2026-10-02 二提（用户复测「能辨认但和背景太像」）：0.28 在彩色块上
+           只够「仔细看能认出」——彩色底上明度差 0.28 的观感对比远弱于灰底，
+           提到 0.42（读不出来的字没有资格谈风格）。 */
+        uMinContrast: { value: 0.42, type: 'f32' },
         uPaperColor: { value: new Float32Array(paper), type: 'vec3<f32>' },
         uInkLuminance: { value: luminanceOf(ink), type: 'f32' },
         uPaperLuminance: { value: luminanceOf(paper), type: 'f32' },

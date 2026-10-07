@@ -7,7 +7,7 @@ import { API_BASE } from '../config/constants.js';
 import { getBlurBgLayers } from '../infrastructure/dom.js';
 import { searchKugouSongs } from '../services/musicApi.js';
 import { audio } from './20-lyrics-render.js';
-import { playIcon, sourceBtns } from './30-dom-refs.js';
+import { playIcon } from './30-dom-refs.js';
 import { PLAY_ICON_PATH } from './65-playback-position.js';
 import { closeSearch } from './120-search-results.js';
 import { fadeOutVolume } from '../core/fadeController.js';
@@ -524,7 +524,7 @@ async function matchSongAcross3Sources(title, artist, method, recognizedCover, r
                         const score = calculateSongMatchScore(title, artist, item.song, item.singer);
                         matches.push({
                             platform: 'netease',
-                            platformName: '网易云',
+                            platformName: '网易云音乐',
                             platformClass: 'rec-platform-netease',
                             title: item.song,
                             artist: item.singer,
@@ -600,7 +600,6 @@ async function matchSongAcross3Sources(title, artist, method, recognizedCover, r
                                 closeAudioRecognizeModal();
                                 closeSearch();
                                 currentSource = matchItem.platform;
-                                sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === currentSource));
                                 const songInfo = {
                                     id: String(matchItem.id || ''),
                                     mid: matchItem.mid || '',

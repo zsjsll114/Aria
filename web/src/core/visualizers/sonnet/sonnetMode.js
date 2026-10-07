@@ -8,6 +8,7 @@
 
 import { SonnetEngine, deriveCoverBackground } from './SonnetEngine.js';
 import { sanitizeCssFontFamily } from '../../../utils/fontStacks.js';
+import { logCatch } from '../../../services/log.js';
 
 /** 引擎 canvas 需要随容器重建（切模式时 pvViewContainer 可能被 innerHTML 清空） */
 function containerElFix(container) {
@@ -80,7 +81,19 @@ function audioTime() {
 
 function tick() {
     if (!engine) { rafId = null; return; }
-    if (!suspended) {
+    /* ★ 2026-10-03 帧级异常不再中断 rAF（「verse 有时没有歌词」的兜底）：此前 tick 里
+       任何异常（setLyrics 编译、场景构建、字体解析…）都会跳过末尾的
+       requestAnimationFrame，rAF 链一断歌词就彻底不再更新且永不恢复。现在吞异常、
+       记日志、保证调度继续——单帧失败下一帧自愈。 */
+    try {
+        tickBody();
+    } catch (e) {
+        logCatch('sonnetMode', e);
+    }
+    rafId = requestAnimationFrame(tick);
+}
+
+function tickBody() {
         const current = (typeof globalThis.lyrics !== 'undefined' && Array.isArray(globalThis.lyrics))
             ? globalThis.lyrics : null;
         if (current !== lastLyricsRef) {
@@ -107,8 +120,6 @@ function tick() {
             }
         } catch { /* 字体管理器未就绪 */ }
         engine.update(audioTime());
-    }
-    rafId = requestAnimationFrame(tick);
 }
 
 /* 验证/调试探针：E2E 与诊断页通过它读取 engine 实例（program/场景树/_lastError） */
@@ -127,14 +138,25 @@ function suspendRaf() {
 }
 
 function startTicker() {
-    if (rafId === null) rafId = requestAnimationFrame(tick);
+    /* ★ 2026-10-03 幂等重启：此前只在 rafId === null 时启动——而 tick 内异常中断时
+       rafId 会留下一个「非 null 的死 id」（旧代码的崩溃后遗症），此后再也不重启。
+       现在先取消旧句柄再无条件调度，任何入口调用都能让渲染循环复活。 */
+    if (rafId !== null) {
+        try { cancelAnimationFrame(rafId); } catch { /* 句柄已失效 */ }
+    }
+    rafId = requestAnimationFrame(tick);
 }
 
 /** 进入 sonnet 模式：懒建引擎并接上歌词。返回 Promise<SonnetEngine> */
 export async function ensureSonnetEngine(container) {
     /* 探针先于 init 挂（Pixi init / 滤镜编译在低端 GPU 上可能秒级挂起，
-       E2E 需要在此期间就能 suspend/读状态） */
+       E2E 需要在此期间就能 suspend/读状态）
+       ★ 2026-10-03 另设语义化就绪标志 __sonnetEngineReady：此前 100/190/220 三处
+       业务逻辑拿「调试探针名是否存在」当引擎就绪判断——探针是调试设施，随时可能
+       被清理（本轮收尾删探针时就差点把设置下发整条链断掉）。业务判断改读这个标志，
+       探针保留给 E2E。 */
     if (typeof window !== 'undefined') {
+        window.__sonnetEngineReady = true;
         window.__sonnetProbe = () => probe();
         window.__sonnetSuspend = suspendRaf;
     }
@@ -231,4 +253,14 @@ export function destroySonnetEngine() {
 /** 供 220 每帧循环顺路驱动（与 pv/tunnel 同一调用点形态） */
 export function isSonnetActive() {
     return !!(engine && !suspended);
+}
+
+/**
+ * 取当前 SonnetEngine 实例（只读）。
+ * ★ 歌词海报（需求 2）要用它抓一帧真画面：Pixi 的 WebGL 画布在
+ *   `preserveDrawingBuffer:false` 下 `toDataURL()` 恒为空，必须「同一任务内
+ *   `renderer.render(stage)` 后立刻 `toDataURL()`」。调用方不得修改返回对象。
+ */
+export function getSonnetEngine() {
+    return engine;
 }

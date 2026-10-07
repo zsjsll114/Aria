@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * temperaProgram.js — 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/temperaProgram.ts
  * 逐行保真移植：仅删除类型标注，不改任何逻辑/数值/分支。
@@ -193,7 +194,16 @@ const buildShotChunks = (
             const spent = entry.segment.endTime - startTime;
             const isLast = order === usable.length - 1;
             if (!isLast && words < target && spent < 2.2) return;
-
+            /* ★ 2026-10-02（用户实测「连续的词会被分到两个分镜里面」）：达到目标词数
+               就地切一刀，会把「拉着|线」「复习|你」这种连续词组劈开。加了软边界：
+               未超硬上限（词数 ×2 或 3.2s）时，等一个自然边界再切——段间真实空隙
+               ≥0.35s，或本段以标点收尾。超了硬上限才允许硬切。 */
+            if (!isLast && words < target * 2 && spent < 3.2) {
+                const next = usable[order + 1];
+                const gap = next ? next.segment.startTime - entry.segment.endTime : 0;
+                const endsNatural = /[，。！？、；：…—,.!?;:\s\u201c\u201d\u2018\u2019]$/.test(entry.segment.text);
+                if (gap < 0.35 && !endsNatural) return;
+            }
             chunks.push({
                 lineIndex: line.sourceIndex,
                 segmentStart,

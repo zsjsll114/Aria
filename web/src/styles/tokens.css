@@ -1,0 +1,190 @@
+/* ============================================================
+ * tokens.css — Aria 设计令牌唯一登记处（P1）
+ *
+ * 为什么有这个文件：全仓 33 个 CSS 文件、约 15,200 行，此前只有 2 个真正
+ * 贯通的设计变量（--theme-color / --theme-color-rgb），而同一个金值 #E8BE6A
+ * 以「fallback 字面量」形式散落在 44 个文件里（CSS 229 处 var(--theme-color*)）。
+ * 没有令牌层 → 每个新组件都要重新决定颜色/毛玻璃/圆角，分裂是必然结果。
+ *
+ * ★ 契约（mod 地基，改动前先读）
+ *  1. 组件 CSS 只允许消费 var(--aria-*)，不得新增字面量颜色（P2 起由
+ *     scripts/audits/token-coverage.mjs 逐步收紧）。
+ *  2. --aria-* 是**公开契约**：改名/删除 = 破坏社区外观 mod 兼容性，
+ *     必须走版本迁移 + 兼容别名，不允许直接重命名。
+ *  3. 令牌名必须登记在 scripts/audits/token-registry.json，
+ *     由 tests/js/test_design_tokens.js 双向校验（定义 ↔ 登记）。
+ *  4. 加载顺序：必须排在任何组件 CSS 之前（index.html 中在 motion.css 之前）。
+ *
+ * ★ 本文件不做 primitive/semantic 双层：本项目只有深色单一主题，
+ *   双层只增加 var 链长度与调试噪声，收益为零（出现 light 主题时再拆）。
+ *
+ * ★ P1 只声明「本批真正被消费」的令牌。毛玻璃/圆角/层级/间距等令牌
+ *   留给 P2（降级令牌化）与 P3（浮层契约）——它们各自在那一步才有消费方。
+ *   故意不预声明，是为了避免重演 --glass-strength 那种「声明了但全仓无消费」
+ *   的死变量（themeEngine.js 写了一年，样式里 0 命中）。
+ *
+ * ── 原 main.css 的模块职责表（2026-10-05 归档后删除该文件）
+ *    已核实 main.css 是死文件：全仓仅自引用，真实入口是 web/index.html
+ *    的 31 条 <link>。下列注释是它唯一有价值的内容，迁移到此处保留：
+ *      base.css         :root变量 / 全局重置 / welcome / blur-bg / 歌词样式 / keyframes
+ *      ai.css           AI 主题动画 / AI 浮动状态面板
+ *      menus.css        右键菜单 / 确认对话框
+ *      eq.css           均衡器面板
+ *      modals.css       设置面板 / 搜索弹窗 / 收藏弹窗 / 取色器
+ *      playlists.css    歌单系统
+ *      player.css       视图模式 / 播放器容器 / 底部控制栏
+ *      controls.css     倍速菜单 / 音量滑块 / 更多菜单
+ *      viewmode.css     样式切换弹窗
+ *      responsive.css   响应式适配
+ *      playlist-manager / pv / pv-tunnel / letterpress / neon / visualizers /
+ *      appearance / touch / rankings / sleep-timer / zen / osd / diagnostics /
+ *      readability / next-up / lyric-search / vfx-recipe / mv / toolbar / artist
+ *                      （index.html 直接 link，未经 main.css）
+ * ============================================================ */
+
+:root {
+    /* ── 强调色 ── 全仓唯一来源。
+       必须与 config/themePalette.js 的 DEFAULT_ACCENT 相等，
+       由 tests/js/test_design_tokens.js 钉住（防止 JS / CSS 两处漂移）。 */
+    --aria-accent: #E8BE6A;
+    --aria-accent-rgb: 232, 190, 106;
+
+    /* ── 歌词行缩放原点 ── 由 190-settings-fontsize.js 按当前对齐方向写
+       （left center / center center / right center）。
+       ★ 组件里**不要**写死 transform-origin：57-wordcloud-camera 会给每一行不同的
+       scale（激活行 1.05、按距离衰减到 0.92），原点必须与该行的对齐侧一致，
+       否则右对齐的右端、歌词模式（曾被强制居中原点）的左端会随缩放比各飘各的。
+       默认值与 modeSettings.cover.align='left' 对齐。 */
+    --aria-lyric-origin: left center;
+
+    /* ── 音频能量微动效（需求 19）── 低频能量包络 0~1 与由此推出的缩放倍率，
+       由 app/306-energy-motion.js 每帧写（纯逻辑在 core/energyMotion.js）。
+       消费方：封面/底栏小封面的 `scale`（1.00 → 最多 1.02，硬上限在 core 层）+ 光晕。
+       默认值刻意是"完全静止"：没有数据源（未建音频图 / 原生 WASAPI 独占）时
+       一切照旧，不会给任何设备平白加一层每帧生效的合成层。 */
+    --aria-energy: 0;
+    --aria-energy-scale: 1;
+
+    /* ── 桌面歌词窗高亮（web/lyrics.html，独立页，不继承主窗令牌）──
+       2026-10-05 决策：收回主题色体系。此前默认 #7cd7ff（青）与主窗金
+       #E8BE6A 是两套色系，mod 覆盖时会出现「一个不跟随的窗口」。
+       lyrics.html 显式 link 本文件，运行时仍由 250-desktop-lyrics.js 推送的
+       主题色以行内 setProperty('--dtk-hl', c) 覆盖（行内 > 本文件）。 */
+    --dtk-hl: var(--aria-accent);
+    --dtk-hl-glow: rgba(var(--aria-accent-rgb), 0.35);
+
+    /* ── 层级 ── 浮层契约（P3）专用。
+       实测分档（2026-10-05 全仓扫 z-index 得到，作为迁移依据记录在此）：
+         .search-overlay                                   1000
+         .settings-overlay / .lyric-source-overlay /
+         .ctx-menu                                        10000
+         .color-picker-overlay / .ctx-confirm             10001
+         #welcomeOverlay                                  99999
+         .aria-osd                                       999995
+         .global-floating-toast                          999999
+         .aria-dialog-overlay（旧）                         2400   ← 被面板盖住
+         .gp-overlay（旧）                                  2100   ← 同上
+       ★ 这正是「从设置面板里弹的 showGlassAlert 用户看不见」的根因：
+         .settings-overlay 因 backdrop-filter 建了层叠上下文，两者是 body 下的
+         兄弟节点，2400 < 10000 就直接被压在下面（vfx-recipe.css:15 的注释
+         记录过同一个坑，当时靠把配方浮层抬到 10100 绕过）。
+       对话框档必须排在 panel 档之上，故取 12000（panel 10001 之上、toast 之下）。
+       P3-a 只声明本批真正被消费的 --aria-z-modal；overlay / panel / toast 三档
+       等各自被迁移的那一刻再声明（与 P1 同一纪律：不预声明无消费方的令牌）。 */
+    --aria-z-modal: 12000;
+
+    /* ── 首跑层（欢迎公告 / 性能档询问）──
+       2026-10-05 决策：收到 panel 与 modal 之间。
+       原先写死 99999，比对话框(12000)还高 —— boot 期任何对话框都会被它盖住，
+       而它只是一层"点一下就好"的手势闸门，没有理由压过真正的模态。
+       注意 #performanceDialog 复用 .welcome-overlay 类，自动继承本档。 */
+    --aria-z-welcome: 11000;
+
+    /* ══════════════════════════════════════════════════════════
+     * 外观 mod 可覆盖令牌（2026-10-06 引入）
+     *
+     * 为什么一次补齐：社区外观 mod 要的「不止主题配方」——还要能改**圆角、
+     * 模糊、颜色、排版**（用户原话：调整窗口直角、模糊、颜色等等）。
+     * 而 token 覆盖要生效，前提是**这些名字存在**；此前它们散在 13~18 个
+     * CSS 文件里各写一份字面量，没有名字可覆盖。
+     *
+     * 取值 = 当前全仓出现频率最高的那个值，所以**声明它们本身零视觉变化**；
+     * 变化只来自 mod 覆盖。命名即公开契约：改名/删除等于破坏 mod 兼容性。
+     * ══════════════════════════════════════════════════════════ */
+
+    /* ── 语义色 ── */
+    --aria-danger: #FF5252;
+    --aria-danger-rgb: 255, 82, 82;
+    --aria-success: #6FC2A0;
+    --aria-warning: #FFB74D;
+
+    /* ── 文本层级 ── 收敛自散落的 rgba(255,255,255,.72/.38) */
+    --aria-text-1: #ffffff;
+    --aria-text-2: rgba(255, 255, 255, 0.72);
+    --aria-text-3: rgba(255, 255, 255, 0.38);
+
+    /* ── 玻璃材质 ── 配方唯一来源（此前 modals.css 系与 aria-dialog 是两套配方） */
+    --aria-glass-bg: rgba(255, 255, 255, 0.12);
+    --aria-glass-border: rgba(255, 255, 255, 0.18);
+    --aria-glass-blur: 40px;
+    --aria-glass-saturate: 180%;
+    /* 取「`aria-dialog` / `.settings-panel` / `.color-picker-panel` / `.lyric-source-panel`
+       共用的那一份」，含内嵌高光 —— 接线的判据是「默认值必须等于现状」，
+       少一个 inset 就会让所有玻璃面板少一道边缘高光。 */
+    --aria-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+
+    /* ── 圆角 ── lg 是玻璃面板/弹窗的标准档；mod 可整体改方（0）或改圆 */
+    --aria-radius-sm: 8px;
+    --aria-radius-md: 12px;
+    --aria-radius-xl: 20px;
+    --aria-radius-lg: 24px;
+    --aria-radius-full: 999px;
+
+    /* ── 间距 / 字号 ── */
+    --aria-space-1: 4px;
+    --aria-space-2: 8px;
+    --aria-space-3: 12px;
+    --aria-space-4: 16px;
+    --aria-space-5: 20px;
+    --aria-space-6: 24px;
+    --aria-font-xs: 11px;
+    --aria-font-sm: 12px;
+    --aria-font-md: 13px;
+    --aria-font-lg: 15px;
+    --aria-font-title: 18px;
+
+    /* ── 焦点环 ── */
+    --aria-focus-ring: 2px solid var(--aria-accent);
+    --aria-focus-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 兼容别名层 —— 只减不增。新代码一律用 --aria-*。
+ *
+ * 机制说明（这也是「收回主题色」能成立的原因）：CSS 自定义属性的 var()
+ * 在**使用处**解析，不在声明处。所以在任意后代元素上覆盖 --aria-accent，
+ * 别名 --theme-color 会自动跟着变 —— 无需同步写两个变量。
+ * 例：previewEngine 在预览根节点上 setProperty('--aria-accent', c) 后，
+ *     该子树里所有 var(--theme-color) 与 rgba(var(--theme-color-rgb), α)
+ *     都会解析成 c，不需要再手动写第二对变量。
+ *
+ * 时序约束：--theme-color 只有在 JS 写入口改完（190-settings-fontsize.js /
+ * previewEngine.js）之后才允许退化为纯别名；在那之前它仍是 JS 的直接写入目标。
+ * ══════════════════════════════════════════════════════════ */
+:root {
+    --theme-color: var(--aria-accent);
+    --theme-color-rgb: var(--aria-accent-rgb);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 性能降级令牌化 —— P2 阶段收编，此处先占位。
+ *
+ * 现状：同一个「低性能」语义被逐组件重复了几十遍（仅 modals.css 就有 68 处
+ * html#ariaRoot 锚点规则），因为毛玻璃/阴影是各文件硬编码的。
+ * 目标：改为「改变量」——一处生效，全组件自动降级：
+ *   html#ariaRoot.is-software-renderer,
+ *   html#ariaRoot body.perf-low { --aria-glass-blur: 0px; ... }
+ * 锚点必须保留 html#ariaRoot（AGENTS 约束 12：纯类规则 (0,1,0) 会被组件
+ * 的 !important 按「同重要度先比特异性」顶掉）。
+ * 该块依赖 --aria-glass-* 令牌，随 P2 一起引入，P1 不预声明。
+ * ══════════════════════════════════════════════════════════ */

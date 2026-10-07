@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * temperaTypes.js — 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/types.ts
  * 逐行保真移植：仅保留有运行时值的导出（TEMPERA_SHOT_KINDS / TEMPERA_TRANSITION_KINDS /

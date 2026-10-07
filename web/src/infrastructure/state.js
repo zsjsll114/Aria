@@ -78,7 +78,7 @@ export const state = {
 
     // ===== 右键菜单状态 =====
     ctxSubmenuEl: null,
-    ctxConfirmCallback: null,
+
     submenuHideTimer: null,
 
     // ===== 初始化状态 =====

@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * 机械移植自 chthollyphile/folia-major src/utils/fontStacks.ts @ 119 行
  * Theme 类型引用已删除（调用方传 plain object {fontStyle, fontFamily, fontFamilyStack}）。

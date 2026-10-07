@@ -91,13 +91,9 @@ export function initDom() {
     dom.importProgressFill = get('importProgressFill');
     dom.importProgressText = get('importProgressText');
 
-    // 右键菜单 & 确认框
+    // 右键菜单（确认框 .ctx-confirm 已于 2026-10-05（P3-a）退役：
+    // 统一走 021-aria-dialog.js 的动态对话框，没有静态节点可缓存）
     dom.ctxMenu = get('ctxMenu');
-    dom.ctxConfirm = get('ctxConfirm');
-    dom.ctxConfirmTitle = get('ctxConfirmTitle');
-    dom.ctxConfirmMsg = get('ctxConfirmMsg');
-    dom.ctxConfirmOk = get('ctxConfirmOk');
-    dom.ctxConfirmCancel = get('ctxConfirmCancel');
     dom.moreBtn = get('moreBtn');
 
     // 均衡器

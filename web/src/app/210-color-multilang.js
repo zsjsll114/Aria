@@ -489,4 +489,37 @@ function applyFontFamily(font) {
             `;
         }
 
-export { applyFontFamily, applyGlassStrength, hexToHsv, hsvToRgb, openColorPicker, resolveFontFamily, rgbToHex };
+/* ★ 模式级字体作用域（2026-10-05）。
+   用户实测的三个症状指向同一个根因：
+     ·「在歌曲模式里切换字体，却像是切换了全局字体（设置页的字体变了）」
+     ·「切了突然又变回去」
+     ·「退出后控件字体恢复成默认字体，但歌词模式字体变了」
+   根因：模式字体此前也走 applyFontFamily() → 写 document.documentElement 的
+   --app-font-family / --pv-font-family / --vis-font-family，**与全局字体共用同一个落点**。
+   于是"改模式字体 = 改全局字体"；而每次切模式（190 的 applyModeSettings）与
+   自定义字体注册完成后的重放（215）都会再覆盖一遍根变量 → "切了又变回去"。
+   修法：模式字体只写**播放器容器**。--app-font-family 是可继承的自定义属性，容器内的
+   歌词/控件照常跟随；容器外的设置面板、标题栏读根节点值，不再被模式字体牵连。
+   「跟随字体设置」= **清除**容器级变量，自然回落到根节点值（而不是再写一遍根变量）。 */
+function isFollowFontKey(k) {
+    return k === undefined || k === null || k === '' || k === 'default' || k === 'inherit';
+}
+
+function applyModeFontFamily(modeFontKey) {
+    if (typeof document === 'undefined') return;
+    const pc = document.querySelector('.player-container');
+    if (!pc) return;
+    const keys = ['--app-font-family', '--pv-font-family', '--vis-font-family'];
+    if (isFollowFontKey(modeFontKey)) {
+        /* 跟随全局：只清容器级覆盖。此前这里会**重新写一遍根变量**，
+           那正是「退出设置后控件恢复默认、歌词却还是模式字体」这类错位的来源。 */
+        for (const k of keys) pc.style.removeProperty(k);
+        return;
+    }
+    const ff = resolveFontFamily(modeFontKey);
+    /* --vis-font-family 是画布引擎（霓虹/活字/版画/诗境）取字体的通道。写在容器上是对的：
+       引擎若自己用内联值显式指定字体（VisualizerBase），那个更内层、优先级更高。 */
+    for (const k of keys) pc.style.setProperty(k, ff);
+}
+
+export { applyFontFamily, applyModeFontFamily, applyGlassStrength, hexToHsv, hsvToRgb, openColorPicker, resolveFontFamily, rgbToHex };

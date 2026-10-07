@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * mondrianTemplates.js — 蒙德里安模式手工预设布局表 v2（参考实现 tempera 构图移植）
  *

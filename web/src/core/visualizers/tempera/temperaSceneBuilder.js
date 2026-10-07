@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/temperaSceneBuilder.ts
  * 逐行保真移植：仅删除类型标注，不改任何逻辑/数值/分支。
@@ -413,6 +414,8 @@ export const buildTemperaScene = (
             seed: shotSeed,
             showDecor: tuning.showDecor,
             flowAngle: shot.flowAngle,
+            /* ★ 透传给 MV 压薄判据：主播放器要压薄、设置面板里的预览窗不能压薄 */
+            host: options.host,
         });
         blocks.container.visible = tuning.showBlocks;
 

@@ -64,6 +64,16 @@ export const resolveSonnetEnterTransitionFrame = (kind, timeSinceStart, duration
     return resolveSonnetTransitionEffectFrame(kind, 'enter', timeSinceStart / Math.max(duration, 0.001), seed);
 };
 
+/* ★ 2026-10-02 移植（上游 sonnetTransitions.ts:90）：段尾退场转场——按段落自身
+   transitionOut 的时间窗出 exit 效果帧（blur/glitch/alpha）。这是上游「旧段退场」
+   的唯一机制：无 fadeScene、无文本压暗，段尾只有这一段转场软化硬切。 */
+export const resolveSonnetExitTransitionFrame = (paragraph, time, enabled, seed) => {
+    const transition = paragraph && paragraph.transitionOut;
+    if (!enabled || !transition || time < transition.startTime) return IDLE_SONNET_TRANSITION_FRAME;
+    const progress = (time - transition.startTime) / Math.max(transition.endTime - transition.startTime, 0.001);
+    return resolveSonnetTransitionEffectFrame(transition.kind, 'exit', progress, seed);
+};
+
 /** 给每个 shot 边界一段短转场（上游 resolveSonnetShotTransitionFrame 等价） */
 export const resolveSonnetShotTransitionFrame = (shots, activeShotIndex, time, enabled, seed) => {
     if (!enabled || shots.length < 2) return IDLE_SONNET_TRANSITION_FRAME;

@@ -134,9 +134,9 @@
     letter-spacing: 0.06em;
     padding: 3px 8px;
     border-radius: 999px;
-    color: var(--theme-color, #E8BE6A);
-    background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
-    border: 1px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.36);
+    color: var(--aria-accent);
+    background: rgba(var(--aria-accent-rgb), 0.16);
+    border: 1px solid rgba(var(--aria-accent-rgb), 0.36);
 }
 
 .vr-block {
@@ -160,7 +160,7 @@
     font-family: inherit;
     outline: none;
 }
-.vr-input:focus { border-color: var(--theme-color, #E8BE6A); }
+.vr-input:focus { border-color: var(--aria-accent); }
 .vr-input::placeholder { color: rgba(255, 255, 255, 0.32); }
 .vr-textarea {
     min-height: 74px;
@@ -202,7 +202,7 @@
     min-width: 96px;
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 11.5px;
-    color: var(--theme-color, #E8BE6A);
+    color: var(--aria-accent);
 }
 .vr-li .setting-desc { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
 

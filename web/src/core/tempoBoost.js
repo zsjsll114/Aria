@@ -29,6 +29,7 @@
  *     再加一条 maxHoldMs 硬顶（默认 2 分钟）兜住「什么事件都没漏、就是没松手」的极端。
  * ============================================================ */
 import { logCatch } from '../services/log.js';
+import { registerAudioListener, unregisterAudioListener, getActiveAudio } from './dualDeck.js';
 
 /** 看门狗周期：加速期间的失焦/隐藏兜底 */
 const WATCHDOG_MS = 500;
@@ -351,6 +352,48 @@ function defaultEnv() {
     };
 }
 
+/* ★ Automix Phase 2（swap 适配）：audio 元素一律经解析器取——
+   dualDeck 已初始化时 getActiveAudio() 是唯一真源（swap 后自动是新元素）；
+   node 测试 / dualDeck 未 init 时回落注入的 env.audio（测试 stub 的 dispatch 路径）。 */
+function resolveAudio() {
+    return getActiveAudio() || (_env && _env.audio) || null;
+}
+
+/* 四个 audio 事件是「切歌必复位」的恢复路径，属于常驻监听：
+   dualDeck 在场时登记进搬运表（swap 成对搬运），否则直挂注入元素（原行为）。 */
+const AUDIO_BINDINGS = [
+    ['pause', () => onAudioPause()],
+    ['emptied', () => onTrackChanged()],
+    ['loadstart', () => onTrackChanged()],
+    ['loadedmetadata', () => onTrackChanged()],
+];
+const _audioBoundDirect = [];   /* 测试/降级路径直挂的 [target,type,fn]，卸载时逐个摘 */
+
+function bindAudioEvents() {
+    const active = getActiveAudio();
+    if (active) {
+        for (const [type, fn] of AUDIO_BINDINGS) registerAudioListener(type, fn);
+        return;
+    }
+    const target = resolveAudio();
+    for (const [type, fn] of AUDIO_BINDINGS) {
+        const un = bind(target, type, fn);
+        if (un) _audioBoundDirect.push([target, type, fn]);
+    }
+}
+
+function unbindAudioEvents() {
+    const active = getActiveAudio();
+    if (active) {
+        for (const [type, fn] of AUDIO_BINDINGS) unregisterAudioListener(type, fn);
+        return;
+    }
+    for (const [target, type, fn] of _audioBoundDirect) {
+        try { target.removeEventListener(type, fn); } catch (e) { logCatch('tempoBoost', e); }
+    }
+    _audioBoundDirect.length = 0;
+}
+
 /**
  * 装配一次（重复调用只更新注入依赖，不会挂两份监听）。
  * @param {{setRate:(r:number)=>void, readRate:()=>number, audio?:any, env?:{window:any,document:any,audio:any}}} deps
@@ -372,16 +415,14 @@ export function installTempoBoost(deps = {}) {
         bind(win, 'blur', onBlur),
         bind(win, 'pagehide', onPageHide),
         bind(doc, 'visibilitychange', onVisibility),
-        bind(_env.audio, 'pause', onAudioPause),
-        bind(_env.audio, 'emptied', onTrackChanged),
-        bind(_env.audio, 'loadstart', onTrackChanged),
-        bind(_env.audio, 'loadedmetadata', onTrackChanged),
     ];
+    bindAudioEvents();
     _installed = true;
     return () => {
         _installed = false;
         forceReleaseTempoBoost('uninstall');
         unbinds.forEach(fn => { try { fn(); } catch (e) { logCatch('tempoBoost', e); } });
+        unbindAudioEvents();
         stopWatchdog();
         _sources.clear();
     };

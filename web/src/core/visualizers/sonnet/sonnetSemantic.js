@@ -168,8 +168,26 @@ export function buildSonnetSemanticSegments(line) {
         });
     }
 
+    /* ★ 2026-10-02 CJK 单字聚块（用户实测「中文分成很多单字并且间隔很大」）：
+       Intl.Segmenter 的中文切分常出一字块（我/拉/着/线…），散点布局把每块独立
+       摆放 → 满屏单字 + 大间隔。相邻纯汉字块两两合并到 ≤3 字（时间取并集），
+       散点数约减半、每块更可读；逐字 karaoke 时序不受影响（块内 graphemes
+       仍按字符展开）。英文/混合块不动。 */
+    const isCjkOnly = (t) => /^[\u4e00-\u9fff\u3400-\u4dbf]+$/.test(t);
+    const raw2 = [];
+    raw.forEach(part => {
+        const prev = raw2[raw2.length - 1];
+        if (prev && isCjkOnly(prev.text) && isCjkOnly(part.text)
+            && prev.text.length + part.text.length <= 3) {
+            prev.text += part.text;
+            prev.endTime = part.endTime;
+            return;
+        }
+        raw2.push(part);
+    });
+
     // graphemes（字符级时间，用于逐字渲染与可见长度统计）
-    const segments = raw.map(part => ({
+    const segments = raw2.map(part => ({
         text: part.text,
         startOffset: 0,
         endOffset: part.text.length,

@@ -4,10 +4,11 @@
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
 import { EQ_BANDS, EQ_LABELS, EQ_PRESETS } from '../config/constants.js';
+import { compileAutoEq } from '../core/autoeqImport.js';
 import { audio } from './20-lyrics-render.js';
 import { nextBtn, prevBtn } from './30-dom-refs.js';
 import { handleAudioPlayError } from './70-audio-engine.js';
-import { CTX_ICONS, ctxConfirmCancel, ctxConfirmOk, ctxMenu, hideCtxMenu, showCtxConfirm, showCtxMenu } from './80-context-menu.js';
+import { CTX_ICONS, ctxMenu, hideCtxMenu, showCtxMenu } from './80-context-menu.js';
 import { RATE_OPTIONS, applyPlaybackRate, applyPreservesPitch, downloadCurrentSong } from './85-rate-download.js';
 import { nextTrack, prevTrack } from './95-track-loading.js';
 import { fetchLyricLinesFromSource, probeLyricSourcesAvailability, renderSourceBadges, switchLyricSource } from './170-lyric-sources.js';
@@ -19,8 +20,9 @@ import { escapeHtml as _escapeHtml } from '../utils/formatters.js';
 import { realWordsOf } from '../parsers/wordTiming.js'; // 下载歌词时区分真实逐字 / 兜底合成
 /* EQ 模型层。本分片把它原样 re-export（见文件末尾），所以 175/190/258 等消费方无需改动。 */
 import {
-    applyEqGains, applyEqPreset, cleanupEqAudioGraph, getCustomEqs, initEqAudioGraph,
-    initEqualizer, loadEqSettings, saveEqPreset, saveEqSettings, setEqBand,
+    applyChannelMode, applyEqGains, applyEqPreset, applySpatialAudio, applyVirtualStage,
+    cleanupEqAudioGraph, ensureAudioGraph, eqGraphBuiltOnce, getCustomEqs, initEqAudioGraph,
+    initEqualizer, loadEqSettings, saveEqPreset, saveEqSettings, setEqBand, wantsAudioGraph,
 } from '../core/equalizer.js';
 
 /* 是否因跨域失败，避免重复尝试 */
@@ -88,15 +90,34 @@ function buildEqPresets() {
             });
         }
 
+/* ★ AutoEQ PEQ 导入（需求 3）：粘贴文本 → 折算到 10 段 → 应用 + 刷新面板。
+   解析/折算在 core/autoeqImport.js（标准 RBJ 公式，不自己造算法）；
+   这里只管"写进 EQ 状态 + 把面板重新画一遍"。
+   @returns {{ok:boolean, error?:string, report?:object}} */
+function applyAutoEqText(text) {
+            const r = compileAutoEq(text, EQ_BANDS);
+            if (!r.ok) return r;
+            applyEqGains(r.gains);   /* 落状态 + 持久化 + 若图已建立刻生效 */
+            /* 面板可能开着：重建频段滑块与预设高亮（导入后应显示「自定义」） */
+            buildEqBands();
+            buildEqPresets();
+            return r;
+        }
+
 /* 打开 / 关闭面板 */
-async function openEqPanel() {
-            /* 懒初始化音频图（异步，需测试跨域） */
+async function openEqPanel() {            /* 懒初始化音频图（异步，需测试跨域） */
             const ok = await initEqAudioGraph();
             if (!ok) {
                 /* 初始化失败（通常因跨域限制），用确认对话框提示 */
-                showCtxConfirm('均衡器不可用', '当前歌曲不支持均衡器（跨域限制），请尝试本地文件或支持 CORS 的音源。', () => {});
-                ctxConfirmCancel.style.display = 'none';
-                ctxConfirmOk.textContent = '知道了';
+                /* P3-a：改用统一的玻璃对话框。原先靠「先调 showCtxConfirm，再去改静态
+                   #ctxConfirm 的按钮」拼出单按钮提示；静态节点退役后必须显式声明形态。 */
+                if (typeof window.showGlassAlert === 'function') {
+                    window.showGlassAlert({
+                        title: '均衡器不可用',
+                        desc: '当前歌曲不支持均衡器（跨域限制），请尝试本地文件或支持 CORS 的音源。',
+                        okText: '知道了',
+                    });
+                }
                 return;
             }
             /* 应用当前增益 */
@@ -187,6 +208,20 @@ function openMoreMenu() {
                这里按句柄存在与否补进「更多」菜单：不显示比显示了点了没反应好。 */
             const extra = [];
             const aria = (typeof window !== 'undefined' && window.Aria) || {};
+            /* ★ 歌词海报（需求 2）：合成封面 + 歌名 + 当前歌词出图。
+               由 304-lyric-poster.js 自注册到 Aria（本文件不 import 它，
+               与下面 bilingual / abLoop / playSource / diagnostics 同一套扩展方式）。 */
+            if (aria.poster && typeof aria.poster.menuItems === 'function') {
+                try {
+                    const posterSub = aria.poster.menuItems();
+                    if (Array.isArray(posterSub) && posterSub.length) {
+                        extra.push({
+                            key: 'lyric-poster', label: '歌词海报', icon: CTX_ICONS.photo,
+                            submenu: posterSub
+                        });
+                    }
+                } catch (e) { logCatch('moreMenu', e); }
+            }
             if (aria.__bilingualCycle && typeof aria.__bilingualCycle.cycle === 'function') {
                 extra.push({
                     key: 'bilingual', label: '双语排版', icon: CTX_ICONS.bilingual,
@@ -568,4 +603,4 @@ nextBtn?.addEventListener('click', () => {
 
 /* _krcText 一并导出：它是纯函数，且「合成逐字不得写进下载文件」这条正确性
    只有它能被单测覆盖到（走完整下载弹窗要网络 + 模态，测不动）。 */
-export { applyEqGains, applyEqPreset, buildEqBands, buildEqPresets, buildSpeedSubmenu, cleanupEqAudioGraph, closeLyricDownloadModal, hideEqPanel, initEqAudioGraph, loadEqSettings, moreBtn, onEqBandChange, openEqPanel, openLyricDownloadModal, openMoreMenu, saveEqSettings, _krcText };
+export { applyAutoEqText, applyChannelMode, applyEqGains, applyEqPreset, applySpatialAudio, applyVirtualStage, buildEqBands, buildEqPresets, buildSpeedSubmenu, cleanupEqAudioGraph, closeLyricDownloadModal, ensureAudioGraph, eqGraphBuiltOnce, hideEqPanel, initEqAudioGraph, loadEqSettings, moreBtn, onEqBandChange, openEqPanel, openLyricDownloadModal, openMoreMenu, saveEqSettings, wantsAudioGraph, _krcText };

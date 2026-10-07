@@ -406,15 +406,27 @@ export function detectAndParseLyrics(data) {
             let transText = cleanQQMusicMetadata(data.trans);
             translations = parseLrc(transText).filter(item => item.text.trim() !== '//');
         }
-        if (data.roma && data.roma.match(/^\[\d+,\d+\]/)) {
-            romaji = parseRoma(data.roma);
-        } else if (data.roma) {
-            romaji = parseLrc(cleanQQMusicMetadata(data.roma)).map((item, index, arr) => ({
-                start: item.time,
-                end: index < arr.length - 1 ? arr[index + 1].time : item.time + 5000,
-                original: item.text,
-                words: []
-            }));
+        if (data.roma) {
+            /* ★ QQ 罗马音（contentroma）与 QRC 同构：[行起点,行时长]词(词起点,词时长)…
+               且和 QRC 一样带 [ti:]/[ar:]/[kana:] 元数据头。旧实现拿原始串直接
+               match(/^\[\d+,\d+\]/) → 首行是 [ti:...] 必然失败 → 掉进 LRC 分支
+               被丢掉（罗马音永远不显示）。必须先剥元数据再判定格式。 */
+            const romaClean = cleanQQMusicMetadata(data.roma).trim();
+            if (romaClean && /^\[\d+,\d+\]/.test(romaClean)) {
+                romaji = parseYrc(romaClean);
+                /* 兜底：极少数源是「(s,d)文本」排布（文本在标记后），parseYrc 会空手而归 */
+                if (romaji.length === 0) romaji = parseRoma(romaClean);
+            } else if (romaClean) {
+                romaji = parseLrc(romaClean).map((item, index, arr) => ({
+                    start: item.time,
+                    end: index < arr.length - 1 ? arr[index + 1].time : item.time + 5000,
+                    original: item.text,
+                    words: []
+                }));
+            }
+            /* 丢弃「只有 (s,d) 标记、无实际文字」的间奏占位行（parseYrc 会把它
+               当成无标记普通行保留下来，污染罗马音轴） */
+            romaji = romaji.filter(r => /[^\s\d(),，、]/.test(r.original || ''));
         }
     } else if (data.lrc) {
         let lrcText = data.lrc;

@@ -21,6 +21,7 @@ import { buildMosaicPatterns, applyPalette, MOSAIC_COLOR_SETS } from './mondrian
 import { TunnelCameraController } from './TunnelCameraTrack.js';
 import { TunnelDepthStack, TunnelParticle3DLayer } from './TunnelDepthStack.js';
 import { playEnterAnimation, playExitAnimation, playMaskTransition, playFlashOverlay, buildDecorationComboSVG } from './TunnelAnimations.js';
+import { mvBackdropAlpha, onMvBackdropChange } from '../visualizers/mvBackdrop.js';
 import { logCatch } from '../../services/log.js';
 
 export class TunnelEngine {
@@ -221,6 +222,10 @@ export class TunnelEngine {
         this._lastBgCacheKey = null;   // 放行第一句组更新覆盖默认 pattern
       }
     } catch (_e) { logCatch('TunnelEngine', _e); }
+
+    /* ★ 2026-10-04：MV 背景开/关 → 立刻重刷色块透明度（不重建 pattern）。
+       TunnelEngine 是常驻单例，同首歌里开关 MV / 换歌都会变，必须订阅。 */
+    this._unsubBackdrop = onMvBackdropChange(() => this._applyBackdropAlpha());
 
     /* ★ 窗口尺寸变化 → 当前分镜按新视口重建（用户反馈：蒙德里安大字叠字，
        不随窗口变化调整字号/换行——字号缩放是入镜时按当时视口算的）。
@@ -761,11 +766,38 @@ export class TunnelEngine {
         b.opacity = Math.max(op, 0.86);
       }
     }
-    blocks.forEach((b, i) => {
+    /* ★ 当前 pattern 存档：MV 背景开关/换歌时要在**不重建 pattern** 的前提下
+       重刷一次色块透明度（见 _applyBackdropAlpha），必须留住这一份。 */
+    this._lastPatternBlocks = blocks;
+    this._paintMosaicBlocks(blocks);
+
+    this._lastBgCacheKey = cacheKey;
+    this.mosaicLayer.style.setProperty('--mosaic-accent', pattern.accentColor);
+  }
+
+  /**
+   * 把一批 blocks 刷到稳定块池（样式 + 栅格 + 透明度）。
+   *
+   * ★ 2026-10-04：块透明度 = **pattern 自带 opacity × MV 背景因子**。
+   *   蒙德里安的块是「近实心」（保底 0.86）且透明度被 `_hexWithAlpha` 烘焙进
+   *   `background-color` 的 —— 满屏实心色板会把 body 级(-2) 的 MV 整块盖死。
+   *   不能改用 CSS `opacity: … !important` 压薄：那会连"多余块淡出隐藏"
+   *   （`style.opacity='0'`）一起覆盖掉，MAX_BLOCKS 个块会全部显形。
+   *   所以在这里乘因子，并把它抽成独立方法，供 MV 开关事件复用。
+   */
+  _paintMosaicBlocks(blocks) {
+    if (!this.mosaicLayer || !this._mosaicBlockPool) return;
+    const list = Array.isArray(blocks) ? blocks : [];
+    /* 因子在开关 MV 时跳一次；这里一处读取，下面整批复用。
+       ★ 必须带宿主：设置面板里的预览隧道（.preview-player）底下没有 MV，
+         压薄只会让它变透明。 */
+    const backdrop = mvBackdropAlpha(this.container);
+    list.forEach((b, i) => {
       const el = this._mosaicBlockPool[i];
+      if (!el) return;
       const gridInner = el.querySelector('.t-m-grid-inner');
       if (!gridInner) return;
-      const opacity = b.opacity != null ? b.opacity : (b.isGrid ? 0.5 : 0.35);
+      const opacity = (b.opacity != null ? b.opacity : (b.isGrid ? 0.5 : 0.35)) * backdrop;
       el.classList.toggle('t-m-invert-text', !!b.invertText);
       el.dataset.invert = b.invertText ? '1' : '0';
       el.style.left = `${b.x.toFixed(3)}%`;
@@ -777,11 +809,15 @@ export class TunnelEngine {
       /* ★ 透明度烘焙进背景色，块保持 opacity:1 —— 栅格子层不再被父 opacity 连带压暗 */
       el.style.backgroundColor = this._hexWithAlpha(b.color, opacity);
       el.style.opacity = '1';
+      /* ★ 栅格/条形线条自己的不透明度也要跟着压薄：它是 rg 白线（默认 .5），
+         不跟块走的话 MV 一铺上就只剩一张"方格纸"，比色块还抢眼（实测：
+         块压到 0.24 时方格线仍是全强度，整屏观感没变）。 */
+      const decoAlpha = backdrop < 1 ? backdrop : 1;
       // ★ 栅格/条形线条渲染：绝大多数色块显示【方格】网格（横+竖交叉线，用户明确要求
       //   方格而非斜纹条纹），少量条线，其余无装饰
       if (b.isGrid) {
         el.classList.add('is-grid-block');
-        gridInner.style.opacity = '1';
+        gridInner.style.opacity = String(decoAlpha);
         const gcolor = b.gridColor || 'rgba(255,255,255,0.5)';
         const gline = (b.gridLineWidth != null ? b.gridLineWidth : 1.5);
         const gsp = (b.gridSpacing != null && b.gridSpacing > 0) ? b.gridSpacing : 22;
@@ -791,7 +827,7 @@ export class TunnelEngine {
           `repeating-linear-gradient(90deg, ${gcolor} 0 ${gline}px, transparent ${gline}px ${gsp}px)`;
       } else if (b.isBar) {
         el.classList.remove('is-grid-block');
-        gridInner.style.opacity = '1';
+        gridInner.style.opacity = String(decoAlpha);
         gridInner.style.backgroundImage =
           `repeating-linear-gradient(${b.barAngle}deg, ${b.barColor} 0 2px, transparent 2px ${b.barSpacing}px)`;
       } else {
@@ -800,12 +836,15 @@ export class TunnelEngine {
       }
     });
     // 新 pattern 块数少于池容量：多余块淡出隐藏（保持位置以便平滑回收）
-    for (let i = blocks.length; i < MAX_BLOCKS; i++) {
+    for (let i = list.length; i < this._mosaicBlockPool.length; i++) {
       this._mosaicBlockPool[i].style.opacity = '0';
     }
+  }
 
-    this._lastBgCacheKey = cacheKey;
-    this.mosaicLayer.style.setProperty('--mosaic-accent', pattern.accentColor);
+  /** MV 背景开/关时重刷当前色块的透明度（pattern 不重建，只改烘焙 alpha） */
+  _applyBackdropAlpha() {
+    if (!this._lastPatternBlocks) return;
+    this._paintMosaicBlocks(this._lastPatternBlocks);
   }
 
   /**
@@ -1438,6 +1477,10 @@ export class TunnelEngine {
   destroy() {
     this.stop();
     this.clear();
+    if (typeof this._unsubBackdrop === 'function') {
+      try { this._unsubBackdrop(); } catch { /* 退订失败不影响销毁 */ }
+      this._unsubBackdrop = null;
+    }
     if (this.viewContainer && this.viewContainer.parentNode) this.viewContainer.remove();
     this.viewContainer = null;
   }

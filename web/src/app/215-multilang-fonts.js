@@ -7,7 +7,7 @@ import { FONT_DB_NAME, FONT_STORE } from '../config/constants.js';
 import { DROPDOWN_OPTIONS, FONT_FAMILY_MAP, FONT_LOCAL_NAMES, LANG_INFO, langFamilyName } from './10-config-state.js';
 import { saveSettings } from './180-boot-config.js';
 import { setSettingValue } from './190-settings-fontsize.js';
-import { applyFontFamily } from './210-color-multilang.js';
+import { applyFontFamily, applyModeFontFamily } from './210-color-multilang.js';
 import { resolveDtkFontFamily } from './250-desktop-lyrics.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
@@ -973,11 +973,12 @@ function refreshFontDropdown() {
                             previewEngineInstance.setModeVar('fontFamily', fontVal);
                         }
                         if (currentViewMode === targetMode) {
-                            /* ★ 模式字体独立生效，不覆盖全局字体设置：
-                               default/inherit 表示「跟随字体设置」 */
-                            applyFontFamily(fontVal === 'default' || fontVal === 'inherit'
-                                ? (appSettings.interface && appSettings.interface.fontFamily) || 'default'
-                                : fontVal);
+                            /* ★ 模式字体独立生效，**且只作用于播放器容器**（不写根节点）：
+                               default/inherit 表示「跟随字体设置」= 清除容器级覆盖。
+                               此前调 applyFontFamily 会写 documentElement，等于顺手把设置页
+                               控件与标题栏的字体也改了 —— 用户原话：「在歌曲模式里切换字体，
+                               却像是切换了全局字体（设置页的字体变了）」。 */
+                            applyModeFontFamily(fontVal);
                         }
                         saveSettings();
                     } else {
@@ -1109,7 +1110,9 @@ async function initCustomFonts() {
                 const curMode = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode || 'cover';
                 const modeFont = (appSettings.modeSettings && appSettings.modeSettings[curMode] && appSettings.modeSettings[curMode].fontFamily);
                 const globalFont = appSettings.interface && appSettings.interface.fontFamily;
-                applyFontFamily(modeFont && modeFont !== 'default' ? modeFont : globalFont);
+                /* ★ 重放也走作用域版本：自定义字体注册完成后要刷的是"当前模式该怎么显示"，
+                   而不是去改写全局根变量（那会让设置页字体被模式字体带跑）。 */
+                applyModeFontFamily(modeFont);
                 if (previewEngineInstance) {
                     previewEngineInstance.setModeVar('fontFamily', modeFont || globalFont || 'default');
                 }

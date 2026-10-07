@@ -80,19 +80,31 @@ const splitOversizedDraft = (draft) => {
         || (remaining.length > 1
             && (remaining[remaining.length - 1].renderEndTime - remaining[0].line.start) > 18)) {
         if (loopGuard++ > 1000) break;
+        /* ★ 2026-10-02 拆分时长下限（用户水印取证「49 行挤 21s → 段落碎成 23 段、
+           每段 1-2 镜、每 0.86s 硬切 → 构图秒级乱跳」）：拆分点必须让前段时长 ≥6s
+           （无最大 gap 候选时按 ≥6s 的最近行界切），杜绝 1-2 行的碎片段落。 */
         const candidates = remaining.slice(2, -1).map((line, offset) => ({
             splitIndex: offset + 2,
             gap: line.line.start - remaining[offset + 1].renderEndTime,
+            segDur: remaining[offset + 1].renderEndTime - remaining[0].line.start,
         }));
-        const validCandidates = candidates.filter(c => !Number.isNaN(c.gap));
+        const validCandidates = candidates.filter(c => !Number.isNaN(c.gap) && c.segDur >= 6.0);
         const rawSplitIndex = validCandidates.sort((a, b) => b.gap - a.gap)[0]?.splitIndex
-            ?? Math.min(4, remaining.length - 1);
-        const splitIndex = Math.max(1, rawSplitIndex);
+            ?? (() => {
+                const idx = remaining.findIndex((l, i) => i >= 2
+                    && (l.line.start - remaining[0].line.start) >= 6.0);
+                return idx > 0 ? idx : Math.min(4, remaining.length - 1);
+            })();
+        const splitIndex = Math.max(2, rawSplitIndex);
         output.push({ lines: remaining.slice(0, splitIndex), boundary });
         remaining = remaining.slice(splitIndex);
         boundary = output[output.length - 1].lines.length >= 6 ? 'line-cap' : 'duration-cap';
     }
-    output.push({ lines: remaining, boundary });
+    /* ★ 2026-10-03 防空段落（「verse 有时没有歌词」的一条真实路径）：remaining 为空时
+       仍无条件 push 会产出一个 lines 为空、无 shot 的段落——时间轴一旦落在它上面
+       （queryParagraphAtTime 按 startTime 命中），激活场景无任何字形 = 空画面。
+       空 draft 直接丢弃。 */
+    if (remaining.length > 0) output.push({ lines: remaining, boundary });
     return output;
 };
 
@@ -140,12 +152,21 @@ const groupShotLines = (lines) => {
         } else {
             const durationSoFar = line.renderEndTime - groupStartTime;
             // 组镜 ≤4 行、总跨度 ≤6s，背景 MG 才能复用
-            if (currentGroup.length < 4 && durationSoFar <= 6.0) {
-                currentGroup.push(line);
-            } else {
+            // ★ 2026-10-02 组最短时长下限（用户水印取证「lines=49 挤在 21s → 每 1.6s
+            //   硬切一镜 → 构图随机跳/甩出画面」）：行间隔过密时常规上限会造出 <2s 的
+            //   碎片镜——每镜机位/缩放随机，碎片镜=画面每秒乱跳。组龄 <2.5s（且 <8 行）
+            //   时强制续组，宁可超 6s 上限也不产出碎片镜。
+            const groupAge = line.line.start - groupStartTime;
+            /* ★ 2026-10-02 上限 8→5（用户实测「有的歌词重叠」）：布局函数按 ≤4 块设计，
+               续组到 6-8 行时排布会挤在一起重叠。5 行是上下限的折中（碎片场景仍能
+               把 <2.5s 的残组并住，又不会挤爆布局）。 */
+            const tooShortToCut = groupAge < 2.5 && currentGroup.length < 5;
+            if (!tooShortToCut && (currentGroup.length >= 4 || durationSoFar > 6.0)) {
                 groups.push(currentGroup);
                 currentGroup = [line];
                 groupStartTime = line.line.start;
+            } else {
+                currentGroup.push(line);
             }
         }
     }
@@ -155,7 +176,27 @@ const groupShotLines = (lines) => {
 
 const buildShots = (lines, kind, paragraphIndex, seed, previousKind) => {
     let lastKind = previousKind;
-    return groupShotLines(lines).map((group, shotIndex) => {
+    /* ★ 2026-10-02 碎片镜合并（组最短时长的段落边界兜底）：段落末尾的残组可能
+       只有 1-2 行（<1s）——每镜机位/缩放随机，碎片镜=画面秒级乱跳。时长 <2.5s
+       的镜并入前一镜（cue/行索引/时间窗全部带走，机位沿用前一镜）。 */
+    const mergeShortShots = (shots) => {
+        const merged = [];
+        for (const shot of shots) {
+            const prev = merged[merged.length - 1];
+            /* ★ 2026-10-02 合并后行数上限 6（同组上限收紧，防布局重叠）：超上限的
+               短镜宁可保留为独立短镜（会有一次快切），也不挤爆布局。 */
+            const mergedLineCount = prev ? prev.lineIndices.length + shot.lineIndices.length : 0;
+            if (prev && shot.endTime - shot.startTime < 2.5 && mergedLineCount <= 6) {
+                prev.endTime = shot.endTime;
+                prev.lineIndices.push(...shot.lineIndices);
+                if (Array.isArray(shot.cues)) prev.cues.push(...shot.cues);
+            } else {
+                merged.push(shot);
+            }
+        }
+        return merged;
+    };
+    return mergeShortShots(groupShotLines(lines).map((group, shotIndex) => {
         const signature = group.map(item => item.line.original || '').join('|');
         let shotKind = chooseWithoutRepeat(SONNET_SHOT_KIND_POOL, `${seed}:${paragraphIndex}:${shotIndex}:${signature}`, lastKind);
         const wordCount = group.reduce((sum, item) => sum + item.segments.filter(s => s.isWordLike).length, 0);
@@ -178,13 +219,15 @@ const buildShots = (lines, kind, paragraphIndex, seed, previousKind) => {
             lineIndices: group.map(item => lines.indexOf(item)),
             cues: buildCues(group),
             camera: {
+                /* ★ 2026-10-02 恢复 folia 原生随机摆位（用户「运镜不像 folia」）：
+                   场景尺寸根因已修，不再需要靠收敛来压偏移——上游原值回归。 */
                 x: ((random & 255) / 255 - 0.5) * 0.18,
                 y: (((random >>> 8) & 255) / 255 - 0.5) * 0.14,
                 zoom: zoomBase + zoomRandom * zoomSpan,
                 rotation: (((random >>> 24) & 255) / 255 - 0.5) * 0.08,
             },
         };
-    });
+    }));
 };
 
 /**

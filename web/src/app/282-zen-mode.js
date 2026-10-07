@@ -46,7 +46,7 @@ const ZEN_SCOPES = [
 const MODAL_SELECTOR = [
     '.search-overlay.visible', '.settings-overlay.visible', '.view-mode-overlay.visible',
     '.eq-panel.visible', '.lyric-source-overlay.visible', '.color-picker-overlay.visible',
-    '.ctx-menu.visible', '.ctx-confirm.visible', '.aria-dialog-overlay',
+    '.ctx-menu.visible', '.aria-dialog-overlay',
     '.ai-models-overlay.visible', '#sleepTimerOverlay.visible', '#ariaOobeOverlay',
     '#welcomeOverlay:not(.hidden)'
 ].join(', ');

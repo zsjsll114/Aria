@@ -15,6 +15,11 @@
     height: 100%;
 }
 
+/* ★ 2026-10-05：与 letterpress.css 同一处缺陷 —— 只藏歌词区、靠舞台不透明底盖住
+   播放列，MV 一来（body.mv-bg-on .visualizer-stage-neon 底透明化）就穿帮。
+   显式 display:none 整列，与 pv / tempera / dimension / tunnel 同构。
+   （霓虹已从样式选择器下线，但代码保留，缺陷一并修掉以免复活时再踩。） */
+.player-container.view-neon .player-controls-wrapper,
 .player-container.view-neon .lyrics-area-wrapper,
 .preview-player.view-neon .cover-area,
 .preview-player.view-neon .preview-cover-area,

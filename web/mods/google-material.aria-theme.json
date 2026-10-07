@@ -1,0 +1,34 @@
+{
+  "ariaTheme": 1,
+  "name": "Google Material（谷歌风）",
+  "author": "Aria",
+  "description": "Google Material 暗色：Google 蓝主题色、28px 大圆角、平面化（去掉毛玻璃）、收敛的次级文字层级。",
+  "recipe": {
+    "interface": {
+      "themeColor": "#8AB4F8"
+    },
+    "tokens": {
+      "--aria-radius-sm": "8px",
+      "--aria-radius-md": "12px",
+      "--aria-radius-lg": "28px",
+      "--aria-radius-full": "999px",
+      "--aria-glass-blur": "0px",
+      "--aria-glass-saturate": "100%",
+      "--aria-glass-bg": "rgba(32, 33, 36, 0.98)",
+      "--aria-glass-border": "rgba(255, 255, 255, 0.10)",
+      "--aria-glass-shadow": "none",
+      "--aria-text-1": "#E8EAED",
+      "--aria-text-2": "#9AA0A6",
+      "--aria-text-3": "#5F6368",
+      "--aria-space-3": "12px",
+      "--aria-space-4": "16px",
+      "--aria-font-md": "13px",
+      "--aria-focus-ring": "2px solid #8AB4F8",
+      "--aria-focus-offset": "2px",
+      "--aria-danger": "#F28B82",
+      "--aria-danger-rgb": "242, 139, 130",
+      "--aria-success": "#81C995",
+      "--aria-warning": "#FDD663"
+    }
+  }
+}

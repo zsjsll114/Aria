@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // temperaMode.js — 凝彩 · Tempera 模式接入层（folia tempera 复刻，独立于 sonnet/诗镜）。
 // 引擎 = TemperaPixiRuntime（上游 createTemperaPixiRuntime 机械移植），懒加载 + 单例。
 // 与 sonnetMode 同构：进入建引擎、切走挂起省 GPU、歌词/情感词变化热重建。
@@ -157,7 +158,12 @@ let temperaRebuildTimer = null;
 
 export function applyTemperaSettings(settings) {
     if (!settings) return;
+    /* ★ 2026-10-03 字体变更检测（修复「tempera 无法切换字体」）：字体在 buildSongContext
+       时烘焙进 runtime.options.fontFamily，setTuning 覆盖不到——必须走重建，此前只有
+       字号变化才重建。merge 前取旧值比较。 */
+    const prevFont = temperaSettings ? temperaSettings.fontFamily : undefined;
     temperaSettings = { ...(temperaSettings || {}), ...settings };
+    const fontChanged = settings.fontFamily !== undefined && settings.fontFamily !== prevFont;
     if (typeof document !== 'undefined' && settings.highlightColor) {
         document.documentElement.style.setProperty('--tempera-accent', settings.highlightColor);
     }
@@ -171,19 +177,26 @@ export function applyTemperaSettings(settings) {
         if (!Number.isNaN(v)) t[k] = v;
     });
     runtime.setTuning(t);
-    /* 字号倍率烘焙在 options/布局里：变化经去抖后销毁重建（setTuning 覆盖不了字号） */
+    /* 字号倍率 / 字体烘焙在 options/布局里：变化经去抖后销毁重建（setTuning 覆盖不了） */
     const scale = TEMPERA_LYRICS_FONT_SCALE * (parseFloat(settings.fontSize) || 1);
-    if (runtime.options.lyricsFontScale !== scale) {
+    if (fontChanged || runtime.options.lyricsFontScale !== scale) {
         clearTimeout(temperaRebuildTimer);
         temperaRebuildTimer = setTimeout(() => { destroyTemperaRuntime(); }, 280);
     }
 }
 
-/* Aria 全局字体 key → 真字体栈（window.resolveFontFamily 由 210-color-multilang 暴露） */
+/* Aria 全局字体 key → 真字体栈（window.resolveFontFamily 由 210-color-multilang 暴露）
+   ★ 2026-10-03 修复「tempera 无法切换字体」：tempera 面板的字体项写在
+   modeSettings.tempera.fontFamily（面板直通到 applyTemperaSettings），而此前只读
+   全局 interface.fontFamily——两个字段不通，面板里换字体永不生效。现在优先用
+   tempera 自己的值（'default' 是哨兵 = 跟随全局）。 */
 function currentFontStack() {
     try {
-        const fontKey = (typeof globalThis !== 'undefined' && globalThis.appSettings
-            && globalThis.appSettings.interface && globalThis.appSettings.interface.fontFamily) || 'inherit';
+        const localKey = (temperaSettings && temperaSettings.fontFamily) || null;
+        const fontKey = (localKey && localKey !== 'default')
+            ? localKey
+            : ((typeof globalThis !== 'undefined' && globalThis.appSettings
+                && globalThis.appSettings.interface && globalThis.appSettings.interface.fontFamily) || 'inherit');
         if (typeof window !== 'undefined' && typeof window.resolveFontFamily === 'function') {
             return window.resolveFontFamily(fontKey) || null;
         }
@@ -362,8 +375,17 @@ export function destroyTemperaRuntime() {
     }
 }
 
-/** 独立实例（设置页预览窗）：与主单例互不影响。返回 { setTime, setPaused, destroy } */
-export async function createDetachedTemperaRuntime(container, lyrics, meta = {}) {
+/**
+ * 取当前 TemperaPixiRuntime 实例（只读）。
+ * ★ 同 sonnetMode.getSonnetEngine：歌词海报要抓一帧真画面，而 Pixi 的 WebGL 画布
+ *   在 `preserveDrawingBuffer:false` 下 `toDataURL()` 恒为空，必须「同一任务内先
+ *   `renderer.render(stage)` 再立刻 `toDataURL()`」。调用方不得修改返回对象。
+ */
+export function getTemperaRuntime() {
+    return runtime;
+}
+
+/** 独立实例（设置页预览窗）：与主单例互不影响。返回 { setTime, setPaused, destroy } */export async function createDetachedTemperaRuntime(container, lyrics, meta = {}) {
     const box = { value: 0, get() { return this.value; } };
     const normLines = normalizeTemperaLines(lyrics || []);
     const rt = await TemperaPixiRuntime.create({

@@ -1,11 +1,12 @@
+/* Portions adapted from JPV Lyrics Motion Kit (AGPL-3.0) — https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit — See THIRD_PARTY_NOTICES.md */
 /**
  * PVRendering.js
- * 负责 2D/3D 海报文字排版渲染与 Cadenza 风格逐字光束扫描生命周期流转：
+ * 负责 2D/3D 海报文字排版渲染与 JPV 的 Cadenza 风格逐字光束扫描生命周期流转：
  * 1. 日系海报 4 大构图模版支持 (Pillar-Wings, Twin-Pillars, Vertical-Cascade, Hero-Cross)
  * 2. 逐字推进动态延伸虚线框 (Progressive Kinetic Target Box: 唱到几个字就延伸几个字宽度/高度)
  * 3. 超界长句视野自动平滑跟焦 (Auto-tracking Panning: 镜头紧随当前唱响字符前沿平滑滑动，绝不被边缘截断)
  * 4. 情感词播放中动态形变呼吸 (Kinetic Growth: 随演唱进度动态扩张)
- * 5. Cadenza 同款字素三态生命周期 (waiting 绝对无发光无阴影 -> active 光束扫描 -> passed 优雅微光)
+ * 5. JPV 的 Cadenza 同款字素三态生命周期 (waiting 绝对无发光无阴影 -> active 光束扫描 -> passed 优雅微光)
  * 6. 实时计算当前活跃词块中心坐标与当前活跃子句翻译
  */
 

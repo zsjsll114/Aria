@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * shapeField.js — folia 式全屏图形场（对齐上游 GeometricBackground.tsx 实现）
  * 15 个图形：30% 概率 icon（上限 6 个）+ 圆/方/三角/十字基础几何 + 20 个上浮粒子；

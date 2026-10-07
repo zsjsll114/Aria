@@ -1,3 +1,4 @@
+/* Portions adapted from JPV Lyrics Motion Kit (AGPL-3.0) — https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit — See THIRD_PARTY_NOTICES.md */
 /**
  * PVBackground.js
  * 3D 深色丝绸流体波浪背景系统 (Deep Obsidian Silk & Satin Waves Shader)
@@ -27,7 +28,7 @@ export class PVBackground {
     this.hudEl = null;
     this.particles = [];
     this.particleCount = 28;
-    /* ★ 上游参考项目 形状场（FumeBackground 对齐）：替代单字符 ✦✧ 闪烁层，
+    /* ★ JPV Lyrics Motion Kit（AGPL-3.0）的 FumeBackground 形状场对齐：替代单字符 ✦✧ 闪烁层，
        由 canvas 在 silk 渲染循环里混排 spark/ring/dia/cross/dot 形状 */
     this.fieldShapes = [];
     this._fieldSeedKey = 0;
@@ -337,7 +338,7 @@ export class PVBackground {
     this.particleContainer.style.display = 'block';
   }
 
-  /* ★ 上游参考项目 FumeBackground 对齐：用确定性 LCG 种子生成形状场布局（位置归一化、
+  /* ★ JPV Lyrics Motion Kit 的 FumeBackground 对齐：用确定性 LCG 种子生成形状场布局（位置归一化、
      窗口缩放自适应），kinds 混排避免同构。重构/换歌时重新置种，布景随之刷新。 */
   _buildShapeField() {
     const w = this.width;

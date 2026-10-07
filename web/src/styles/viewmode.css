@@ -102,8 +102,8 @@
         }
 
         .view-mode-card.active {
-            border-color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.08);
+            border-color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.08);
         }
 
         .view-mode-preview {
@@ -263,7 +263,7 @@
         .view-mode-mock-lyrics-full .view-mode-mock-line:nth-child(5) { width: 45%; }
         .view-mode-mock-lyrics-full .view-mode-mock-line:nth-child(6) { width: 55%; }
         .view-mode-mock-line.active {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.6);
+            background: rgba(var(--aria-accent-rgb), 0.6);
             width: 85% !important;
         }
 
@@ -296,7 +296,7 @@
             width: 26px;
             height: 26px;
             border-radius: 50%;
-            background: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
             color: #1a1a1a;
             display: flex;
             align-items: center;
@@ -351,8 +351,8 @@
             margin: 0 1px;
         }
         .view-mode-mock-flyin-char.active {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
-            box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
+            background: rgba(var(--aria-accent-rgb), 0.8);
+            box-shadow: 0 0 6px rgba(var(--aria-accent-rgb), 0.5);
         }
         .view-mode-preview-flyin .view-mode-mock-lyrics-full {
             flex: 1;
@@ -549,7 +549,7 @@
         .view-flyin .line.active .word.word-emotion.active > span:last-child {
             color: var(--emotion-color) !important;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85),
-                         0 0 var(--emotion-glow, 10px) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 232, 190, 106), 0.8)) 40%, transparent) !important;
+                         0 0 var(--emotion-glow, 10px) color-mix(in srgb, var(--emotion-color, rgba(var(--aria-accent-rgb), 0.8)) 40%, transparent) !important;
         }
         .view-flyin .line.active .word.word-emotion.active .word-highlight {
             color: var(--emotion-color) !important;
@@ -559,7 +559,7 @@
         /* 唱完的情感词：超微柔和光 */
         .view-flyin .line.active .word.word-emotion.active:has(.word-highlight.done) > span:last-child {
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85),
-                         0 0 calc(var(--emotion-glow, 10px) * 0.6) color-mix(in srgb, var(--emotion-color, rgba(var(--theme-color-rgb, 232, 190, 106), 0.8)) 25%, transparent) !important;
+                         0 0 calc(var(--emotion-glow, 10px) * 0.6) color-mix(in srgb, var(--emotion-color, rgba(var(--aria-accent-rgb), 0.8)) 25%, transparent) !important;
         }
         .view-flyin .line.active .word.word-emotion.active:has(.word-highlight.done) .word-highlight {
             color: var(--emotion-color) !important;
@@ -648,13 +648,13 @@
             transition: opacity 0.4s ease, filter 0.4s ease;
         }
         .view-mode-mock-wc-item.active {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
-            box-shadow: 0 0 10px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5), 0 0 4px rgba(var(--theme-color-rgb, 232, 190, 106), 0.8);
+            background: rgba(var(--aria-accent-rgb), 0.8);
+            box-shadow: 0 0 10px rgba(var(--aria-accent-rgb), 0.5), 0 0 4px rgba(var(--aria-accent-rgb), 0.8);
             animation: view-wc-pulse 2.5s ease-in-out infinite;
         }
         @keyframes view-wc-pulse {
-            0%, 100% { box-shadow: 0 0 8px rgba(var(--theme-color-rgb, 232, 190, 106), 0.4); }
-            50% { box-shadow: 0 0 14px rgba(var(--theme-color-rgb, 232, 190, 106), 0.7); }
+            0%, 100% { box-shadow: 0 0 8px rgba(var(--aria-accent-rgb), 0.4); }
+            50% { box-shadow: 0 0 14px rgba(var(--aria-accent-rgb), 0.7); }
         }
         .view-mode-mock-wc-item.blur {
             opacity: 0.12;
@@ -666,7 +666,7 @@
             position: absolute;
             top: 38%; left: 32%;
             width: 56px; height: 18px;
-            border: 1.5px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.35);
+            border: 1.5px solid rgba(var(--aria-accent-rgb), 0.35);
             border-radius: 4px;
             pointer-events: none;
             animation: view-wc-focus 3s ease-in-out infinite;
@@ -976,27 +976,6 @@
             visibility: hidden !important;
         }
 
-        /* --- 长卷 · Scroll（连续横卷歌词）：此前 .scroll-view-container 零 CSS 规则，
-           容器无定位/无高度 → Pixi resizeTo 拿到塌陷尺寸，内容挤在左半段
-           （用户实测「只占屏幕的左半段」根因之二）。对齐 tempera 的全屏容器规则。 --- */
-        .player-container.view-scroll {
-            background: #101014 !important;
-        }
-        .player-container.view-scroll .scroll-view-container {
-            display: block !important;
-            width: 100%;
-            position: absolute;
-            inset: 0;
-            height: 100%;
-            z-index: 2;
-            overflow: hidden;
-        }
-        .player-container.view-scroll .lyrics-scroll,
-        .player-container.view-scroll .lyrics-line,
-        .player-container.view-scroll #lyricsScroll {
-            visibility: hidden !important;
-        }
-
         .player-container.view-pv {
             background:
                 radial-gradient(ellipse 120% 90% at 50% 0%, color-mix(in srgb, var(--cover-primary, #3a86ff) 18%, transparent) 0%, transparent 55%),
@@ -1033,12 +1012,12 @@
             position: absolute;
             inset: 0;
             background-image: 
-                radial-gradient(1.5px 1.5px at 20% 25%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.4), transparent),
-                radial-gradient(1px 1px at 55% 15%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.3), transparent),
-                radial-gradient(1.5px 1.5px at 75% 60%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.35), transparent),
-                radial-gradient(1px 1px at 30% 80%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.25), transparent),
+                radial-gradient(1.5px 1.5px at 20% 25%, rgba(var(--aria-accent-rgb), 0.4), transparent),
+                radial-gradient(1px 1px at 55% 15%, rgba(var(--aria-accent-rgb), 0.3), transparent),
+                radial-gradient(1.5px 1.5px at 75% 60%, rgba(var(--aria-accent-rgb), 0.35), transparent),
+                radial-gradient(1px 1px at 30% 80%, rgba(var(--aria-accent-rgb), 0.25), transparent),
                 radial-gradient(1px 1px at 85% 35%, rgba(255, 255, 255, 0.15), transparent),
-                radial-gradient(1.5px 1.5px at 15% 65%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.2), transparent);
+                radial-gradient(1.5px 1.5px at 15% 65%, rgba(var(--aria-accent-rgb), 0.2), transparent);
             pointer-events: none;
             animation: view-dim-drift 8s ease-in-out infinite alternate;
         }
@@ -1049,9 +1028,9 @@
         .view-mode-mock-dim-cube {
             width: 40px;
             height: 40px;
-            border: 1.5px solid rgba(var(--theme-color-rgb, 232, 190, 106), 0.7);
+            border: 1.5px solid rgba(var(--aria-accent-rgb), 0.7);
             border-radius: 5px;
-            box-shadow: 0 0 18px rgba(var(--theme-color-rgb, 232, 190, 106), 0.35), inset 0 0 14px rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
+            box-shadow: 0 0 18px rgba(var(--aria-accent-rgb), 0.35), inset 0 0 14px rgba(var(--aria-accent-rgb), 0.2);
             transform: rotateX(25deg) rotateY(35deg);
             animation: view-dim-cube-rot 6s linear infinite;
             position: relative;
@@ -1062,9 +1041,9 @@
             position: absolute;
             inset: 6px;
             background-image: 
-                radial-gradient(1px 1px at 30% 30%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.6), transparent),
-                radial-gradient(1px 1px at 70% 50%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.4), transparent),
-                radial-gradient(1px 1px at 40% 75%, rgba(var(--theme-color-rgb, 232, 190, 106), 0.5), transparent);
+                radial-gradient(1px 1px at 30% 30%, rgba(var(--aria-accent-rgb), 0.6), transparent),
+                radial-gradient(1px 1px at 70% 50%, rgba(var(--aria-accent-rgb), 0.4), transparent),
+                radial-gradient(1px 1px at 40% 75%, rgba(var(--aria-accent-rgb), 0.5), transparent);
             border-radius: 3px;
         }
         @keyframes view-dim-cube-rot {
@@ -1197,7 +1176,7 @@
 }
 .vm-card-cloud .wcw.w1 { left: 22%; top: 26%; font-size: 22px; color: rgba(255,255,255,0.32); }
 .vm-card-cloud .wcw.w2 { left: 70%; top: 20%; font-size: 15px; color: rgba(255,255,255,0.42); }
-.vm-card-cloud .wcw.w3 { left: 48%; top: 46%; font-size: 30px; color: var(--theme-color, #E8BE6A); text-shadow: 0 0 16px rgba(232, 190, 106, 0.45); }
+.vm-card-cloud .wcw.w3 { left: 48%; top: 46%; font-size: 30px; color: var(--aria-accent); text-shadow: 0 0 16px rgba(232, 190, 106, 0.45); }
 .vm-card-cloud .wcw.w4 { left: 20%; top: 62%; font-size: 16px; color: rgba(255,255,255,0.45); }
 .vm-card-cloud .wcw.w5 { left: 76%; top: 55%; font-size: 13px; color: rgba(255,255,255,0.35); }
 .vm-card-cloud .wcw.w6 { left: 34%; top: 78%; font-size: 12px; color: rgba(255,255,255,0.3); }
@@ -1239,8 +1218,8 @@
 }
 .view-mode-mock-dim-line.near {
     top: 58%;
-    background: var(--theme-color, #E8BE6A);
-    box-shadow: 0 0 18px color-mix(in srgb, var(--theme-color, #E8BE6A) 45%, transparent);
+    background: var(--aria-accent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--aria-accent) 45%, transparent);
     transform: rotateX(10deg) scale(1.02);
 }
 .view-mode-mock-dim-line.floor {

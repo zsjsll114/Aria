@@ -7,7 +7,6 @@ import { AI_PROVIDERS, EQ_STORAGE_KEY, FAV_STORAGE_KEY, PERF_STORAGE_KEY, PLAYLI
 import { DEFAULT_SETTINGS, DEFAULT_SONG } from '../config/defaults.js';
 import { PERFORMANCE_PROFILES } from './10-config-state.js';
 import { audio } from './20-lyrics-render.js';
-import { sourceBtns } from './30-dom-refs.js';
 import { handleAudioPlayError } from './70-audio-engine.js';
 import { getFavorites } from './120-search-results.js';
 import { getPlaylists } from './130-playlists.js';
@@ -97,7 +96,6 @@ async function preloadDefaultSong() {
                 }
                 /* 无收藏/歌单，加载硬编码默认歌曲 */
                 currentSource = DEFAULT_SONG.source;
-                sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === DEFAULT_SONG.source));
                 await loadOnlineSong(DEFAULT_SONG, false, false, true);  /* preloadOnly=true */
             } catch (e) {
                 logError('bootConfig', '预加载失败:', e);
@@ -127,7 +125,6 @@ async function initDefaultSong() {
             }
             /* 无收藏/歌单，播放硬编码默认歌曲 */
             currentSource = DEFAULT_SONG.source;
-            sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === DEFAULT_SONG.source));
             await loadOnlineSong(DEFAULT_SONG);
         }
 
@@ -190,7 +187,13 @@ async function bootApp() {
                 }
                 /* 用户手势已触发，安全激活 Web Audio Context 并播放音频 */
                 if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'suspended') {
-                    try { audioCtx.resume(); } catch (e) { logCatch('bootConfig', e); }
+                    /* resume() 返回 Promise：桌面端自动调用时没有用户手势，
+                       在策略未放开的环境会 reject —— 必须吞掉，否则是未处理拒绝。
+                       （真被拦的话下面 audio.play() 也会 reject 并走 handleAudioPlayError。） */
+                    try {
+                        const r = audioCtx.resume();
+                        if (r && typeof r.catch === 'function') r.catch((e) => logCatch('bootConfig', e));
+                    } catch (e) { logCatch('bootConfig', e); }
                 }
                 if (preloadedSongReady === true) {
                     /* 预加载已就绪：直接播放，秒开 */
@@ -215,12 +218,27 @@ async function bootApp() {
                 }
             };
 
-            welcomeBtn?.addEventListener('click', handleWelcomeEnter);
-            welcomeOverlay?.addEventListener('click', (e) => {
-                if (e.target === welcomeOverlay || e.target.closest('.welcome-card')) {
-                    handleWelcomeEnter(e);
-                }
-            });
+            /* ★ 2026-10-05：桌面壳不再需要这层手势闸门。
+               欢迎页最初的唯一目的是"用一次用户手势解锁浏览器自动播放策略"，
+               桌面端已在 tauri.conf.json 给主窗加了
+               `--autoplay-policy=no-user-gesture-required`（WebView2 默认拦带声音的自动播放）。
+               ★ 但不能只是把节点删掉：handleWelcomeEnter 里还挂着**首曲初始化与播放**
+               （preloadedSongReady 的三分支：直接播 / 标记待播 / 回退 initDefaultSong），
+               漏掉它桌面端启动后不会加载任何歌曲。所以在桌面端原地自调一次。
+               （aria-desktop 由 index.html head 的内联脚本在首帧前打上；
+                CSS 侧另有 `html.aria-desktop #welcomeOverlay{display:none}` 防首帧闪一下。） */
+            const isDesktopShell = typeof document !== 'undefined'
+                && document.documentElement.classList.contains('aria-desktop');
+            if (isDesktopShell) {
+                handleWelcomeEnter();
+            } else {
+                welcomeBtn?.addEventListener('click', handleWelcomeEnter);
+                welcomeOverlay?.addEventListener('click', (e) => {
+                    if (e.target === welcomeOverlay || e.target.closest('.welcome-card')) {
+                        handleWelcomeEnter(e);
+                    }
+                });
+            }
         }
 
 if (typeof document !== 'undefined') {
@@ -759,6 +777,14 @@ function loadSettings() {
                     if (savedPlayback.initialVolume != null) {
                         savedPlayback.initialVolume = Math.round(Number(savedPlayback.initialVolume)) || 0;
                     }
+                    /* ★ 2026-10-06：「播放状态持久化与崩溃恢复」已**整体删除**
+                       （用户报"开机恢复上次播放"与"启动时播放默认歌单"直接冲突 ——
+                       两个机制都在抢着决定"现在该放哪一首"）。
+                       删掉的不只是入口，还要**清掉遗留数据**：旧配置里的 resumeSession
+                       键会一直跟着 user_config.json / 备份文件传下去，localStorage 里那份
+                       会话快照也不再有属主（既不会读、也不会被存储面板清理）。 */
+                    delete savedPlayback.resumeSession;
+                    try { localStorage.removeItem('lyrics_player_session'); } catch { /* 旧快照，已无属主 */ }
                     appSettings = {
                         playback: { ...DEFAULT_SETTINGS.playback, ...savedPlayback },
                         lyrics: { ...DEFAULT_SETTINGS.lyrics, ...(saved.lyrics || {}) },

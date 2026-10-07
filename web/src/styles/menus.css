@@ -60,8 +60,8 @@
         .ctx-item.active-rate,
         .ctx-item.is-on,
         .more-item.is-on {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            color: var(--aria-accent);
         }
         .ctx-item.active-rate svg,
         .ctx-item.is-on svg,
@@ -90,69 +90,9 @@
             .ctx-menu.is-multi { display: block; max-height: calc(100vh - 16px); overflow-y: auto; }
         }
 
-        /* 确认对话框（iOS 18 毛玻璃） */
-        .ctx-confirm {
-            position: fixed;
-            z-index: 10001;
-            min-width: 260px;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(40px) saturate(200%);
-            -webkit-backdrop-filter: blur(40px) saturate(200%);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            border-radius: 14px;
-            padding: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            text-align: center;
-            visibility: hidden;
-            opacity: 0;
-            transform: scale(0.92);
-            pointer-events: none;
-            transition: opacity 0.22s var(--e-enter-soft),
-                        transform 0.22s var(--e-enter-soft),
-                        visibility 0s 0.22s;
-        }
-        .ctx-confirm.visible {
-            visibility: visible;
-            opacity: 1;
-            transform: scale(1);
-            pointer-events: auto;
-            transition: opacity 0.22s var(--e-enter-soft),
-                        transform 0.22s var(--e-enter-soft),
-                        visibility 0s 0s;
-        }
-        .ctx-confirm-title {
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .ctx-confirm-msg {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
-            margin-bottom: 14px;
-        }
-        .ctx-confirm-btns {
-            display: flex;
-            gap: 8px;
-        }
-        .ctx-confirm-btn {
-            flex: 1;
-            padding: 8px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: background 0.15s ease;
-        }
-        .ctx-confirm-btn.cancel {
-            background: rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.8);
-        }
-        .ctx-confirm-btn.cancel:hover { background: rgba(255, 255, 255, 0.18); }
-        .ctx-confirm-btn.confirm {
-            background: rgba(255, 80, 80, 0.5);
-            color: #fff;
-        }
-        .ctx-confirm-btn.confirm:hover { background: rgba(255, 80, 80, 0.7); }
+        /* 静态确认框（.ctx-confirm）已于 2026-10-05（P3-a）退役：
+           确认框统一走 021-aria-dialog.js + ui/overlay.js 的浮层契约
+           （.aria-dialog-overlay / .aria-dialog-btn），ESC / 点遮罩 / 焦点陷阱 /
+           dialog 语义 / 层级全部由契约提供，不再是第三套独立实现。
+           index.html 的 #ctxConfirm 节点与 dom.js 的引用一并移除。 */
 

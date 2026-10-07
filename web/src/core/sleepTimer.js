@@ -14,6 +14,7 @@
  * ============================================================ */
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { logCatch, logWarn } from '../services/log.js';
+import { onRoleSwap } from './dualDeck.js';
 
 export const SLEEP_PRESET_MINUTES = [15, 30, 60, 90];
 export const SLEEP_FADE_MS = 60000;
@@ -21,6 +22,7 @@ export const SLEEP_MIN_MINUTES = 1;
 export const SLEEP_MAX_MINUTES = 600;
 
 let _audio = null;
+let _swapHooked = false;
 let _endAt = 0;           /* 墙钟 ms；0 = 未设定 */
 let _minutes = 0;
 let _fading = false;
@@ -145,6 +147,13 @@ function fire() {
 /** 注入 audio 元素（#audioPlayer）。必须在 startSleepTimer 前调用一次。 */
 export function initSleepTimer(audio) {
     _audio = audio || null;
+    /* ★ Automix Phase 2（swap 适配）：角色互换后 _audio 重指新活跃元素，
+       否则到点暂停打在已退役的旧元素上。只订阅一次（重复 init 不重复挂）。
+       淡出中途恰好 swap 属边缘场景：斜坡随重指切到新元素继续，语义可接受。 */
+    if (!_swapHooked) {
+        _swapHooked = true;
+        onRoleSwap((newActive) => { _audio = newActive || null; });
+    }
 }
 
 /**

@@ -19,6 +19,7 @@ import { saveSettings } from './180-boot-config.js';
 import { t } from '../core/i18n.js';
 import { logCatch, logInfo } from '../services/log.js';
 import { lineRangeMs, seekCancelsLoop, shouldRewind } from '../core/abLoop.js';
+import { registerAudioListener } from '../core/dualDeck.js';
 
 const TAG = 'abLoop';
 const HOTKEY = 'l';
@@ -137,8 +138,8 @@ function onHotKey(e) {
 
 if (typeof document !== 'undefined') {
     if (audio) {
-        audio.addEventListener('timeupdate', onTimeUpdate);
-        audio.addEventListener('seeked', onSeeked);
+        registerAudioListener('timeupdate', onTimeUpdate);
+        registerAudioListener('seeked', onSeeked);
     }
     document.addEventListener('keydown', onHotKey);
 }

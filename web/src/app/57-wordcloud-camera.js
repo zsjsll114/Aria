@@ -187,8 +187,11 @@ class WaveLyricSystem {
         if (!n) { this.inited = false; this.nodes = []; this.activeIndex = -1; return; }
         let sumH = 0;
         const nodes = new Array(n);
-        const isCenter = (appSettings.lyrics && appSettings.lyrics.align === 'center') || (playerContainer && playerContainer.classList.contains('view-lyrics'));
-        const origin = isCenter ? 'center center' : 'left center';
+        /* ★ 2026-10-05：这里原本自己算缩放原点并内联写到每一行上（判定是「非居中一律
+           算左对齐」+「view-lyrics 一律算居中」），与 base.css、190 共三个写入者且判定
+           冲突 —— 右对齐拿到左原点、歌词模式拿到居中原点。现由 tokens 层的
+           --aria-lyric-origin 单点决定（见 190-settings-fontsize.js 的 applyHighlightColor），
+           相机不再触碰 transform-origin。 */
         /* ★ 读写分趟（2026-09-26）：原实现把「读 el.clientHeight」与「写 position/left/top/
            width/transformOrigin/transitionProperty/visibility」交错在同一个循环里 ——
            每行的读都发生在上一行的写之后，于是 n 行 = n 次强制同步布局（Layout Thrashing）。
@@ -220,7 +223,7 @@ class WaveLyricSystem {
             el.style.left = '0';
             el.style.top = '0';
             el.style.width = '100%';
-            el.style.transformOrigin = origin;
+            /* transform-origin 不在这里写：由 CSS 消费 --aria-lyric-origin（见文件上方注释） */
             el.style.transitionProperty = LYRICS_LINE_TRANS_PROP;
             el.style.visibility = '';
             delete el.dataset.virtual;
@@ -377,9 +380,7 @@ class WaveLyricSystem {
             }
         }
 
-        /* 动态形态：计算当前对齐原点 */
-        const isCenter = (appSettings.lyrics && appSettings.lyrics.align === 'center') || (playerContainer && playerContainer.classList.contains('view-lyrics'));
-        const origin = isCenter ? 'center center' : 'left center';
+        /* 动态形态：缩放原点由 tokens 层的 --aria-lyric-origin 单点决定（不在此处计算） */
 
         /* 视口可见范围动态裁剪：以当前视口像素高度为准，仅渲染中心 ±1 屏范围（避免无谓开销与误裁）
            ★ 性能（2026-09-20）：容器引用改为模块级缓存（失连才重查）——原本每帧
@@ -457,10 +458,6 @@ class WaveLyricSystem {
 
             nd.scale += (targetScale - nd.scale) * lerpFactor;
             nd.opacity += (targetOpacity - nd.opacity) * lerpFactor;
-
-            if (nd.el.style.transformOrigin !== origin) {
-                nd.el.style.transformOrigin = origin;
-            }
 
             /* ★ 脏检查写入：微小变动跳过 DOM 赋值，低配模式下适当提高阈值减少 CPU 重排 */
             const diffY = Math.abs(nd.y - nd.lastY);
@@ -796,6 +793,66 @@ function hideLyricsGapDots() {
     if (lyricsGapDotEl && lyricsGapDotEl.style.opacity !== '0') lyricsGapDotEl.style.opacity = '0';
 }
 
+/* ============================================================
+   量「一行歌词的文本边缘相对容器 padding box 的内缩」（unit: px）
+   ------------------------------------------------------------
+   ★ 不能把各层 padding 无脑相加（2026-10-03 实测踩坑）：
+   真实 DOM 链是
+       .lyrics-container (position:relative; padding:0 24px)
+         └─ #lyricsScroll.scroll-container (position:absolute; left:0; padding:0)
+              └─ .line (padding:10px 24px)
+   而 `#lyricsScroll` 是**绝对定位**的，`left:0` 相对容器的 **padding box** —— 容器
+   自己那 24px padding 根本推不动它。所以文本真实内缩 = 0 + 24 = **24**，
+   而「容器 padding + 行 padding」= 48，整整多算一层 → 三点整体偏右 24px
+   （用户 2026-10-03 报的原话「现在这个有偏右了」，截图量得 ≈25px）。
+   此前那版写死 15px 时配的是 `translateX(-50%)`（块中心对齐），所以看着偏左。
+
+   因此改成按**每一级的定位方式**逐级推算：
+     · absolute/fixed → 用该级的 `left`/`right`（相对父级 padding box），父级 padding 不计；
+     · static/relative → 用父级 padding + border（外加自身 margin，relative 再叠 `left`）。
+   对 `side='r'` 做左右镜像。忽略 transform（活动行的弹簧 scale 不该影响基准）。
+   ============================================================ */
+function textInsetFromPaddingBox(lineEl, box, side) {
+    const isR = side === 'r';
+    const pad = (cs) => parseFloat(isR ? cs.paddingRight : cs.paddingLeft) || 0;
+    const bor = (cs) => parseFloat(isR ? cs.borderRightWidth : cs.borderLeftWidth) || 0;
+    const mar = (cs) => { const m = parseFloat(isR ? cs.marginRight : cs.marginLeft); return isNaN(m) ? 0 : m; };
+    const off = (cs) => { const v = parseFloat(isR ? cs.right : cs.left); return isNaN(v) ? null : v; };
+
+    let x = 0;
+    let n = lineEl;
+    while (n && n !== box) {
+        const cs = getComputedStyle(n);
+        x += pad(cs) + bor(cs);                 /* 自身内容区相对自身边框盒的内缩 */
+
+        const p = n.parentElement;
+        if (!p) break;
+
+        const positioned = (cs.position === 'absolute' || cs.position === 'fixed');
+        if (p === box) {
+            if (positioned) {
+                const v = off(cs);              /* left/right 就是相对容器 padding box 的偏移 */
+                if (v !== null) x += v;
+            } else {
+                const pcs = getComputedStyle(box);
+                x += pad(pcs) + bor(pcs) + mar(cs);
+                if (cs.position === 'relative') { const v = off(cs); if (v !== null) x += v; }
+            }
+            break;
+        }
+        const pcs = getComputedStyle(p);
+        if (positioned) {
+            const v = off(cs);                  /* 绝对定位：父级 padding 换回自身的 left/right */
+            if (v !== null) x += v;
+        } else {
+            x += pad(pcs) + bor(pcs) + mar(cs);
+            if (cs.position === 'relative') { const v = off(cs); if (v !== null) x += v; }
+        }
+        n = p;
+    }
+    return x;
+}
+
 function easeOutExpo(x) { return x >= 1 ? 1 : 1 - Math.pow(2, -10 * x); }
 function easeInOutBack(x) {
     const c1 = 1.70158, c2 = c1 * 1.525;
@@ -837,11 +894,23 @@ function updateLyricsGapDots(t) {
         lyricsGapState.dur = gapMs;
         lyricsGapState.lineKey = activeLineIndex;
         lyricsGapPush.target = LYRICS_GAP_HEIGHT;
+        /* ★ 量一次「文本边缘相对容器 padding box 的内缩」。
+           只在这一处读计算样式（每段间奏一次，不是每帧）：间奏期每帧 getComputedStyle
+           会强制样式重算，而这个值在一首歌里是常量。
+           ★ 不能用 getBoundingClientRect 反推：活动行带弹簧 scale，rect 会被缩放污染。 */
+        const pbox = el.parentElement;
+        if (pbox) {
+            el._gapInL = textInsetFromPaddingBox(lineEl, pbox, 'l');
+            el._gapInR = textInsetFromPaddingBox(lineEl, pbox, 'r');
+        }
     }
 
     /* 定位（视口坐标系 / .lyrics-container）：
        垂直 = 当前行与下一行之间的精确几何中心（物理坐标系直接计算，消除每帧 getBoundingClientRect 回流）；
-       水平 = 跟随实际歌词文本对齐方式（左对齐 15px 缩进对准文本首字，居中对齐严格居中） */
+       水平 = 跟随实际歌词文本对齐方式。★ 基准是**文本自身的左/右边缘**，不是容器的
+       内边距盒。内缩由 textInsetFromPaddingBox() 按各级定位方式逐级量出（见该函数头注释：
+       把各级 padding 直接相加会多算容器那 24px，因为 #lyricsScroll 是绝对定位、不吃容器 padding）。
+       量值在**每段间奏开始时取一次**（见上面的 gap 判定块），避免每帧读计算样式。 */
     const align = (appSettings.lyrics && appSettings.lyrics.align)
         || (playerContainer && playerContainer.classList.contains('view-lyrics') ? 'center' : 'left');
 
@@ -866,21 +935,35 @@ function updateLyricsGapDots(t) {
     }
 
     /* ★ 性能（2026-09-20）：left/right/top 是布局属性，间奏期每帧写入会强制 layout。
-       top 取整后脏检查，left/right 仅在对齐方式变化时写入。 */
+       top 取整后脏检查，left/right 仅在对齐方式（或量到的内缩）变化时写入。 */
     const topPx = Math.max(0, Math.round(dotCenterY)) + 'px';
     if (el._gapTop !== topPx) { el._gapTop = topPx; el.style.top = topPx; }
     const gapLR = (align === 'right' || align === 'end') ? 'r' : (align === 'left' || align === 'start') ? 'l' : 'c';
-    if (el._gapLR !== gapLR) {
-        el._gapLR = gapLR;
+    /* 内缩取整后并进脏检查键：容器/行的 padding 变了也能跟上，且不必每帧写 style */
+    const inL = Math.round(el._gapInL || 0);
+    const inR = Math.round(el._gapInR || 0);
+    const gapKey = gapLR === 'c' ? 'c' : `${gapLR}${gapLR === 'l' ? inL : inR}`;
+    if (el._gapLR !== gapKey) {
+        el._gapLR = gapKey;
+        /* ★ X 向 transform 必须随对齐方式切（2026-10-03 几何实证）：
+           元素初始带 `transform: translate(-50%,-50%)`，那是给「居中」用的
+           （left:50% 再把自身左移半个宽度 = 真居中）。左/右对齐时若沿用，
+           块会被再左移半个块宽 —— 块宽 = 3×13 + 2×11 = 61px，即偏 30.5px，
+           最左圆点照样跑到文本左边界之外（探针实测：文本左内缩 48px 处，
+           现状块左边缘 -6.5 vs 文本左边缘 24，差 30.5px；改成 translate(0,-50%)
+           后两者都是 24，严丝合缝）。右对齐对称。 */
         if (gapLR === 'r') {
             el.style.left = 'auto';
-            el.style.right = '15px';
+            el.style.right = inR + 'px';
+            el.style.transform = 'translate(0,-50%)';
         } else if (gapLR === 'l') {
-            el.style.left = '15px';
+            el.style.left = inL + 'px';
             el.style.right = 'auto';
+            el.style.transform = 'translate(0,-50%)';
         } else {
             el.style.left = '50%';
             el.style.right = 'auto';
+            el.style.transform = 'translate(-50%,-50%)';
         }
     }
 

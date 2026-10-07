@@ -13,6 +13,7 @@ import { makeSongKey, updateFavoriteBtn } from './120-search-results.js';
 import { applyVolumeOnSongChange, loadPlaylistTrack } from './135-crossfade.js';
 import { fetchAndPlayRandomSong } from './155-random-toast-match.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
+import { pickScatteredIndex } from '../core/scatterPick.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* ========== 歌曲开播后的统一收尾任务 ========== */
@@ -132,38 +133,57 @@ function loadTrack(index) {
 
 /* ========== 上一曲 / 下一曲（合并镜像分支）==========
    nextTrack / prevTrack 唯一差异是步进方向，合并为 _stepTrack(delta)：
-   `delta = +1`（下一曲）/ `-1`（上一曲）。播放模式语义完全保留。 */
+   `delta = +1`（下一曲）/ `-1`（上一曲）。播放模式语义完全保留。
+
+   ★ computeStepTrack（Automix Phase 2 抽取）：「下一首是谁、用什么加载器」
+   的纯决策部分单独导出——automix scheduler 用它取「决策后的下一首」做预载
+   与交叉分析，不触发任何副作用（currentTrackIndex 突变仍留在 _stepTrack）。 */
+function computeStepTrack(delta) {
+    if (playlist.length === 0) {
+        return { kind: 'random-api' };
+    }
+    if (playMode === 'loop') {
+        return { kind: 'loop-replay', index: currentTrackIndex };
+    }
+    let idx = currentTrackIndex;
+    if (playMode === 'random') {
+        /* ★ 随机散列（2026-10-05，需求 12）：同歌手不相邻；队列里全是同一歌手时
+           退而隔开「核心歌名相同（去 Live/Remix 后缀）/ 编辑距离近 / 同专辑」；
+           约束确实无解（例如整队是同一首歌的多个版本）则允许偶尔相邻。
+           判定是纯函数（core/scatterPick.js），带单测。
+           ★ 只做**纯决策**、不写全局状态 —— computeStepTrack 被 automix 复用做
+           「下一首预载决策」，有副作用会让预载与真实切歌不一致。 */
+        idx = pickScatteredIndex(playlist, currentTrackIndex);
+    } else {
+        idx = (idx + delta + playlist.length) % playlist.length;
+    }
+    const track = playlist[idx];
+    return {
+        kind: (track.source && track.id) ? 'online' : 'local',
+        index: idx,
+        track,
+    };
+}
+
 function _stepTrack(delta) {
-            if (playlist.length === 0) {
-                /* 没有播放队列时，从随机API获取一首 */
-                fetchAndPlayRandomSong();
-                return;
-            }
-            /* 单曲循环：重新播放当前歌曲 */
-            if (playMode === 'loop') {
-                loadPlaylistTrack(currentTrackIndex);
-                return;
-            }
-            /* 随机模式：下一首/上一首都随机抽一首不同的 */
-            if (playMode === 'random') {
-                if (playlist.length === 1) {
-                    /* 只有一首，保持不变 */
-                } else {
-                    const oldIdx = currentTrackIndex;
-                    do {
-                        currentTrackIndex = Math.floor(Math.random() * playlist.length);
-                    } while (currentTrackIndex === oldIdx);
-                }
-            } else {
-                currentTrackIndex = (currentTrackIndex + delta + playlist.length) % playlist.length;
-            }
-            const track = playlist[currentTrackIndex];
-            if (track.source && track.id) {
-                loadPlaylistTrack(currentTrackIndex);
-            } else {
-                loadTrack(currentTrackIndex);
-            }
-        }
+    const next = computeStepTrack(delta);
+    if (next.kind === 'random-api') {
+        /* 没有播放队列时，从随机API获取一首 */
+        fetchAndPlayRandomSong();
+        return;
+    }
+    /* 单曲循环：重新播放当前歌曲 */
+    if (next.kind === 'loop-replay') {
+        loadPlaylistTrack(next.index);
+        return;
+    }
+    currentTrackIndex = next.index;
+    if (next.kind === 'online') {
+        loadPlaylistTrack(next.index);
+    } else {
+        loadTrack(next.index);
+    }
+}
 
 function nextTrack() {
             _stepTrack(1);
@@ -200,4 +220,4 @@ musicFileInput?.addEventListener('change', (e) => {
             loadTrack(0);
         });
 
-export { blobUrls, loadTrack, nextTrack, prevTrack, _playLocalTrackOnReady };
+export { blobUrls, loadTrack, nextTrack, prevTrack, _playLocalTrackOnReady, computeStepTrack };

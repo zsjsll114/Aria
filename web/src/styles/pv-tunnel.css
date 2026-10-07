@@ -540,37 +540,6 @@
 .vm-t-word.w4 { right: 21%; top: 50%; }
 .vm-t-word.w5 { left: 46%; top: 62%; }
 /* --- 凝彩 · Tempera 模式卡预览（网点色块挖窗意象，2026-09-30） --- */
-/* --- 长卷 · Scroll 模式卡预览（横卷三层意象） --- */
-.view-mode-preview-scroll {
-    background: #101014;
-    position: relative;
-    overflow: hidden;
-}
-.view-mode-preview-scroll .vm-sc-past,
-.view-mode-preview-scroll .vm-sc-future {
-    position: absolute;
-    font-size: 10px;
-    color: rgba(244, 244, 245, 0.25);
-    letter-spacing: 1px;
-    white-space: nowrap;
-}
-.view-mode-preview-scroll .vm-sc-past { left: -6px; top: 40%; }
-.view-mode-preview-scroll .vm-sc-future { right: -6px; top: 38%; }
-.view-mode-preview-scroll .vm-sc-current {
-    position: absolute;
-    left: 14%; top: 34%;
-    color: #f4f4f5;
-    font-weight: 700;
-    font-size: 15px;
-    letter-spacing: 2px;
-    white-space: nowrap;
-}
-.view-mode-preview-scroll .vm-sc-band {
-    position: absolute;
-    left: 0; right: 0; bottom: 14%;
-    height: 16px;
-    background: linear-gradient(90deg, rgba(232,190,106,0.35), rgba(74,78,87,0.35));
-}
 
 .view-mode-preview-tempera {
     background: #191a1e;
@@ -754,7 +723,7 @@
 .tunnel-ai-cost-value {
     font-size: 14px;
     font-weight: 700;
-    color: var(--theme-color, #E8BE6A);
+    color: var(--aria-accent);
 }
 
 .tunnel-ai-mode-list {
@@ -785,7 +754,7 @@
 }
 
 .tunnel-ai-mode-btn.selected {
-    border-color: var(--theme-color, #E8BE6A);
+    border-color: var(--aria-accent);
     background: rgba(232, 190, 106, 0.12);
 }
 
@@ -826,7 +795,7 @@
 }
 
 .tunnel-ai-btn.primary {
-    background: var(--theme-color, #E8BE6A);
+    background: var(--aria-accent);
     color: #1a1206;
 }
 
@@ -849,7 +818,8 @@
 .t-m-bg {
     position: absolute;
     inset: -10%;
-    transition: background 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: background 1.6s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.6s ease;
 }
 
 /* ★★★ 蒙德里安风格块体：强制直角 + 丝滑过渡
@@ -1088,7 +1058,7 @@
     inset: 0;
     z-index: 100001;
     pointer-events: none;
-    background: color-mix(in srgb, var(--theme-color, #2a1d5e) 88%, #05040a);
+    background: color-mix(in srgb, var(--aria-accent) 88%, #05040a);
     opacity: 0;
     transition: opacity 0.34s ease;
 }

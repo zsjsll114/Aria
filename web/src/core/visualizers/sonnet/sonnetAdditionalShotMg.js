@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // 移植自 scratch/folia-major/src/components/visualizer/sonnet/sonnetAdditionalShotMg.ts
 // 逐行保真机械移植：仅删除类型标注，不改任何逻辑/数值/分支。
 // 注意：上游 default 分支会调用 themed/open/extended 链，循环依赖按上游原样保留

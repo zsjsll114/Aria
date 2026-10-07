@@ -6,6 +6,7 @@ import { API_BASE, OIAPI_LYRIC_BASE } from '../config/constants.js';
 import { decryptKrc, parseKrc } from './krcParser.js';
 import { parseLrc } from '../parsers/lrcParser.js';
 import { logWarn, logInfo, logError } from './log.js';
+import { selfhostKeyOf } from './playSource.js';
 /**
  * 浏览器端 JSONP 跨域请求
  * 绕过一切浏览器 CORS 限制与 Mixed Content 限制（纯原生 <script> 注入）
@@ -109,6 +110,12 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
                     hash: hash,
                     song: song,
                     singer: singer,
+                    /* ★ 酷狗 JSONP 上游 item.Singers = [{name, id}]，此前整条丢弃 →
+                       点歌手名无从跳转。id 就是歌手页所需的 AuthorId（实测与
+                       /search?type=author 的 AuthorId 一致）。 */
+                    artists: Array.isArray(item.Singers)
+                        ? item.Singers.map(s => ({ id: String((s && s.id) || ''), mid: '', name: (s && s.name) || '' })).filter(a => a.name)
+                        : [],
                     album: album,
                     duration: item.Duration || item.HQDuration || 0,
                     cover: cover,
@@ -140,6 +147,13 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
                 hash: hash,
                 song: songName,
                 singer: singerName,
+                /* ★ mobilecdn 只有 singername 字符串、没有 SingerId。仍然拆出 artists
+                   条目（id/mid 留空），让卡片能渲染出可点的歌手名 —— 打开歌手页时由
+                   artistApi.fetchArtist 走「名字 → id」解析补上（见 resolveArtistByName）。
+                   以前这里直接不写 artists，卡片退化成纯文本，点不动，
+                   表现就是「不能获取酷狗的歌手页」。 */
+                artists: String(singerName).split(/[\/、,&;]+/).map(n => n.trim())
+                    .filter(Boolean).map(n => ({ id: '', mid: '', name: n })),
                 album: item.album_name || '',
                 duration: item.duration || 0,
                 cover: cover,
@@ -400,7 +414,7 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                         // 同步获取原唱逐字/官方歌词
                         let lyricObj = {};
                         try {
-                            lyricObj = await fetchLyricWithFallback(String(bestSong.id), 'tencent') || {};
+                            lyricObj = await fetchLyricWithFallback(String(bestSong.mid || bestSong.id), 'tencent') || {};
                         } catch (e) { logWarn('musicApi', e); }
                         return {
                             url: playUrl,
@@ -503,8 +517,8 @@ export async function fetchKuwoLyric(songInfo) {
             const qRes = await fetch(`${API_BASE}/tencent?word=${encodeURIComponent(searchWord)}&num=3`).then(r => r.json()).catch(() => ({}));
             if (qRes.code === 200 && qRes.data && qRes.data.length > 0) {
                 const best = Array.isArray(qRes.data) ? qRes.data[0] : qRes.data;
-                if (best && best.id) {
-                    const lyricData = await fetchLyricWithFallback(String(best.id), 'tencent');
+                if (best && (best.mid || best.id)) {
+                    const lyricData = await fetchLyricWithFallback(String(best.mid || best.id), 'tencent');
                     if (lyricData && (lyricData.yrc || lyricData.lrc)) {
                         return lyricData;
                     }
@@ -520,6 +534,35 @@ export async function fetchKuwoLyric(songInfo) {
  * 获取酷狗音乐播放链接与歌曲大图
  * 若酷狗官方因版权/VIP返回空，优先通过 QQ音乐(ygking) 检索原唱高音质音频流
  */
+/* ★ 跨源兜底的「歌名可信度」判据（2026-10-03）。
+   用户实测：「同一首歌下一曲后竟然从网易云取链，并且显示是纯音乐（上一首刚刚
+   还有歌词）」。起因就是下面两条跨源分支**只看歌手名**：网易/QQ 搜索里同名同歌手的
+   「纯音乐 / 伴奏 / 钢琴版」会直接过关，于是拿一段没有歌词的伴奏当原曲播。
+   判据两段：① 归一化歌名要对得上（去括号补充说明后相等或互相包含）；
+   ② 原始标题里不能带纯音乐/伴奏这类换皮标记。 */
+const INSTRUMENTAL_TAG = /纯音乐|伴奏|instrumental|off\s*vocal|karaoke|无人声|钢琴版|吉他版|试听|官方伴奏/i;
+/** 归一化歌名：去 (Live)/（伴奏）/【…】 这类括号补充、去 HTML 标记、去空白、小写
+ *  （导出仅为可测：tests/js/test_music_api_fallback.js 钉住跨源候选的可信度判据） */
+export function normSongName(s) {
+    return String(s == null ? '' : s)
+        .replace(/[（(【].*?[）)】]/g, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, '')
+        .toLowerCase();
+}
+/** 跨源候选是否可信：歌名对得上，且不是纯音乐/伴奏这类换皮版本。
+ *  （导出仅为可测，见 normSongName 注释） */
+export function isTrustworthyCrossMatch(cand, cleanTitle) {
+    if (!cand) return false;
+    const raw = `${cand.song || cand.name || cand.title || ''} ${cand.singer || cand.artist || ''}`;
+    if (INSTRUMENTAL_TAG.test(raw)) return false;
+    const ct = normSongName(cand.song || cand.name || cand.title);
+    const nt = normSongName(cleanTitle);
+    if (!ct || !nt) return true;   /* 歌名缺失时不额外否决，仍由调用方的歌手判定兜底 */
+    return ct === nt || ct.includes(nt) || nt.includes(ct);
+}
+
 export async function getKugouPlayInfo(hash, songTitle = '', singer = '', quality = '320') {
     // 1. 尝试酷狗官方 playInfo
     if (hash) {
@@ -532,7 +575,11 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
             if (Array.isArray(playUrl)) playUrl = playUrl[0];
             const img = (json.imgUrl || json.album_img || '').replace('{size}', '500');
             if (typeof playUrl === 'string' && playUrl.startsWith('http')) {
-                return { url: playUrl, cover: img || '' };
+                /* ★ 2026-10-04：getSongInfo 报文里自带的 mvhash 就是**这首歌自己的 MV**
+                   （实测晴天的报文含 mvhash 字段，无 MV 时为空串）。顺手带出去，
+                   175 会把它写进 currentSongData，101 就能零搜索直接铺 MV 背景。
+                   没 MV / 跨源回退时仍是空串，交给关键词搜索兜底。 */
+                return { url: playUrl, cover: img || '', provider: 'kugou', mvHash: String(json.mvhash || '') };
             }
         } catch (e) {
             logWarn('musicApi', '[KuGou Play] playInfo 获取失败:', e.message);
@@ -553,18 +600,22 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
             clearTimeout(qqTimer);
             if (qqRes.code === 200 && qqRes.data && qqRes.data.length > 0) {
                 const candidates = Array.isArray(qqRes.data) ? qqRes.data : [qqRes.data];
-                // 优先选择歌手名匹配度最高的原唱版本，排除 live/翻唱杂音
+                // 优先选择歌手名匹配度最高的原唱版本，排除 live/翻唱/纯音乐杂音
                 const bestSong = candidates.find(c => {
                     const cSinger = (c.singer || '').trim();
-                    return cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
-                }) || candidates[0];
+                    const singerOk = cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
+                    return singerOk && isTrustworthyCrossMatch(c, cleanTitle);
+                }) || candidates.find(c => isTrustworthyCrossMatch(c, cleanTitle));
 
                 if (bestSong && bestSong.mid) {
                     // 优先走本地解析池（多源竞速 + 防试听校验），按用户播放音质裁剪阶梯
                     const userQ = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.qqPlayback) || '320';
                     const resolved = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
                     if (resolved) {
-                        return { url: resolved, cover: bestSong.cover || '' };
+                        /* ★ provider 如实上报：这就是用户看到的「酷狗取链接口 / 链接域名
+                           ws.stream.qqmusic.qq.com」错配的根源 —— 这一级实际拿的是
+                           QQ 解析池的直链，只是入口在酷狗分支里。见 175 的 recordResolveHit。 */
+                        return { url: resolved, cover: bestSong.cover || '', provider: 'qqResolve' };
                     }
                     /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡），解析池未命中直接落 vkeys */
                 }
@@ -577,7 +628,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                         const vkeysUrl = await fetch(`${API_BASE}/tencent?id=${bestSong.id}`, { signal: vkCtl.signal }).then(r => r.json()).catch(() => ({}));
                         clearTimeout(vkTimer);
                         if (vkeysUrl.code === 200 && vkeysUrl.data && vkeysUrl.data.url) {
-                            return { url: vkeysUrl.data.url, cover: bestSong.cover || '' };
+                            return { url: vkeysUrl.data.url, cover: bestSong.cover || '', provider: 'vkeysPrefetch' };
                         }
                     } catch (e) { logWarn('musicApi', e); }
                 }
@@ -594,9 +645,10 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
             clearTimeout(ncmTimer);
             if (ncmRes.code === 200 && ncmRes.data && ncmRes.data.length > 0) {
                 const candidates = Array.isArray(ncmRes.data) ? ncmRes.data : [ncmRes.data];
-                // 必须严格匹配歌手名，杜绝非原唱/翻唱账号
+                // 必须严格匹配歌手名，杜绝非原唱/翻唱账号；且歌名要对得上、不是纯音乐/伴奏
                 const validSong = candidates.find(c => {
                     const cSinger = (c.singer || '').trim();
+                    if (!isTrustworthyCrossMatch(c, cleanTitle)) return false;
                     if (!cleanSinger) return true;
                     return cSinger === cleanSinger || (cSinger.includes(cleanSinger) && !cSinger.includes('-') && !cSinger.includes('/'));
                 });
@@ -612,11 +664,11 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                             clearTimeout(timeout);
                             const text = await resp.text();
                             if (text && text.startsWith('http')) {
-                                return { url: text.trim(), cover: validSong.cover || '' };
+                                return { url: text.trim(), cover: validSong.cover || '', provider: 'byfuns' };
                             }
                         } catch (e) { /* 尝试下一音质 */ }
                     }
-                    return { url: `https://music.163.com/song/media/outer/url?id=${validSong.id}`, cover: validSong.cover || '' };
+                    return { url: `https://music.163.com/song/media/outer/url?id=${validSong.id}`, cover: validSong.cover || '', provider: 'neteaseOuter' };
                 }
             }
         } catch (e) { /* 忽略网易云回退异常 */ }
@@ -1089,6 +1141,79 @@ export async function fetchKugouLyric(songInfo) {
     return {};
 }
 
+/**
+ * 获取汽水（抖音 Soda / Luna）逐字歌词。
+ *
+ * ★ 为什么要「先转成 KRC 文本再 parse」而不是直接构造 parsedList：
+ *   汽水歌词天然是逐字带绝对毫秒（`{timeMs, text, words:[{timeMs,text}]}`），
+ *   与 KRC 的 `<相对起点,时长,0>字` 是同一信息量的两种写法。手工拼 parsedList 就得
+ *   复刻 parseKrc 的全部字段（start/duration/end/original/translation/romaji），
+ *   渲染层以后多要一个字段就会在这里静默漏。转一道 KRC 文本，下游拿到的对象
+ *   与酷狗那条路**逐字段同构**，渲染层零分支。
+ */
+export async function fetchQishuiLyric(songInfo) {
+    const id = String((songInfo && (songInfo.qishuiId || songInfo.id)) || '');
+    if (!id) return {};
+    try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000);
+        let j;
+        try {
+            const res = await fetch(
+                `/api/selfhost/qishui/proxy?path=${encodeURIComponent('/lyric?id=' + encodeURIComponent(id))}`,
+                { signal: ctl.signal });
+            if (!res.ok) return {};
+            j = await res.json();
+        } finally { clearTimeout(timer); }
+        if (!j || !j.ok || !Array.isArray(j.lines) || !j.lines.length) return {};
+        const parsedList = parseKrc(qishuiLinesToKrc(j.lines));
+        if (!parsedList.length) return {};
+        logInfo('musicApi', `[Qishui Lyric] 逐字歌词解析成功: ${parsedList.length} 行`);
+        return { parsedList, source: 'qishui' };
+    } catch (e) {
+        logWarn('musicApi', '[Qishui Lyric] 取词异常:', e.message);
+        return {};
+    }
+}
+
+/**
+ * 汽水逐字行 → KRC 文本（`[行起,行时长]<相对起,字时长,0>字…`）。纯函数，可单测。
+ * 汽水只给每个字的**绝对起点**，字时长靠相邻字的差值推；行末字用下一行起点兜底，
+ * 整首最后一行没有下一行时给 800ms，**不允许出现 0 时长**——0 会让高亮进度除零
+ * （英文歌的「高亮滞后」就是这条链上 math.round 造出 0 宽度引起的）。
+ */
+export function qishuiLinesToKrc(lines) {
+    const src = Array.isArray(lines) ? lines : [];
+    const out = [];
+    for (let i = 0; i < src.length; i++) {
+        const ln = src[i] || {};
+        const start = Math.max(0, Math.round(Number(ln.timeMs) || 0));
+        const words = (Array.isArray(ln.words) && ln.words.length)
+            ? ln.words
+            : [{ timeMs: start, text: String(ln.text == null ? '' : ln.text) }];
+        const rawNext = (i + 1 < src.length) ? Math.round(Number((src[i + 1] || {}).timeMs) || 0) : null;
+        const nextStart = (rawNext != null && rawNext > start) ? rawNext : null;
+        const starts = words.map(w => Math.max(start, Math.round(Number((w || {}).timeMs) || 0)));
+        let lastEnd = start + 1;
+        const parts = [];
+        for (let k = 0; k < words.length; k++) {
+            const ws = starts[k];
+            let we;
+            if (k + 1 < words.length) we = starts[k + 1];
+            else if (nextStart != null) we = nextStart;
+            else we = ws + 800;
+            we = Math.max(ws + 1, we);
+            lastEnd = Math.max(lastEnd, we);
+            /* '<' / '>' 会破坏 KRC 的标签语法（真实歌词里出现过 '<'） */
+            const text = String((words[k] || {}).text == null ? '' : (words[k] || {}).text).replace(/[<>]/g, '');
+            parts.push(`<${ws - start},${we - ws},0>${text}`);
+        }
+        const dur = Math.max(1, (nextStart != null ? nextStart : lastEnd) - start);
+        out.push(`[${start},${dur}]${parts.join('')}`);
+    }
+    return out.join('\n');
+}
+
 /* 带超时的 JSON fetch：兜底链路的每一环都必须 bounded，
    否则某个外部接口挂起会让 lyricPromise 永不落地 → 歌词永久为空（切歌场景已复现） */
 async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
@@ -1121,13 +1246,23 @@ export async function fetchVendorLyric(source, songId) {
         else return null;
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 4000);
-        const res = await fetch(`/api/selfhost/${source}/proxy?path=${encodeURIComponent(path)}`, { signal: ctl.signal });
+        /* ★ source('tencent') ≠ 后端平台键('qq')：直接拼会 404 并被下面的 catch 吞掉，
+           网易歌词同理（它是 'netease' 恰好一致，所以问题只在 QQ 上暴露）。 */
+        const shKey = selfhostKeyOf(source);
+        if (!shKey) return null;
+        const res = await fetch(`/api/selfhost/${shKey}/proxy?path=${encodeURIComponent(path)}`, { signal: ctl.signal });
         clearTimeout(timer);
         if (!res.ok) return null;
         const j = await res.json();
         if (source === 'tencent') {
-            const lrc = ((j.response || {}).lyric) || '';
-            return (lrc && lrc.includes('[')) ? { lrc } : null;
+            const resp = j.response || {};
+            const lrc = resp.lyric || '';
+            /* ★ 别再丢翻译：vendor 的 /getLyric 与 vkeys 同形（lyric + trans），
+               原先只取 lyric → 外语歌的双语行整条消失（用户反馈「QQ 歌词没有翻译」）。
+               trans 为空串时按「这首歌没有官方翻译」处理，不塞空字段去污染 lyricMerger。 */
+            const trans = resp.trans || '';
+            if (!lrc || !lrc.includes('[')) return null;
+            return trans ? { lrc, trans } : { lrc };
         }
         const lrc = ((j.lrc || {}).lyric) || '';
         const trans = ((j.tlyric || {}).lyric) || '';
@@ -1135,6 +1270,39 @@ export async function fetchVendorLyric(source, songId) {
         return null;
     } catch (e) {
         return null;  /* vendor 未在线/超时 → 静默回退公网 */
+    }
+}
+
+/* ★ QQ 逐字歌词（QRC）+ 翻译 + 罗马音（2026-10-03）：走本地服务 /api/qq/lyric。
+ *   QQ 的逐字只在 lyric_download.fcg?lrctype=4 里，且是「QQ 私有 3DES 变体 + zlib」
+ *   加密的密文 —— 浏览器端解不了，必须由 server.py（qq_qrc.py）解密后回吐明文。
+ *   vendor 的 /getLyric 只有普通 LRC（trans 恒空），这就是「以前有翻译/逐字、现在没有」
+ *   的根因。
+ *   返回 { yrc, trans, roma } 形状 —— 与 detectAndParseLyrics 的 qq_yrc 分支一一对应
+ *   （yrc=逐字、trans=内容翻译 LRC、roma=罗马音），无需新增合并逻辑。
+ *   失败返回 null，由调用方回落 vendor LRC / vkeys。 */
+export async function fetchQQQrcLyric(songId) {
+    try {
+        if (!songId) return null;
+        /* 纯数字 → 直接当 songid 传（省掉后端一次 song_detail 解析）；否则当 songmid。 */
+        const idStr = String(songId);
+        const q = /^\d+$/.test(idStr)
+            ? `songid=${encodeURIComponent(idStr)}`
+            : `mid=${encodeURIComponent(idStr)}`;
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000);
+        let res;
+        try {
+            res = await fetch(`/api/qq/lyric?${q}`, { signal: ctl.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!res.ok) return null;
+        const j = await res.json();
+        if (!j || !j.ok || !j.qrc) return null;
+        return { yrc: j.qrc, trans: j.trans || '', roma: j.roma || '' };
+    } catch (e) {
+        return null;  /* 服务端未就绪/超时 → 静默回落 */
     }
 }
 
@@ -1147,6 +1315,18 @@ export async function fetchLyricWithFallback(songInfo, source) {
     const effSource = (typeof songInfo === 'object' && songInfo.source) || source;
     const songName = typeof songInfo === 'object' ? (songInfo.song || songInfo.name || songInfo.title || '') : '';
     const hasContent = (d) => !!d && (d.yrc || d.lrc || d.krc || d.parsedList || d.lrcList || d.lrclist);
+
+    /* ★ QQ 逐字优先（2026-10-03）：QRC 是唯一同时带「逐字 + 翻译 + 罗马音」的
+       格式，而 vendor /getLyric 只有逐行 LRC 且翻译恒空。放在 vendor 之前——否则
+       逐行 LRC 先命中就直接 return 了，逐字永远拿不到（这正是用户看到的
+       「变成逐行歌词」）。QRC 未命中（老歌/无逐字资源）再落 vendor LRC。 */
+    if (effSource === 'tencent') {
+        const qrc = await fetchQQQrcLyric(songId);
+        if (hasContent(qrc)) {
+            logInfo('musicApi', '[Lyric] QQ 逐字歌词（QRC）命中');
+            return qrc;
+        }
+    }
 
     /* ★ vendor 优先（2026-09-22）：本机自建服务毫秒级回包，命中即跳过整个
        vkeys 重试循环（公网失联时原链要白等 7s×2 次重试才进兜底）。 */
@@ -1220,7 +1400,10 @@ export async function fetchLyricWithFallback(songInfo, source) {
                 const tRes = await fetchJsonWithTimeout(`${API_BASE}/tencent?word=${encodeURIComponent(word)}&num=10`);
                 const tList = (tRes.code === 200 && Array.isArray(tRes.data)) ? tRes.data : null;
                 const tItem = tList ? _pickBest(tList, songName, singer) : null;
-                if (tItem && tItem.id) {
+                if (tItem && (tItem.mid || tItem.id)) {
+                    /* 先试逐字 QRC（本地解密链路），未命中再落 vkeys 普通 LRC */
+                    const qrc = await fetchQQQrcLyric(tItem.mid || tItem.id);
+                    if (hasContent(qrc)) return qrc;
                     const lyr = await fetchJsonWithTimeout(`${API_BASE}/tencent/lyric?id=${tItem.id}`);
                     if (lyr.code === 200 && lyr.data && (lyr.data.yrc || lyr.data.lrc)) return lyr.data;
                 }

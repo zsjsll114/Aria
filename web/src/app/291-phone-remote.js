@@ -30,6 +30,7 @@ import { updateVolume } from './70-audio-engine.js';
 import { loadPlaylistTrack } from './135-crossfade.js';
 import { sanitizeImageUrl } from './100-cover-background.js';
 import { logCatch, logInfo, logWarn } from '../services/log.js';
+import { registerAudioListener } from '../core/dualDeck.js';
 
 const BUS = '/api/remote';
 const PUSH_HEARTBEAT_MS = 2000;   /* 心跳：只为刷新总线侧 at（在线判定），seq 一般不变 */
@@ -295,7 +296,7 @@ async function cmdLoop() {
    手机上「暂停」要立刻变灰，靠 2s 心跳会有明显延迟 */
 if (audio) {
     ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'durationchange'].forEach(ev => {
-        audio.addEventListener(ev, () => { push(); });
+        registerAudioListener(ev, () => { push(); });
     });
 }
 

@@ -16,12 +16,20 @@
  * ============================================================ */
 import { state } from '../infrastructure/state.js';
 import { logWarn } from '../services/log.js';
+import { onRoleSwap } from './dualDeck.js';
 
 let _audio = null;
+let _swapHooked = false;
 
 /** 注入 audio 元素。必须在任何淡入淡出被调用前执行一次。 */
 export function initFadeController(audio) {
     _audio = audio || null;
+    /* ★ Automix Phase 2（swap 适配）：角色互换后 _audio 重指新活跃元素
+       （rAF step 每帧重新解析模块级 _audio，自动跟随）。只订阅一次。 */
+    if (!_swapHooked) {
+        _swapHooked = true;
+        onRoleSwap((newActive) => { _audio = newActive || null; });
+    }
 }
 
 function clamp01(v) {
@@ -86,12 +94,32 @@ export function fadeOutVolume(duration, callback) {
     }, duration + 100);
 }
 
+/* ★ 起播淡入（需求 18）的时长窗口：100~300ms。
+   刻意**不复用** crossfade 的 fadeDuration 滑杆（100~1500ms）：
+   那个滑杆调的是"切歌时两首歌之间的交叉长度"，最长的 1.5s 用在"点一下播放"上
+   会让人觉得播放器反应迟钝。两件事的合理区间根本不同，共用一个值必然有一边错。 */
+export const START_FADE_MIN_MS = 100;
+export const START_FADE_MAX_MS = 300;
+export const START_FADE_DEFAULT_MS = 200;
+
+/** 起播淡入是否开启（需求 18，默认开：显式 false 才关） */
+export function isStartFadeOn() {
+    try {
+        const p = state.appSettings && state.appSettings.playback;
+        return !p || p.startFade !== false;
+    } catch { return true; }
+}
+
 /**
  * 淡入到目标音量。
  * @param {number} targetVol 0~1 的实际音量（对数/增益换算由调用方负责）
  * @param {number} duration 毫秒
+ * @param {{startFade?:boolean, fromSilence?:boolean}} [opts]
+ *        · startFade：走「起播淡入」的开关与时长口径（需求 18），而不是 crossfade 的门；
+ *        · fromSilence：从 **0** 起（点播放/从暂停恢复要的是"由静到响"，
+ *          而 crossfade 的淡入刻意从 target*0.35 起，避免前几秒听不见）。
  */
-export function fadeInVolume(targetVol, duration) {
+export function fadeInVolume(targetVol, duration, opts) {
     if (!_audio) return bypass(targetVol, 'fadeIn');
     /* 取消之前的淡入动画 */
     if (state.fadeInVolumeRafId) {
@@ -105,13 +133,19 @@ export function fadeInVolume(targetVol, duration) {
     }
     if (state.fadeOutVolumeTimeoutId) { clearTimeout(state.fadeOutVolumeTimeoutId); state.fadeOutVolumeTimeoutId = null; }
     if (state.fadeInVolumeTimeoutId) { clearTimeout(state.fadeInVolumeTimeoutId); state.fadeInVolumeTimeoutId = null; }
-    if (!state.appSettings || !state.appSettings.playback.fadeInOut || !duration || duration <= 0) {
+    const o = opts || {};
+    /* 两条独立的门：crossfade 走 fadeInOut（老功能），起播淡入走 startFade（需求 18）。
+       混用会导致"开了起播淡入却必须同时开切歌淡入淡出"，那是两个无关的偏好。 */
+    const gateOn = o.startFade
+        ? isStartFadeOn()
+        : !!(state.appSettings && state.appSettings.playback.fadeInOut);
+    if (!gateOn || !duration || duration <= 0) {
         _audio.volume = clamp01(targetVol);
         return;
     }
     /* 采用平滑正弦曲线并限制淡入上限，避免人耳对低音量的对数不敏感导致前1~3秒听不到声音 */
     const effectiveDuration = Math.min(duration, 1000);
-    const startVol = Math.min(_audio.volume, targetVol * 0.35);
+    const startVol = o.fromSilence ? 0 : Math.min(_audio.volume, targetVol * 0.35);
     const startTime = performance.now();
     function step(now) {
         const linearT = Math.min(1, (now - startTime) / effectiveDuration);
@@ -135,6 +169,25 @@ export function fadeInVolume(targetVol, duration) {
             _audio.volume = clamp01(targetVol);
         }
     }, effectiveDuration + 50);
+}
+
+/**
+ * 起播淡入（需求 18）：点播放 / 切歌 / 从暂停恢复时，把音量在 100~300ms 内
+ * 从 **0** 平滑升到设定值。
+ *
+ * ★ 与 crossfade 的关系（需求原文要求"别影响淡入淡出和无缝衔接"）：
+ *   调用方（app/307-start-fade.js）在 **crossfade 已开启** 或 **正在 Automix 交叉** 时
+ *   直接不调用本函数 —— 那两种场景下音量已经由各自的机制在渐变，这里再叠一层
+ *   就会出现"两套斜坡抢着写 audio.volume"，听感是抖动而不是淡入。
+ *   本函数自身只保证：一旦被调用，就与 fadeOut/fadeIn 共享同一套句柄（互相取消），
+ *   不会把音量卡在 0。
+ */
+export function fadeInOnStart(targetVol, duration) {
+    if (!_audio) return bypass(targetVol, 'startFade');
+    let ms = Number(duration);
+    if (!Number.isFinite(ms) || ms <= 0) ms = START_FADE_DEFAULT_MS;
+    ms = Math.max(START_FADE_MIN_MS, Math.min(START_FADE_MAX_MS, ms));
+    fadeInVolume(targetVol, ms, { startFade: true, fromSilence: true });
 }
 
 /** 放弃所有在途淡变（切歌/停止时调用，句柄全部归零） */

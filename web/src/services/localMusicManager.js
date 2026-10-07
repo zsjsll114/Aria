@@ -141,9 +141,23 @@ export class LocalMusicManager {
         const bestCandidate = bestAllowed || candidateLyrics[0] || null;
 
         // 4. 将逐字歌词转换为增强型 LRC (Enhanced LRC)
+        // ★ 2026-10-02 时间轴覆盖率校验（用户实测《逆光者》串成《早产儿》21s 词→
+        //   verse 每秒乱跳构图）：搜索 num=1 盲取 + 分数 45 拦不住「同歌手另一首短词」。
+        //   歌词最后一行起点须覆盖音频时长的 40%，否则视为串歌拒用（回退 Shazam 纯文本）。
         let elrcText = '';
         let lrcText = '';
-        if (bestCandidate && bestCandidate.parsedLines && bestCandidate.parsedLines.length > 0 && bestCandidate.score >= 45) {
+        const durationMs = Number(meta.duration) || 0;
+        let timelineCoverageOk = true;
+        if (bestCandidate && bestCandidate.parsedLines && bestCandidate.parsedLines.length > 0 && durationMs > 0) {
+            const parsedLines = bestCandidate.parsedLines;
+            const lastLineStart = Number(parsedLines[parsedLines.length - 1].start) || 0;
+            timelineCoverageOk = lastLineStart >= durationMs * 0.4;
+            if (!timelineCoverageOk) {
+                logWarn('localMusicManager',
+                    `[歌词校验] 候选时间轴只覆盖 ${Math.round(lastLineStart / 1000)}s / 音频 ${Math.round(durationMs / 1000)}s，疑似串歌，拒用（source=${bestCandidate.sourceKey}）`);
+            }
+        }
+        if (bestCandidate && bestCandidate.parsedLines && bestCandidate.parsedLines.length > 0 && bestCandidate.score >= 45 && timelineCoverageOk) {
             onProgress('正在转换逐字歌词为增强型 LRC (E-LRC)...', 85);
             elrcText = convertToEnhancedLrc(bestCandidate.parsedLines, {
                 title: meta.title,

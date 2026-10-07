@@ -278,7 +278,11 @@ export class PVEngine {
     }
 
     // 优先使用用户已配置的主题色或界面全局主题色，其次使用 AI/封面提取色，最后回退 #E8BE6A
-    const globalCssColor = (typeof document !== 'undefined') ? document.documentElement.style.getPropertyValue('--theme-color') : null;
+    /* P1：读**行内** --aria-accent（键名与 190-settings-fontsize.js 的写入口一致）。
+       此前读 --theme-color，而 190 已改为只写 --aria-accent；
+       .style.getPropertyValue() 只看行内样式、不解析 CSS 别名，不同步改这里
+       会返回空串 → 主题色静默丢失（表现为 PV 背景绸缎不跟随主题色）。 */
+    const globalCssColor = (typeof document !== 'undefined') ? document.documentElement.style.getPropertyValue('--aria-accent') : null;
     this.themeColor = (this.themeColor && this.themeColor !== '#E8BE6A') 
       ? this.themeColor 
       : ((this.settings && this.settings.themeColor && this.settings.themeColor !== '#E8BE6A') 

@@ -33,15 +33,17 @@ import { allStats as probeAllStats, probeInfo, running as probeRunning } from '.
 import { detectHardware, getPerformanceSettings, getPerfVfx, getVfxOverrides } from './180-boot-config.js';
 import { fetchStatus, selfhostEnabled } from './selfhost-runtime.js';
 import { PERFORMANCE_PROFILES } from '../config/performance.js';
+import { getEqAudioSnapshot } from '../core/equalizer.js';
+import { getActiveAudio } from '../core/dualDeck.js';
 
 /* 文案查询：全库唯一词表在 core/i18n.js 的 STATIC_PHRASE_MAP，本分片**不再自带表**。
    原来这里是一张私有 PHRASE_EN（182 条），绕开了词表 → 复扫看不见、同义词各说各话。
    translatePhrase() 非英文模式原样返回，所以 tx() 只是个别名，读起来顺一点。 */
 const tx = translatePhrase;
 
-/* 三个 vendor 副进程端口：/api/selfhost/status 不带 port 字段，按 AGENTS 固定端口表补 */
-const VENDOR_PORTS = { kugou: 3100, qq: 3200, netease: 3201 };
-const VENDOR_NAMES = { kugou: '酷狗 KuGouMusicApi', qq: 'QQ qq-music-api-node', netease: '网易云 NeteaseCloudMusicApi' };
+/* 自建 vendor 副进程端口：/api/selfhost/status 不带 port 字段，按 AGENTS 固定端口表补 */
+const VENDOR_PORTS = { kugou: 3100, qq: 3200, netease: 3201, qishui: 3300 };
+const VENDOR_NAMES = { kugou: '酷狗 KuGouMusicApi', qq: 'QQ qq-music-api-node', netease: '网易云音乐 NeteaseCloudMusicApi', qishui: '汽水音乐 qishui-music-api' };
 const VFX_KEYS = ['renderScale', 'coverBlur', 'glassBlur', 'lyricBlur', 'textBlur', 'pvBloom', 'flyinGlow', 'wcParticles', 'tunnelParticles', 'dimParticles'];
 const VFX_LABELS = {
     renderScale: '渲染缩放 renderScale', coverBlur: '封面模糊 coverBlur', glassBlur: '玻璃模糊 glassBlur',
@@ -56,8 +58,8 @@ const TIER_NAMES = {
 /* 段落到作用域徽标的映射：让「浏览器环境 / 本机服务 / 公网」在一页里不会混为一谈 */
 const SCOPE_BY_SECTION = {
     verdict: '浏览器环境', env: '浏览器环境', gpu: '浏览器环境', perf: '浏览器环境',
-    frames: '浏览器环境', boot: '浏览器环境', seg: '浏览器环境', globals: '浏览器环境',
-    vendor: '本机自建 vendor', resolve: '渠道决定',
+    audio: '浏览器环境', frames: '浏览器环境', boot: '浏览器环境', seg: '浏览器环境',
+    globals: '浏览器环境', vendor: '本机自建 vendor', resolve: '渠道决定',
 };
 const SCOPE_CLASS = { '浏览器环境': 'browser', '本机 Python 服务': 'local', '本机自建 vendor': 'vendor', '渠道决定': 'mixed' };
 
@@ -216,6 +218,68 @@ function sectionPerf(saved) {
     return section('perf', '性能档位与 vfx 实际值', rows);
 }
 
+/* ★ 音频链路（2026-10-05）：专治「有时候放歌没有声音」。
+   本段顺序即排查顺序，每一行对应一种真实的静音形态：
+     ① 输出去向 —— 原生独占时声音根本不经过 Web 音频图，Web 侧指标全部无关；
+     ② AudioContext 状态 —— suspended/closed 会让「已改道」的元素彻底没声；
+     ③ 音效图是否建立 —— 元素一旦被 createMediaElementSource 捕获就永久改道，
+        此时图被拆掉而没人补直连旁通 ⇒ 界面一切正常却完全没声（根因所在）；
+     ④ deck 增益 —— Automix 交叉终态若把活跃 deck 的增益残留成 0 则静音；
+     ⑤ 元素自身 —— paused / volume=0 / muted / 解码错误。 */
+function sectionAudio() {
+    const rows = [];
+    const snap = getEqAudioSnapshot();
+    const el = getActiveAudio();
+    const A = (typeof window !== 'undefined' && window.Aria) || null;
+    const nativeOn = !!(A && typeof A.__nativeOutputActive === 'function' && A.__nativeOutputActive());
+
+    rows.push(row('输出去向',
+        nativeOn ? tx('WASAPI 独占（原生引擎，声音不经 Web 音频图）') : tx('共享输出（WebView2 音频图）'),
+        nativeOn ? WARN : DIM));
+    rows.push(row('AudioContext 状态',
+        snap.hasCtx
+            ? `${snap.ctxState} · ${snap.sampleRate} Hz${snap.sinkId ? ` · sink ${snap.sinkId === '' ? 'default' : snap.sinkId}` : ''}`
+            : tx('无（音效图从未建立）'),
+        !snap.hasCtx ? DIM : (snap.ctxState === 'running' ? OK : BAD)));
+
+    let graph = tx('未建立（没开过均衡器 / 虚拟声场 / 空间音频）');
+    let gTone = DIM;
+    if (snap.initFailed) { graph = tx('初始化失败（本进程内不会出声，请重启 Aria）'); gTone = BAD; }
+    else if (snap.inited) { graph = tx('已建立'); gTone = OK; }
+    else if (snap.sourceCaptured) { graph = tx('已拆（元素仍被捕获 → 靠直连旁通保声，音效此时不生效）'); gTone = WARN; }
+    rows.push(row('音效图', graph, gTone));
+    rows.push(row('元素已改道进音效图', yesNo(snap.sourceCaptured), snap.sourceCaptured ? WARN : DIM));
+
+    const zeroGain = snap.decks.some(x => /=(-?0(\.0+)?)$/.test(x));
+    rows.push(row('deck 增益（非交叉期应为 1.000）', snap.deckCount ? snap.decks.join(' · ') : '—',
+        zeroGain ? BAD : DIM));
+
+    if (el) {
+        rows.push(row('音频元素', el.__nativeDeck ? tx('原生 deck（nativeDeck）') : (el.id || '—'), DIM));
+        rows.push(row('播放状态', el.paused ? tx('已暂停') : tx('正在播放'), el.paused ? WARN : OK));
+        const vol = (typeof el.volume === 'number' && isFinite(el.volume)) ? el.volume : NaN;
+        rows.push(row('元素音量', isFinite(vol) ? `${(vol * 100).toFixed(1)}%` : '—', vol === 0 ? BAD : DIM));
+        if ('muted' in el) rows.push(row('元素静音 muted', yesNo(el.muted), el.muted ? BAD : DIM));
+        const err = el.error || null;
+        rows.push(row('解码/网络错误', err ? `code ${err.code} · ${err.message || ''}` : tx('无'), err ? BAD : OK));
+        const src = el.currentSrc || el.src || '';
+        if (src) rows.push(row('当前音源', shortUrl(src), DIM));
+    } else {
+        rows.push(row('音频元素', tx('未取得（播放链路可能未初始化）'), BAD));
+    }
+
+    const bad = !!snap.initFailed
+        || (snap.hasCtx && snap.ctxState !== 'running')
+        || zeroGain
+        || (el && el.volume === 0)
+        || (el && 'muted' in el && el.muted === true);
+    rows.push(row('链路判定',
+        bad ? tx('检测到可能静音的因素：从上往下看第一处非 ok 项') : tx('未发现静音因素'),
+        bad ? BAD : OK));
+    return section('audio', '音频输出与音效链路', rows,
+        '「有时候放歌没声音」先看这一段：AudioContext 非 running、元素已改道但音效图被拆掉、deck 增益为 0 —— 三者都会让界面一切正常却完全没声。');
+}
+
 function sectionFrames() {
     const rows = [];
     const info = probeInfo();
@@ -328,13 +392,16 @@ async function collectVendor() {
     rows.push(row('主服务 :8001', ok ? tx('正常返回') : `${tx('无响应（未启动 / 绿色版路径异常）')}${err ? ` — ${err}` : ''}`, ok ? OK : BAD));
     rows.push(row('配置后端标记', `${String(readGlobal('_isLocalBackendAvailable'))} (null=尚未确认)`,
         readGlobal('_isLocalBackendAvailable') === false ? WARN : DIM));
-    for (const key of ['qq', 'kugou', 'netease']) {
+    for (const key of ['qq', 'kugou', 'netease', 'qishui']) {
         const s = ok ? (st[key] || null) : null;
         const bits = [
             `${tx('副进程')} ${s ? (s.alive ? tx('在线') : tx('离线')) : '—'}`,
             `${tx('登录态')} ${s ? (s.loggedIn ? tx('已登录') : tx('未登录')) : '—'}`,
-            `${tx('平台开关')} ${selfhostEnabled(key) ? tx('已启用') : tx('未启用')}`,
         ];
+        /* ★ 汽水没有平台开关（它的搜索源就是本机服务、播放也只有这一条路），
+           照抄其它平台的「平台开关 未启用」是一句假话 —— 与其误导，不如说实话。 */
+        if (key === 'qishui') bits.push(tx('无平台开关（搜索与播放始终走本机）'));
+        else bits.push(`${tx('平台开关')} ${selfhostEnabled(key) ? tx('已启用') : tx('未启用')}`);
         if (s && s.hasSource === false) bits.push(tx('源码缺失（未跑 scripts/setup-vendors.bat）'));
         if (s && s.uid) bits.push(`uid ${s.uid}`);
         bits.push(`:${VENDOR_PORTS[key]}`);
@@ -409,6 +476,10 @@ function sectionVerdict(hw, saved, frameStats, vendorOk) {
     rows.push(row('页面帧时中位', (g && g.samples) ? `${ms(g.medianMs)} ≈ ${g.fps.toFixed(1)} fps` : tx('无样本'),
         (!g || !g.samples) ? DIM : (g.medianMs > 34 ? BAD : (g.medianMs > 21 ? WARN : OK))));
     rows.push(row('本机主服务未响应', yesNo(!vendorOk), vendorOk ? OK : BAD));
+    /* 音频链路一句话结论：静音类问题最容易被误当成「软件坏了」 */
+    const aSnap = getEqAudioSnapshot();
+    const aBad = !!aSnap.initFailed || (aSnap.hasCtx && aSnap.ctxState !== 'running');
+    rows.push(row('音频链路', aBad ? tx('异常（详见下面「音频输出与音效链路」段）') : tx('正常'), aBad ? BAD : OK));
     const nav = readGlobal('navigator') || {};
     if (nav.onLine === false) rows.push(row('网络', tx('离线'), BAD));
     return section('verdict', '结论摘要', rows,
@@ -422,6 +493,7 @@ async function collectSections() {
     return [
         sectionVerdict(hw, saved, frameStats, vendor.ok),
         sectionEnvironment(),
+        sectionAudio(),
         sectionGpu(hw, fresh),
         sectionPerf(saved),
         sectionFrames(),

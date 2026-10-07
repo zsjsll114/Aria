@@ -9,11 +9,13 @@
  * - 偏好持久化到 localStorage：selfhost_prefs
  * 依赖 server.py 的 /api/selfhost/* 路由 + 各平台 vendor 副进程。
  * ============================================================ */
-const PLATFORMS = ['kugou', 'qq', 'netease'];
+const PLATFORMS = ['kugou', 'qq', 'netease', 'qishui'];
 import { kugouTodayStr, updateSelfHostBadge } from './selfhost-runtime.js';
 import { esc } from '../utils/formatters.js';
-const PLATFORM_LABEL = { kugou: '酷狗音乐', qq: 'QQ音乐', netease: '网易云音乐' };
-/* 官方平台图标（用户放入 src/img，已同步到 web/src/img） */
+const PLATFORM_LABEL = { kugou: '酷狗音乐', qq: 'QQ音乐', netease: '网易云音乐', qishui: '汽水音乐' };
+/* 官方平台图标（用户放入 src/img，已同步到 web/src/img）
+   ★ 汽水暂无图标文件：这里刻意不给 'qishui' 占位，platformIconImg 会返回空串
+     （面板只显示名称）。指向一个不存在的文件只会渲染出裂图。 */
 const PLATFORM_ICON_SRC = { kugou: 'src/img/KugouMusicIcon.svg', qq: 'src/img/QQMusicIcon.svg', netease: 'src/img/NeteaseMusicIcon.svg', kuwo: 'src/img/KuwoMusicIcon.svg' };
 function platformIconImg(name, size = 18) {
   const src = PLATFORM_ICON_SRC[name];
@@ -89,7 +91,8 @@ export function initSelfhostSection() {
   tipDesc.style.cssText = 'margin:-2px 0 12px;padding-left:4px;';
   tipDesc.textContent = '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。'
     + '注意：扫码只是「登录」，各平台的启用开关还决定「哪些功能真的走自建」——QQ 的取播放链接也受其开关控制，酷狗目前只有日推/收藏走自建（播放链接仍走公网）。'
-    + '酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。';
+    + '酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。'
+    + '汽水音乐的搜索与逐字歌词匿名就能用，只有播放需要扫码登录；登录态由本机服务保管，重启不用重扫。';
   host.appendChild(tipDesc);
 
   /* 三平台分栏：Tab 头 + 内容区 */
@@ -195,24 +198,29 @@ function buildPlatformPanel(name, st, prefs) {
   badge.textContent = !hasSource ? '未安装' : (alive ? '本地运行中' : '离线');
   head.appendChild(badge);
   head.appendChild(Object.assign(document.createElement('div'), { style: 'flex:1;' }));
-  const tog = document.createElement('button');
-  tog.className = 'setting-toggle' + (enabled ? ' on' : '');
-  /* ★ 开关的真实作用域三平台并不一致（详见 selfhost-runtime.js）：
-     · QQ     — 日推/收藏 + **取播放链接**（selfhostQQPlayUrl 以此开关为闸门）
-     · 网易云 — 日推/收藏/歌单；取播放链接只看副进程是否在线，不受此开关影响
-     · 酷狗   — 日推/收藏/签到；**没有**自建取播放链接，播放仍走公网源
-     旧文案只写「日推/收藏优先」，于是「扫码登录了却还走在线源」无从解释。 */
-  tog.title = {
-    qq: '启用 QQ 自建：日推/收藏 + 取播放链接都走本机（关掉则取链接退回在线源池）',
-    netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求副进程在线，不受此开关影响）',
-    kugou: '启用酷狗自建：日推/收藏/签到走本机（酷狗暂无自建取播放链接，播放仍走公网源）',
-  }[name] || '启用该平台自建';
-  tog.addEventListener('click', () => {
-    const v = !tog.classList.contains('on');
-    tog.classList.toggle('on', v);
-    prefs.enabled = prefs.enabled || {}; prefs.enabled[name] = v; savePrefs(prefs);
-  });
-  head.appendChild(tog);
+  /* ★ 汽水不给启用开关：它的搜索源就是本机服务、播放也只有这一条路，
+     开关盖不到任何分支 —— 摆一个按了没反应的开关比没有更糟（用户会以为
+     「关了就不走自建」，实际照走）。登录态行照旧。 */
+  if (name !== 'qishui') {
+    const tog = document.createElement('button');
+    tog.className = 'setting-toggle' + (enabled ? ' on' : '');
+    /* ★ 开关的真实作用域三平台并不一致（详见 selfhost-runtime.js）：
+       · QQ     — 日推/收藏 + **取播放链接**（selfhostQQPlayUrl 以此开关为闸门）
+       · 网易云 — 日推/收藏/歌单；取播放链接只看副进程是否在线，不受此开关影响
+       · 酷狗   — 日推/收藏/签到；**没有**自建取播放链接，播放仍走公网源
+       旧文案只写「日推/收藏优先」，于是「扫码登录了却还走在线源」无从解释。 */
+    tog.title = {
+      qq: '启用 QQ 自建：日推/收藏 + 取播放链接都走本机（关掉则取链接退回在线源池）',
+      netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求副进程在线，不受此开关影响）',
+      kugou: '启用酷狗自建：日推/收藏/签到走本机（酷狗暂无自建取播放链接，播放仍走公网源）',
+    }[name] || '启用该平台自建';
+    tog.addEventListener('click', () => {
+      const v = !tog.classList.contains('on');
+      tog.classList.toggle('on', v);
+      prefs.enabled = prefs.enabled || {}; prefs.enabled[name] = v; savePrefs(prefs);
+    });
+    head.appendChild(tog);
+  }
   g.appendChild(head);
 
   // 登录状态行
@@ -247,44 +255,55 @@ function buildPlatformPanel(name, st, prefs) {
   row.appendChild(ctrl);
   g.appendChild(row);
 
-  // 手动填写 Cookie（可选，跳过扫码）
-  const ckRow = document.createElement('div');
-  ckRow.className = 'setting-row';
-  ckRow.style.cssText = 'min-height:40px;align-items:flex-start;';
-  const ckLeft = document.createElement('div');
-  ckLeft.style.cssText = 'flex:1;padding-right:10px;';
-  ckLeft.innerHTML = `<div class="setting-label">手动填写 Cookie</div>
+  /* 手动填写 Cookie（可选，跳过扫码）
+     ★ 汽水没有这条路：它的会话由本机 vendor 自己落盘（见 selfhost_service.py 注释），
+       粘贴任何 cookie 都无从注入到汽水请求里 —— 摆一个「填了必失败」的输入框是误导。
+       所以汽水这里改成一句说明，不做看起来能填的空控件。 */
+  if (name === 'qishui') {
+    const note = document.createElement('div');
+    note.className = 'setting-desc';
+    note.style.cssText = 'margin:0 0 4px;font-size:11px;opacity:.7;';
+    note.textContent = '登录会话由本机服务保管，无需手动填 Cookie；换设备重新扫码即可';
+    g.appendChild(note);
+  } else {
+    const ckRow = document.createElement('div');
+    ckRow.className = 'setting-row';
+    ckRow.style.cssText = 'min-height:40px;align-items:flex-start;';
+    const ckLeft = document.createElement('div');
+    ckLeft.style.cssText = 'flex:1;padding-right:10px;';
+    ckLeft.innerHTML = `<div class="setting-label">手动填写 Cookie</div>
     <div class="setting-desc" style="margin:0;font-size:11px;">粘贴登录状态，保存后即登录（可选）</div>`;
-  const ckRight = document.createElement('div');
-  ckRight.className = 'setting-control';
-  ckRight.style.cssText = 'flex-direction:row-reverse;gap:6px;';
-  const ckInp = document.createElement('input');
-  ckInp.type = 'text';
-  ckInp.className = 'appearance-font-select';
-  ckInp.placeholder = name === 'kugou' ? 'token=..;userid=..' : (name === 'qq' ? 'uin=..;p_skey=..' : 'MUSIC_U=..');
-  ckInp.style.cssText = 'max-width:180px;max-width:none;min-width:160px;padding:5px 10px;font-size:11px;';
-  const ckSave = document.createElement('button');
-  ckSave.className = 'setting-btn primary';
-  ckSave.style.padding = '4px 10px';
-  ckSave.textContent = '保存';
-  ckSave.addEventListener('click', async () => {
-    const val = ckInp.value.trim();
-    if (!val) { ckSave.textContent = '空'; setTimeout(() => ckSave.textContent = '保存', 1200); return; }
-    ckSave.disabled = true;
-    try {
-      const r = await shFetch(`/api/selfhost/${name}/setcookie`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cookie: val }),
-      });
-      ckSave.disabled = false;
-      ckSave.textContent = r && r.ok ? '已登录' : '失败';
-      setTimeout(() => ckSave.textContent = '保存', 1500);
-      if (r && r.ok) initSelfhostSection();
-    } catch (e) { ckSave.disabled = false; ckSave.textContent = '✗ 失败'; }
-  });
-  ckRight.appendChild(ckSave); ckRight.appendChild(ckInp);
-  ckRow.appendChild(ckLeft); ckRow.appendChild(ckRight);
-  g.appendChild(ckRow);
+    const ckRight = document.createElement('div');
+    ckRight.className = 'setting-control';
+    ckRight.style.cssText = 'flex-direction:row-reverse;gap:6px;';
+    const ckInp = document.createElement('input');
+    ckInp.type = 'text';
+    ckInp.className = 'appearance-font-select';
+    ckInp.placeholder = name === 'kugou' ? 'token=..;userid=..' : (name === 'qq' ? 'uin=..;p_skey=..' : 'MUSIC_U=..');
+    ckInp.style.cssText = 'max-width:180px;max-width:none;min-width:160px;padding:5px 10px;font-size:11px;';
+    const ckSave = document.createElement('button');
+    ckSave.className = 'setting-btn primary';
+    ckSave.style.padding = '4px 10px';
+    ckSave.textContent = '保存';
+    ckSave.addEventListener('click', async () => {
+      const val = ckInp.value.trim();
+      if (!val) { ckSave.textContent = '空'; setTimeout(() => ckSave.textContent = '保存', 1200); return; }
+      ckSave.disabled = true;
+      try {
+        const r = await shFetch(`/api/selfhost/${name}/setcookie`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cookie: val }),
+        });
+        ckSave.disabled = false;
+        ckSave.textContent = r && r.ok ? '已登录' : '失败';
+        setTimeout(() => ckSave.textContent = '保存', 1500);
+        if (r && r.ok) initSelfhostSection();
+      } catch (e) { ckSave.disabled = false; ckSave.textContent = '✗ 失败'; }
+    });
+    ckRight.appendChild(ckSave); ckRight.appendChild(ckInp);
+    ckRow.appendChild(ckLeft); ckRow.appendChild(ckRight);
+    g.appendChild(ckRow);
+  }
 
   // 酷狗：每日签到领 VIP（自动签到开关 + 立即签到）
   if (name === 'kugou') {
@@ -756,6 +775,8 @@ function buildKeyObj(platform, qr) {
   }
   if (platform === 'kugou') return { key: qr.key, qrcode: qr.key };
   if (platform === 'netease') return { key: qr.key };
+  /* 汽水：vendor 的扫码 token（Python 侧原样转交给 /login/qr/check） */
+  if (platform === 'qishui') return { key: qr.key };
   return {};
 }
 
@@ -837,16 +858,42 @@ function startPoll() {
       if (hint) hint.textContent = '二维码已失效，点击右上角关闭后重新扫码';
       return;
     }
-    /* 过期码同样停止轮询（酷狗 status=0 / 网易云 800） */
-    if (r && (r.status === 0 || r.status === 800)) {
+    /* ★ 失败必须先于文案渲染判定。shFetch 只在 HTTP 非 2xx 抛错，而后端把 vendor 的
+       业务失败包成 200 + {ok:false, err}；早期实现没判 ok:false，这类失败会掉进
+       describeStatus 的兜底分支、显示成「等待扫码…」—— 扫码之后任何一次校验失败
+       都表现为「没反应」。这里显式报错并继续重试（可恢复，不 stopPoll）。 */
+    if (r === null || r.ok === false) {
+      const why = (r && r.err) || '';
+      if (hint) hint.textContent = why ? `${why}（重试中）` : '重试中';
+      if (qrState.platform && qrState.keyObj) qrTimer = setTimeout(loop, 3000);
+      return;
+    }
+    /* 过期码停止轮询（酷狗 status=0 / 网易云 800 / 汽水 'expired'） */
+    if (r && (r.status === 0 || r.status === 800 || r.status === 'expired')) {
       stopPoll();
       if (hint) hint.textContent = '二维码已过期，点击右上角关闭后重新扫码';
       return;
     }
+    /* ★ 'failed' 必须与 'expired' 分开处理：
+       它表示**上游拒绝了这次校验**（风控 / 需要二次验证），二维码本身还没过期。
+       旧实现把两者并入同一个分支、统一显示「二维码已过期」—— 真正的原因
+       （vendor 从上游 description 原文透传的那句话）被整条盖掉，
+       用户看到的现象就是「扫了码没反应 / 莫名其妙说过期」。
+       这里显示真实原因并**停止轮询**：库在 failed 状态下不加退避，
+       继续轮询会持续打上游，把风控越踩越死。 */
+    if (r && r.status === 'failed') {
+      stopPoll();
+      if (hint) hint.textContent = describeStatus(r, qrState.platform);
+      return;
+    }
     if (hint) hint.textContent = describeStatus(r, qrState.platform);
-    /* 递归调度下一轮（间隔 2s；失败重试 3s） */
+    /* 递归调度下一轮（间隔 2s；失败重试 3s）
+       ★ 汽水 vendor 内部有 QR_MIN_POLL_MS=3500 的本地节流：间隔不足的请求它直接用
+         缓存状态应答、根本不打上游。前端按 2s 轮询等于一半是空转，对齐到 4s 既省掉
+         空转，也让提示刷新节奏与真实探测一致。 */
+    const pollMs = qrState.platform === 'qishui' ? 4000 : 2000;
     if (qrState.platform && qrState.keyObj) {
-      qrTimer = setTimeout(loop, r ? 2000 : 3000);
+      qrTimer = setTimeout(loop, r ? pollMs : 3000);
     }
   };
   qrTimer = setTimeout(loop, 300);
@@ -891,6 +938,23 @@ function describeStatus(r, platform) {
     if (st === 801) return '等待扫码…';
     if (st === 800) return '二维码已过期';
     return msg || '等待扫码…';
+  }
+  if (platform === 'qishui') {
+    /* 汽水 vendor 透传的是字符串状态（waiting/scanned/expired/failed），
+       不是其它平台的数字码 —— 别按数字比，那会永远落到最后的兜底分支。
+       ★ 并且必须优先透出 message：vendor 的 status 只有 scanned/waiting 两个
+       粗粒度值，真正的进度全在 message 里（「已扫码，请在手机上确认」→
+       「手机已确认，正在等待下发 Cookie（请勿刷新）」→「访问太频繁，约 N 秒后继续」）。
+       早期实现按 status 硬编码文案、把 message 丢掉，手机确认完界面还停在
+       「已扫码」—— 用户看到的就是「扫了码没反应」。
+       message 仅在含中文时采用：未扫码阶段上游回的是 'new' 这类英文原始值，
+       直接展示会变成界面上的乱码文案。 */
+    const progress = /[\u4e00-\u9fa5]/.test(msg) ? msg : '';
+    if (st === 'scanned') return progress || '已扫码，请在手机上确认';
+    if (st === 'expired') return '二维码已过期';
+    if (st === 'failed') return progress || '二维码已失效';
+    if (st === 'waiting') return progress || '等待扫码…';
+    return progress || '等待扫码…';
   }
   return msg || '等待扫码…';
 }

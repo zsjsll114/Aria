@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/temperaBlocks.ts
  * 逐行保真移植：仅删除类型标注，不改任何逻辑/数值/分支。
@@ -9,6 +10,7 @@
 import { clamp01, easeTemperaEnter, easeTemperaInOut, resolveShotPacedDuration } from './temperaMotion.js';
 import { temperaHash01 } from './temperaRandom.js';
 import { drawTemperaComposition } from './temperaCompositions.js';
+import { mvBackdropAlpha } from '../mvBackdrop.js';
 
 // src/components/visualizer/tempera/temperaBlocks.ts
 // Screentone MG layer per shot: owns enter/exit motion state and delegates all geometry to
@@ -95,6 +97,12 @@ export const buildTemperaBlocks = (
         // axis, so the frame is always already moving when the next composition arrives.
         const creep = easeTemperaInOut(progress) * carry * 0.35;
         const budget = Math.max(0.5, paceDuration);
+        // 铺了 MV 背景时把构图色块整体压薄，让底下的 MV 透出来。
+        // 只乘在这里（= 只乘 Graphics 色块/装饰），**不碰 glyphs**——
+        // 歌词字必须保持满不透明，否则 MV 一动字就忽明忽暗。
+        // 每帧读一次就够（items 十几个），换模式/开关 MV 立刻生效，无需重建场景。
+        // ★ 必须带 host：设置面板里那块预览窗底下没有 MV，压薄只会让它变透明。
+        const backdrop = mvBackdropAlpha(options.host);
 
         for (const item of items) {
             const rawDelay = resolveShotPacedDuration(paceDuration, item.delayFraction, 0, 1.4);
@@ -102,7 +110,7 @@ export const buildTemperaBlocks = (
             // Short shots compress the whole stagger instead of dropping the late items.
             const compress = Math.min(1, budget / (rawDelay + rawSpan));
             const enter = easeTemperaEnter((time - shotStart - rawDelay * compress) / (rawSpan * compress));
-            item.node.alpha = item.baseAlpha * enter;
+            item.node.alpha = item.baseAlpha * enter * backdrop;
             item.node.visible = enter > 0.001;
             const behind = (1 - enter) * carry - creep;
             item.node.position.set(

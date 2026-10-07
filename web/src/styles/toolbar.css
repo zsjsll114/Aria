@@ -134,7 +134,7 @@ html#ariaRoot .tb-overflow-check {
     align-items: center;
     margin-left: auto;
     padding-left: 10px;
-    color: var(--theme-color);
+    color: var(--aria-accent);
     flex-shrink: 0;
 }
 

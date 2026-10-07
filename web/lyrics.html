@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aria 桌面歌词</title>
+<!-- ★ 设计令牌（P1）：本页是独立窗口，不继承主窗样式，必须显式引入。
+     --dtk-hl 现由 tokens.css 统一声明为 var(--aria-accent)，不再自带
+     #7cd7ff（青）那套与主窗金色无关的默认值；运行时仍由 250-desktop-lyrics.js
+     推送的主题色以行内 setProperty('--dtk-hl', c) 覆盖（行内 > 本文件）。 -->
+<link rel="stylesheet" href="src/styles/tokens.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -97,8 +102,8 @@
     position: absolute;
     left: 0; top: 0.75em; /* 补回上移的 0.75em：与底层描边字逐像素重合 */
     width: 100%;
-    color: var(--dtk-hl, #7cd7ff);
-    text-shadow: 0 0 10px var(--dtk-hl-glow, rgba(124, 215, 255, .35));
+    color: var(--dtk-hl, #E8BE6A);
+    text-shadow: 0 0 10px var(--dtk-hl-glow, rgba(232, 190, 106, .35));
     -webkit-text-stroke: 0;
   }
 
@@ -170,8 +175,11 @@
   }
   #tools button:hover { background: rgba(255,255,255,.18); color: #fff; transform: scale(1.05); }
   #tools button:active { transform: scale(.94); }
-  #tLock.on { color: var(--dtk-hl, #7dd8ff); background: rgba(125,216,255,.2); }
-  #tEmc.on { color: var(--dtk-hl, #ffd05c); background: color-mix(in srgb, var(--dtk-hl, #ffd05c) 22%, transparent); }
+  /* P1：fallback 一律对齐主题色。--dtk-hl 由 tokens.css 保证已定义，
+     这里的字面量只在 tokens.css 加载失败时生效，不应再是青/黄另一套色系
+     （原先 #tLock.on 是青底金字，正是「桌面歌词与主窗两套色」的分裂点之一）。 */
+  #tLock.on { color: var(--dtk-hl, #E8BE6A); background: color-mix(in srgb, var(--dtk-hl, #E8BE6A) 20%, transparent); }
+  #tEmc.on { color: var(--dtk-hl, #E8BE6A); background: color-mix(in srgb, var(--dtk-hl, #E8BE6A) 22%, transparent); }
 
   #hint {
     position: absolute;

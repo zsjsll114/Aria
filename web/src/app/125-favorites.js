@@ -5,7 +5,7 @@
  * ============================================================ */
 import { escapeHtml } from '../utils/formatters.js';
 import { audio } from './20-lyrics-render.js';
-import { favoriteBtn, favoritesCloseBtn, favoritesHintEl, favoritesListEl, favoritesOverlay, openFavoritesBtn, songArtistEl, songTitleEl, sourceBtns } from './30-dom-refs.js';
+import { favoriteBtn, favoritesCloseBtn, favoritesHintEl, favoritesListEl, favoritesOverlay, openFavoritesBtn, songArtistEl, songTitleEl } from './30-dom-refs.js';
 import { setBlurBackground, setCoverImage } from './100-cover-background.js';
 import { getFavorites, saveFavorites, setHint, toggleFavorite, updateFavoriteBtn } from './120-search-results.js';
 import { applyVolumeOnSongChange, loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
@@ -40,7 +40,7 @@ function renderFavoritesList() {
                 const title = escapeHtml(f.title || '未知歌曲');
                 const artist = escapeHtml(f.artist || '未知歌手');
                 const cover = f.cover || '';
-                const sourceLabel = f.source === 'tencent' ? 'QQ' : (f.source === 'netease' ? '网易云' : (f.source === 'kugou' ? '酷狗' : (f.source ? escapeHtml(f.source) : '本地')));
+                const sourceLabel = f.source === 'tencent' ? 'QQ' : (f.source === 'netease' ? '网易云音乐' : (f.source === 'kugou' ? '酷狗' : (f.source ? escapeHtml(f.source) : '本地')));
                 html += `<div class="result-item" data-idx="${idx}">
                     <img class="result-cover" src="${escapeHtml(cover)}" alt="" onerror="this.style.visibility='hidden'">
                     <div class="result-info">
@@ -87,11 +87,10 @@ favoritesOverlay?.addEventListener('click', (e) => {
             if (e.target === favoritesOverlay) closeFavorites();
         });
 
-if (typeof document !== "undefined") document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && favoritesOverlay.classList.contains('visible')) {
-                closeFavorites();
-            }
-        });
+/* ESC 关闭 —— ★ 2026-10-05（P3-b）移到 150-search-engine.js 的「逐层 ESC」链。
+   此处原有一份独立 handler：收藏页叠在搜索页上按一次 ESC 时，
+   document(本处) 先关收藏页，window(150) 的逐层链接着又关掉搜索页 —— 一次 ESC 连关两层。
+   现在 ESC 只有一处实现：150 的逐层链（顺序即层序）。 */
 
 /* 将收藏歌曲添加到歌单 */
 function addFavToPlaylist(idx) {
@@ -196,10 +195,6 @@ async function playFromFavorite(fav) {
                 /* 在线歌曲：复用 loadOnlineSong 流程，构造 songInfo */
                 const songInfo = { id: fav.id, mid: fav.mid || '', song: fav.title, singer: fav.artist, cover: fav.cover, source: effSource };
                 currentSource = effSource;
-                /* 同步音源切换按钮状态 */
-                sourceBtns.forEach(b => {
-                    b.classList.toggle('active', b.dataset.source === effSource);
-                });
                 await loadOnlineSong(songInfo, true);
                 favoritesHintEl.textContent = '';
             } else if (fav.url) {

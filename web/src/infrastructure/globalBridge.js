@@ -37,7 +37,7 @@ export const BRIDGED = [
     'searchResultsCache', 'lastSearchKeyword', 'currentAiTheme', 'aiEmotionWords', 'isAiAnalyzing',
     'currentAiAbortController', 'audioCtx', 'eqSourceNode', 'eqFilterNodes', 'eqGains',
     'eqActivePreset', 'eqInited', 'eqInitFailed', 'stallTimer', 'isBuffering', 'stallLastTime',
-    'stallCheckGeneration', 'lastPercent', 'lastFormattedTime', 'ctxSubmenuEl', 'ctxConfirmCallback',
+    'stallCheckGeneration', 'lastPercent', 'lastFormattedTime', 'ctxSubmenuEl',
     'submenuHideTimer', 'initSongStarted', 'preloadedSongReady', 'pendingPlayAfterPreload',
     'playlistViewMode', 'currentPlaylistId', 'customFonts', 'appSettings',
 ];

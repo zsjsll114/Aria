@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * temperaPalette.js — 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/temperaPalette.ts
  * 逐行保真移植：仅删除类型标注，不改任何逻辑/数值/分支。

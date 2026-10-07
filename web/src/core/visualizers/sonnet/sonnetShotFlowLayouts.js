@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // 机械移植自 chthollyphile/folia-major src/components/visualizer/sonnet/sonnetShotFlowLayouts.ts @ 557 行
 // src/components/visualizer/sonnet/sonnetShotFlowLayouts.ts
 // Flow-based placement passes for the non-poster shot kinds. Each variant keeps

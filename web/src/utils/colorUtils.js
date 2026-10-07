@@ -170,3 +170,21 @@ export function extractCoverPalette(img) {
         return { primary: '#3a86ff', secondary: '#ff006e', accent: '#ffbe0b' };
     }
 }
+
+/**
+ * 名字 → 稳定色相（0~359）。同一个人每次都是同一个颜色。
+ *
+ * 用途：没有头像的歌手的占位字母牌底色（搜索页歌手卡 + 歌手页头部）。
+ * 为什么不用随机色：同一排卡每次搜索颜色都不一样，看起来像没做完；
+ * 稳定散列还能让"同一个人在不同页面颜色一致"。
+ * 31 是经典的字符串散列乘子（同类实现见 Java String.hashCode 的简化版），
+ * 取模 360 直接落在 HSL 色相环上。
+ * @param {string} name
+ * @returns {number} 0~359
+ */
+export function hueOfName(name) {
+    let h = 0;
+    const s = String(name == null ? '' : name);
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return h;
+}

@@ -8,9 +8,9 @@ import { searchKugouSongs } from '../services/musicApi.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { markResolveRetry } from '../services/playSource.js'; // 重试期间角标显示「重试中 n/m」而不是「取链失败」
 import { audio } from './20-lyrics-render.js';
-import { currentTimeEl, favoritesOverlay, progressEl, searchOverlay, songArtistEl, songTitleEl, sourceBtns, totalTimeEl, volumeBar } from './30-dom-refs.js';
+import { currentTimeEl, favoritesOverlay, progressEl, searchOverlay, songArtistEl, songTitleEl, totalTimeEl, volumeBar } from './30-dom-refs.js';
 import { getLyricOffset, updateLineTimes, updateLyricOffsetUI } from './40-playback-state.js';
-import { waitForAudioReady } from './65-playback-position.js';
+import { waitForAudioReady, updatePlaybackPosition } from './65-playback-position.js';
 import { handleAudioPlayError } from './70-audio-engine.js';
 import { applyPreservesPitch } from './85-rate-download.js';
 import { setBlurBackground, setCoverImage } from './100-cover-background.js';
@@ -22,6 +22,7 @@ import { getStreamCachedAudioUrl } from './180-boot-config.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 import { initFadeController, fadeInVolume, fadeOutVolume } from '../core/fadeController.js';
 import { sleepFadeOwnsVolume, sleepTimerSongChanged } from '../core/sleepTimer.js';
+import { formatTime } from '../utils/formatters.js';
 
 globalThis.lastLoadedSongInfo = null;
 
@@ -92,7 +93,7 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                     const step = retryCount - 2;
                     const targetSource = chain[Math.min(step, chain.length - 1)];
                     if (targetSource && targetSource !== originalSource) {
-                        const sourceNames = { tencent: 'QQ音乐', kuwo: '酷我音乐', kugou: '酷狗', netease: '网易云' };
+                        const sourceNames = { tencent: 'QQ音乐', kuwo: '酷我音乐', kugou: '酷狗', netease: '网易云音乐' };
                         const sourceName = sourceNames[targetSource] || targetSource;
                         logInfo('crossfade', `切换到${sourceName}备用源，搜索: ${songInfo.song} - ${songInfo.singer}`);
                         try {
@@ -112,7 +113,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.source = 'kuwo';
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
                                         currentSource = 'kuwo';
-                                        sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === currentSource));
                                         logInfo('crossfade', `酷我备用源搜索成功: ${best.song} - ${best.singer} (id=${retrySongInfo.id})`);
                                     }
                                 }
@@ -131,7 +131,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
                                         retrySongInfo.source = 'kugou';
                                         currentSource = 'kugou';
-                                        sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === currentSource));
                                         logInfo('crossfade', `酷狗备用源搜索成功: ${best.song} - ${best.singer} (hash=${retrySongInfo.id})`);
                                     } else {
                                         logWarn('crossfade', '酷狗备用源搜索无结果');
@@ -165,7 +164,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.source = targetSource;
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
                                         currentSource = targetSource;
-                                        sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === currentSource));
                                         logInfo('crossfade', `备用源搜索成功: ${best.song} - ${best.singer} (id=${retrySongInfo.id}, mid=${retrySongInfo.mid})`);
                                     } else {
                                         logWarn('crossfade', '备用源搜索无结果');
@@ -191,9 +189,12 @@ async function loadPlaylistTrack(index, preloadOnly) {
             if ((track.source || track.id) && (track.id || track.mid)) {
                 /* source 为空时根据 mid 推断：有 mid 的是 QQ 音乐，没有的是网易云 */
                 const effectiveSource = track.source || (track.mid ? 'tencent' : 'netease');
-                const songInfo = { id: track.id, mid: track.mid || '', song: track.title || track.song || track.name, singer: track.artist || track.singer, cover: track.cover, url: track.url || '', source: effectiveSource };
+                const songInfo = { id: track.id, mid: track.mid || '', song: track.title || track.song || track.name, singer: track.artist || track.singer, cover: track.cover, url: track.url || '', source: effectiveSource,
+                    /* ★ 2026-10-04：MV 关联字段必须一起搬。此前这里只搬 id/mid/标题，
+                       于是**从歌单里播的在线歌曲连 QQ 的 vid 都丢了**（搜索页直接点歌才会带），
+                       表现为「搜索页能自动铺 MV，进歌单再播就铺不出来」。 */
+                    mvVid: track.mvVid || '', mvId: track.mvId || '', mvHash: track.mvHash || '' };
                 currentSource = effectiveSource;
-                sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === effectiveSource));
                 /* ★ 预加载集成：如果预加载数据匹配当前歌曲，传递预加载的 URL 和歌词 */
                 _preloadedLyricData = null;  /* 先清除，避免残留 */
                 if (nextSongPreload && nextSongPreload.key === `${effectiveSource}:${track.id}`) {
@@ -298,6 +299,67 @@ handleAudioPlayError();
             }
         }
 
+/* ========== Automix swap 后的元数据同步（Automix Phase 2）==========
+   角色顶替 → dualDeck.swapRoles 后由 app/96-automix 调用：B 已经在播，
+   不能走 loadPlaylistTrack（它会重设 audio.src 把 B 打断）。这里只做
+   「切歌的 UI/元数据半边」——与本地直链分支（上方 loadPlaylistTrack 的
+   即时 UI 段）同口径，但**进度/时长按 B 的当前值对齐、不归零**：B 从
+   introOffset 起播，早已推进了几秒。 */
+
+/**
+ * swap 后的「时间半边」对齐。三件事：
+ *  ① 立刻用活跃元素（= B）的真实 currentTime 刷一次进度条与时间文本——不等
+ *     下一个 timeupdate。timeupdate 最低 ~4Hz，那是个最长 250ms 的空窗，表现
+ *     为「歌已经切了但进度条还停在上一首的位置」。
+ *  ② duration 未就绪时不写坏值，挂一次性探针等它到再补。B 的 loadedmetadata
+ *     发生在 ARM 预载期（那时 B 还不是活跃元素，常驻监听挂在 A 上收不到），
+ *     没有别的时机能补。在线流没有 Content-Length 时 duration 甚至是 Infinity。
+ *  ③ 歌词高亮行归位（与正常切歌路径同口径），避免残留上一首的高亮。
+ */
+function syncAfterSwapTimeline() {
+    currentTime = audio.currentTime * 1000;
+    updatePlaybackPosition();
+    activeLineIndex = -1;
+    applySwapDuration();
+}
+
+/** 把活跃元素的 duration 写到总时长；未就绪则等 loadedmetadata/durationchange 补。
+ *  ★ 单位：formatTime 收**毫秒**。这里曾写成 formatTime(audio.duration)（秒），
+ *  导致 209 秒的歌被算成 0 秒、总时长恒显示 00:00——全库仅此一处误用。 */
+function applySwapDuration(retries = 0) {
+    const dur = audio.duration;
+    if (Number.isFinite(dur) && dur > 0) {
+        if (totalTimeEl) totalTimeEl.textContent = formatTime(dur * 1000);
+        return;
+    }
+    if (retries >= 5) return;   /* 真·无限流（无 Content-Length）：放弃，后续 timeupdate 会自然修正当前时间 */
+    const once = () => {
+        audio.removeEventListener('loadedmetadata', once);
+        audio.removeEventListener('durationchange', once);
+        applySwapDuration(retries + 1);
+    };
+    audio.addEventListener('loadedmetadata', once);
+    audio.addEventListener('durationchange', once);
+}
+
+function applyTrackMetadataAfterSwap(track, index) {
+    try {
+        currentTrackIndex = index;
+        songTitleEl.textContent = track.title || track.song || track.name;
+        songArtistEl.textContent = track.artist || track.singer || '未知歌手';
+        currentSongData = { title: track.title || track.song || track.name, artist: track.artist || track.singer || '未知歌手', cover: track.cover || '', source: track.source || 'local', url: track.url };
+        if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(currentSongData);
+        currentSongKey = makeSongKey(currentSongData);
+        lyricOffset = getLyricOffset(currentSongKey); updateLyricOffsetUI();
+        updateLineTimes();
+        updateFavoriteBtn();
+        if (track.cover) { setCoverImage(track.cover); setBlurBackground(track.cover); }
+        syncAfterSwapTimeline();
+        /* duration 就绪后渲染高潮标记（与 loadedmetadata 常驻监听同口径） */
+        if (typeof renderChorusMarkers === 'function') renderChorusMarkers();
+    } catch (e) { logWarn('crossfade', 'swap 后元数据同步失败:', e); }
+}
+
 /* 打开/关闭歌单弹窗（与搜索弹窗一致的弹出动画） */
 function openPlaylists() {
 searchOverlay.classList.remove('visible');
@@ -360,4 +422,4 @@ async function maybeQueueRefill() {
 }
 Aria.__maybeQueueRefill = maybeQueueRefill;
 
-export { applyVolumeOnSongChange, closePlaylists, handlePlayFailure, loadPlaylistTrack, openAddToPlaylist, openPlaylists };
+export { applyTrackMetadataAfterSwap, applyVolumeOnSongChange, closePlaylists, handlePlayFailure, loadPlaylistTrack, openAddToPlaylist, openPlaylists };

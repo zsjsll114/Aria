@@ -94,9 +94,9 @@ html#ariaRoot body.perf-minimal .sleep-timer-panel {
 }
 .st-preset:hover { background: rgba(255, 255, 255, 0.12); }
 .st-preset.active {
-    border-color: var(--theme-color, #E8BE6A);
-    background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
-    color: var(--theme-color, #E8BE6A);
+    border-color: var(--aria-accent);
+    background: rgba(var(--aria-accent-rgb), 0.16);
+    color: var(--aria-accent);
 }
 .st-preset-unit {
     font-size: 12px;
@@ -124,7 +124,7 @@ html#ariaRoot body.perf-minimal .sleep-timer-panel {
     outline: none;
     transition: border-color 0.16s ease;
 }
-.st-custom-input:focus { border-color: var(--theme-color, #E8BE6A); }
+.st-custom-input:focus { border-color: var(--aria-accent); }
 .st-custom-input::placeholder { color: rgba(255, 255, 255, 0.35); }
 
 .st-btn {
@@ -137,7 +137,7 @@ html#ariaRoot body.perf-minimal .sleep-timer-panel {
     transition: background 0.16s ease, opacity 0.16s ease;
 }
 .st-btn-ok {
-    background: var(--theme-color, #E8BE6A);
+    background: var(--aria-accent);
     color: #1a1a1a;
 }
 .st-btn-ok:hover { filter: brightness(1.08); }

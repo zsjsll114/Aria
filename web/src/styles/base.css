@@ -1,8 +1,3 @@
-        :root {
-            --theme-color: #E8BE6A;
-            --theme-color-rgb: 232, 190, 106;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -23,7 +18,7 @@
             position: relative;
         }
 
-        /* 启动公告 */
+        /* 启动公告（#welcomeOverlay / 动态的 #performanceDialog 共用） */
         .welcome-overlay {
             position: fixed;
             top: 0; left: 0;
@@ -31,13 +26,27 @@
             background: rgba(0, 0, 0, 0.7);
             backdrop-filter: saturate(180%) blur(40px);
             -webkit-backdrop-filter: saturate(180%) blur(40px);
-            z-index: 99999;
+            /* 首跑层档：panel(10000/10001) 之上、modal(12000) 之下。
+               原为写死 99999，会盖住任何对话框（详见 tokens.css 的说明）。 */
+            z-index: var(--aria-z-welcome, 11000);
             display: flex;
             align-items: center;
             justify-content: center;
             transition: opacity 0.4s ease;
             overflow: hidden;
         }
+
+        /* ★ 2026-10-05：桌面壳不再需要欢迎页。
+           它的唯一目的是"用一次用户手势解锁浏览器自动播放策略"，
+           而桌面端已在 tauri.conf.json 给主窗加了
+           `--autoplay-policy=no-user-gesture-required`（WebView2 默认拦带声音的自动播放）。
+           aria-desktop 由 index.html head 的内联脚本在首帧前打上，所以这条规则
+           从第一帧起就生效 —— 不会先闪一下再消失。
+           ⚠ 只隐藏 #welcomeOverlay，不要写成 `.welcome-overlay`：
+           动态创建的 #performanceDialog（性能档询问）复用同一个类，桌面端仍然需要它。
+           节点本身由 180-boot-config.js 在桌面端自调 handleWelcomeEnter() 移除，
+           那一步同时负责首曲初始化与播放，不能只靠 CSS 藏起来。 */
+        html.aria-desktop #welcomeOverlay { display: none; }
         /* ★ 深色径向遮罩压暗背景图：启动公告底图是暖金封面，直接铺满会整屏泛黄
            （桌面端每次启动“全屏变黄再恢复”的根因）——遮罩保证只透出暗色氛围 */
         .welcome-overlay::after {
@@ -75,11 +84,11 @@
             animation: modalIn 0.4s var(--e-enter);
         }
         .welcome-icon {
-            color: var(--theme-color, #E8BE6A);
+            color: var(--aria-accent);
             margin-bottom: 20px;
             display: flex;
             justify-content: center;
-            filter: drop-shadow(0 0 20px rgba(var(--theme-color-rgb, 232, 190, 106), 0.4));
+            filter: drop-shadow(0 0 20px rgba(var(--aria-accent-rgb), 0.4));
         }
         .welcome-title {
             font-size: 24px;
@@ -92,7 +101,7 @@
             margin-bottom: 28px;
         }
         .welcome-btn {
-            background: var(--theme-color, #E8BE6A);
+            background: var(--aria-accent);
             color: #1a1a1a;
             border: none;
             border-radius: 24px;
@@ -102,11 +111,11 @@
             cursor: pointer;
             font-family: inherit;
             transition: var(--t-base);
-            box-shadow: 0 4px 20px rgba(var(--theme-color-rgb, 232, 190, 106), 0.35);
+            box-shadow: 0 4px 20px rgba(var(--aria-accent-rgb), 0.35);
         }
         .welcome-btn:hover {
             transform: scale(1.05);
-            box-shadow: 0 6px 28px rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
+            box-shadow: 0 6px 28px rgba(var(--aria-accent-rgb), 0.5);
         }
 
         /* 模糊背景效果 - 左右缓慢摇摆（双层交叉淡入淡出） */
@@ -135,6 +144,36 @@
         }
         /* 暂停时背景摇摆也停止 */
         .blur-background.paused {
+            animation-play-state: paused;
+        }
+
+        /* ========== MV 动态背景（搜索结果里点 MV 卡片 → 铺满整窗循环播放） ==========
+           ★ 与 .blur-background 同 z-index(-2)，靠**树序在它之后**盖住模糊背景；
+             下面的 .color-overlay(-1) 与 .player-container(1) 仍在其上，所以歌词、
+             PV 引擎、控件都照旧可见可点。
+           ★ 四周留 6% 余量并放大 1.06：CSS blur() 会把画面外的透明像素卷进来，
+             不留余量时四边会出现一圈变暗的"黑边"。
+           ★ 压暗/模糊由 101-mv-background.js 内联写 filter，这里只给默认值。 */
+        .mv-background {
+            position: fixed;
+            top: -6%;
+            left: -6%;
+            width: 112%;
+            height: 112%;
+            object-fit: cover;
+            background: transparent;
+            z-index: -2;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.7s var(--e-exit, ease);
+            transform: scale(1.06);
+            filter: blur(8px) brightness(0.55);
+        }
+        .mv-background.visible {
+            opacity: 1;
+        }
+        /* MV 已铺满时，模糊背景层的摇摆动画白烧 GPU —— 直接停掉 */
+        body.mv-bg-on .blur-background {
             animation-play-state: paused;
         }
 
@@ -205,6 +244,28 @@
             justify-content: center;
             align-items: center;
             overflow: visible;
+        }
+
+        /* ★ Automix 交叉期：封面随进度「先沉后升」。
+           --automix-dip = sin(p·π)（由 app/96-automix 每帧写入）：p=0 不动、
+           p=0.5（交接点）最深、p=1 复原——交接点封面最暗的瞬间，setCoverImage
+           的 0.4s 交叉淡入正好开始，观感是渐变过去而不是「啪一下换掉」。
+           只做 opacity + 极轻微 scale：模糊背景层不加同类规则——它的 opacity
+           由 JS 逐层写（inline style 优先级高于本表），且大面积 filter 逐帧变化
+           会掉帧；背景的过渡由它自身的 0.8s 双缓冲承担。 */
+        body.automix-crossing .cover-area {
+            opacity: calc(1 - 0.28 * var(--automix-dip, 0));
+            transform: scale(calc(1 - 0.02 * var(--automix-dip, 0)));
+            transition: opacity 0.18s linear, transform 0.18s linear;
+        }
+        /* 降级：低配档 / 软件渲染只保留透明度，不做缩放（避免逐帧合成） */
+        html#ariaRoot body.perf-low.automix-crossing .cover-area,
+        html#ariaRoot body.perf-minimal.automix-crossing .cover-area,
+        html#ariaRoot.is-software-renderer body.automix-crossing .cover-area {
+            transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            body.automix-crossing .cover-area { transform: none; }
         }
 
         .song-cover {
@@ -348,11 +409,11 @@
         }
 
         .favorite-btn.active {
-            color: var(--theme-color);
+            color: var(--aria-accent);
         }
 
         .favorite-btn.active svg {
-            fill: var(--theme-color);
+            fill: var(--aria-accent);
         }
 
         .favorite-btn svg {
@@ -561,7 +622,7 @@
         .ctx-item:focus-visible,
         .setting-dropdown-trigger:focus-visible,
         .setting-dropdown-item:focus-visible {
-            outline: 2px solid var(--theme-color, #E8BE6A);
+            outline: 2px solid var(--aria-accent);
             outline-offset: 2px;
         }
 
@@ -586,9 +647,9 @@
 
         /* 当前选中项高亮 */
         .kb-nav-selected {
-            outline: 2px solid var(--theme-color, #E8BE6A) !important;
+            outline: 2px solid var(--aria-accent) !important;
             outline-offset: 2px !important;
-            box-shadow: 0 0 0 4px rgba(var(--theme-color-rgb, 232, 190, 106), 0.15) !important;
+            box-shadow: 0 0 0 4px rgba(var(--aria-accent-rgb), 0.15) !important;
             z-index: 9999;
             position: relative;
             border-radius: 8px;
@@ -598,7 +659,7 @@
         .kb-nav-selected.result-item,
         .kb-nav-selected.playlist-item,
         .kb-nav-selected.add-to-playlist-item {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12) !important;
+            background: rgba(var(--aria-accent-rgb), 0.12) !important;
         }
 
         .play-button {
@@ -699,13 +760,13 @@
 
         /* ★ 开关类按钮的「已启用」高亮态（如右上角 Now Playing 接管开关） */
         .icon-action-btn.on {
-            background: var(--theme-color, #4f8cff);
+            background: var(--aria-accent);
             border-color: transparent;
             color: #fff;
             box-shadow: 0 2px 10px rgba(64, 140, 255, 0.45);
         }
         .icon-action-btn.on:hover {
-            background: var(--theme-color, #4f8cff);
+            background: var(--aria-accent);
             color: #fff;
         }
 
@@ -826,9 +887,9 @@
         }
 
         .lyric-offset-btn:hover {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.4);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            border-color: rgba(var(--aria-accent-rgb), 0.4);
+            color: var(--aria-accent);
             transform: scale(1.1);
         }
 
@@ -905,13 +966,13 @@
             user-select: none;
         }
         .num-step-btn:hover {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.4);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.16);
+            border-color: rgba(var(--aria-accent-rgb), 0.4);
+            color: var(--aria-accent);
         }
         .num-step-btn:active { transform: scale(0.92); }
         .num-step-btn:focus-visible {
-            outline: 2px solid var(--theme-color, #E8BE6A);
+            outline: 2px solid var(--aria-accent);
             outline-offset: 2px;
         }
         /* 设置页里那个紧跟滑块的数字框：去掉行内样式后由这条统一给形 */
@@ -929,13 +990,13 @@
             transition: var(--t-base);
         }
         .setting-number-input:focus {
-            border-color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.1);
+            border-color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.1);
         }
 
         .lyric-offset-input:focus {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.12);
-            border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.5);
+            background: rgba(var(--aria-accent-rgb), 0.12);
+            border-color: rgba(var(--aria-accent-rgb), 0.5);
         }
 
         .lyric-offset-unit {
@@ -969,16 +1030,18 @@
             user-select: none;
             cursor: pointer;
             position: relative;
-            transform-origin: left center;
+            /* 行缩放原点：唯一来源是 --aria-lyric-origin（由 190-settings-fontsize.js
+               按当前对齐方向写 left/center/right center）。不能在这里写死 ——
+               57-wordcloud-camera.js 会按与激活行的距离给每行不同的 scale，
+               原点一旦与对齐侧不一致，右对齐时右端就会随缩放比各飘各的。
+               （原此处还有一条 `.view-lyrics .line{transform-origin:center center}`
+               把歌词模式**强制**成居中原点，是"歌词模式左对齐也不齐"的直接原因，已删。） */
+            transform-origin: var(--aria-lyric-origin, left center);
             will-change: transform, opacity;
         }
 
-        .player-container.view-lyrics .line {
-            transform-origin: center center;
-        }
-
         /* 默认（封面）与歌词全屏模式：歌词视口上下边缘自然渐变羽化 */
-        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tempera):not(.view-scroll):not(.view-tunnel):not(.view-dimension) .lyrics-container {
+        .player-container:not(.view-wordcloud):not(.view-pv):not(.view-tempera):not(.view-tunnel):not(.view-dimension) .lyrics-container {
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
             mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
         }
@@ -1410,13 +1473,13 @@
 
         /* 桌面歌词按钮激活态：与右上角 Now Playing 开关(.on)统一为「主题色实心 + 光晕」 */
         #desktopLyricsBtn.active-dl {
-            background: var(--theme-color, #4f8cff);
+            background: var(--aria-accent);
             border-color: transparent;
             color: #fff;
             box-shadow: 0 2px 10px rgba(64, 140, 255, 0.45);
         }
         #desktopLyricsBtn.active-dl:hover {
-            background: var(--theme-color, #4f8cff);
+            background: var(--aria-accent);
             color: #fff;
         }
 
@@ -1493,8 +1556,8 @@ body.perf-minimal .neon-char text {
     filter: drop-shadow(0 0 0.05em rgba(255, 255, 255, 0.45)) !important;
 }
         .about-star-btn:hover {
-            background: var(--theme-color, #E8BE6A) !important;
-            border-color: var(--theme-color, #E8BE6A) !important;
+            background: var(--aria-accent) !important;
+            border-color: var(--aria-accent) !important;
             color: #150f04 !important;
             transform: translateY(-1px);
         }

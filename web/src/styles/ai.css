@@ -69,7 +69,7 @@
         }
         .ai-flyin-wireframes .wireframe-shape {
             position: absolute;
-            border: 1px solid rgba(var(--theme-color-rgb, 255, 255, 255), 0.08);
+            border: 1px solid rgba(var(--aria-accent-rgb), 0.08);
             border-radius: 50%;
             animation: ai-wireframe-float var(--wf-duration, 18s) ease-in-out infinite;
         }
@@ -128,15 +128,15 @@
         .ai-theme-flyin .line.active .word.active {
             opacity: 1;
             transform: translateY(0) translateX(0) scale(1);
-            filter: drop-shadow(0 0 10px rgba(var(--theme-color-rgb, 255, 255, 255), 0.6))
-                    drop-shadow(0 0 4px rgba(var(--theme-color-rgb, 255, 255, 255), 0.4));
+            filter: drop-shadow(0 0 10px rgba(var(--aria-accent-rgb), 0.6))
+                    drop-shadow(0 0 4px rgba(var(--aria-accent-rgb), 0.4));
         }
         /* 唱完的字：高亮减弱，保持稳定可见 */
         .ai-theme-flyin .line.active .word.active .word-highlight.done {
             opacity: 0.85;
         }
         .ai-theme-flyin .line.active .word.active:has(.word-highlight.done) {
-            filter: drop-shadow(0 0 4px rgba(var(--theme-color-rgb, 255, 255, 255), 0.2));
+            filter: drop-shadow(0 0 4px rgba(var(--aria-accent-rgb), 0.2));
         }
 
         /* 纯文本歌词行（无逐字数据）：整行飞入 */
@@ -159,9 +159,9 @@
         }
 
         /* AI 主题文字阴影：仅在飞入模式下生效，普通/歌词模式不发光 */
-        .ai-text-shadow-low .view-flyin .line.active { text-shadow: 0 0 8px rgba(var(--theme-color-rgb), 0.3); }
-        .ai-text-shadow-medium .view-flyin .line.active { text-shadow: 0 0 16px rgba(var(--theme-color-rgb), 0.5), 0 0 4px rgba(var(--theme-color-rgb), 0.3); }
-        .ai-text-shadow-high .view-flyin .line.active { text-shadow: 0 0 28px rgba(var(--theme-color-rgb), 0.7), 0 0 8px rgba(var(--theme-color-rgb), 0.5), 0 0 2px rgba(var(--theme-color-rgb), 0.4); }
+        .ai-text-shadow-low .view-flyin .line.active { text-shadow: 0 0 8px rgba(var(--aria-accent-rgb), 0.3); }
+        .ai-text-shadow-medium .view-flyin .line.active { text-shadow: 0 0 16px rgba(var(--aria-accent-rgb), 0.5), 0 0 4px rgba(var(--aria-accent-rgb), 0.3); }
+        .ai-text-shadow-high .view-flyin .line.active { text-shadow: 0 0 28px rgba(var(--aria-accent-rgb), 0.7), 0 0 8px rgba(var(--aria-accent-rgb), 0.5), 0 0 2px rgba(var(--aria-accent-rgb), 0.4); }
 
         /* AI 主题过渡动画 */
         .ai-theme-transition,
@@ -209,8 +209,8 @@
         .ai-status-spinner {
             width: 14px;
             height: 14px;
-            border: 2px solid rgba(var(--theme-color-rgb), 0.2);
-            border-top-color: var(--theme-color);
+            border: 2px solid rgba(var(--aria-accent-rgb), 0.2);
+            border-top-color: var(--aria-accent);
             border-radius: 50%;
             animation: ai-spin 0.7s linear infinite;
             flex-shrink: 0;
@@ -219,7 +219,7 @@
             animation: none;
             border: none;
             border-radius: 50%;
-            background: var(--theme-color);
+            background: var(--aria-accent);
             position: relative;
         }
         .ai-status-spinner.done::after {
@@ -282,7 +282,7 @@
         }
         .ai-status-output {
             font-size: 11px;
-            color: rgba(var(--theme-color-rgb), 0.8);
+            color: rgba(var(--aria-accent-rgb), 0.8);
             font-family: inherit !important;
             line-height: 1.5;
             max-height: 100px;
@@ -294,14 +294,14 @@
         .ai-status-output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
         .ai-status-progress-bar {
             height: 2px;
-            background: rgba(var(--theme-color-rgb), 0.15);
+            background: rgba(var(--aria-accent-rgb), 0.15);
             border-radius: 1px;
             overflow: hidden;
             margin-top: 6px;
         }
         .ai-status-progress-fill {
             height: 100%;
-            background: var(--theme-color);
+            background: var(--aria-accent);
             border-radius: 1px;
             transition: width 0.3s ease;
             width: 0%;
@@ -516,9 +516,38 @@
             background: transparent;
             display: none;
         }
-        /* 搜索历史 */
+        /* 搜索历史 / 热词 / 联想词（同一个面板，三态切换） */
         .search-history {
             padding: 2px 16px 8px;
+            max-height: clamp(120px, 34vh, 300px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+        /* ★ 2026-10-04 搜索弹窗：**高度恒定**，让内容去填满它。
+           （用户纠正过一版：上一版写成 height:auto「弹窗随内容收缩」是理解反了 ——
+             弹窗尺寸永远不变，要解决的是「下面一大段空白没人占」。
+             按钮/输入框是固定的 header 段，其余区域由 历史区 或 结果区 撑满。）
+
+           两条原始症状：
+             ① 打开搜索页时只有 header+输入框+热词+历史（实测 ≈450px），
+                下方 ~250px 是死白 —— 因为历史区被 max-height:300px 钉死、
+                结果区是空的（:empty → display:none），没人去占那段；
+             ② 热词+历史 chip ≈ 320px 正好超 300px ⇒ 历史区自己出滚动条。
+           改法：历史区与结果区都 flex:1 撑满剩余高度（空闲态/结果态互斥，
+           同一时刻只有一个有 display），只有内容真的超过可用高度时才在**区块内部**滚动。
+
+           ★ 必须用 #searchOverlay 限定 —— .search-modal 被收藏/歌单/歌手页等
+             七八个弹窗共用，动全局会连带改掉它们的固定高度。 */
+        #searchOverlay .search-history {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+        }
+        /* 结果区本来就是 flex:1（见上），这里只补 min-height:0 保证它可收缩 */
+        #searchOverlay .search-results {
+            flex: 1 1 auto;
+            min-height: 0;
         }
         .search-history .search-history-label {
             font-size: 12px;
@@ -582,6 +611,52 @@
         .search-history .history-chip-del:hover {
             background: rgba(255, 107, 107, 0.2);
             color: #ff6b6b;
+        }
+
+        /* ★ 2026-10-04 热词 chip：与历史 chip 同形但换个色系，一眼分清「平台推的」和「你搜过的」 */
+        .search-history .hot-chip {
+            background: rgba(120, 180, 255, 0.12);
+            border-color: rgba(120, 180, 255, 0.22);
+            color: rgba(220, 235, 255, 0.92);
+        }
+        .search-history .hot-chip:hover {
+            background: rgba(120, 180, 255, 0.2);
+        }
+
+        /* ★ 2026-10-04 联想词：竖排列表（而非 chips）—— 联想词是「输入过程的候选」，
+           竖排更接近输入法/搜索框的通用心智，也让命中高亮看得清 */
+        .search-history .suggest-item {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            line-height: 1.3;
+            color: rgba(255, 255, 255, 0.86);
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .search-history .suggest-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .search-history .suggest-icon {
+            flex: 0 0 auto;
+            color: rgba(255, 255, 255, 0.32);
+        }
+        .search-history .suggest-item:hover .suggest-icon {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .search-history .suggest-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-history .suggest-text em {
+            font-style: normal;
+            font-weight: 600;
+            color: #7ec8ff;
         }
 
         .search-results.visible {
@@ -664,6 +739,17 @@
             height: 100%;
             object-fit: cover;
             border-radius: 10px;
+        }
+
+        /* ★ 搜索结果数量标签（2026-10-03）：原先挂在面板顶部的 #searchHint 上，
+           排在歌手/MV 两排卡片之上，喧宾夺主。改由 150 画进结果区、落在卡片与
+           「播放全部」之间 —— 视觉上就是歌曲列表的表头，不再抢卡片的风头。 */
+        .search-count {
+            padding: 9px 4px 6px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: rgba(255, 255, 255, 0.42);
         }
 
         /* 播放全部按钮 */

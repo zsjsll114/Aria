@@ -92,6 +92,29 @@ html#ariaRoot .ai-models-overlay.visible {
                 visibility 0s linear 0s;
 }
 
+/* ★ 关闭态浮层的子树一律不吃指针事件（2026-10-03 实测补充）。
+   收起只用了 `opacity: 0` + `visibility: hidden`，而 **opacity:0 完全不拦点击**：
+   只要子树里任何一层写了 `visibility: visible`，整块就"复活"成一块看不见的玻璃板。
+   用户报的「开过设置页之后左边部分无法点击，就是预览框容器没有彻底删掉」正是这条 ——
+   实测关掉设置后 `document.elementsFromPoint(360,270)` 的顶层是预览播放器的
+   `#previewLyricsScroll`（它的父层被 setMode 写过 inline `visibility:visible`）。
+   这里对共用同一套显隐机制的六个浮层统一兜底；`*` 是必要的，因为
+   `pointer-events` 会被后代显式声明覆盖。 */
+html#ariaRoot .search-overlay:not(.visible),
+html#ariaRoot .search-overlay:not(.visible) *,
+html#ariaRoot .settings-overlay:not(.visible),
+html#ariaRoot .settings-overlay:not(.visible) *,
+html#ariaRoot .color-picker-overlay:not(.visible),
+html#ariaRoot .color-picker-overlay:not(.visible) *,
+html#ariaRoot .lyric-source-overlay:not(.visible),
+html#ariaRoot .lyric-source-overlay:not(.visible) *,
+html#ariaRoot .view-mode-overlay:not(.visible),
+html#ariaRoot .view-mode-overlay:not(.visible) *,
+html#ariaRoot .ai-models-overlay:not(.visible),
+html#ariaRoot .ai-models-overlay:not(.visible) * {
+    pointer-events: none !important;
+}
+
 /* 面板：退场走 transition（近、快、ease-in） */
 html#ariaRoot .search-overlay .search-modal,
 html#ariaRoot .settings-overlay .settings-panel,

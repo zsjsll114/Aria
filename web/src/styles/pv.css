@@ -6,7 +6,6 @@
 /* 1. 主播放器与设置预览窗容器状态切换 */
 .player-container.view-pv,
 .player-container.view-tempera,
-.player-container.view-scroll,
 .preview-player.view-pv {
     position: relative;
     overflow: hidden;
@@ -20,8 +19,6 @@
 .player-container.view-pv .lyrics-area-wrapper,
 .player-container.view-tempera .player-controls-wrapper,
 .player-container.view-tempera .lyrics-area-wrapper,
-.player-container.view-scroll .player-controls-wrapper,
-.player-container.view-scroll .lyrics-area-wrapper,
 .preview-player.view-pv .cover-area,
 .preview-player.view-pv .preview-cover-area,
 .preview-player.view-pv .lyrics-container,
@@ -33,15 +30,13 @@
 }
 
 .player-container.view-pv .top-action-buttons,
-.player-container.view-tempera .top-action-buttons,
-.player-container.view-scroll .top-action-buttons {
+.player-container.view-tempera .top-action-buttons {
     z-index: 100 !important;
 }
 
 /* 底部控制栏：绝对定位在屏幕底部中央 */
 .player-container.view-pv .bottom-control-bar,
-.player-container.view-tempera .bottom-control-bar,
-.player-container.view-scroll .bottom-control-bar {
+.player-container.view-tempera .bottom-control-bar {
     display: flex !important;
     position: absolute !important;
     bottom: 20px !important;

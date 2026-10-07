@@ -32,6 +32,7 @@ import { startStallCheck, stopStallCheck, initStallEventListeners } from './stal
 import { getPlayUrl } from '../services/musicApi.js';
 import { formatTime } from '../utils/formatters.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
+import { registerAudioListener } from './dualDeck.js';
 
 const PLAY_ICON_PATH = '<path d="M10.345 23.287c.415 0 .763-.15 1.22-.407l12.742-7.404c.838-.481 1.178-.855 1.178-1.46 0-.599-.34-.972-1.178-1.462L11.565 5.158c-.457-.265-.805-.407-1.22-.407-.789 0-1.345.606-1.345 1.57V21.71c0 .971.556 1.577 1.345 1.577z" fill-rule="nonzero"></path>';
 const PAUSE_ICON_PATH = '<path d="M13.293 22.772c.955 0 1.436-.481 1.436-1.436V6.677c0-.98-.481-1.427-1.436-1.427h-2.457c-.954 0-1.436.473-1.436 1.427v14.66c-.008.954.473 1.435 1.436 1.435h2.457zm7.87 0c.954 0 1.427-.481 1.427-1.436V6.677c0-.98-.473-1.427-1.428-1.427h-2.465c-.955 0-1.428.473-1.428 1.427v14.66c0 .954.473 1.435 1.428 1.435h2.465z" fill-rule="nonzero"></path>';
@@ -87,6 +88,9 @@ export function waitForAudioReady(timeoutMs = 8000) {
         };
         const onReady = () => { if (settled) return; settled = true; cleanup(); resolve(); };
         const onErr = () => { if (settled) return; settled = true; cleanup(); reject(new Error('audio_load_error')); };
+        /* ★ 一次性探针（挂上即拆）：必须直接挂到本函数捕获的元素上，
+           不能走 registerAudioListener——once 探针进常驻搬运表是语义污染，
+           且 node 测试环境 dualDeck 未初始化时监听不会落位、Promise 永远 pending */
         audio.addEventListener('canplay', onReady, { once: true });
         audio.addEventListener('loadeddata', onReady, { once: true });
         audio.addEventListener('error', onErr, { once: true });
@@ -122,7 +126,7 @@ export function updatePlaybackPosition() {
 export function initAudioEvents(callbacks) {
     const audio = dom.audio;
 
-    audio.addEventListener('play', () => {
+    registerAudioListener('play', () => {
         state.isPlaying = true;
         if (dom.playIcon) dom.playIcon.innerHTML = PAUSE_ICON_PATH;
         getBlurBgLayers().forEach(l => l.classList.remove('paused'));
@@ -137,7 +141,7 @@ export function initAudioEvents(callbacks) {
         eventBus.emit(EVENTS.PLAY);
     });
 
-    audio.addEventListener('pause', () => {
+    registerAudioListener('pause', () => {
         state.isPlaying = false;
         if (dom.playIcon) dom.playIcon.innerHTML = PLAY_ICON_PATH;
         getBlurBgLayers().forEach(l => l.classList.add('paused'));
@@ -145,23 +149,23 @@ export function initAudioEvents(callbacks) {
         eventBus.emit(EVENTS.PAUSE);
     });
 
-    audio.addEventListener('ended', () => {
+    registerAudioListener('ended', () => {
         eventBus.emit(EVENTS.ENDED);
     });
 
-    audio.addEventListener('error', () => {
+    registerAudioListener('error', () => {
         if (audio.src && audio.error) {
             logError('audioPlayer', '音频错误:', audio.error.code, audio.error.message);
             handleAudioPlayError();
         }
     });
 
-    audio.addEventListener('timeupdate', () => {
+    registerAudioListener('timeupdate', () => {
         state.currentTime = audio.currentTime * 1000;
         updatePlaybackPosition();
     });
 
-    audio.addEventListener('loadedmetadata', () => {
+    registerAudioListener('loadedmetadata', () => {
         if (dom.totalTimeEl) dom.totalTimeEl.textContent = formatTime(getDuration());
     });
 

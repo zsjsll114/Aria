@@ -180,6 +180,12 @@ globalThis.audioCtx = null;
 /* ========== 在线搜索与播放（vkeys.cn API） ========== */
 globalThis.currentSource = 'tencent';
 
+/* ★ 搜索页音源（2026-10-03 新增，与「正在播放的平台」currentSource 解耦）。
+   唯一 writer 是 150-search-engine.js；此处只做声明 + 登记。语义 = 用户选的源
+   在会话内**粘性**（播放/切歌不再改写它），用户没选过时由 150 的
+   resolveSearchSource 用打开面板那一刻的播放平台初始化。理由见 150 文件头注释。 */
+globalThis.searchSource = 'tencent';
+
 globalThis.currentTrackIndex = 0;
 
 /* 播放列表 */
@@ -313,6 +319,14 @@ const DROPDOWN_OPTIONS = {
         { value: 'nvidia', label: 'NVIDIA NIM' },
         { value: 'custom', label: '自定义 (OpenAI 兼容)' }
     ],
+    /* MV 画质增强的 Anime4K 强度档（2026-10-04 用户需求：自行选择 S/M/L）。
+       三档是同一套架构、不同卷积核尺寸，pass 数 9 / 17 / 19 —— 越重细节越强，
+       也越吃显卡（103 有单帧耗时降级闸，顶不住会自动关掉并恢复原画）。 */
+    mvUpscaleTier: [
+        { value: 'S', label: '轻 S' },
+        { value: 'M', label: '中 M' },
+        { value: 'L', label: '强 L' }
+    ],
     language: [
         { value: 'zh-CN', label: '简体中文' },
         { value: 'en-US', label: 'English' }
@@ -445,6 +459,7 @@ registerGlobal('mainVisManager', { owner: '10-config-state' });
 registerGlobal('pendingPlayAfterPreload', { owner: '10-config-state' });
 registerGlobal('audioCtx', { owner: '10-config-state' });
 registerGlobal('currentSource', { owner: '10-config-state' });
+registerGlobal('searchSource', { owner: '10-config-state' });
 registerGlobal('currentTrackIndex', { owner: '10-config-state', multiWrite: true });
 registerGlobal('playlist', { owner: '10-config-state', multiWrite: true });
 registerGlobal('preloadedSongReady', { owner: '10-config-state' });

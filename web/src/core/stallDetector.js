@@ -19,6 +19,7 @@
  * ============================================================ */
 import { state } from '../infrastructure/state.js';
 import { logWarn } from '../services/log.js';
+import { getActiveAudio, registerAudioListener } from './dualDeck.js';
 
 const STALL_CHECK_MS = 8000;
 const STALLED_CONFIRM_MS = 6000;
@@ -26,27 +27,36 @@ const STALLED_CONFIRM_MS = 6000;
 let _audio = null;
 let _onStall = null;
 
+/* ★ Automix Phase 1（方案 §2）：swap 后监听已由 registerAudioListener 搬运表
+   迁到新 deck，但闭包里缓存的 _audio 引用还指向旧元素——所有运行时读取必须
+   经 _getAudio()。getActiveAudio() 未初始化时（node 测试/极端装配序）退回注入值。 */
+function _getAudio() {
+    return getActiveAudio() || _audio;
+}
+
 const isDocHidden = () => (typeof document !== 'undefined' && document.hidden);
 
 /** 启动卡死检测（8 秒内 currentTime 未前进即判定卡死） */
 export function startStallCheck() {
     stopStallCheck();
-    if (!_audio) return;
+    const audio = _getAudio();
+    if (!audio) return;
     state.stallCheckGeneration++;
     const gen = state.stallCheckGeneration;
-    state.stallLastTime = _audio.currentTime;
+    state.stallLastTime = audio.currentTime;
     const check = () => {
         if (gen !== state.stallCheckGeneration) return; /* 已过期 */
-        if (_audio.paused || state.isBuffering || isDocHidden()) {
+        const el = _getAudio();
+        if (el.paused || state.isBuffering || isDocHidden()) {
             state.stallTimer = setTimeout(check, STALL_CHECK_MS);
             return;
         }
-        if (Math.abs(_audio.currentTime - state.stallLastTime) < 0.1) {
+        if (Math.abs(el.currentTime - state.stallLastTime) < 0.1) {
             logWarn('audioEngine', '检测到音频卡死（currentTime 8秒未前进），自动停止');
             if (_onStall) _onStall();
             return;
         }
-        state.stallLastTime = _audio.currentTime;
+        state.stallLastTime = el.currentTime;
         state.stallTimer = setTimeout(check, STALL_CHECK_MS);
     };
     state.stallTimer = setTimeout(check, STALL_CHECK_MS);
@@ -73,8 +83,18 @@ export function initStallDetector(audio, onStall) {
     _onStall = onStall;
     if (!audio) return;
 
+    /* ★ 常驻监听走 registerAudioListener（swap 自动搬运）。dualDeck 未初始化时
+       （node 行为测试路径）该 API 只登记不挂载，所以这里保留直接挂载兜底：
+       生产路径 registerAudioListener 会挂到 deckA（= 同一个 audio 元素），
+       兜底挂载会与它重复吗？——不会：生产时 deckA 已 init，走不到兜底。
+       但 node 测试里 dualDeck 未 init，只有兜底挂载生效，行为与旧版一致。 */
+    const bind = (type, fn) => {
+        if (getActiveAudio()) registerAudioListener(type, fn);
+        else audio.addEventListener(type, fn);
+    };
+
     /* 网络停滞：浏览器停止下载数据（常见于网络不稳定） */
-    audio.addEventListener('stalled', () => {
+    bind('stalled', () => {
         if (isDocHidden()) {
             return; /* 后台节流保护：不触发误判 */
         }
@@ -82,7 +102,8 @@ export function initStallDetector(audio, onStall) {
         /* 6秒后检查是否恢复，如果没有则判定为播放失败 */
         setTimeout(() => {
             if (isDocHidden()) return;
-            if (!audio.paused && audio.currentTime === state.stallLastTime && audio.readyState < 3) {
+            const el = _getAudio();
+            if (!el.paused && el.currentTime === state.stallLastTime && el.readyState < 3) {
                 logWarn('audioEngine', '网络停滞后未恢复，停止播放');
                 if (_onStall) _onStall();
             }
@@ -90,20 +111,21 @@ export function initStallDetector(audio, onStall) {
     });
 
     /* 缓冲开始：暂停卡死检测 */
-    audio.addEventListener('waiting', () => {
+    bind('waiting', () => {
         state.isBuffering = true;
         if (state.stallTimer) { clearTimeout(state.stallTimer); state.stallTimer = null; }
         /* 续播诊断：暂停几秒后恢复出现"卡一下"时，控制台会看到这条日志，
            据此区分 网络层重缓冲(readyState 低/bufferedEnd 追不上) 与 解码层异常 */
-        if (audio.currentTime > 0.5 && audio.buffered && audio.buffered.length > 0) {
-            logWarn('audioEngine', `[waiting] 中途重缓冲 t=${audio.currentTime.toFixed(1)}s ` +
-                `bufferedEnd=${audio.buffered.end(audio.buffered.length - 1).toFixed(1)}s ` +
-                `readyState=${audio.readyState}`);
+        const el = _getAudio();
+        if (el.currentTime > 0.5 && el.buffered && el.buffered.length > 0) {
+            logWarn('audioEngine', `[waiting] 中途重缓冲 t=${el.currentTime.toFixed(1)}s ` +
+                `bufferedEnd=${el.buffered.end(el.buffered.length - 1).toFixed(1)}s ` +
+                `readyState=${el.readyState}`);
         }
     });
 
     /* 缓冲结束恢复播放：重新启动卡死检测 */
-    audio.addEventListener('playing', () => {
+    bind('playing', () => {
         state.isBuffering = false;
         startStallCheck();
     });

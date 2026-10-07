@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>手机遥控器 · Aria</title>
 <link rel="icon" href="data:,">
+<!-- 设计令牌（P1）：本页是独立窗口，--aria-accent 需要显式引入；
+     tokens.css 的性能降级块锚在 html#ariaRoot 上，本页无该 id，故不会误伤。 -->
+<link rel="stylesheet" href="src/styles/tokens.css">
 <!-- 动效令牌（约束 15：曲线只有三条）。motion.css 的浮层规则全部锚在
      html#ariaRoot 上，本页没有该 id，所以引进来只拿令牌，不会带入主界面样式。 -->
 <link rel="stylesheet" href="src/styles/motion.css">

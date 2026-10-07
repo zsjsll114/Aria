@@ -1,0 +1,181 @@
+/* ============================================================
+ * artist.css — 歌手页（297-artist-page.js）
+ * 容器沿用 .search-overlay / .search-modal 的玻璃底，这里只补内部结构。
+ * 主题色一律走 var(--aria-accent) / --theme-color-rgb（硬性约定 6）。
+ * ============================================================ */
+
+.artist-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: 82vh;
+    min-height: 0;
+}
+/* 标题左内边距归零：与音源按钮/关闭按钮对齐同一条基线（同 rankings.css 的做法） */
+.search-modal-header .favorites-title#artistPageTitle {
+    padding-left: 0;
+}
+
+/* ---------------- 头部：圆形头像 + 名称 ---------------- */
+.artist-profile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 18px 12px;
+    flex-shrink: 0;
+}
+.artist-avatar {
+    position: relative;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    /* ★ 纯色底取自歌手名散列的色相 --ah（2026-10-03）：没头像或头像图 404 时，
+       这一层 + 首字就是占位牌；有头像时被 background-image 盖住。 */
+    background: hsl(var(--ah, 210) 52% 40%) center / cover no-repeat;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+/* 首字占位：与搜索页歌手卡同款（纯色底 + 字母），色相同源 */
+.artist-avatar .artist-avatar-initial {
+    font-size: 30px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.94);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+/* 头像图就位时藏起首字：background-image 画在内容之下，不藏会叠在头像上 */
+.artist-avatar.has-img .artist-avatar-initial {
+    display: none;
+}
+.artist-meta {
+    min-width: 0;
+}
+.artist-name {
+    font-size: 19px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.artist-sub {
+    margin-top: 4px;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------------- 简介：默认 3 行，点击展开 ---------------- */
+.artist-desc {
+    margin: 0 18px 10px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.62);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.artist-desc.expanded {
+    -webkit-line-clamp: unset;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+/* ---------------- 标签页 ---------------- */
+.artist-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0 18px 10px;
+    flex-shrink: 0;
+}
+.artist-tab {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12.5px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    /* 只列真正会变的三个属性：:hover 改 border-color/color，.active 再加 background。
+       原先用 all 简写，会连带 width/padding/box-shadow 一起过渡，
+       既有意外动画风险也可能触发不必要的布局。 */
+    transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
+}
+.artist-tab:hover {
+    border-color: rgba(var(--aria-accent-rgb), 0.5);
+    color: #fff;
+}
+.artist-tab.active {
+    background: rgba(var(--aria-accent-rgb), 0.18);
+    border-color: var(--aria-accent);
+    color: #fff;
+}
+
+/* ---------------- 内容滚动区（独立容器；切标签必须复位 scrollTop） ---------------- */
+.artist-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 16px 18px;
+    min-height: 0;
+}
+.artist-empty {
+    padding: 30px 0;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* ---------------- 专辑宫格 ---------------- */
+.artist-album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 14px;
+}
+.artist-album {
+    cursor: pointer;
+}
+.artist-album-cover {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    transition: transform 0.18s ease;
+}
+.artist-album:hover .artist-album-cover {
+    transform: translateY(-2px);
+}
+.artist-album-name {
+    margin-top: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.artist-album-year {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+/* ---------------- 可点击的歌手名（搜索结果 / 榜单 / 播放器下方共用） ---------------- */
+.artist-link {
+    cursor: pointer;
+    transition: color 0.14s ease;
+}
+.artist-link:hover {
+    color: var(--aria-accent);
+    text-decoration: underline;
+}
+/* 歌手页自己的歌曲行：专辑名不需要看起来可点，光标保持默认 */
+.artist-song .result-artist {
+    cursor: default;
+}

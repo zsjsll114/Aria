@@ -13,7 +13,7 @@ import { parseEnhancedLrc, convertToEnhancedLrc } from '../services/enhancedLrcC
 import { calculateLyricMatchScore } from '../services/lyricMatcher.js';
 import { localMusicManager } from './10-config-state.js';
 import { audio, renderLyrics } from './20-lyrics-render.js';
-import { favoritesOverlay, songArtistEl, songTitleEl, sourceBtns } from './30-dom-refs.js';
+import { favoritesOverlay, songArtistEl, songTitleEl } from './30-dom-refs.js';
 import { getLyricOffset, updateLineTimes, updateLyricOffsetUI } from './40-playback-state.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { CTX_ICONS, showCtxConfirm, showCtxMenu } from './80-context-menu.js';
@@ -359,7 +359,12 @@ function addToPlaylist(playlistId) {
                 source: currentSongData.source || '',
                 id: currentSongData.id || '',
                 mid: currentSongData.mid || '',
-                url: currentSongData.url || ''
+                url: currentSongData.url || '',
+                /* ★ 2026-10-04：MV 关联也要存进歌单 —— 否则「加进歌单 → 以后从歌单播」
+                   就只剩关键词搜索这一条路可走（歌曲自带的 MV id 已经丢在收藏那一刻）。 */
+                mvVid: currentSongData.mvVid || '',
+                mvId: currentSongData.mvId || '',
+                mvHash: currentSongData.mvHash || ''
             });
             if (!pl.cover && currentSongData.cover) pl.cover = currentSongData.cover;
             savePlaylists(playlists);
@@ -442,12 +447,12 @@ async function renderPlaylistsView() {
                     </div>
                 </div>`;
 
-            /* ★ 自建平台歌单入口：网易云 → 酷狗 → QQ（未登录/未启用也显示，点击可提示登录）
+            /* ★ 自建平台歌单入口：网易云 → 酷狗 → QQ → 汽水（未登录/未启用也显示，点击可提示登录）
                状态优先用缓存 selfPlatMetaCache，null=尚未加载→乐观显示可点击 */
             {
                 const pm = selfPlatMetaCache;
-                const SELF_PLAT = { netease: { name: '网易云', mark: '网', color: 'rgba(223,42,42,.25)' }, kugou: { name: '酷狗', mark: '狗', color: 'rgba(0,163,232,.25)' }, qq: { name: 'QQ音乐', mark: 'Q', color: 'rgba(47,200,135,.25)' } };
-                ['netease', 'kugou', 'qq'].forEach(src => {
+                const SELF_PLAT = { netease: { name: '网易云音乐', mark: '网', color: 'rgba(223,42,42,.25)' }, kugou: { name: '酷狗', mark: '狗', color: 'rgba(0,163,232,.25)' }, qq: { name: 'QQ音乐', mark: 'Q', color: 'rgba(47,200,135,.25)' }, qishui: { name: '汽水音乐', mark: '汽', color: 'rgba(24,180,158,.28)' } };
+                ['netease', 'kugou', 'qq', 'qishui'].forEach(src => {
                     const meta = SELF_PLAT[src];
                     const ok = pm ? !!pm[src] : null;          /* true=已登录 false=未登录 null=未知(乐观) */
                     const shown = ok === null ? '点击查看' + meta.name + '歌单'
@@ -509,7 +514,7 @@ async function renderPlaylistsView() {
                     renderSelfPlatList(src);
                 });
             });
-            playlistsHintEl.textContent = `共 ${playlists.length} 个歌单 · ${localCount} 首本地音乐${selfPlatMetaCache ? ' · 3 平台' : ''}`;
+            playlistsHintEl.textContent = `共 ${playlists.length} 个歌单 · ${localCount} 首本地音乐${selfPlatMetaCache ? ' · 4 平台' : ''}`;
             _bindFlipDrag(playlistsListEl, '.custom-playlist-item', () => {
                 const newOrderPids = Array.from(playlistsListEl.querySelectorAll('.custom-playlist-item')).map(el => el.dataset.pid);
                 const currentPls = getPlaylists();
@@ -528,7 +533,7 @@ async function renderPlaylistsView() {
             _refreshPlaylistDynamic();
         }
 
-/* 三平台登录状态缓存：{netease:bool, kugou:bool, qq:bool}；null=尚未加载 */
+/* 自建平台登录状态缓存：{netease:bool, kugou:bool, qq:bool, qishui:bool}；null=尚未加载 */
 let selfPlatMetaCache = null;
 
 /* 后台刷新歌单列表页的动态信息（本地歌曲数 / 自建平台登录态），seq 防竞态 */
@@ -549,7 +554,7 @@ async function _refreshPlaylistDynamic() {
   }
   if (status && typeof status === 'object') {
     selfPlatMetaCache = {};
-    ['netease', 'kugou', 'qq'].forEach(src => {
+    ['netease', 'kugou', 'qq', 'qishui'].forEach(src => {
       const s = status[src];
       selfPlatMetaCache[src] = !!(selfhostEnabled(src) && s && s.alive && s.loggedIn);
     });
@@ -561,7 +566,7 @@ async function _refreshPlaylistDynamic() {
       const metaEl = el.querySelector('.playlist-meta');
       if (metaEl) metaEl.textContent = ok ? '点击查看我的' + (metaName.replace('歌单', '')) + '歌单' : '未登录，点击去「设置 → 自建服务」登录';
     });
-    playlistsHintEl.textContent = `共 ${getPlaylists().length} 个歌单 · ${localSongsCache.length} 首本地音乐 · 3 平台`;
+    playlistsHintEl.textContent = `共 ${getPlaylists().length} 个歌单 · ${localSongsCache.length} 首本地音乐 · 4 平台`;
   }
 }
 
@@ -574,9 +579,13 @@ let selfPlatState = { src: '', cards: [], sub: null, navTitle: '', songs: [] };
 
 let selfPlatSeq = 0;   /* 渲染竞态令牌：快速进出只让最后一次生效 */
 const SELF_PLAT_UI = {
-  netease: { name: '网易云', icon: 'src/img/NeteaseMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(212,60,51,.55), rgba(180,40,35,.35))' },
+  netease: { name: '网易云音乐', icon: 'src/img/NeteaseMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(212,60,51,.55), rgba(180,40,35,.35))' },
   kugou: { name: '酷狗', icon: 'src/img/KugouMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(0,131,199,.55), rgba(0,90,150,.35))' },
   qq: { name: 'QQ音乐', icon: 'src/img/QQMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(23,158,103,.55), rgba(16,120,78,.35))' },
+  /* ★ 汽水刻意不给 icon：仓库里没有对应图标文件，塞一个不存在的路径会变成
+     破图 alt；留空则只渲染背景渐变色块。歌单卡片绝大多数自带 coverUrl
+     （vendor 直接给抖音 CDN 图），图标只在「无封面歌单」时才被看到。 */
+  qishui: { name: '汽水音乐', icon: '', bg: 'linear-gradient(150deg, rgba(24,180,158,.55), rgba(12,120,110,.35))' },
 };
 
 async function renderSelfPlatList(src) {
@@ -1218,7 +1227,7 @@ async function openLocalLyricMatch(idx, folder) {
         <button class="lyric-source-close" data-llm-close="1" title="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>
       </div>
       <div class="lyric-source-body" id="llmBody" style="max-height:60vh;overflow-y:auto;padding:12px;">
-        <div style="opacity:.65;text-align:center;padding:26px 0;">正在检索酷狗 / 网易云 / QQ / LRCLIB…</div>
+        <div style="opacity:.65;text-align:center;padding:26px 0;">正在检索酷狗 / 网易云音乐 / QQ / LRCLIB…</div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -1679,7 +1688,6 @@ async function playFromPlaylistSong(song) {
             if (song.source && song.id) {
                 const songInfo = { id: song.id, mid: song.mid || '', song: song.title, singer: song.artist, cover: song.cover };
                 currentSource = song.source;
-                sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === song.source));
                 await loadOnlineSong(songInfo, true);
                 playlistsHintEl.textContent = '';
             } else if (song.url) {

@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // 机械移植自 chthollyphile/folia-major src/components/visualizer/sonnet/sonnetStaffView.ts
 // 说明：上游函数首参已是 pixi 模块参数（运行时 new Container/Graphics/Color 均经其调用），JS 版保持签名不变。
 import {

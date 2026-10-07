@@ -25,11 +25,11 @@
     transition: var(--t-fast);
     white-space: nowrap;
 }
-.rank-chip:hover { border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.5); color: #fff; }
+.rank-chip:hover { border-color: rgba(var(--aria-accent-rgb), 0.5); color: #fff; }
 .rank-chip.active {
-    border-color: var(--theme-color, #E8BE6A);
-    background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.16);
-    color: var(--theme-color, #E8BE6A);
+    border-color: var(--aria-accent);
+    background: rgba(var(--aria-accent-rgb), 0.16);
+    color: var(--aria-accent);
 }
 
 /* ---- 歌曲封面宫格：圆角正方形封面 + 左下角名称（与搜索弹窗同框架） ---- */
@@ -55,7 +55,7 @@
     transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 .rank-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
-.rank-card.np { box-shadow: 0 0 0 2px var(--theme-color, #E8BE6A), 0 8px 24px rgba(0, 0, 0, 0.4); }
+.rank-card.np { box-shadow: 0 0 0 2px var(--aria-accent), 0 8px 24px rgba(0, 0, 0, 0.4); }
 .rank-card-bg {
     position: absolute;
     inset: 0;
@@ -155,8 +155,8 @@
 }
 .view-toggle-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
 .view-toggle-btn.active {
-    border-color: var(--theme-color, #E8BE6A);
-    color: var(--theme-color, #E8BE6A);
+    border-color: var(--aria-accent);
+    color: var(--aria-accent);
 }
 .cards-head {
     display: flex;
@@ -375,7 +375,7 @@ body.perf-minimal .sk::after { animation: none; }
 .stats-kpi .v {
     font-size: 18px;
     font-weight: 800;
-    color: var(--theme-color, #E8BE6A);
+    color: var(--aria-accent);
 }
 .stats-kpi .l {
     font-size: 11px;
@@ -422,7 +422,7 @@ body.perf-minimal .sk::after { animation: none; }
 .stats-bar-fill {
     height: 100%;
     border-radius: 3px;
-    background: var(--theme-color, #E8BE6A);
+    background: var(--aria-accent);
     opacity: 0.85;
 }
 .stats-bar-val {
@@ -557,68 +557,12 @@ body.perf-minimal .sk::after { animation: none; }
 }
 #rankList .result-item { cursor: pointer; }
 
-/* ---- 通用毛玻璃输入弹窗（showGlassPrompt / showGlassPick） ---- */
-.gp-modal {
-    width: min(380px, 90vw);
-    background: rgba(24, 26, 34, 0.82);
-    backdrop-filter: saturate(200%) blur(40px);
-    -webkit-backdrop-filter: saturate(200%) blur(40px);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 16px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    padding: 20px;
-    animation: modalIn 0.24s var(--e-enter);
-}
-.gp-title { font-size: 15px; font-weight: 700; color: rgba(255, 255, 255, 0.94); margin-bottom: 6px; }
-.gp-sub { font-size: 12px; color: rgba(255, 255, 255, 0.55); margin-bottom: 8px; line-height: 1.6; }
-.gp-input {
-    width: 100%;
-    box-sizing: border-box;
-    margin-top: 8px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.16s ease;
-}
-.gp-input:focus { border-color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.7); }
-.gp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
-.gp-cancel, .gp-ok {
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.85);
-    padding: 7px 18px;
-    border-radius: 999px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: var(--t-fast);
-}
-.gp-cancel:hover { background: rgba(255, 255, 255, 0.16); }
-.gp-ok { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.18); border-color: transparent; color: var(--theme-color, #E8BE6A); font-weight: 600; }
-.gp-ok:hover { background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.3); }
-.gp-pick-list { margin-top: 10px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.gp-pick-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    width: 100%;
-    text-align: left;
-    border: none;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.9);
-    padding: 10px 12px;
-    border-radius: 10px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background 0.16s ease;
-}
-.gp-pick-item:hover { background: rgba(255, 255, 255, 0.12); }
-.gp-pick-meta { font-size: 11px; color: rgba(255, 255, 255, 0.5); flex-shrink: 0; }
-.gp-pick { padding: 16px; }
+/* ---- 通用毛玻璃输入 / 列表选择弹窗 ----
+   ★ 2026-10-05（P3-a）：整套 .gp-* 已退役。
+   showGlassPrompt / showGlassPick 的实现从 258-rankings.js 收敛到
+   021-aria-dialog.js（挂在 ui/overlay.js 的浮层契约上），样式随之改为
+   021 注入的 .aria-dialog-* 类 —— 与 alert/confirm 同一套外壳、同一份毛玻璃配方。
+   这里不再保留任何 .gp-* 规则，否则会变成"看起来还在用"的第二套样式。 */
 
 /* ---- 歌单批量操作 ---- */
 /* 自定义 checkbox：适配项目圆形/主题色风格 */
@@ -637,11 +581,11 @@ body.perf-minimal .sk::after { animation: none; }
     position: relative;
     transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
-.pl-multi-cb:hover { border-color: var(--theme-color, #E8BE6A); }
+.pl-multi-cb:hover { border-color: var(--aria-accent); }
 .pl-multi-cb:checked {
-    background: var(--theme-color, #E8BE6A);
-    border-color: var(--theme-color, #E8BE6A);
-    box-shadow: 0 0 6px rgba(var(--theme-color-rgb, 232, 190, 106), 0.45);
+    background: var(--aria-accent);
+    border-color: var(--aria-accent);
+    box-shadow: 0 0 6px rgba(var(--aria-accent-rgb), 0.45);
 }
 .pl-multi-cb:checked::after {
     content: '';
@@ -654,7 +598,7 @@ body.perf-minimal .sk::after { animation: none; }
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
-.pl-multi-cb:focus-visible { outline: 1px solid var(--theme-color, #E8BE6A); outline-offset: 1px; }
+.pl-multi-cb:focus-visible { outline: 1px solid var(--aria-accent); outline-offset: 1px; }
 
 /* 编辑模式工具栏「全选/全不选」 */
 .pl-batch-all {

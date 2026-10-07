@@ -163,7 +163,7 @@ function extractDominantColor(imgElement) {
                     pvEngineInstance.background.updateTheme(palette.primary, palette.secondary, palette.accent);
                 }
                 /* ★ 2026-09-29：PV 引擎已替换为 folia sonnet——accent 跟随新封面并重建场景 */
-                if (typeof window !== 'undefined' && window.__sonnetProbe) {
+                if (typeof window !== 'undefined' && (window.__sonnetEngineReady || window.__sonnetProbe)) {
                     import('../core/visualizers/sonnet/sonnetMode.js').then(m => {
                         m.applySonnetCoverPalette(palette);
                     }).catch(e => logCatch('coverBackground', e));

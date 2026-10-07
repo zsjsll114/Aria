@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 // 机械移植自 chthollyphile/folia-major src/components/visualizer/tempera/compositions/temperaMonolithKit.ts
 import { buildHatchSpec, buildScribblePath, rectPolygon } from '../temperaHatch.js';
 import { drawHatchFill, drawLines, drawPolygonFill, drawPolygonOutline, drawPolyline } from '../temperaShapes.js';

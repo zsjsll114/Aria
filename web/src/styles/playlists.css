@@ -125,14 +125,14 @@
             text-align: center;
         }
         .local-music-upload-banner:hover {
-            background: rgba(var(--theme-color-rgb), 0.12);
-            border-color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb), 0.12);
+            border-color: var(--aria-accent);
             transform: translateY(-1px);
         }
         .local-music-upload-banner.dragover {
-            background: rgba(var(--theme-color-rgb), 0.2);
-            border-color: var(--theme-color);
-            box-shadow: 0 0 20px rgba(var(--theme-color-rgb), 0.3);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            border-color: var(--aria-accent);
+            box-shadow: 0 0 20px rgba(var(--aria-accent-rgb), 0.3);
         }
         .local-music-upload-title {
             font-size: 14px;
@@ -161,7 +161,7 @@
         .local-music-progress-fill {
             width: 0%;
             height: 100%;
-            background: var(--theme-color);
+            background: var(--aria-accent);
             transition: width 0.2s ease;
         }
         .local-music-progress-text {
@@ -196,7 +196,7 @@
             -webkit-backdrop-filter: blur(10px);
         }
         .playlist-name-input:focus {
-            border-color: rgba(var(--theme-color-rgb),0.7);
+            border-color: rgba(var(--aria-accent-rgb),0.7);
             background: rgba(255, 255, 255, 0.18);
         }
 
@@ -337,7 +337,7 @@
         .import-progress-fill {
             height: 100%;
             width: 0%;
-            background: var(--theme-color, #f5a623);
+            background: var(--aria-accent);
             border-radius: 3px;
             transition: width 0.4s ease;
         }
@@ -392,8 +392,8 @@
             font-size: 10px;
             padding: 2px 8px;
             border-radius: 10px;
-            background: rgba(var(--theme-color-rgb),0.15);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb),0.15);
+            color: var(--aria-accent);
             font-weight: 700;
             flex-shrink: 0;
         }

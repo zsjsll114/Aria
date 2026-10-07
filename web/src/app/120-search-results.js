@@ -7,7 +7,7 @@ import { FAV_STORAGE_KEY } from '../config/constants.js';
 import { favoriteBtn, favoritesHintEl, favoritesOverlay, openSearchBtn, searchCloseBtn, searchInput, searchOverlay, searchResultsEl, sourceBtns } from './30-dom-refs.js';
 import { kbExitNavMode } from './110-keyboard-nav.js';
 import { renderFavoritesList } from './125-favorites.js';
-import { getLoadedSearchResults, renderSearchResults } from './150-search-engine.js';
+import { ensureSearchExtras, getLoadedSearchResults, renderSearchResults } from './150-search-engine.js';
 import { debouncedSaveConfigToBackend } from './180-boot-config.js';
 import { updateSearchView } from './157-search-history.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
@@ -29,17 +29,44 @@ function setHint(text) {
 
 function openSearch() {
 searchOverlay.classList.add('visible');
-/* 同步源按钮状态，确保 UI 与 currentSource 一致 */
-sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === currentSource));
-searchInput.value = lastSearchKeyword[currentSource] || '';
-searchInput.placeholder = currentSource === 'tencent' ? '搜索QQ音乐歌曲...' : (currentSource === 'kugou' ? '搜索酷狗音乐歌曲...' : '搜索网易云歌曲...');
+/* ★ 打开面板时校正搜索音源（2026-10-03）：
+     · 用户还没自己选过源 → 采纳「正在播放的平台」（合法时）；
+     · 用户选过 → 保持他用过的那个，播放/切歌一律不改写搜索页。
+   此前这里直接拿 currentSource 当音源：正在播本地文件时它是 'local'，五个音源按钮
+   一个都不亮，搜索又拿 'local' 去查 → 必然搜不出任何东西（用户报的
+   「有时没有源被选中，这时搜索没有任何内容，但历史区有词」）。见 150 的搜索页音源段。 */
+if (typeof Aria !== 'undefined' && typeof Aria.resolveSearchSource === 'function') {
+    Aria.resolveSearchSource(currentSource);
+}
+const src = (globalThis.searchSource) || 'tencent';
+sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === src));
+searchInput.value = lastSearchKeyword[src] || '';
+/* ★ 占位文案不再在这里手写第二份：单一真相是 150 的 sourcePlaceholder，
+   上面的 Aria.resolveSearchSource 已经通过 syncSearchSourceUI 设好了。
+   （此前这里维护着另一张表，出现过「停在酷我页签却显示网易文案」的漂移。） */
 const cached = getLoadedSearchResults();
+const cacheObj = globalThis.searchPageCache ? globalThis.searchPageCache[src] : null;
 if (cached.length > 0) {
 searchResultsCache = cached;
 renderSearchResults(cached);
 }
-/* ★ 打开面板时同步渲染该音源的搜索历史（无缓存结果时展示历史，避免重启后历史"消失"） */
+/* ★ 先把视图交给 updateSearchView（它负责「输入词与缓存不一致时显示历史」），
+   再补结果与数量标签（2026-10-03）：
+     · 上一次点歌播放时 loadOnlineSong 写下的「加载中...」会一直挂在顶部 hint 上，
+       于是「明明搜完了，关掉再打开却显示加载中」——这里必须清掉；
+     · 「已加载 N 首」现在由 renderSearchResults 画在歌曲列表头部（歌手/MV 卡片
+       之下），不再走顶部 hint，所以下面只需保证结果区有内容即可；
+     · 顺序放在 updateSearchView **之后**是关键：它有「关键词对不上就清空结果区 +
+       清空 hint + 铺历史」的分支，写在它前面会被整段抹掉（真机复现过）。 */
 updateSearchView();
+if (cached.length > 0 && cacheObj && cacheObj.keyword === searchInput.value.trim()) {
+searchResultsCache = cached;
+if (searchResultsEl && searchResultsEl.children.length === 0) renderSearchResults(cached);
+setHint('');
+/* ★ 歌曲有缓存、但歌手/MV 卡片从没拉过时补拉（ensureSearchExtras 自带去重，
+   已拉过的同一关键词会立刻返回，不会重复请求）。 */
+if (cacheObj.keyword) ensureSearchExtras(src, cacheObj.keyword, cached);
+}
 setTimeout(() => searchInput.focus(), 50);
 }
 
@@ -56,12 +83,11 @@ searchOverlay?.addEventListener('click', (e) => {
             if (e.target === searchOverlay) closeSearch();
         });
 
-/* ESC 关闭 */
-if (typeof document !== "undefined") document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && searchOverlay.classList.contains('visible')) {
-                closeSearch();
-            }
-        });
+/* ESC 关闭 —— ★ 2026-10-05（P3-b）移到 150-search-engine.js 的「逐层 ESC」链。
+   此处原有一份独立 handler，与 150 的那份**同一次 ESC 会连关两层**：
+   document(本处) 先于 window(150) 触发，本处关掉搜索页后，150 的逐层链
+   继续往下判到更底层的浮层（如收藏页）再关一次。
+   现在 ESC 只有一处实现：150 的逐层链（顺序即层序）。 */
 
 function showResults(html) {
 /* ★ 走骨架时序规范（005-skeleton.js）：骨架没出现过就同步写入（与旧行为一致），
@@ -73,12 +99,15 @@ searchResultsEl.scrollTop = 0;
 }
 
 /* ★ 搜索中骨架：原先这里是 hideResults() 把面板清空，而搜索要过第三方接口
-   （常 1~3s），用户面对的是纯空白。改成列表骨架，让等待有明确形状。 */
-function showResultsSkeleton(n) {
+   （常 1~3s），用户面对的是纯空白。改成列表骨架，让等待有明确形状。
+   `prefix` 用来在歌曲列表骨架**之上**再铺「歌手 / MV」两排卡片骨架（150 传进来）——
+   只铺歌曲那一段会让顶部两排要等 extras 回来才出现，三块不同时到位（用户 2026-10-04 报）。 */
+function showResultsSkeleton(n, prefix) {
 if (!searchResultsEl) return;
 const num = n || 8;
-if (Aria.skeleton) Aria.skeleton.load(searchResultsEl, 'list', num);
-else searchResultsEl.innerHTML = (typeof Aria.__skeleton === 'function') ? Aria.__skeleton('list', num) : '';
+const pre = prefix || '';
+if (Aria.skeleton) Aria.skeleton.load(searchResultsEl, 'list', num, { prefix: pre });
+else searchResultsEl.innerHTML = pre + ((typeof Aria.__skeleton === 'function') ? Aria.__skeleton('list', num) : '');
 }
 
 function hideResults() {

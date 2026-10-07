@@ -48,67 +48,18 @@ async function fetchJson(url, timeoutMs = 12000, raw = false) {
 }
 
 /* ============================================================
- * 一、通用毛玻璃输入弹窗（符合 search-modal 毛玻璃规范）
- *   用于：新歌单命名 / EQ 导入分享码 / EQ 保存为预设 等
+ * 一、通用毛玻璃输入弹窗 / 列表选择弹窗
+ *
+ * ★ 2026-10-05（P3-a）：这两个函数的**实现在 021-aria-dialog.js**，此处不再定义。
+ *   原先这里把 showGlassPrompt 又定义了一遍：本分片（258）晚于 021 求值，
+ *   等于把 021 的 Promise 版**同名覆盖**成"返回 DOM 元素"的版本 —— 于是
+ *   200-settings-panel.js 的 `await window.showGlassPrompt(...)` 拿到的是元素，
+ *   applyAutoEqText 收到 "[object HTMLDivElement]"，AutoEQ 导入静默失效
+ *   （不报错，只提示"未识别到任何滤波器"）。
+ *   现在实现只有一份，且同时支持 Promise 与 onSubmit/onPick 回调形态，
+ *   所以下方 importEqShareCode / 合并歌单两处回调式调用点无需改动。
+ *   静态棘轮：tests/js/test_overlay_contract.js 只允许 021 定义这四个入口。
  * ============================================================ */
-window.showGlassPrompt = function (opts) {
-    opts = opts || {};
-    const ov = document.createElement('div');
-    ov.className = 'search-overlay gp-overlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2100;display:flex;align-items:center;justify-content:center;' +
-        'background:rgba(0,0,0,.45);backdrop-filter:saturate(180%) blur(40px);-webkit-backdrop-filter:saturate(180%) blur(40px);';
-    ov.innerHTML = `
-        <div class="gp-modal">
-            <div class="gp-title">${esc(opts.title || '输入')}</div>
-            <div class="gp-sub" style="${opts.desc ? '' : 'display:none'}">${esc(opts.desc || '')}</div>
-            <input class="gp-input" type="text" placeholder="${esc(opts.placeholder || '')}" value="${esc(opts.value || '')}" maxlength="60" autocomplete="off">
-            <div class="gp-actions">
-                <button class="gp-cancel">取消</button>
-                <button class="gp-ok">确定</button>
-            </div>
-        </div>`;
-    requestAnimationFrame(() => { const inp = ov.querySelector('.gp-input'); if (inp) { inp.focus(); inp.select(); } });
-    const close = () => ov.remove();
-    const submit = () => {
-        const val = String(ov.querySelector('.gp-input').value || '').trim();
-        close();
-        if (opts.onSubmit) opts.onSubmit(val);
-    };
-    ov.querySelector('.gp-cancel').onclick = close;
-    ov.querySelector('.gp-ok').onclick = submit;
-    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
-    const inp = ov.querySelector('.gp-input');
-    if (inp) inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') close(); });
-    document.body.appendChild(ov);
-    return ov;
-};
-
-/* 通用"从列表选择"弹窗（合并到歌单等） */
-window.showGlassPick = function (opts) {
-    opts = opts || {};
-    const ov = document.createElement('div');
-    ov.className = 'search-overlay gp-overlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2100;display:flex;align-items:center;justify-content:center;' +
-        'background:rgba(0,0,0,.45);backdrop-filter:saturate(180%) blur(40px);-webkit-backdrop-filter:saturate(180%) blur(40px);';
-    ov.innerHTML = `
-        <div class="gp-modal gp-pick">
-            <div class="gp-title">${esc(opts.title || '选择')}</div>
-            <div class="gp-pick-list">${(opts.items || []).map((it, i) => `<button class="gp-pick-item" data-i="${i}">${esc(it.name)}${it.meta ? `<span class="gp-pick-meta">${esc(it.meta)}</span>` : ''}</button>`).join('') || '<div style="padding:18px;color:rgba(255,255,255,.5);font-size:13px">没有可选项</div>'}</div>
-            <div class="gp-actions"><button class="gp-cancel">取消</button></div>
-        </div>`;
-    const close = () => ov.remove();
-    ov.querySelector('.gp-cancel').onclick = close;
-    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
-    ov.querySelectorAll('.gp-pick-item').forEach(btn => {
-        btn.onclick = () => {
-            const idx = Number(btn.dataset.i);
-            close();
-            if (opts.onPick) opts.onPick(idx);
-        };
-    });
-    document.body.appendChild(ov);
-    return ov;
-};
 
 /* ============================================================
  * 二、榜单逻辑（榜宫格 → 榜内歌单列表）
@@ -127,7 +78,7 @@ let rankState = {
    ⚠ 这里只影响**按钮顺序**，不隐藏任何音源——榜单数据走 /api/rank/*（公网），
      未启用自建也能取到，隐藏反而会让用户以为坏了。 */
 const RANK_SRC_ORDER = ['qq', 'kugou', 'netease'];
-const RANK_SRC_LABEL = { qq: 'QQ音乐', kugou: '酷狗音乐', netease: '网易云' };
+const RANK_SRC_LABEL = { qq: 'QQ音乐', kugou: '酷狗音乐', netease: '网易云音乐' };
 
 function orderedRankSources() {
     const enabled = (src) => {
@@ -387,10 +338,12 @@ globalThis.Aria.__fetchHotBoardQueue = async function (cap = 30) {
     return queue.slice(0, cap * 3);
 };
 
-/* 每日推荐：三平台分栏（QQ / 酷狗 / 网易云）
-   ★ 顺序按用户要求：QQ 优先 → 酷狗 → 网易云（聚合与日推 tab 都读这个数组） */
-const dailySrcOrder = ['qq', 'kugou', 'netease'];
-const DAILY_SRC_LABEL = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗音乐' };
+/* 每日推荐：分栏（QQ / 酷狗 / 网易云 / 汽水）
+   ★ 前三个的顺序按用户要求：QQ 优先 → 酷狗 → 网易云（聚合与日推 tab 都读这个数组）。
+   汽水**追加在末位**：它的日推走字节推荐流（匿名可用，不需要登录也不需要平台开关），
+   与前三家的「自建服务需启用」语义不同，排在后面不会打乱用户已习惯的顺序。 */
+const dailySrcOrder = ['qq', 'kugou', 'netease', 'qishui'];
+const DAILY_SRC_LABEL = { netease: '网易云音乐', qq: 'QQ音乐', kugou: '酷狗音乐', qishui: '汽水音乐' };
 let dailyState = { src: 'netease', loading: false, cache: {} };
 
 function renderDailyTracks(list) {
@@ -456,11 +409,18 @@ async function loadDailyList(listEl) {
     const res = await dayRecommend(dailyState.src);
     dailyState.loading = false;
     if (!res.ok) {
-        if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = `<div class="rank-error">${esc(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">请到「设置 → 自建服务」启用「${lbl}」</span></div>`;
+        if (!Array.isArray(cached) || !cached.length) {
+            /* ★ 汽水没有平台开关（设置页刻意不渲染），「去设置启用」的引导对它是错的：
+               它的推荐流既不需要启用也不需要登录，唯一失败原因是本机副进程没起来。 */
+            const how = dailyState.src === 'qishui'
+                ? '本机汽水服务未就绪'
+                : `请到「设置 → 自建服务」启用「${lbl}」`;
+            listEl.innerHTML = `<div class="rank-error">${esc(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">${esc(how)}</span></div>`;
+        }
         return;
     }
     if (!res.list || !res.list.length) {
-        if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = `<div class="rank-error">「${lbl}」今日暂无推荐歌曲${dailyState.src === 'qq' ? '<br><span style="font-size:11px;opacity:.7">QQ 日推可能需要登录，可切到网易云/酷狗</span>' : ''}</div>`;
+        if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = `<div class="rank-error">「${lbl}」今日暂无推荐歌曲${dailyState.src === 'qq' ? '<br><span style="font-size:11px;opacity:.7">QQ 日推可能需要登录，可切到网易云音乐/酷狗</span>' : ''}</div>`;
         return;
     }
     dailyState.cache[dailyState.src] = res.list;
@@ -1126,7 +1086,7 @@ window.batchDownloadSongs = async function (songs, label) {
         const mid = s.mid || '';
         if (!src || !id) { fail++; continue; }
         try {
-            const url = await fetchPlayUrlForPreload(String(id), mid, src, s.title || s.song || '', s.duration || s.interval || 0);
+            const url = await fetchPlayUrlForPreload(String(id), mid, src, s.title || s.song || '', s.duration || s.interval || 0, s.artist || s.singer || '');
             if (!url) { fail++; continue; }
             let blob = null;
             try {

@@ -81,9 +81,9 @@
             color: rgba(255, 255, 255, 0.95);
         }
         .eq-preset.active {
-            background: rgba(var(--theme-color-rgb),0.25);
-            border-color: rgba(var(--theme-color-rgb),0.5);
-            color: var(--theme-color);
+            background: rgba(var(--aria-accent-rgb),0.25);
+            border-color: rgba(var(--aria-accent-rgb),0.5);
+            color: var(--aria-accent);
         }
         .eq-bands {
             display: flex;

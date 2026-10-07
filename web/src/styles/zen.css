@@ -61,9 +61,9 @@ html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-button
 
 /* 专注态按钮高亮：取景框图标点亮主题色，明确「这就是出口」 */
 html#ariaRoot.is-zen[data-zen-scope~="top"] .player-container .top-action-buttons #zenModeBtn {
-    color: var(--theme-color, #E8BE6A) !important;
-    border-color: color-mix(in srgb, var(--theme-color, #E8BE6A) 45%, transparent) !important;
-    background: color-mix(in srgb, var(--theme-color, #E8BE6A) 14%, transparent) !important;
+    color: var(--aria-accent) !important;
+    border-color: color-mix(in srgb, var(--aria-accent) 45%, transparent) !important;
+    background: color-mix(in srgb, var(--aria-accent) 14%, transparent) !important;
     transition: opacity var(--zen-fade-in) var(--zen-ease), visibility 0s !important;
 }
 

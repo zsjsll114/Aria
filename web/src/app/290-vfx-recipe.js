@@ -2,7 +2,7 @@
  * 290-vfx-recipe.js — 视觉配方：命名 / 分享码（todos #9）
  *
  * 形态：右上角一个入口按钮 + 一套自建的毛玻璃面板（列表 / 重命名 / 覆盖 /
- * 删除 / 应用 / 分享码 / 导入分享码）。
+ * 删除 / 应用 / 分享码 / 导入分享码 / 导入导出外观 mod 文件）。
  * 2026-09-26 按用户要求精简：顶部「存为配方/复制当前分享码」两按钮移除，
  * 「当前外观」分享码常显（行内分享码草稿临时顶替，收起即回），底部
  * 「配方包含哪些设置」说明区移除。创建配方只剩「导入分享码」一条路，
@@ -45,8 +45,8 @@ import { showToast } from './155-random-toast-match.js';
 import {
     CODE_PREFIX, ERROR_TEXT, MAX_PRESETS, RECIPE_GROUPS, SCHEMA_VERSION, VIEW_MODES,
     applyRecipeToSettings, canonicalJSON, collectRecipe, decodeRecipe, encodeRecipe,
-    newPresetId, normalizePresetList, removePreset, renamePreset, sanitizeRecipeName,
-    summarizeRecipe, upsertPreset,
+    newPresetId, normalizePresetList, parseThemeMod, removePreset, renamePreset,
+    sanitizeRecipeName, serializeThemeMod, summarizeRecipe, upsertPreset,
 } from '../core/vfxRecipe.js';
 
 const TAG = 'vfxRecipe';
@@ -227,6 +227,8 @@ function openPanel() {
             handlePanelClick(e);
         });
         panel.addEventListener('input', handlePanelInput);
+        /* 文件选择走 change 事件：type=file 在部分浏览器不发 input */
+        panel.addEventListener('change', handlePanelChange);
         d.addEventListener('keydown', onPanelKeydown);
     }
     renderPanel();
@@ -341,6 +343,15 @@ function renderPanel() {
                 <div class="setting-desc vr-note">导入前会逐条校验版本、校验和与每个参数的取值范围；有任何一项不合格就整份拒绝，不会只导入一半。</div>
             </div>
             <div class="vr-block">
+                <div class="vr-block-title setting-label">外观 mod 文件</div>
+                <div class="vr-toolbar">
+                    <button type="button" class="setting-btn primary" data-act="pick-mod">选择 mod 文件…</button>
+                    <button type="button" class="setting-btn" data-act="export-mod">导出当前外观</button>
+                </div>
+                <input type="file" class="vr-file" id="vrModFile" accept=".json,application/json" hidden>
+                <div class="setting-desc vr-note">mod 文件是一段带名字的配方（.aria-theme.json），与分享码走同一套白名单校验，任何一项不合格就整份拒绝；文件内容只按数据读，不会被当作代码执行。</div>
+            </div>
+            <div class="vr-block">
                 <div class="vr-block-title setting-label">${esc(shareTitle)}</div>
                 <textarea class="vr-input vr-textarea" id="vrShareBox" readonly spellcheck="false">${esc(shareCode)}</textarea>
                 <div class="vr-toolbar">
@@ -355,6 +366,19 @@ function renderPanel() {
 function handlePanelInput(e) {
     if (!e || !e.target) return;
     if (e.target.id === 'vrImportBox') draft.importText = String(e.target.value || '');
+}
+
+function handlePanelChange(e) {
+    if (!e || !e.target || e.target.id !== 'vrModFile') return;
+    const file = e.target.files && e.target.files[0];
+    /* 先清空 value：否则连续选同一个文件不会再触发 change（用户改完文件重选会"没反应"） */
+    e.target.value = '';
+    if (!file) return;
+    /* doImportModFile 内部已 catch 读取失败；这里再兜一层，避免未处理拒绝 */
+    Promise.resolve(doImportModFile(file)).catch((err) => {
+        logCatch(TAG, err);
+        showToast('导入 mod 文件失败');
+    });
 }
 
 function handlePanelClick(e) {
@@ -376,6 +400,8 @@ function runAction(act, id) {
         case 'rename': promptRename(id); break;
         case 'delete': confirmDelete(id); break;
         case 'import': doImport(); break;
+        case 'pick-mod': { const f = byId('vrModFile'); if (f) f.click(); break; }
+        case 'export-mod': doExportMod(); break;
         /* 复制的是区块里实际显示的那串（当前外观常显码 或 行内分享码草稿） */
         case 'copy-share': copyText((byId('vrShareBox') || {}).value || ''); break;
         case 'clear-share': draft.shareCode = ''; draft.shareTitle = ''; renderPanel(); break;
@@ -487,6 +513,60 @@ function showShare(title, recipe) {
     if (box) { try { box.select(); } catch (e) { logCatch(TAG, e); } }
 }
 
+/**
+ * 玻璃确认框（Promise 形态）。没有对话框 API 时直接判 true —— 宁可执行也不静默失败。
+ *
+ * ★ 与既有的 confirmGlass 的区别：那个是「回调 + 返回 undefined」的混合形态，
+ *   调用点写成 `if (confirmGlass(...)) return; run();` —— 在 API 缺失那一路会
+ *   onOk() 与 run() **双跑**（onOk 立即执行，返回 undefined 又不会 return）。
+ *   导入是不可撤销的覆盖动作，这里统一成 Promise，消除该歧义；
+ *   既有 confirmGlass 的三个调用点行为不变，留着不动以免扩大改动面。
+ */
+function confirmGlassAsk(title, desc, okText, danger) {
+    const api = (typeof window !== 'undefined') ? window.showGlassConfirm : null;
+    if (typeof api !== 'function') return Promise.resolve(true);
+    try {
+        const dlg = api({ title, desc, okText, danger: !!danger });
+        if (dlg && typeof dlg.then === 'function') {
+            return dlg.then(v => v === true, (e) => { logCatch(TAG, e); return false; });
+        }
+        logWarn(TAG, 'showGlassConfirm 返回值不可 then，按已确认处理');
+    } catch (e) { logCatch(TAG, e); return Promise.resolve(false); }
+    return Promise.resolve(true);
+}
+
+/** 触发一次文本文件下载（导出 mod 用），不依赖任何库 */
+function downloadText(filename, text) {
+    const d = doc();
+    if (!d) return false;
+    try {
+        const blob = new Blob([text], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = d.createElement('a');
+        a.href = url;
+        a.download = filename;
+        d.body.appendChild(a);
+        a.click();
+        d.body.removeChild(a);
+        /* 立刻 revoke 会让部分浏览器来不及取数据、下载被截断，延后释放 */
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) { logCatch(TAG, e); } }, 4000);
+        return true;
+    } catch (e) { logCatch(TAG, e); return false; }
+}
+
+/** 导入成功后统一落库 + 提示（分享码与 mod 文件两条入口共用）。
+ *  nameHint 来自 mod 文件的 name 字段（外部数据）——它只经 showToast（textContent）
+ *  与 sanitizeRecipeName → esc() 的上屏路径，不会进 innerHTML 裸拼。 */
+function runImport(recipe, nameHint, note) {
+    const r = applyRecipe(recipe);
+    if (!r.ok) { showToast('导入失败：配方不合法'); renderPanel(); return; }
+    const name = sanitizeRecipeName(nameHint || (IMPORTED_PREFIX + ' ' + new Date().toLocaleDateString()));
+    const up = upsertPreset(readPresets(), { id: newPresetId(), name, recipe });
+    if (up.action !== 'rejected') writePresets(up.list);
+    showToast('已导入并应用，同时存为配方「' + name + '」' + (note || ''));
+    renderPanel();
+}
+
 function doImport() {
     const box = byId('vrImportBox');
     const text = box ? String(box.value || '') : draft.importText;
@@ -500,20 +580,63 @@ function doImport() {
         return;
     }
     draft.importErrors = [];
-    const run = () => {
-        const r = applyRecipe(res.recipe);
-        if (!r.ok) { showToast('导入失败：配方不合法'); renderPanel(); return; }
-        const name = sanitizeRecipeName(IMPORTED_PREFIX + ' ' + new Date().toLocaleDateString());
-        const up = upsertPreset(readPresets(), { id: newPresetId(), name, recipe: res.recipe });
-        if (up.action !== 'rejected') writePresets(up.list);
-        showToast('已导入并应用，同时存为配方「' + name + '」');
-        renderPanel();
-    };
-    if (confirmGlass('分享码校验通过', '将覆盖 ' + summarizeRecipe(res.recipe).total
-        + ' 项视觉参数（' + groupStatLine(res.recipe) + '），并自动存为一条新配方。', '导入并应用', run)) {
+    confirmGlassAsk('分享码校验通过', '将覆盖 ' + summarizeRecipe(res.recipe).total
+        + ' 项视觉参数（' + groupStatLine(res.recipe) + '），并自动存为一条新配方。', '导入并应用').then((ok) => {
+        if (ok) runImport(res.recipe, '');
+    });
+}
+
+/** 导入一个 .aria-theme.json 外观 mod 文件 */
+function doImportModFile(file) {
+    if (!file) return Promise.resolve();
+    return file.text().then((text) => {
+        const res = parseThemeMod(text);
+        if (!res.ok) {
+            draft.importErrors = res.errors;
+            renderPanel();
+            showToast('mod 文件被拒绝，详见面板里的逐条原因');
+            return;
+        }
+        draft.importErrors = [];
+        const meta = res.meta || {};
+        const who = meta.author ? '　— ' + meta.author : '';
+        const head = meta.name ? '「' + meta.name + '」' : '这份 mod';
+        const desc = head + who + '：将覆盖 ' + summarizeRecipe(res.recipe).total
+            + ' 项视觉参数（' + groupStatLine(res.recipe) + '），并自动存为一条新配方。';
+        return confirmGlassAsk('mod 文件校验通过', desc, '导入并应用').then((ok) => {
+            if (!ok) return;
+            runImport(res.recipe, meta.name, meta.description ? '（' + meta.description + '）' : '');
+        });
+    }, (err) => {
+        logCatch(TAG, err);
+        showToast('读取 mod 文件失败');
+    });
+}
+
+/** 把当前外观导出成 .aria-theme.json mod 文件 */
+function doExportMod() {
+    const recipe = captureCurrent();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const total = summarizeRecipe(recipe).total;
+    let text = '';
+    try {
+        /* ★ 用带插值的整句而不是字符串拼接：i18n 复扫把「有 {占位符} 的句子」
+           归到动态桶（只提示人复核），拼接出来的碎片却要逐条进词表 ——
+           而且碎片翻译成英文后拼起来是病句。 */
+        text = serializeThemeMod(recipe, {
+            name: `Aria 外观 ${stamp}`,
+            description: `由 Aria 导出的当前外观，共 ${total} 项视觉参数`,
+        });
+    } catch (e) {
+        logCatch(TAG, e);
+        showToast('当前外观不合法，导出失败');
         return;
     }
-    run();
+    if (downloadText('aria-theme-' + stamp + '.aria-theme.json', text)) {
+        showToast(`已导出 mod 文件（${total} 项视觉参数）`);
+    } else {
+        showToast('导出失败：无法创建下载');
+    }
 }
 
 /* ==================== 入口按钮 / 设置组（自建自挂） ==================== */

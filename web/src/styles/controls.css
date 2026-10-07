@@ -57,8 +57,8 @@
         }
 
         .speed-option.active {
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
-            color: var(--theme-color, #E8BE6A);
+            background: rgba(var(--aria-accent-rgb), 0.2);
+            color: var(--aria-accent);
         }
 
         .speed-submenu-separator {
@@ -73,8 +73,8 @@
         }
 
         .speed-pitch-toggle.active {
-            color: var(--theme-color, #E8BE6A);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.2);
+            color: var(--aria-accent);
+            background: rgba(var(--aria-accent-rgb), 0.2);
         }
 
         /* ========== 音量滑块 ========== */
@@ -141,8 +141,8 @@
         .eq-status {
             margin-left: auto;
             font-size: 11px;
-            color: rgba(var(--theme-color-rgb, 232, 190, 106), 0.9);
-            background: rgba(var(--theme-color-rgb, 232, 190, 106), 0.1);
+            color: rgba(var(--aria-accent-rgb), 0.9);
+            background: rgba(var(--aria-accent-rgb), 0.1);
             padding: 2px 8px;
             border-radius: 6px;
         }

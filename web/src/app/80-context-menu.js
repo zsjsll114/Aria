@@ -7,26 +7,19 @@ import { flyinAutoScaleFont } from './56-playback-misc.js';
 import { updatePlayModeIcon } from './75-play-mode.js';
 import { moreBtn } from './90-eq.js';
 import { esc } from '../utils/formatters.js';
+import { logWarn } from '../services/log.js';
 
 updatePlayModeIcon();
 
 /* ========== 通用右键/更多菜单系统 ========== */
 const ctxMenu = typeof document !== 'undefined' ? document.getElementById('ctxMenu') : null;
 
-const ctxConfirm = typeof document !== 'undefined' ? document.getElementById('ctxConfirm') : null;
-
-const ctxConfirmTitle = typeof document !== 'undefined' ? document.getElementById('ctxConfirmTitle') : null;
-
-const ctxConfirmMsg = typeof document !== 'undefined' ? document.getElementById('ctxConfirmMsg') : null;
-
-const ctxConfirmOk = typeof document !== 'undefined' ? document.getElementById('ctxConfirmOk') : null;
-
-const ctxConfirmCancel = typeof document !== 'undefined' ? document.getElementById('ctxConfirmCancel') : null;
-
 globalThis.ctxSubmenuEl = null;
 
-/* 二级菜单元素 */
-globalThis.ctxConfirmCallback = null;
+/* ★ 2026-10-05（P3-a）：静态确认框 #ctxConfirm 及其 .ctx-confirm-* 节点、
+   dom 缓存与 globalThis.ctxConfirmCallback 全部退役 —— 那是本仓第三份
+   确认框实现（手写居中 + 手绑按钮 + 靠全局变量传回调）。
+   确认框现在统一走 021-aria-dialog.js + ui/overlay.js 的浮层契约。 */
 
 /* 通用 SVG 图标 */
 const CTX_ICONS = {
@@ -43,7 +36,9 @@ const CTX_ICONS = {
             bilingual: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="4" y1="8.5" x2="20" y2="8.5"></line><line x1="4" y1="15.5" x2="16" y2="15.5" stroke-opacity=".6"></line></svg>',
             link: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
             pulse: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
-            loop: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>'
+            loop: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>',
+            /* 歌词海报（需求 2）：相框 + 山，一眼是「出图」 */
+            photo: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>'
         };
 
 globalThis.submenuHideTimer = null;
@@ -189,36 +184,22 @@ function hideCtxMenu() {
             hideCtxSubmenu();
         }
 
-/* 显示确认对话框 */
+/* 通用确认对话框：委托到统一的玻璃对话框（021 + ui/overlay.js）。
+   保留原签名 (title, msg, onConfirm)，130 / 145 / 90 三处调用点无需改动。
+   收益：不再手写居中、不再手绑按钮、不再靠全局变量传回调；
+   ESC / 点遮罩 / 焦点陷阱 / dialog 语义 / 层级全部由浮层契约提供。 */
 function showCtxConfirm(title, msg, onConfirm) {
-            ctxConfirmTitle.textContent = title;
-            ctxConfirmMsg.textContent = msg;
-            ctxConfirmCallback = onConfirm;
-            /* 使用 offsetWidth/offsetHeight（不受 transform 影响）来居中 */
-            const w = ctxConfirm.offsetWidth;
-            const h = ctxConfirm.offsetHeight;
-            ctxConfirm.style.left = ((window.innerWidth - w) / 2) + 'px';
-            ctxConfirm.style.top = ((window.innerHeight - h) / 2) + 'px';
-            ctxConfirm.classList.add('visible');
+            const api = typeof window !== 'undefined' ? window.showGlassConfirm : null;
+            if (typeof api !== 'function') {
+                /* 021 排在 80 之前求值，这里理论上不可达；真出现也绝不放行
+                   「删除歌单 / 删除本地歌曲」这类不可撤销操作（宁可没反应也不误删）。 */
+                logWarn('ctxMenu', '[showCtxConfirm] 玻璃确认框未就绪，已放弃这次确认');
+                return;
+            }
+            api({ title: title, desc: msg }).then((ok) => {
+                if (ok && typeof onConfirm === 'function') onConfirm();
+            });
         }
-
-function hideCtxConfirm() {
-            ctxConfirm.classList.remove('visible');
-            ctxConfirmCallback = null;
-            /* 重置按钮状态（可能被 EQ 错误提示修改过） */
-            ctxConfirmCancel.textContent = '取消';
-            ctxConfirmOk.textContent = '确定';
-            ctxConfirmCancel.style.display = '';
-            ctxConfirmOk.style.display = '';
-        }
-
-ctxConfirmOk?.addEventListener('click', () => {
-            const cb = ctxConfirmCallback;
-            hideCtxConfirm();
-            if (cb) cb();
-        });
-
-ctxConfirmCancel?.addEventListener('click', hideCtxConfirm);
 
 /* 点击空白关闭菜单 */
 if (typeof document !== "undefined") document.addEventListener('click', (e) => {
@@ -228,7 +209,9 @@ if (typeof document !== "undefined") document.addEventListener('click', (e) => {
         });
 
 if (typeof document !== "undefined") document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { hideCtxMenu(); hideCtxConfirm(); }
+            /* 确认框的 ESC 交给 ui/overlay.js 的浮层契约（只关最顶层），
+               这里只收右键菜单 —— 否则同一次 ESC 会把菜单和对话框一起关掉 */
+            if (e.key === 'Escape') hideCtxMenu();
         });
 
 if (typeof window !== "undefined") window.addEventListener('blur', hideCtxMenu);
@@ -248,4 +231,4 @@ if (typeof window !== "undefined") window.addEventListener('resize', () => {
     }
 });
 
-export { CTX_ICONS, ctxConfirm, ctxConfirmCancel, ctxConfirmMsg, ctxConfirmOk, ctxConfirmTitle, ctxMenu, hideCtxConfirm, hideCtxMenu, hideCtxSubmenu, showCtxConfirm, showCtxMenu, showCtxSubmenu };
+export { CTX_ICONS, ctxMenu, hideCtxMenu, hideCtxSubmenu, showCtxConfirm, showCtxMenu, showCtxSubmenu };

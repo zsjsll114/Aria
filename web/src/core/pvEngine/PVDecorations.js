@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * PVDecorations.js
  * 1. 远景 3D 巨型连笔空心描边大字 (0.28x 慢视差慢移)

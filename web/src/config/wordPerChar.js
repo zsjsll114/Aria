@@ -23,11 +23,14 @@ export const PER_CHAR_MODES = new Set(['lyrics', 'cover', 'wordcloud']);
 export const WORD_UPGRADE_MIN_COVERAGE = 0.9;
 
 /** 副判据：候选与当前的行数差不能太离谱（matched / 两份较大行数）。
- *  挡的是「当前只有 4 行、候选是整张专辑精选」这种覆盖率满分但明显不对的情况。 */
-export const WORD_UPGRADE_MIN_MATCH_RATE = 0.6;
+ *  挡的是「当前只有 4 行、候选是整张专辑精选」这种覆盖率满分但明显不对的情况。
+ *  ★ 2026-10-03 0.6→0.75（用户实测「自动替换总是替成别的歌」）：0.6 对短句/重复
+ *  副歌会虚高放行，收紧后配合 293 的「候选时长 vs 音频时长 ±35%」校验双保险。 */
+export const WORD_UPGRADE_MIN_MATCH_RATE = 0.75;
 
-/** 少于这么多行就不自动换：样本太小，任何判据都不可信 */
-export const WORD_UPGRADE_MIN_LINES = 5;
+/** 少于这么多行就不自动换：样本太小，任何判据都不可信
+ *  ★ 2026-10-03 5→8：5 行的样本下匹配率几乎必然虚高（见过 5 行里 4 行是副歌重复）。 */
+export const WORD_UPGRADE_MIN_LINES = 8;
 
 /**
  * 现在该不该给行级歌词合成逐字时间？

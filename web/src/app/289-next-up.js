@@ -42,6 +42,8 @@ import {
     songSignature,
     describeDecision,
 } from '../core/nextUp.js';
+import { registerAudioListener } from '../core/dualDeck.js';
+import { crossfadeProgress, CROSSFADE_SWAP_AT } from '../core/automix/crossfader.js';
 
 const TAG = 'nextUp';
 const SETTING_KEY = 'nextUp';
@@ -55,7 +57,7 @@ const ZEN_CLASS = 'is-zen';
 const BLOCKING_SELECTOR = [
     '.search-overlay.visible', '.settings-overlay.visible', '.view-mode-overlay.visible',
     '.eq-panel.visible', '.lyric-source-overlay.visible', '.color-picker-overlay.visible',
-    '.ai-models-overlay.visible', '.ctx-menu.visible', '.ctx-confirm.visible',
+    '.ai-models-overlay.visible', '.ctx-menu.visible',
     '.aria-dialog-overlay', '#sleepTimerOverlay.visible', '.plm-panel.visible',
     /* 首屏欢迎层：它盖在整窗上（实测 z-index 高于本浮层），预告条浮在它背后等于没浮 */
     '#welcomeOverlay:not(.hidden)', '#ariaOobeOverlay',
@@ -356,6 +358,8 @@ function renderCandidates(candidates) {
 let _revealed = null;        /* { key, signature, summary } —— key/signature 交给 core 做迟滞与比对 */
 let _dismissedSignature = '';
 let _panelOpen = false;
+/* Automix 交叉期：预告条语义从「预告下一首」变成「正在过渡」 */
+let _crossingOn = false;
 
 function closePanel() {
     const refs = _refs;
@@ -366,8 +370,9 @@ function closePanel() {
 function hideNow(reason) {
     const refs = _refs;
     closePanel();
+    _crossingOn = false;
     if (refs && refs.layer) {
-        refs.layer.classList.remove('nu-on');
+        refs.layer.classList.remove('nu-on', 'nu-crossing');
         refs.layer.setAttribute('aria-hidden', 'true');
     }
     if (_revealed) {
@@ -416,13 +421,63 @@ function takeSnapshot(prefs) {
     };
 }
 
+/**
+ * Automix 交叉进行中：把预告条改成「过渡中」，并用 --nu-progress 驱动条底细线。
+ * 语义上这不是「预告下一首」而是「正在切过去」——所以撤掉倒计时与「换一首」。
+ * @param {number} p 交叉进度 0~1
+ * @param {object} prefs 已读出的偏好（避免在每帧里重复读状态）
+ */
+function applyCrossingUi(p, prefs) {
+    const refs = ensureRefs();
+    if (!refs) return;
+    if (!_crossingOn) {
+        _crossingOn = true;
+        _lastCountShown = -1;
+        refs.layer.classList.add('nu-crossing');
+    }
+    /* 引擎此刻已确定下一首，尽量把名字/封面显示出来；拿不到名字就只显示状态
+       （evaluateNextUp 的窗口判定按 leadSeconds 走，交叉期不一定已进窗口） */
+    try {
+        const decision = evaluateNextUp(takeSnapshot(prefs)).decision;
+        if (decision && decision.namesSong) renderBar(decision);
+    } catch (e) { logCatch(TAG, e); }
+    setText(refs.tag, tx('过渡中'));
+    setText(refs.note, tx('正在交叉混音'));
+    toggleClass(refs.note, 'nu-empty', false);
+    setText(refs.count, '');
+    setText(refs.countUnit, '');
+    setText(refs.cta, '');
+    toggleClass(refs.cta, 'nu-empty', true);
+    if (refs.cta) refs.cta.disabled = true;
+    refs.bar.removeAttribute('data-nu-clickable');
+    refs.bar.style.setProperty('--nu-progress', Math.max(0, Math.min(1, p)).toFixed(4));
+    refs.bar.setAttribute('aria-label', tx('正在交叉混音'));
+    refs.layer.classList.add('nu-on');
+    refs.layer.setAttribute('aria-hidden', 'false');
+    _revealed = { key: 'automix-crossing', signature: 'automix-crossing', summary: '过渡中' };
+}
+
 function tick() {
     try {
         const a = audio;
         const d = doc();
         if (!a || !d) return;
         const prefs = readPrefs();
-        if (!prefs.enabled) { if (_revealed) hideNow('off'); return; }
+        if (!prefs.enabled) { if (_revealed || _crossingOn) hideNow('off'); return; }
+
+        /* ★ Automix 交叉期优先于一切：此时「下一首」已经不是预告而是正在进行的事，
+           且剩余时长可能还在 lead 窗口之外（重叠最长 16s，而预告窗口 5s）——
+           必须绕过快路径。交接点之后（播放栏已切到新歌）收起，避免与正主重复。 */
+        const crossP = crossfadeProgress();
+        if (crossP !== null) {
+            if (crossP >= CROSSFADE_SWAP_AT) {
+                if (_revealed || _crossingOn) hideNow('automix-swapped');
+                return;
+            }
+            applyCrossingUi(crossP, prefs);
+            return;
+        }
+        if (_crossingOn) { hideNow('automix-done'); return; }
 
         /* 快路径：没浮出且离切歌还远 → 不查 DOM、不建快照（一首歌 95% 的时间走这条） */
         const dur = Number(a.duration);
@@ -667,16 +722,16 @@ export function initNextUp() {
 
     if (audio) {
         /* 位置类事件：判定的全部依据都在这些事件上（timeupdate 是唯一的「倒计时来源」） */
-        audio.addEventListener('timeupdate', scheduleTick);
-        audio.addEventListener('play', scheduleTick);
-        audio.addEventListener('durationchange', scheduleTick);
+        registerAudioListener('timeupdate', scheduleTick);
+        registerAudioListener('play', scheduleTick);
+        registerAudioListener('durationchange', scheduleTick);
         /* 撤销类事件：暂停 / seek / 换歌 / 播完，任一条都必须立刻作废旧预告 */
-        audio.addEventListener('pause', () => { hideNow('paused'); });
-        audio.addEventListener('ended', () => { hideNow('ended'); scheduleTick(); });
-        audio.addEventListener('seeking', () => { hideNow('seeking'); });
-        audio.addEventListener('seeked', scheduleTick);
-        audio.addEventListener('loadstart', () => { hideNow('loadstart'); });
-        audio.addEventListener('emptied', () => { hideNow('emptied'); });
+        registerAudioListener('pause', () => { hideNow('paused'); });
+        registerAudioListener('ended', () => { hideNow('ended'); scheduleTick(); });
+        registerAudioListener('seeking', () => { hideNow('seeking'); });
+        registerAudioListener('seeked', scheduleTick);
+        registerAudioListener('loadstart', () => { hideNow('loadstart'); });
+        registerAudioListener('emptied', () => { hideNow('emptied'); });
     }
 
     _refs.layer.addEventListener('click', onLayerClick);

@@ -1,3 +1,4 @@
+/* Portions ported from chthollyphile/folia-major (AGPL-3.0) — Copyright (c) chthollyphile and contributors. See THIRD_PARTY_NOTICES.md */
 /**
  * 机械移植自 chthollyphile/folia-major src/components/visualizer/sonnet/sonnetTextViewBuilder.ts
  * TS → ES Module JS 机械转换：删类型标注/类型 import，Pixi 实例经首参 pixi = { Container, Text, TextStyle } 注入。

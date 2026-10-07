@@ -8,6 +8,7 @@ import { audio } from './20-lyrics-render.js';
 import { getFavorites, makeSongKey, toggleFavCore } from './120-search-results.js';
 import { setPlayMode } from './75-play-mode.js';
 import { esc } from '../utils/formatters.js';
+import { registerAudioListener } from '../core/dualDeck.js';
 
 (function () {
   const toggle = document.getElementById('playlistManagerToggle');
@@ -266,7 +267,7 @@ import { esc } from '../utils/formatters.js';
   }
   /* 队列长度变化时同步显隐（render 是模块内函数，借 play 事件与开面板时机刷新） */
   panel.addEventListener('transitionend', syncShuffleVis);
-  if (audio) audio.addEventListener('play', syncShuffleVis);
+  if (audio) registerAudioListener('play', syncShuffleVis);
 
   /* ---- 点击：播放 / 收藏 / 加入歌单 / 删除（拖拽结束不算点击） ---- */
   listEl.addEventListener('click', (e) => {
@@ -307,5 +308,5 @@ import { esc } from '../utils/formatters.js';
     if (info) { const i = +info.dataset.play; if (i !== cur) loadPlaylistTrack(i); }
   });
 
-  if (audio) audio.addEventListener('play', () => { if (isOpen()) render(); });
+  if (audio) registerAudioListener('play', () => { if (isOpen()) render(); });
 })();

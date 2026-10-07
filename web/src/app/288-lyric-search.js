@@ -22,7 +22,6 @@ import { getRecentHistory } from './258-rankings.js';
 import { loadOnlineSong } from './175-track-index-online.js';
 import { sanitizeImageUrl } from './100-cover-background.js';
 import { showToast } from './155-random-toast-match.js';
-import { sourceBtns } from './30-dom-refs.js';
 import { updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { state } from '../infrastructure/state.js';
 import { esc, formatTime } from '../utils/formatters.js';
@@ -47,6 +46,7 @@ import {
     search,
     songKeyOf,
 } from '../services/lyricIndex.js';
+import { registerAudioListener } from '../core/dualDeck.js';
 
 const TAG = 'lyricSearch';
 const ROOT_ID = 'lyricSearchOverlay';
@@ -325,8 +325,8 @@ function startPump() {
         /* 另一个标签页改了收藏/歌单（同一份 localStorage）：立刻复查 */
         window.addEventListener('storage', () => { _fastTries = FAST_TRIES; schedule(0); });
     }
-    if (audio && typeof audio.addEventListener === 'function') {
-        audio.addEventListener('play', () => { _fastTries = FAST_TRIES; schedule(400); });
+    if (audio) {
+        registerAudioListener('play', () => { _fastTries = FAST_TRIES; schedule(400); });
     }
 }
 
@@ -631,11 +631,6 @@ async function jumpToRow(row) {
             cover: row.cover || '',
         };
         state.currentSource = row.source;
-        try {
-            if (Array.isArray(sourceBtns)) {
-                sourceBtns.forEach(b => b.classList.toggle('active', b.dataset.source === row.source));
-            }
-        } catch (e) { logCatch(TAG, e); }
         setHint(T.loadingJump);
         try {
             await loadOnlineSong(info, true);

@@ -504,6 +504,20 @@ import { ACCENT_PRESETS } from '../config/themePalette.js';
           var applyColor = function (hex) {
             themeColor = hex;
             chips.forEach(function (x) { x.classList.toggle('sel', x.dataset.c === hex); });
+            /* ★ 必须当场写进 appSettings.interface.themeColor（内存态，不落盘）。
+               落盘仍在 finish() 里做，但**内存态不能等**：向导开着的时候，
+               applyAllSettings() 会按 appSettings 里的旧值重放
+               applyInterfaceSettings(190:57) 与 applyModeSettings(190:244)
+               ——两处都读 interface.themeColor——把刚选中的预览色回写掉。
+               2026-10-05 用写入栈钩子实测：点色块后约 1.37s 被回写，三条栈
+               190:57 / 190:244 / 200-settings-panel.js:476 syncPreviewToMain，
+               用户观感是「选了颜色，过一会儿又变回去了」。
+               （finish() 里那段注释讲的是同源问题，只是它只覆盖「完成」那一刻。） */
+            try {
+              if (typeof appSettings !== 'undefined' && appSettings && appSettings.interface) {
+                appSettings.interface.themeColor = hex;
+              }
+            } catch (e) { logCatch('oobe', e); }
             import('./190-settings-fontsize.js')
                 .then(function (m) { m.applyThemeColor(hex); })
                 .catch(function (e) { logCatch('oobe', e); });

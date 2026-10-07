@@ -7,7 +7,8 @@ import { PVEngine } from '../core/pvEngine/PVEngine.js';
 import { TunnelEngine } from '../core/tunnelEngine/TunnelEngine.js';
 import { LYRICS_VIRTUAL_SCROLL } from '../config/constants.js';
 import { escapeHtml, formatTime, processTextForLatin } from '../utils/formatters.js';
-import { getCoverLayers } from '../infrastructure/dom.js';
+import { getCoverLayers, dom } from '../infrastructure/dom.js';
+import { initDualDeck, onRoleSwap, replaceActiveDeck } from '../core/dualDeck.js';
 import { playerContainer } from './40-playback-state.js';
 import { layoutWordCloud } from './56-playback-misc.js';
 import { updateWordcloudCamera } from './57-wordcloud-camera.js';
@@ -276,6 +277,35 @@ function maybeAlignLyrics(lines) {
             }
         }
 
+/* ★ 2026-10-02 过滤开头制作名单行（用户实测「verse 内容偏左上、满屏音乐监制」）：
+   网易云/QQ 的 LRC 常把制作名单做成 0-15s 每行 1s 的伪歌词行（「词 Lyricist : xx」
+   「音乐监制 Music Supervisor : xx」），此前一路进歌词队列——verse 布局把它们当
+   正文渲染，满屏 credits 碎片且构图散乱（用户四轮「焦点偏左上」的真身）。
+   只滤「开头连续段」：从第一行起连续命中（字段冒号格式 + 制作关键词）就剔，
+   遇到第一行真歌词即停——中段歌词里偶尔出现的冒号/关键词不受影响。 */
+const LYRIC_CREDIT_RE = /(作词|作曲|词曲|编曲|填词|谱曲|制作|监制|统筹|企划|策划|出品|发行|版权|录音|混音|母带|和声|配唱|人声|工程师|音乐总监|美术|导演|歌手|演唱|表演| OP\s*[:：]| SP\s*[:：]|Lyricist|Composer|Arrang|Producer|Supervisor|Mixing|Mastering|Recording|Engineer|Director|Artist|Performer|A&R)/i;
+const isLyricCreditLine = (line) => {
+    const t = String((line && (line.original ?? line.text)) ?? '').trim();
+    if (!t) return true;
+    /* 字段冒号格式（中英对照字段名也算）：行首 24 字内出现冒号且含制作关键词 */
+    if (/^[^:：]{1,24}[:：]/.test(t) && LYRIC_CREDIT_RE.test(t)) return true;
+    return false;
+};
+const stripLeadingCreditLines = (lyrics) => {
+    if (!Array.isArray(lyrics) || lyrics.length === 0) return lyrics;
+    let i = 0;
+    while (i < lyrics.length) {
+        const line = lyrics[i];
+        const startMs = Number.isFinite(line.start) ? line.start : 0;
+        if (startMs <= 45000 && isLyricCreditLine(line)) { i++; continue; }
+        break;
+    }
+    /* ★ 2026-10-03 防剔空（「verse 有时没有歌词」的第二条可能路径）：极少数歌
+       （纯音乐/只有制作名单的 LRC）整份歌词都是 credits 格式——剔光就是空队列、
+       全程无歌词。宁可显示制作名单也不给空白画面：剩余不足 2 行时放弃剔除。 */
+    return (i > 0 && lyrics.length - i >= 2) ? lyrics.slice(i) : lyrics;
+};
+
 function renderLyrics(lyrics) {
             /* ★ 逐字兜底：只有行级时间戳的歌词（普通 LRC、多数外部源）按行时长摊平出
                逐字时间，否则下面 `line.words.length` 分支不成立、整行一跳。
@@ -294,6 +324,8 @@ function renderLyrics(lyrics) {
                         ? Math.round(audio.duration * 1000) : 0
                 });
             }
+            /* ★ 开头制作名单剔除（见 stripLeadingCreditLines 定义处注释） */
+            lyrics = stripLeadingCreditLines(lyrics);
             /* ★ 当前歌词全局缓存：供"下载歌词"(90-eq.js)读取即时数据 */
             if (typeof window !== 'undefined') { Aria.__ariaLyrics = lyrics; }
             /* ★ 同步 globalThis.lyrics：形参 lyrics 会遮蔽全局名，
@@ -592,9 +624,47 @@ function updateLineBlur(lineIndex) {
         }
 
 /* ========== 播放器配置和状态 ========== */
-const audio = typeof document !== 'undefined' ? document.getElementById('audioPlayer') : null;
+/* ★ export let（Automix Phase 1，方案 §2 方案 Z）：原来是 const。ES module 的
+   live binding 语义保证 dualDeck.swapRoles() 重指后，30 个分片的运行时读法
+   （audio.currentTime 等）自动跟随新元素，分片一行不用改。
+   一次性探针（canplay 挂上即拆）仍应直接 audio.addEventListener——在途探针
+   随旧 deck 死亡是正确语义；**常驻**监听必须走 dualDeck.registerAudioListener。 */
+export let audio = typeof document !== 'undefined' ? document.getElementById('audioPlayer') : null;
 /* ★ audio 单例挂全局：供 core/ 层（如 DimensionVisualizer）跨层获取同一播放元素，
    避免误走 document.querySelector('audio') 拿到非播放器元素 */
 if (typeof globalThis !== 'undefined' && audio) globalThis.audio = audio;
 
-export { audio, cacheLyricElements, renderLyrics, updateLineBlur, updateVirtualLyricsRender };
+if (audio) {
+    initDualDeck(audio);
+    /* 角色互换（Automix Phase 2 起）：三处「当前元素」引用同步重指 */
+    onRoleSwap((newActive) => {
+        audio = newActive;
+        if (typeof globalThis !== 'undefined') globalThis.audio = audio;
+        dom.audio = audio;  /* audioPlayer 门面（core/audioPlayer.js）等 dom.audio 读法跟随 */
+    });
+}
+
+/**
+ * 顶替全库的「当前播放元素」（原生输出线 Phase 2b）。
+ *
+ * 由 app/298 在启用/停用原生输出时调用，参数是 core/nativeDeck 的鸭子类型替身
+ * 或原始 #audioPlayer 元素。
+ *
+ * ★ 为什么必须走这个函数而不是在这里直接给 `audio` 赋值：`audio` 的 live binding
+ *   只解决「30 个分片读到谁」，解决不了「常驻监听挂在谁身上」。两者必须一起动，
+ *   所以真正的动作在 dualDeck.replaceActiveDeck（成对搬运 + 通知），本函数只是
+ *   app 层的语义入口。
+ *
+ * @param {object|null} el 新的活跃播放元素（需实现 addEventListener/removeEventListener）
+ * @returns {boolean} 是否已成为活跃元素（搬运回调失败时为 false，调用方应据此回退）
+ */
+export function setActiveAudio(el) {
+    if (!el) return false;
+    if (el === audio) return true;
+    replaceActiveDeck(el);
+    /* replaceActiveDeck 会同步触发上面的 onRoleSwap 回调完成重指，
+       这里复核一次：真值而不是「我调过了」。 */
+    return audio === el;
+}
+
+export { cacheLyricElements, renderLyrics, updateLineBlur, updateVirtualLyricsRender };

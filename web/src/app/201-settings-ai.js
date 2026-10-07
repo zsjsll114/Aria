@@ -34,6 +34,7 @@ import { t } from '../core/i18n.js';
 import { applyLyricSetting, applySharedSetting, ensureEmotionGlowSliders, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
 import { bindToggle } from './200-settings-panel.js';  // 环引用：bindToggle 为函数声明（提升），仅在 initSettingsAI 运行时经函数体访问，TDZ 安全
 import { esc } from '../utils/formatters.js';
+import { registerAudioListener } from '../core/dualDeck.js';
 
             /* 获取歌词纯文本（从 lyrics 数组中提取）
                逐字歌词：附带每行时长与高潮区间加权信息，帮助 AI 精准识别高潮/副歌 */
@@ -1057,6 +1058,14 @@ function ensureEmotionWordStyle() {
                 }
                 logInfo('settingsPanel', '[EmotionWord] 有效情感词条目数:', emotionEntries, '逐字歌词行数:', wordElementsByLine.length);
 
+                /* ★★ 兜底注入情感词样式表（用户报「情感词不显示」的根因之一）。
+                   `#ai-emotion-word-style` 原先**只在 `applyAITheme` 里创建**：
+                   而"第一路情绪结果先到"的即时上色路径会直接调本函数 ——
+                   此时规则还不存在，class 加上了、颜色/发光规则却没有 ⇒ 视觉上等于没有情感词。
+                   （某些模式偶尔正常，只是因为切模式顺带跑过一次 applyAITheme。）
+                   样式表本身是幂等的，重复调用只改写 textContent。 */
+                if (typeof ensureEmotionWordStyle === 'function') ensureEmotionWordStyle();
+
                 /* 辅助函数：检查空格分词语言的词边界（避免 love 匹配到 Glover 中的 love）
                    中文/日文/韩文不需要词边界检查，因为字符本身就是独立的字 */
                 const isLatinWord = (w) => /[\p{L}]/u.test(w) && !/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/u.test(w);
@@ -1668,17 +1677,17 @@ function renderChorusMarkers() {
 
 /* 监听音频元数据加载，确保高潮标记在时长就绪后第一时间绘制 */
 if (typeof audio !== 'undefined' && audio) {
-    audio.addEventListener('loadedmetadata', () => {
+    registerAudioListener('loadedmetadata', () => {
         if (currentChorusSegments && currentChorusSegments.length > 0) {
             renderChorusMarkers();
         }
     });
-    audio.addEventListener('durationchange', () => {
+    registerAudioListener('durationchange', () => {
         if (currentChorusSegments && currentChorusSegments.length > 0) {
             renderChorusMarkers();
         }
     });
-    audio.addEventListener('play', () => {
+    registerAudioListener('play', () => {
         if (currentChorusSegments && currentChorusSegments.length > 0) {
             renderChorusMarkers();
         }
