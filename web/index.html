@@ -1265,7 +1265,7 @@
                     <div class="appearance-section" data-mode-section="pv">
                         <div class="settings-group"><div class="settings-group-title">诗镜 · Verse</div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.5"><span class="setting-value" data-val="fontSize">1.50x</span></div></div>
-                        <div class="setting-row"><div><div class="setting-label">默认焦距 (镜头特写)</div><div class="setting-desc">拉大焦距可让镜头聚焦于当前两三个词呈现超大特写，调小则显示更完整句子</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraZoom" min="0.8" max="3.0" step="0.1" value="1.0"><span class="setting-value" data-val="cameraZoom">1.0x</span></div></div>
+                        <div class="setting-row"><div><div class="setting-label">默认焦距 (镜头特写)</div><div class="setting-desc">调大：聚焦当前两三个词的特写；调小：显示更完整的句子</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraZoom" min="0.8" max="3.0" step="0.1" value="1.0"><span class="setting-value" data-val="cameraZoom">1.0x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">网点大小</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="halftoneSize" min="3" max="12" step="1" value="6"><span class="setting-value" data-val="halftoneSize">6px</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">运镜平滑速度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraSpeed" min="0.5" max="2.0" step="0.1" value="1.0"><span class="setting-value" data-val="cameraSpeed">1.0x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">相机阻尼系数</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraDamping" min="0.005" max="0.05" step="0.002" value="0.016"><span class="setting-value" data-val="cameraDamping">0.016</span></div></div>
@@ -1286,7 +1286,7 @@
                     <div class="appearance-section" data-mode-section="tunnel">
                         <div class="settings-group"><div class="settings-group-title">格律 · Mondrian</div>
                         <div class="setting-row"><div><div class="setting-label">基础字号</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="fontSize" min="0.5" max="2.0" step="0.05" value="1.1"><span class="setting-value" data-val="fontSize">1.10x</span></div></div>
-                        <div class="setting-row"><div><div class="setting-label">活泼排版（允许词块倾斜）</div><div class="setting-desc">关闭 = 横平竖直：不旋转、只保留字号大小差异，整齐居中排版</div></div><div class="setting-control"><button class="setting-toggle" data-var="mosaicTilt"></button></div></div>
+                        <div class="setting-row"><div><div class="setting-label">活泼排版（允许词块倾斜）</div><div class="setting-desc">关闭后不旋转，仅按字号大小居中排版</div></div><div class="setting-control"><button class="setting-toggle" data-var="mosaicTilt"></button></div></div>
                         <div class="setting-row"><div><div class="setting-label">运镜平滑速度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraSpeed" min="0.3" max="2.0" step="0.1" value="1.0"><span class="setting-value" data-val="cameraSpeed">1.0x</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">相机阻尼系数</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="cameraDamping" min="0.02" max="0.1" step="0.01" value="0.045"><span class="setting-value" data-val="cameraDamping">0.045</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">场景过渡时长</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="transitDuration" min="200" max="800" step="25" value="450"><span class="setting-value" data-val="transitDuration">450ms</span></div></div>
@@ -1334,8 +1334,8 @@
                         <div class="setting-row"><div><div class="setting-label">风格</div><div class="setting-desc">27 套版式语言；「自动匹配」会按歌词抽一套</div></div><div class="setting-control"><div class="setting-dropdown" data-var="style"><div class="setting-dropdown-trigger">noir</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item" data-value="auto">自动匹配</div><div class="setting-dropdown-item selected" data-value="noir">noir</div><div class="setting-dropdown-item" data-value="crimson">crimson</div><div class="setting-dropdown-item" data-value="caution">caution</div><div class="setting-dropdown-item" data-value="magenta">magenta</div><div class="setting-dropdown-item" data-value="paper">paper</div><div class="setting-dropdown-item" data-value="hud">hud</div><div class="setting-dropdown-item" data-value="mint">mint</div><div class="setting-dropdown-item" data-value="specimen">specimen</div><div class="setting-dropdown-item" data-value="transit">transit</div><div class="setting-dropdown-item" data-value="blueprint">blueprint</div><div class="setting-dropdown-item" data-value="rouge">rouge</div><div class="setting-dropdown-item" data-value="mono">mono</div><div class="setting-dropdown-item" data-value="hrRuin">hrRuin</div><div class="setting-dropdown-item" data-value="hrNightRec">hrNightRec</div><div class="setting-dropdown-item" data-value="hrCurse">hrCurse</div><div class="setting-dropdown-item" data-value="sakura">sakura</div><div class="setting-dropdown-item" data-value="ocean">ocean</div><div class="setting-dropdown-item" data-value="sunset">sunset</div><div class="setting-dropdown-item" data-value="forest">forest</div><div class="setting-dropdown-item" data-value="vapor">vapor</div><div class="setting-dropdown-item" data-value="newsprint">newsprint</div><div class="setting-dropdown-item" data-value="synth80">synth80</div><div class="setting-dropdown-item" data-value="kraft">kraft</div><div class="setting-dropdown-item" data-value="candy">candy</div><div class="setting-dropdown-item" data-value="acid">acid</div><div class="setting-dropdown-item" data-value="sumi">sumi</div><div class="setting-dropdown-item" data-value="gold">gold</div></div></div></div></div>
                         <div class="setting-row"><div><div class="setting-label">情绪倾向</div><div class="setting-desc">只在「自动匹配」时参与抽签</div></div><div class="setting-control"><div class="setting-dropdown" data-var="mood"><div class="setting-dropdown-trigger">不限</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="">不限</div><div class="setting-dropdown-item" data-value="glitch">glitch</div><div class="setting-dropdown-item" data-value="calm">calm</div><div class="setting-dropdown-item" data-value="pop">pop</div><div class="setting-dropdown-item" data-value="graphic">graphic</div><div class="setting-dropdown-item" data-value="editorial">editorial</div><div class="setting-dropdown-item" data-value="emotional">emotional</div><div class="setting-dropdown-item" data-value="horror">horror</div><div class="setting-dropdown-item" data-value="chaos">chaos</div></div></div></div></div>
                         <div class="setting-row"><div><div class="setting-label">性能档</div><div class="setting-desc">按实测帧耗时动态调整清晰度；旧机器可选省电</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="perf" data-val="auto">自动</button><button class="setting-btn" data-var="perf" data-val="eco">省电</button><button class="setting-btn" data-var="perf" data-val="hd">高清</button></div></div></div>
-                        <div class="setting-row"><div><div class="setting-label">动画节拍</div><div class="setting-desc">逐帧最顺；「一拍两格」是引擎原味的动画卡帧感（12 张/秒）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="beat" data-val="every">逐帧</button><button class="setting-btn" data-var="beat" data-val="onTwos">一拍两格</button></div></div></div>
-                        <div class="setting-row"><div><div class="setting-label">按字切分镜</div><div class="setting-desc">用真实字时间把一行拆成多个分镜，切点更贴唱到的字；但本引擎里一段就是一个画面，拆多了会显得碎（需要 KRC/YRC/QRC 逐字歌词，或已做过频谱对齐）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="wordSync" data-val="off">关</button><button class="setting-btn" data-var="wordSync" data-val="cuts">开</button></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">动画节拍</div><div class="setting-desc">逐帧最流畅；「一拍两格」为引擎原生的卡帧感（每秒 12 张）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="beat" data-val="every">逐帧</button><button class="setting-btn" data-var="beat" data-val="onTwos">一拍两格</button></div></div></div>
+                        <div class="setting-row"><div><div class="setting-label">按字切分镜</div><div class="setting-desc">按真实逐字时间把一行拆成多个分镜；引擎里一段即一个画面，拆得太多会显得碎（需要逐字歌词）</div></div><div class="setting-control"><div class="setting-btn-group"><button class="setting-btn active" data-var="wordSync" data-val="off">关</button><button class="setting-btn" data-var="wordSync" data-val="cuts">开</button></div></div></div>
                         <div class="settings-group"><div class="settings-group-title">画面细节</div>
                         <div class="setting-row"><div><div class="setting-label">动感</div><div class="setting-desc">镜头与元素的运动幅度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="motion" min="0" max="1" step="0.05" value="0.7"><span class="setting-value" data-val="motion">0.70</span></div></div>
                         <div class="setting-row"><div><div class="setting-label">故障闪烁</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="glitch" min="0" max="1" step="0.05" value="0.55"><span class="setting-value" data-val="glitch">0.55</span></div></div>
@@ -1347,7 +1347,7 @@
                         <div class="setting-row"><div><div class="setting-label">HUD</div><div class="setting-desc">画面里的角标与刻度</div></div><div class="setting-control"><div class="setting-dropdown" data-var="hud"><div class="setting-dropdown-trigger">自动</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="auto">自动</div><div class="setting-dropdown-item" data-value="on">显示</div><div class="setting-dropdown-item" data-value="off">隐藏</div></div></div></div></div>
                         </div>
                         <div class="settings-group"><div class="settings-group-title">日文字体包</div>
-                        <div class="setting-row"><div><div class="setting-label">导入日文字体</div><div class="setting-desc">导入上游原用的日文字体（可多选 .ttf/.otf/.woff/.woff2）；本模式会按上游原貌排版，导入的字体同样可用于其它模式</div></div><div class="setting-control"><button class="setting-btn jizura-font-pack-btn">选择字体文件</button></div></div>
+                        <div class="setting-row"><div><div class="setting-label">导入日文字体</div><div class="setting-desc">导入日文字体（支持 .ttf/.otf/.woff/.woff2，可多选）；本模式按原始字体排版，导入的字体也可用于其它模式</div></div><div class="setting-control"><button class="setting-btn jizura-font-pack-btn">选择字体文件</button></div></div>
                         </div>
                         <div class="setting-row"><div><div class="setting-label">帧率</div><div class="setting-desc">动画的输出帧率。12 最省电，24 最顺滑</div></div><div class="setting-control"><div class="setting-dropdown" data-var="fps"><div class="setting-dropdown-trigger">24 fps</div><div class="setting-dropdown-menu"><div class="setting-dropdown-item selected" data-value="24">24 fps</div><div class="setting-dropdown-item" data-value="12">12 fps</div></div></div></div></div>
                         <div class="setting-row"><div><div class="setting-label">显示翻译</div></div><div class="setting-control"><button class="setting-toggle on" data-var="showTranslation"></button></div></div>
@@ -1439,7 +1439,7 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">起播淡入</div><div class="setting-desc">点播放、切歌或从暂停恢复时，音量快速平滑升起（100~300 毫秒）</div></div>
+                        <div><div class="setting-label">起播淡入</div><div class="setting-desc">播放、切歌或恢复时音量平滑淡入（100~300 毫秒）</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setStartFade"></button>
                         </div>
@@ -1477,7 +1477,7 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">练习模式变速</div><div class="setting-desc">速度固定到指定值，0.5×~2.0× 每档 0.05；保持音高不变调（独占输出下仍会变调）</div></div>
+                        <div><div class="setting-label">练习模式变速</div><div class="setting-desc">固定播放速度（0.5×~2.0×，每档 0.05）并保持音高；独占输出下音高仍会变化</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setPracticeMode"></button>
                         </div>
@@ -1509,13 +1509,13 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">服务地址</div><div class="setting-desc">now-playing-service 默认 http://localhost:9863/query；教程见 docs/now-playing-接管教程.md</div></div>
+                        <div><div class="setting-label">服务地址</div><div class="setting-desc">本机服务地址，默认 http://localhost:9863/query</div></div>
                         <div class="setting-control">
                             <input type="text" id="npUrl" autocomplete="off" style="width:260px;padding:7px 12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;font-size:12px;outline:none;font-family:inherit;">
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">轮询间隔(秒)</div><div class="setting-desc">0.1~30 秒（0.1 = 100ms，WS 在线时仅兜底）</div></div>
+                        <div><div class="setting-label">轮询间隔(秒)</div><div class="setting-desc">0.1~30 秒（WebSocket 在线时仅作兜底）</div></div>
                         <div class="setting-control">
                             <input type="range" class="setting-slider" id="npInterval" min="0.1" max="30" step="0.1">
                             <span class="setting-value" id="npIntervalVal">5</span>
@@ -1653,19 +1653,19 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">MV 画质增强</div><div class="setting-desc">Anime4K 超分与去压缩伪影，改善 MV 的模糊、噪点与边缘</div></div>
+                        <div><div class="setting-label">MV 画质增强</div><div class="setting-desc">Anime4K 超分与去伪影，改善 MV 的模糊与噪点</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setMvUpscale"></button>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">增强强度</div><div class="setting-desc">S 轻快、M 更锐、L 最强；越强越吃显卡，顶不住会自动降级回原画</div></div>
+                        <div><div class="setting-label">增强强度</div><div class="setting-desc">S 轻快、M 更锐、L 最强；越强越耗显卡，性能不足时自动降级</div></div>
                         <div class="setting-control">
                             <div class="setting-dropdown" id="dropdown-mvUpscaleTier" data-setting="mvUpscaleTier"></div>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">音画偏移矫正</div><div class="setting-desc">自动对齐 MV 画面与歌曲进度；每首会多下约 10MB 做分析，关掉可省流量</div></div>
+                        <div><div class="setting-label">音画偏移矫正</div><div class="setting-desc">自动对齐 MV 正片与歌曲进度；每首额外下载约 10MB 用于分析</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setMvSync"></button>
                         </div>
@@ -1715,13 +1715,13 @@
                 <div class="settings-group">
                     <div class="settings-group-title">歌词逐字显示</div>
                     <div class="setting-row">
-                        <div><div class="setting-label">行级歌词也按逐字显示</div><div class="setting-desc">只有整行时间戳的歌词（普通 LRC、多数外部源）按行时长摊平成逐字高亮；关闭则整行一起跳。仅对 歌词 / 默认 / 词云 三个模式生效</div></div>
+                        <div><div class="setting-label">行级歌词也按逐字显示</div><div class="setting-desc">行级歌词按行时长摊平为逐字高亮，关闭则整行一起跳；仅对歌词、默认、词云三种模式生效</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle on" id="setPerCharFromLineLyrics" aria-label="行级歌词也按逐字显示"></button>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">自动替换为真逐字歌词</div><div class="setting-desc">当前是行级歌词时，去其它音源找一份匹配度 &gt;90% 的逐字歌词换上（酷狗 KRC 优先）。开启后不再摊平假逐字，所以会关闭上面那个开关</div></div>
+                        <div><div class="setting-label">自动替换为真逐字歌词</div><div class="setting-desc">当前为行级歌词时，从其它音源找匹配度高于 90% 的逐字歌词替换（酷狗优先）。开启后不再摊平假逐字，上面的开关会自动关闭</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setAutoUpgradeWordLyrics" aria-label="自动替换为真逐字歌词"></button>
                         </div>
@@ -1802,15 +1802,15 @@
                             <div class="setting-dropdown" id="dropdown-audioOutput"></div>
                         </div>
                     </div>
-                    <!-- WASAPI 独占输出（原生输出线 Phase 2b）：仅在桌面壳 + 引擎可用时显示，
+                    <!-- 独占输出（原生输出线 Phase 2b）：仅在桌面壳 + 引擎可用时显示，
                          显隐与开关状态由 app/298-native-output.js 接管（默认隐藏避免网页版露出死开关） -->
                     <div class="setting-row" id="rowNativeExclusive" style="display:none">
-                        <div><div class="setting-label">WASAPI 独占输出</div><div class="setting-desc">绕过系统混音器直通声卡（比特完美）。开启后播放改由原生引擎接管，Automix 与变速暂不可用</div></div>
+                        <div><div class="setting-label">独占输出</div><div class="setting-desc">绕过系统混音器直通声卡。开启后由原生引擎接管播放，Automix 与变速暂不可用</div></div>
                         <div class="setting-control"><button class="setting-toggle" id="setNativeExclusive"></button></div>
                     </div>
                     <!-- 输出声道（需求 20）：纯声道矩阵，链路最末端 -->
                     <div class="setting-row">
-                        <div><div class="setting-label">输出声道</div><div class="setting-desc">立体声（默认）/ 单声道 / 只听左或右 / 交换左右。纯声道参数，不改音质</div></div>
+                        <div><div class="setting-label">输出声道</div><div class="setting-desc">立体声（默认）、单声道、只听左或右、交换左右</div></div>
                         <div class="setting-control">
                             <div class="setting-btn-group" id="setChannelMode">
                                 <button class="setting-btn" data-val="stereo">立体声</button>
@@ -1838,7 +1838,7 @@
                     </div>
                     <!-- AutoEQ PEQ 导入（需求 3）：粘贴文本 → 折算到 10 段 -->
                     <div class="setting-row">
-                        <div><div class="setting-label">导入 AutoEQ PEQ</div><div class="setting-desc">粘贴 AutoEQ / Peace 导出的参数均衡文本，自动折算并写入 10 段均衡器</div></div>
+                        <div><div class="setting-label">导入 AutoEQ PEQ</div><div class="setting-desc">粘贴 AutoEQ / Peace 导出的参数文本，自动折算为 10 段均衡设置</div></div>
                         <div class="setting-control">
                             <button class="setting-btn" id="setImportAutoEq">导入</button>
                         </div>
@@ -1847,11 +1847,11 @@
                 <div class="settings-group">
                     <div class="settings-group-title">空间音频</div>
                     <div class="setting-row">
-                        <div><div class="setting-label">空间音频</div><div class="setting-desc">用双耳 HRTF 卷积让声音有前后深度与定位感（耳机效果最佳）</div></div>
+                        <div><div class="setting-label">空间音频</div><div class="setting-desc">用双耳 HRTF 卷积营造前后深度与定位感（建议使用耳机）</div></div>
                         <div class="setting-control"><button class="setting-toggle" id="setSpatialAudio"></button></div>
                     </div>
                     <div class="setting-row" id="rowSpatialStrength">
-                        <div><div class="setting-label">强度</div><div class="setting-desc">轻 = 轻微染色；中 = 空间感明显；强 = 最强包围（干湿比）</div></div>
+                        <div><div class="setting-label">强度</div><div class="setting-desc">轻：轻微染色；中：空间感明显；强：包围感最强</div></div>
                         <div class="setting-control">
                             <div class="setting-btn-group" id="setSpatialStrength">
                                 <button class="setting-btn" data-val="light">轻</button>
@@ -1861,7 +1861,7 @@
                         </div>
                     </div>
                     <div class="setting-row" id="rowSpatialIr">
-                        <div><div class="setting-label">空间类型</div><div class="setting-desc">近场 = 紧致；厅堂 = 更多早期反射；宽阔 = 双耳去相关最强</div></div>
+                        <div><div class="setting-label">空间类型</div><div class="setting-desc">近场：紧致；厅堂：更多早期反射；宽阔：声场最宽</div></div>
                         <div class="setting-control">
                             <div class="setting-btn-group" id="setSpatialIr">
                                 <button class="setting-btn" data-val="near">近场</button>
@@ -1874,7 +1874,7 @@
                 <div class="settings-group">
                     <div class="settings-group-title">虚拟声场</div>
                     <div class="setting-row">
-                        <div><div class="setting-label">虚拟声场</div><div class="setting-desc">横向拉宽声场、提升器乐分离度（人声位置不变，耳机效果更明显）</div></div>
+                        <div><div class="setting-label">虚拟声场</div><div class="setting-desc">横向拉宽声场、提升器乐分离度（人声位置不变，耳机更明显）</div></div>
                         <div class="setting-control"><button class="setting-toggle" id="setVirtualStage"></button></div>
                     </div>
                     <div class="setting-row" id="rowStageStrength">
@@ -1925,10 +1925,10 @@
                 </div>
                 <div class="settings-group">
                     <div class="settings-group-title">视觉开销（手动微调）</div>
-                    <div class="setting-desc" style="padding:0 4px 8px">在所选性能等级基础上手动微调各模式特效开销，立即生效</div>
+                    <div class="setting-desc" style="padding:0 4px 8px">在所选性能等级基础上微调各模式特效开销</div>
                     <div class="setting-row">
                         <div><div class="setting-label" data-i18n="vfx.intensity">动效强度</div>
-                            <div class="setting-desc">一根滑杆代替四档：0 = 只保留逐字高亮，不做背景模糊与粒子；100 = 全部特效。下面的单项开关优先于本滑杆。</div>
+                            <div class="setting-desc">一根滑杆总控特效开销：0 只保留逐字高亮，100 为全部特效；下方单项开关优先生效。</div>
                             <div class="setting-desc" id="vfxIntensityDesc">当前跟随档位「中性能」</div></div>
                         <div class="setting-control">
                             <input type="range" class="setting-slider" id="vfxIntensity" min="0" max="100" step="1" value="100">
@@ -1937,14 +1937,14 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">全局渲染缩放</div><div class="setting-desc">降低时以更低分辨率渲染 3D 视觉效果（浮空/PV/隧道 Canvas）</div></div>
+                        <div><div class="setting-label">全局渲染缩放</div><div class="setting-desc">降低时以更低分辨率渲染 3D 特效（浮空、PV、隧道）</div></div>
                         <div class="setting-control">
                             <input type="range" class="setting-slider" id="vfxRenderScale" min="0.5" max="1" step="0.05" value="1">
                             <span class="setting-value" data-val="vfxRenderScale">100%</span>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">PV 发光效果</div><div class="setting-desc">关闭后唱词高光不再使用 drop-shadow 发光合成</div></div>
+                        <div><div class="setting-label">PV 发光效果</div><div class="setting-desc">关闭后唱词高光不再使用发光合成</div></div>
                         <div class="setting-control"><button class="setting-toggle" id="vfxPvBloom"></button></div>
                     </div>
                     <div class="setting-row">
@@ -2047,7 +2047,7 @@
                     </div>
                     <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:8px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div><div class="setting-label">API Key</div><div class="setting-desc" id="setAiKeyDesc">用于分析歌曲情绪并自动切换主题</div></div>
+                            <div><div class="setting-label">API 密钥</div><div class="setting-desc" id="setAiKeyDesc">用于分析歌曲情绪并自动切换主题</div></div>
                         </div>
                         <div style="position:relative;display:flex;align-items:center;width:100%;">
                             <input type="password" id="setAiApiKey" placeholder="AIzaSy..." autocomplete="off" style="width:100%;padding:9px 40px 9px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;font-size:13px;font-weight:600;outline:none;font-family:inherit;box-sizing:border-box;">
@@ -2055,7 +2055,7 @@
                                 <svg id="aiEyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
                         </div>
-                        <div class="setting-desc" style="color:rgba(255,180,80,0.6);"> API Key 仅存储在本地浏览器 localStorage 中，不会上传到任何第三方服务器。</div>
+                        <div class="setting-desc" style="color:rgba(255,180,80,0.6);"> API 密钥只保存在本机浏览器中，不会上传到第三方服务器。</div>
                     </div>
                     <div class="setting-row">
                         <div>
@@ -2067,13 +2067,13 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">API 接口地址</div><div class="setting-desc" id="setAiBaseDesc">填写 API 接口地址或代理地址</div></div>
+                        <div><div class="setting-label">API 地址</div><div class="setting-desc" id="setAiBaseDesc">填写 API 地址或代理地址</div></div>
                         <div class="setting-control">
                             <input type="text" id="setAiApiBase" placeholder="https://zsjsll-cf.de5.net" autocomplete="off" style="width:240px;padding:7px 12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;font-size:12px;outline:none;font-family:inherit;">
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">反代访问令牌（可选）</div><div class="setting-desc">自建 Cloudflare 反代启用 Token 鉴权时填写，请求经 x-proxy-token 头携带；留空则不发送</div></div>
+                        <div><div class="setting-label">反代访问令牌（可选）</div><div class="setting-desc">仅在使用自建反代并开启 Token 鉴权时填写；留空则不发送</div></div>
                         <div class="setting-control">
                             <input type="password" id="setAiProxyToken" placeholder="留空 = 未启用令牌鉴权" autocomplete="off" style="width:240px;padding:7px 12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;font-size:12px;outline:none;font-family:inherit;">
                         </div>
@@ -2098,7 +2098,7 @@
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div><div class="setting-label">启用智能分析</div><div class="setting-desc">播放歌曲时自动分析歌曲情绪并切换主题，关闭后恢复手动主题</div></div>
+                        <div><div class="setting-label">启用智能分析</div><div class="setting-desc">播放时自动分析歌曲情绪并切换主题，关闭后使用手动主题</div></div>
                         <div class="setting-control">
                             <button class="setting-toggle" id="setAiEnabled"></button>
                         </div>
@@ -2186,7 +2186,7 @@
                     </div>
                     <div id="storagePanel" class="storage-panel"></div>
                     <div class="setting-row">
-                        <div><div class="setting-label">存储上限</div><div class="setting-desc">超过该值自动清理最旧的缓存（0 = 不限；歌单/收藏/记录永不清理）</div></div>
+                        <div><div class="setting-label">存储上限</div><div class="setting-desc">超过后自动清理最旧缓存（0 为不限；歌单、收藏与记录不清理）</div></div>
                         <div class="setting-control">
                             <input type="number" id="setStorageLimit" min="0" max="4096" step="50" class="storage-num" style="width:88px">
                             <span class="setting-value">MB</span>

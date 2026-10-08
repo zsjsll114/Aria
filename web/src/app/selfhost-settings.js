@@ -84,7 +84,7 @@ export function initSelfhostSection() {
   // 顶部说明
   const tip = document.createElement('div');
   tip.className = 'settings-group-title';
-  tip.textContent = '自建服务（本地副进程，需 Node.js）';
+  tip.textContent = '自建服务（需 Node.js）';
   host.appendChild(tip);
   const tipDesc = document.createElement('div');
   tipDesc.className = 'setting-desc';
@@ -190,7 +190,7 @@ function buildPlatformPanel(name, st, prefs) {
   const dot = document.createElement('span');
   dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:${
     hasSource ? (alive ? '#4cd964' : '#ff3b30') : '#9a9a9a'};`;
-  dot.title = !hasSource ? '源码目录缺失' : (!alive ? '副进程离线' : '本地服务运行中');
+  dot.title = !hasSource ? '本地组件缺失' : (!alive ? '服务未启动' : '本地服务运行中');
   head.appendChild(dot);
   const badge = document.createElement('span');
   badge.className = 'setting-desc';
@@ -211,7 +211,7 @@ function buildPlatformPanel(name, st, prefs) {
        旧文案只写「日推/收藏优先」，于是「扫码登录了却还走在线源」无从解释。 */
     tog.title = {
       qq: '启用 QQ 自建：日推/收藏 + 取播放链接都走本机（关掉则取链接退回在线源池）',
-      netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求副进程在线，不受此开关影响）',
+      netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求本地服务在线，不受此开关影响）',
       kugou: '启用酷狗自建：日推/收藏/签到走本机（酷狗暂无自建取播放链接，播放仍走公网源）',
     }[name] || '启用该平台自建';
     tog.addEventListener('click', () => {
@@ -229,7 +229,7 @@ function buildPlatformPanel(name, st, prefs) {
   const isOk = alive && loggedIn;
   const stateLabel = loggedIn
     ? `已登录 · uid ${(st && st.uid) || ''}`
-    : (alive ? '未登录' : '副进程未就绪');
+    : (alive ? '未登录' : '服务未启动');
   row.innerHTML = `<div><div class="setting-label">登录状态</div>
     <div class="setting-desc" style="color:${isOk ? 'var(--theme-color, #3b82f6)' : 'inherit'}">${stateLabel}</div></div>`;
   const ctrl = document.createElement('div');
@@ -242,7 +242,7 @@ function buildPlatformPanel(name, st, prefs) {
     btn.disabled = true;
     btn.style.opacity = '.45';
     btn.style.cursor = 'not-allowed';
-    btn.title = hasSource ? '副进程离线，请先启动' : '未安装本地源码';
+    btn.title = hasSource ? '服务未启动，请先启动服务' : '本地组件未安装';
   }
   btn.addEventListener('click', () => {
     if (loggedIn) {
@@ -345,7 +345,7 @@ function buildPlatformPanel(name, st, prefs) {
   if (!hasSource) {
     const note = document.createElement('div');
     note.style.cssText = 'opacity:.55;font-size:11px;margin-top:-2px;';
-    note.textContent = '源码目录缺失，服务无法拉起';
+    note.textContent = '本地组件缺失，无法启动服务';
     g.appendChild(note);
   }
 

@@ -162,7 +162,7 @@ export async function geminiGenerateContent({
 }) {
     const key = (apiKey || '').trim();
     if (!key || key.length < 5) {
-        return { ok: false, error: '请先配置有效的 Gemini API Key' };
+        return { ok: false, error: '请先配置有效的 Gemini API 密钥' };
     }
     const token = (proxyToken || (globalThis.appSettings && globalThis.appSettings.ai && globalThis.appSettings.ai.proxyToken) || '').trim();
 
@@ -260,7 +260,7 @@ export async function testGeminiConnection({
 }) {
     const key = (apiKey || '').trim();
     if (!key || key.length < 5) {
-        return { ok: false, message: '请先输入有效的 API Key' };
+        return { ok: false, message: '请先输入有效的 API 密钥' };
     }
 
     const startTime = Date.now();

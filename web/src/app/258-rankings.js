@@ -413,7 +413,7 @@ async function loadDailyList(listEl) {
             /* ★ 汽水没有平台开关（设置页刻意不渲染），「去设置启用」的引导对它是错的：
                它的推荐流既不需要启用也不需要登录，唯一失败原因是本机副进程没起来。 */
             const how = dailyState.src === 'qishui'
-                ? '本机汽水服务未就绪'
+                ? '汽水服务未启动'
                 : `请到「设置 → 自建服务」启用「${lbl}」`;
             listEl.innerHTML = `<div class="rank-error">${esc(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">${esc(how)}</span></div>`;
         }
@@ -1041,7 +1041,7 @@ function tip(msg) {
     try { if (window.setHint) window.setHint(msg); } catch (e) { logCatch('rankings', e); }
 }
 window.copyEqShareCode = function () {
-    if (typeof eqGains === 'undefined' || typeof eqActivePreset === 'undefined') { tip('均衡器未就绪'); return; }
+    if (typeof eqGains === 'undefined' || typeof eqActivePreset === 'undefined') { tip('均衡器暂不可用'); return; }
     const payload = JSON.stringify({ v: 1, g: eqGains, p: eqActivePreset || '自定义' });
     const code = 'AriaEQ1.' + b64EncodeUnicode(payload);
     try {

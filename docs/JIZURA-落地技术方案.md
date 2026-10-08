@@ -139,7 +139,7 @@ Aria 播放器
 
 | 源文件 | 包裹方式 | 说明 |
 |---|---|---|
-| `01_util.js` | `export function createJizuraRoot() { <原文> }` —— **只把那 1 行改成 `const J = {};`**（原为 `const J = (window.J = window.J \|\| {});`，我们不再挂 `window`），末尾加 `return J;` | 它是 `J` 的**创建者**，必须是第 1 个执行的模块；⚠ 该行**不能删**（删了就 `return J` 时 ReferenceError——这正是本方案最容易写错的一行） |
+| `01_util.js` | `export function createJizuraRoot() { <原文> }` —— **只把那 1 行改成 `const J = {};`**（原为 `const J = (window.J = window.J \|\| {});`，我们不再挂 `window`），末尾加 `return J;` | 它是 `J` 的**创建者**，必须是第 1 个执行的模块；注意：该行**不能删**（删了就 `return J` 时 ReferenceError——这正是本方案最容易写错的一行） |
 | 其余 39 个 | `export default function install(J) { <原文一字不改> }` | 它们读的就是**参数 J**（原文本 `(() => { const E = J.E; … })();` 原样成立：内层 IIFE 闭包到外层函数参数） |
 
 **已实测确认**（2026-10-06）：`src/01_util.js:5` 确实是 `const J = (window.J = window.J || {})` 的顶层形式；`src/11p_enter.js` 等 pack 确实是 `(() => { 'use strict'; const E = J.E; … })();` 且以 `for (const k of Object.keys(DEFS)) J.register('enter', k, DEFS[k], P); })();` 收尾——**包裹式搬运成立**。

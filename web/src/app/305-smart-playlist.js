@@ -144,7 +144,7 @@ async function openSmartPlaylist() {
         const ai = (globalThis.appSettings && globalThis.appSettings.ai) || {};
         const apiKey = String(ai.apiKey || '').trim();
         if (apiKey.length < 10) {
-            setHint(tx('请先在 设置 → AI 分析 里配置 API Key'));
+            setHint(tx('请先在 设置 → AI 分析 里配置 API 密钥'));
             return;
         }
 

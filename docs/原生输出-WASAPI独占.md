@@ -92,7 +92,7 @@ web/src/app/96-automix.js           isEnabled 闸门：原生接管期间让位
 | --- | --- | --- |
 | 缓冲是否被消费 | `GetCurrentPadding`，**2 秒 / 98 次采样** | padding 恒等于整块缓冲，`read_ok=98 read_failed=0` |
 | 端点时钟是否在走 | `IAudioClock::GetPosition`（**独立于 padding 的通路**） | `clock_freq=44100`，5 秒只推进 **16 帧**（应为 220500）→ 每秒 3 帧 |
-| 预填充的音调有没有被播出去 | 预填充 **1kHz 正弦**而非静音 | 时钟只前进 3 帧 ⇒ 预填充那 1024 帧**一帧都没被消费** |
+| 预填充的音调有没有被播出去 | 预填充 **1kHz 正弦**而非静音 | 时钟只前进 3 帧 → 预填充那 1024 帧**一帧都没被消费** |
 | 写入是否被拒 | 每个周期强制写一次 | 245 次全部 `AUDCLNT_E_BUFFER_TOO_LARGE`（缓冲从来是满的） |
 
 已排除的变量（全部实测）：
@@ -135,7 +135,7 @@ web/src/app/96-automix.js           isEnabled 闸门：原生接管期间让位
 >    或 `Disable_SysFx = 1`；
 > 2. `Stop-Service NahimicService; sc stop Nahimic_Mirroring` 并结束 Nahimic 进程；
 > 3. 重跑 `audio-probe diag --exclusive`。
-> 若转为 FLOWING ⇒ 根因确认是 Nahimic/OEM APO 链。以上均可逆（重启或重启服务）。
+> 若转为 FLOWING → 根因确认是 Nahimic/OEM APO 链。以上均可逆（重启或重启服务）。
 
 ### 3.4 「独占用不了」时的替代路径：共享原始模式
 

@@ -56,7 +56,7 @@
   - `245-playlist-manager.js`：右下角当前播放队列
   - `250-desktop-lyrics.js`、`258-rankings.js`(榜单/日推/最近/统计/批量操作)、`259-selfhost-favorites.js`(自建收藏+缓存)
   - `297-artist-page.js`：歌手页（歌曲卡片的歌手名可点 → 全屏 overlay；数据在 `services/artistApi.js`，四源接口契约见该文件头注释）  
-    ★ 入口用 `Aria.openArtist()` 惰性调用而非静态 import（分片间已有 120↔130↔135↔150 的环，不再加边）。
+    入口用 `Aria.openArtist()` 惰性调用而非静态 import（分片间已有 120↔130↔135↔150 的环，不再加边）。
   - `selfhost-runtime.js`：/api/selfhost 客户端（日推、歌单、我喜欢、缓存键；汽水日推走字节推荐流 `/feed`、歌单走 `/playlists`+`/playlist`，见下方「汽水没有榜单」）
   - `selfhost-settings.js`：设置页自建服务四平台分栏（酷狗/QQ/网易云/汽水；汽水无启用开关、无 Cookie 输入）
 - `lyrics.html`：桌面歌词窗口独立页（`#tEmc` 情感词开关、逐字 fill 进度、`--dtk-hl` 主题色）。
@@ -64,7 +64,7 @@
 
 ## 请求链路注意
 
-- **★ 全链路数据通道优先级（2026-09-22 确立）：本机自建 vendor 第一优先，公网上游仅作兜底。**  
+- **全链路数据通道优先级（2026-09-22 确立）：本机自建 vendor 第一优先，公网上游仅作兜底。**  
   公网上游（vkeys.cn / ygking / byfuns）会整体失联（2026-09-22 实测三者同时超时，QQ/网易搜索/取链/歌词全灭而 vendor 毫秒级正常）。  
   用户登录自建服务后，搜索/歌词/取链都应先走 `/api/selfhost/{src}/proxy`（4s 超时、失败静默回退公网）：
   - 搜索：QQ `/getSearchByKey?key=&num=&page=`、网易 `/search?keywords=&limit=&offset=&type=1`（150-search-engine `fetchVendorSearchPage`）。
@@ -101,9 +101,9 @@
 - 交付物：`dist/AriaPortable/` + `dist/Aria-Portable.zip`；双入口 `Aria.exe`（Tauri 桌面窗口）与 `StartAria.bat`（网页版）。
 - 重打包步骤与踩坑清单见 `docs/打包分发方案.md` §0（frozen 路径 / \_find_node 三级解析 / QQ 去 npx / vendor 复制必校验 / bat 纯 ASCII / 目录名必须 ASCII）。
 - 复现：`pyinstaller --onefile --console --name server --paths . server.py` + `cargo build --release`（src-tauri）→ 组装 → `tar -a -c -f`。
-- ⚠ **`src-tauri/tauri.conf.json` 的 `build.frontendDist` 必须是 `dist-stub`，别「优化」回 `../web`**（2026-09-26 实测）：两个窗口的 URL 都是 `http://localhost:8001/...`，前端由 server.exe 提供，内嵌那份从未被加载；指回 `../web` = 把 145MB 静态资源（含 120MB 字体）压缩塞进二进制，Aria.exe 从 9.8MB 涨回 96MB。
-- ⚠ **`web/src/font/` 里被 `.gitignore` 掉的是作者本机私人字体（实测 89.4MB），不属于应用**：`build_portable.bat` 默认只把 git 跟踪的那批放进主包，其余单独打成 `dist/AriaFonts-Extra.zip`（两包合起来 = 磁盘上的全部字体，零丢失）。肥包模式：`build_portable.bat --with-local-fonts`。字体选择列表就是扫这个目录（`215-multilang-fonts.js`），所以「包里有 = 界面里可选」。
-- ⚠ 该脚本必须在**纯 cmd/资源管理器**环境跑：从 git-bash 里调 `cmd //c build_portable.bat` 时 PATH 会抢走 `find.exe`/`timeout.exe`（实测 `timeout: invalid time interval '/t'` + GNU find 扫整盘），计数类判断会失真。
+- 注意：**`src-tauri/tauri.conf.json` 的 `build.frontendDist` 必须是 `dist-stub`，别「优化」回 `../web`**（2026-09-26 实测）：两个窗口的 URL 都是 `http://localhost:8001/...`，前端由 server.exe 提供，内嵌那份从未被加载；指回 `../web` = 把 145MB 静态资源（含 120MB 字体）压缩塞进二进制，Aria.exe 从 9.8MB 涨回 96MB。
+- 注意：**`web/src/font/` 里被 `.gitignore` 掉的是作者本机私人字体（实测 89.4MB），不属于应用**：`build_portable.bat` 默认只把 git 跟踪的那批放进主包，其余单独打成 `dist/AriaFonts-Extra.zip`（两包合起来 = 磁盘上的全部字体，零丢失）。肥包模式：`build_portable.bat --with-local-fonts`。字体选择列表就是扫这个目录（`215-multilang-fonts.js`），所以「包里有 = 界面里可选」。
+- 注意：该脚本必须在**纯 cmd/资源管理器**环境跑：从 git-bash 里调 `cmd //c build_portable.bat` 时 PATH 会抢走 `find.exe`/`timeout.exe`（实测 `timeout: invalid time interval '/t'` + GNU find 扫整盘），计数类判断会失真。
 
 
 ## 约束速查（硬性）
@@ -117,7 +117,7 @@
    比原先记的「绑 0.0.0.0」更宽**。做法是 `selfhost_service.py` 在 spawn 时注入  
    `NODE_OPTIONS=--require scripts/vendor-loopback-guard.cjs`，把「只给端口」和  
    显式 `0.0.0.0` 两种形态改到 `127.0.0.1`；显式给了别的 host 一律尊重。  
-   ⚠ **不要改成 `patches/*.patch`**：那需要精确上下文行号，而 `_eval/` 是 clone 来的  
+   注意：**不要改成 `patches/*.patch`**：那需要精确上下文行号，而 `_eval/` 是 clone 来的  
    第三方仓库，上游一改行号补丁就**静默不生效**——安全修复以这种方式失效比不修更糟。  
    因此配套了一个黑盒探针 `selfhost_service.probe_vendor_exposed()`：拿本机非回环 IPv4  
    去连 vendor 端口，连得上就是还在裸奔，结果进 `status_all()` 的 `exposed` 字段。  
@@ -164,11 +164,11 @@
       而主链路活路径目前无测试覆盖，理由写在其文件头）。  
       门禁 A（`no-restricted-imports`）禁止存活模块 import 未解冻的那些。复扫：  
       `node scripts/audits/module-reachability.mjs`（2026-09-27 实测 161 模块 / 不可达 4）。  
-      ⚠ 它的 import 抽取曾把**副作用 import 整条吃掉**（`[\s\S]*?` 越界撞到下一条 `from`），  
+      注意：它的 import 抽取曾把**副作用 import 整条吃掉**（`[\s\S]*?` 越界撞到下一条 `from`），  
       于是只被 `import 'x.js';` 引用的模块（实测 `utils/numberStepper.js`）被误报成影子模块，  
       不可达数 4→5。现已抽成 `scripts/audits/lib/import-scan.mjs` 并由  
       `tests/js/test_module_reachability.js` 钉住——**门禁报假阳性比漏报更糟**：人会照着它删代码。  
-      ⚠ **嵌套目录模块的 import 深度**（2026-09-25 实测）：`core/pvEngine/` 这类二级目录里  
+      注意：**嵌套目录模块的 import 深度**（2026-09-25 实测）：`core/pvEngine/` 这类二级目录里  
       引 `services/log.js` 必须写 `../../services/`——写错深度不会报控制台错误，而是整条  
       静态 import 链**静默死亡**（PVRendering 曾因此把 PV 全家 + 291-phone-remote 一起带死，  
       表象只是「功能没接上」）。复扫（二级目录里单 `../` 只许指向 core 根文件，  
@@ -191,7 +191,7 @@
     复扫双写面：`node scripts/audits/state-split-scan.mjs`、  
     accessor 化前置检查：`node scripts/audits/accessor-safety-scan.mjs`。  
     注：`assignGlobal()`（带写入者追踪）目前仍无人使用。  
-    ⚠ **`loadSettings()`（`app/180-boot-config.js`）是按固定键白名单整体重建 `appSettings` 的**，  
+    注意：**`loadSettings()`（`app/180-boot-config.js`）是按固定键白名单整体重建 `appSettings` 的**，  
     只有 `interface` / `shortcuts` 是全量展开。所以往 `DEFAULT_SETTINGS` 加**顶层新键**时必须同时在  
     `loadSettings` 的合并块里补一行 `{ ...DEFAULT_SETTINGS.x, ...(saved.x || {}) }`，否则该键  
     重启后被静默丢弃、持久化功能**不报错但永远失效**（2026-09-25 两个新功能都踩过，靠人肉发现）。  
@@ -212,7 +212,7 @@
     150% 面积的全屏层上，且 `ai.css` 的 `@keyframes ai-glitch` **每帧**都写一次 filter——CSS 动画  
     在层叠里高于普通内联样式，所以 JS 侧 `el.style.filter='none'`（预烘焙路径）会被动画顶掉，  
     必须同时下 `animation: none`。该段选择器已全部锚到 `#ariaRoot`（61 条）。  
-    ⚠ 低性能/无显卡的实际帧率**无法在开发机上测**：DevTools 的 CPU 降频只慢 JS 主线程，  
+    注意：低性能/无显卡的实际帧率**无法在开发机上测**：DevTools 的 CPU 降频只慢 JS 主线程，  
     而 blur 的代价在合成器软件光栅化；要量必须回 VM 实测。
 13. **分词 vendor 库不得在启动期加载（2026-09-25 确立）。** `segmentit.js`(3.7MB) +  
     `kuromoji.js` 及其 **17MB 日文词典**原先是 `index.html` head 里两条无条件  
@@ -267,7 +267,7 @@
     所以 motion.css 里那**一段**选择器列表就是全部入口，新增浮层只要复用这些类。  
     ② **退场后需真卸载/隐藏的元素必须走 `utils/motion.js` 的 `conceal(el,{onHidden})`**，  
     不要自己 `style.opacity=0` + 手抄 `setTimeout(...,400)`（那是两个各调一半的数字）。  
-    ⚠ `conceal` 刻意用 CSS animation + `animationend`，**不要改成 `element.animate()`**：窗口  
+    注意：`conceal` 刻意用 CSS animation + `animationend`，**不要改成 `element.animate()`**：窗口  
     切到后台时 WAAPI 时间轴会被冻住（实测 `playState:'running'` 而 `currentTime` 恒为 0），  
     退场永不结束；CSS animation 不受影响。兜底是 `min(1000ms, dur+250ms)`，按动画时长收紧而非  
     固定 1 秒——退场中的分区是绝对定位盖在新分区上的（`.is-leaving`），兜底多久就遮挡多久。  
@@ -284,24 +284,31 @@
 
 - `border-radius: 24px` + `box-shadow: 0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.15)`。  
   **不要自创更弱的值**（`blur(8px)`、近乎不透明的实色底都会被一眼看出「没有模糊」）。  
-  ⚠ 约束 12 说的是「降级选择器必须锚 `#ariaRoot`」，**不是**「禁止写 `backdrop-filter`」——  
+  注意：约束 12 说的是「降级选择器必须锚 `#ariaRoot`」，**不是**「禁止写 `backdrop-filter`」——  
   2026-09-25 睡眠定时器弹层就是拿约束 12 当理由写成实色底，结果完全没有毛玻璃。  
   正确做法：照上面写玻璃，**同时**补一条 `html#ariaRoot.is-software-renderer …` /  
   `body.perf-low` 的退化为实色的规则（模糊的代价在合成器软件光栅化，无显卡设备必须退掉）。  
   例外：OSD 这类每次按键都出现的瞬时浮层刻意保持实色（不给合成器加常驻高斯），偏离本条要写明理由。
+17. **文案风格（2026-10-08 用户确立）：用户可见文案与文档一律用简洁书面语。**
+   ① 不把实现术语直接摆给用户看：`副进程 / 源码目录 / 拉起 / 未就绪 / WASAPI / AudioContext`
+   这类要么换成人话（服务未启动、本地组件缺失、独占输出、音频引擎），要么只留在代码注释里；
+   ② 术语只有一处事实源：改 UI 文案必须**同时**改 `i18n.js` 词表键、`index.html` 文本与
+   各分片的字符串字面量，否则英文会失配、i18n 棘轮会红（见约束 7），并同步断言了原句的测试；
+   ③ 正文不堆装饰符号（`★` / `⚠` / `⇒`），不写"为什么这样设计"的自我解释，不用括号塞长注解 ——
+   一句话讲清用户要做什么即可（历史遗留的装饰符号与解释稿已按此清理）。
 
 1. **逐字兜底在 `renderLyrics` 一处生效，但「有 words」不再等于「真实逐字」（2026-09-25 确立）。**  
    只有行级时间戳的歌词（普通 LRC、多数外部源）由 `parsers/wordTiming.js` 按行时长摊平出  
    `words`，接线点唯一：`app/20-lyrics-render.js` 的 `renderLyrics` 入口——23 个调用点一次覆盖，  
    且 `globalThis.lyrics` 一起补齐，桌面歌词窗口/PV/词云/手机远端都受益（实测 `lyrics.html`  
    从「1 个 word、0 个 fill」变成「4 个 word、4 个 fill」）。**不要**回到各加载点分别补。  
-   ⚠ 代价是 `line.words.length` 从此**不再能证明真实性**：合成行带 `wordTiming: 'synthesized'`，  
+   注意：代价是 `line.words.length` 从此**不再能证明真实性**：合成行带 `wordTiming: 'synthesized'`，  
    任何拿 words 判**真值**的代码必须改走 `realWordsOf(line)` / `hasRealWordTiming(lines)`  
    （它们忽略合成行），否则会把编造的节拍当真货。已收口的三处：  
    ① `app/90-eq.js` 的 `_krcText`（下载歌词）——不加护栏时实测两行歌词里写出 6 个假时间戳  
    （`[0,2000]<0,667,0>甲<667,666,0>乙…`）进用户的文件；  
-   ② `core/aiAnalyzer.js` 的 `getLyricsTextForAI`——它用 words 跨度算 `duration` 再打 ★/◆  
-   高潮权重喂 LLM，合成值还被 `maxLineMs` 截断过，实测会把 20s 的行报成 `[10000ms]★`；  
+   ② `core/aiAnalyzer.js` 的 `getLyricsTextForAI`——它用 words 跨度算 `duration` 再打 /◆  
+   高潮权重喂 LLM，合成值还被 `maxLineMs` 截断过，实测会把 20s 的行报成 `[10000ms]`；  
    ③ 导出前用 `stripSyntheticWords(lines)`。  
    渲染侧反过来：**有就用**，别加护栏（合成的也比整行一跳好）。  
    选源/标签那几处（`170-lyric-sources` 的 `isWord`、`130-playlists:1201` 的 `r.isWordLevel`）  
@@ -418,7 +425,7 @@
    `<div class="setting-color-row" data-var="…" data-palette="accent" data-active="…">`，  
    色值一颗都不出现在 HTML，由 `210-color-multilang.js` 的 `hydrateColorRows()` 在模块  
    import 时生成（deferred module，DOM 已解析）。  
-   ★ 点击**只有 210 里那一颗 document 级委托**：目标由行的 `data-var` + 是否处在  
+   点击**只有 210 里那一颗 document 级委托**：目标由行的 `data-var` + 是否处在  
    `[data-mode-section]` 里决定（模式行 → `appSettings.modeSettings[mode].<field>`，  
    否则全局），写入再统一落到 `200` 的 `writeColorField` → `syncPreviewToMain`。  
    **不要再给 `.color-swatch` 挂节点级 click**——`hydrateColorRows` 会整体重写  
@@ -459,7 +466,7 @@
    有了 ② 之后，新增自动触发路径（手机遥控 `291`、交叉淡入预载、以后的定时器）默认静默，  
    不必逐个补标志。宿主不支持该 API 时 `userActivated()` 退回 true，此时只剩 ①。  
    跳过只丢这一次分析，不丢功能：用户点「进入」或点任何一首歌都会重新触发并正常弹一次。  
-   ★ 两个反直觉点：**Playwright/CDP 的 `evaluate` 自带 userGesture**，跑第一行脚本时页面就已经  
+   两个反直觉点：**Playwright/CDP 的 `evaluate` 自带 userGesture**，跑第一行脚本时页面就已经  
    「有手势」了（实测首读 `hasBeenActive === true`），所以测试里必须用 `add_init_script` 把它  
    桩成可控值，否则等于没测无手势分支；**Tab/keydown 算激活事件，mousemove 与 wheel 不算**。  
    回归：`python tests/test_ai_privacy_boot.py`（5 条：无手势静默且确实走到闸门 / 有手势必须弹 /  
@@ -473,7 +480,7 @@
    原先它们把整句 tip 也写进 aria-label，读屏还会把「已开启（点击关闭）」重念一遍）。  
    选中态全仓只有一份声明：`menus.css` 的 `.ctx-item.active-rate, .ctx-item.is-on,
    .more-item.is-on`（主题色底 + 主题色字，和倍速那颗同一条规则），勾是**内联 SVG**  
-   （`292` 的 `CHECK_ICON`）。★ 不要用 ✓ 这类 unicode 字符当图标或选中标记（用户明确要求：  
+   （`292` 的 `CHECK_ICON`）。不要用 ✓ 这类 unicode 字符当图标或选中标记（用户明确要求：  
    字体缺字就掉豆腐块，线宽永远对不齐旁边的图标）。新增开关按钮请复用 `.on`，  
    别再引入第五个类名（现状：`.on` / `.is-active` / `.active-dl` / `aria-pressed` 已由  
    `isOnOf()` 一处收口）。  

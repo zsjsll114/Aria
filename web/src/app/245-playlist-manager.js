@@ -219,7 +219,7 @@ import { registerAudioListener } from '../core/dualDeck.js';
     if (typeof window.showGlassConfirm === 'function') {
       window.showGlassConfirm({
         title: '清空播放队列',
-        desc: '确定要清空当前整个播放队列吗？此操作不可撤销。',
+        desc: '确定要清空当前整个播放队列吗？操作不可撤销。',
         danger: true,
       }).then(ok => { if (ok) doClear(); });
     } else if (window.confirm('清空当前整个播放队列？')) {

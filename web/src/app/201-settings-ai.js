@@ -296,7 +296,7 @@ import { registerAudioListener } from '../core/dualDeck.js';
             async function testAIConnection() {
                 const ai = appSettings.ai;
                 if (!ai.apiKey || ai.apiKey.trim().length < 5) {
-                    return { ok: false, message: '请先输入有效的 API Key' };
+                    return { ok: false, message: '请先输入有效的 API 密钥' };
                 }
                 const provider = ai.provider || 'gemini';
                 if (provider === 'gemini') {
@@ -372,7 +372,7 @@ import { registerAudioListener } from '../core/dualDeck.js';
 
                 /* 缓存未命中，需要真正调用 AI：此时才检查前置条件 Key 是否存在 */
                 if (!ai.apiKey || ai.apiKey.trim().length < 5) {
-                    showSettingsHint('请先在设置中输入有效的 API Key');
+                    showSettingsHint('请先在设置中输入有效的 API 密钥');
                     return null;
                 }
 
@@ -526,7 +526,7 @@ import { registerAudioListener } from '../core/dualDeck.js';
                             if (fetchErr.name === 'AbortError' && !isTimeoutAbort) {
                                 logError('settingsPanel', 'AI 请求被浏览器中止（可能被跟踪防护/CORS拦截）:', fetchErr);
                                 /* 直接抛出，不重试 */
-                                const corsError = new Error('请求被浏览器拦截，可能是 CORS 限制或跟踪防护。请尝试更换接口地址，或使用支持 CORS 的 API 代理');
+                                const corsError = new Error('请求被浏览器拦截（可能是跨域限制或隐私保护）。请更换 API 地址，或改用支持跨域的代理');
                                 corsError.name = 'AbortError';
                                 corsError._externalAbort = true;
                                 throw corsError;
@@ -547,10 +547,10 @@ import { registerAudioListener } from '../core/dualDeck.js';
                         const errText = await response.text();
                         logError('settingsPanel', 'AI API 返回错误:', response.status, errText);
                         let errMsg = t('ai.analysisFailed', 'AI 分析失败');
-                        if (response.status === 401) errMsg = t('ai.err401', 'API Key 无效，请检查设置');
+                        if (response.status === 401) errMsg = t('ai.err401', 'API 密钥无效，请检查设置');
                         else if (response.status === 429) errMsg = t('ai.err429', 'API 调用频率超限，请稍后再试');
                         else if (response.status === 500) errMsg = t('ai.err500', 'AI 服务器内部错误');
-                        else if (response.status === 404) errMsg = `${t('ai.err404', '接口地址或模型不存在')}（${apiBase}）`;
+                        else if (response.status === 404) errMsg = `${t('ai.err404', 'API 地址或模型不存在')}（${apiBase}）`;
                         /* ★ 附上 err code 与原始报错片段：只有友好文案无法定位问题 */
                         try {
                             const snippet = (errText || '').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -915,9 +915,9 @@ if (statusDetail) statusDetail.textContent = themeObj.description || `${t('ai.mo
                     if (err._externalAbort) {
                         errMsg = err.message;
                     } else if (err.name === 'AbortError') {
-                        errMsg = `请求超时（${AI_REQUEST_TIMEOUT / 1000}秒），请检查网络或更换接口地址`;
+                        errMsg = `请求超时（${AI_REQUEST_TIMEOUT / 1000} 秒），请检查网络或更换 API 地址`;
                     } else if (err.name === 'TypeError' && err.message.includes('Failed to fetch')) {
-                        errMsg = `无法连接到 ${apiBase}，请检查接口地址是否正确`;
+                        errMsg = `无法连接到 ${apiBase}，请检查 API 地址是否正确`;
                     }
                     showSettingsHint(errMsg);
                     setAiPanelError('分析失败', errMsg);
@@ -1424,7 +1424,7 @@ async function triggerAiAnalysisIfNeeded(opts) {
             const okProceed = await (typeof window.showGlassConfirm === 'function'
                 ? window.showGlassConfirm({
                     title: t('ai.proxyConfirmTitle', 'AI 分析经反代接口中转'),
-                    desc: t('ai.proxyConfirmDesc', '当前走自建反代接口（zsjsll-cf.de5.net）。\n\nAPI Key 与歌词内容会经其中转（自建服务不落盘存储，仅转发）。\n\n如不放心，可到「设置 → AI」改回官方接口 generativelanguage.googleapis.com（大陆网络需自备代理）。\n\n继续使用当前接口？')
+                    desc: t('ai.proxyConfirmDesc', '当前走自建反代接口（zsjsll-cf.de5.net）。\n\nAPI 密钥与歌词内容会经其中转（自建服务不落盘存储，仅转发）。\n\n如不放心，可到「设置 → AI」改回官方接口 generativelanguage.googleapis.com（大陆网络需自备代理）。\n\n继续使用当前接口？')
                   })
                 : Promise.resolve(true));
             if (!okProceed) return;
@@ -1470,7 +1470,7 @@ async function triggerAiAnalysisIfNeeded(opts) {
 
     /* 3. 未命中缓存，需要调用 AI：此时才校验 API Key 是否存在 */
     if (!ai.apiKey || ai.apiKey.trim().length < 5) {
-        logInfo('settingsPanel', '[Auto AI Check] 无缓存且无 API Key，跳过 AI 分析');
+        logInfo('settingsPanel', '[Auto AI Check] 无缓存且无 API 密钥，跳过 AI 分析');
         const statusText = typeof document !== 'undefined' ? document.getElementById('aiStatusText') : null;
         const statusDetail = typeof document !== 'undefined' ? document.getElementById('aiStatusDetail') : null;
         if (statusText) statusText.textContent = '未配置 Key';
@@ -1704,7 +1704,7 @@ async function batchAnalyzePlaylist() {
 if (isAnalyzingPlaylist) return;
 const ai = appSettings.ai;
 if (!ai.apiKey || ai.apiKey.trim().length < 5) {
-playlistsHintEl.textContent = '请先在设置中配置 API Key';
+playlistsHintEl.textContent = '请先在设置中配置 API 密钥';
 return;
 }
 
@@ -1864,7 +1864,7 @@ batchAnalyzePlaylist();
 
                 if (keyInput) {
                     keyInput.value = targetSaved.apiKey || '';
-                    keyInput.placeholder = cfg.keyPlaceholder || '请输入 API Key';
+                    keyInput.placeholder = cfg.keyPlaceholder || '请输入 API 密钥';
                 }
                 if (baseInput) {
                     baseInput.value = targetSaved.apiBase || '';
@@ -1907,7 +1907,7 @@ batchAnalyzePlaylist();
                 const warn = document.createElement('span');
                 warn.className = 'ai-proxy-warn';
                 warn.style.cssText = 'display:block;color:#ffb14d;font-size:11px;opacity:.9;margin-top:4px;';
-                warn.textContent = t('ai.proxyWarnText', '当前走第三方反代（zsjsll-cf.de5.net），API Key 与歌词将经其中转；可在下方关闭反代改用官方接口 generativelanguage.googleapis.com（大陆网络需代理）。');
+                warn.textContent = t('ai.proxyWarnText', '当前走第三方反代（zsjsll-cf.de5.net），API 密钥与歌词将经其中转；可在下方关闭反代改用官方接口 generativelanguage.googleapis.com（大陆网络需代理）。');
                 baseDesc.appendChild(warn);
             }
 
@@ -1944,7 +1944,7 @@ batchAnalyzePlaylist();
                 aiApiKeyInput.addEventListener('input', saveKey);
                 aiApiKeyInput.addEventListener('change', () => {
                     saveKey();
-                    showSettingsHint(appSettings.ai.apiKey ? 'API Key 已保存' : 'API Key 已清除');
+                    showSettingsHint(appSettings.ai.apiKey ? 'API 密钥已保存' : 'API 密钥已清除');
                 });
             }
 
@@ -2121,7 +2121,7 @@ batchAnalyzePlaylist();
                     const provider = currentActiveProvider || appSettings.ai.provider || 'gemini';
                     const apiKey = (document.getElementById('setAiApiKey')?.value || '').trim() || appSettings.ai.apiKey;
                     let base = (document.getElementById('setAiApiBase')?.value || '').trim() || appSettings.ai.apiBase;
-                    if (!apiKey) { showSettingsHint('请先填写 API Key'); return; }
+                    if (!apiKey) { showSettingsHint('请先填写 API 密钥'); return; }
 
                     aiFetchModelsBtn.textContent = '获取中...';
                     aiFetchModelsBtn.disabled = true;
@@ -2264,7 +2264,7 @@ batchAnalyzePlaylist();
                         return;
                     }
                     if (!appSettings.ai.apiKey) {
-                        showSettingsHint('请先输入 API Key');
+                        showSettingsHint('请先输入 API 密钥');
                         return;
                     }
                     showSettingsHint('正在分析歌曲主题...');
@@ -2352,7 +2352,7 @@ aiImportFile.value = ''; /* 重置，允许重复选择同一文件 */
 const aiClearBtn = typeof document !== 'undefined' ? document.getElementById('setAiClearCache') : null;
 if (aiClearBtn) {
 aiClearBtn?.addEventListener('click', async () => {
-if (!(await window.showGlassConfirm({ title: '清空 AI 分析缓存', desc: '确定要清空所有 AI 分析缓存吗？此操作不可撤销。', danger: true }))) return;
+if (!(await window.showGlassConfirm({ title: '清空 AI 分析缓存', desc: '确定要清空所有 AI 分析缓存吗？操作不可撤销。', danger: true }))) return;
 const ok = await aiCacheClear();
 if (ok) {
 /* 清空内存缓存 */
@@ -2370,7 +2370,7 @@ showSettingsHint('清空缓存失败');
 const chorusClearBtn = typeof document !== 'undefined' ? document.getElementById('setClearChorusCache') : null;
 if (chorusClearBtn) {
 chorusClearBtn?.addEventListener('click', async () => {
-if (!(await window.showGlassConfirm({ title: '清空高潮检测缓存', desc: '确定要清空所有歌曲高潮检测缓存吗？此操作不可撤销。', danger: true }))) return;
+if (!(await window.showGlassConfirm({ title: '清空高潮检测缓存', desc: '确定要清空所有歌曲高潮检测缓存吗？操作不可撤销。', danger: true }))) return;
 const ok = await chorusCacheClear();
 if (ok) {
 const infoEl = typeof document !== 'undefined' ? document.getElementById('chorusCacheInfo') : null;

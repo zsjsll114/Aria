@@ -607,7 +607,7 @@ async function shProxy(source, path, opts) {
     }
     const res = await fetch(q, init);
     if (!res.ok) {
-      /* ★ 带上响应体：后端代理失败会回 {'error': '…副进程未运行'}，
+      /* ★ 带上响应体：后端代理失败会回 {'error': '…本地服务未运行'}，
          只报 "HTTP 502" 会让「为什么取不到」完全没法排查。 */
       let detail = '';
       try {

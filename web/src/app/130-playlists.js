@@ -613,7 +613,7 @@ async function renderSelfPlatList(src) {
   }
   selfPlatState.cards = res.cards || [];
   if (!selfPlatState.cards.length) {
-    playlistsListEl.innerHTML = '<div class="rank-empty">该账号暂无歌单</div>';
+    playlistsListEl.innerHTML = '<div class="rank-empty">账号下暂无歌单</div>';
     return;
   }
   buildSelfPlatCards(meta);
@@ -842,7 +842,7 @@ function renderRecentDetail() {
         _syncRecentMeta();
       };
       if (typeof window.showGlassConfirm === 'function') {
-        window.showGlassConfirm({ title: '清空播放记录', desc: '确定要清空全部历史播放记录吗？此操作不可撤销。', danger: true })
+        window.showGlassConfirm({ title: '清空播放记录', desc: '确定要清空全部历史播放记录吗？操作不可撤销。', danger: true })
           .then(ok => { if (ok) doClear(); });
       } else if (window.confirm('清空全部历史播放记录？')) doClear();
     };

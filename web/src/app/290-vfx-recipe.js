@@ -416,7 +416,7 @@ function presetById(id) {
 
 function askText(title, placeholder, value, cb) {
     if (typeof window === 'undefined' || typeof window.showGlassPrompt !== 'function') {
-        showToast('输入弹窗未就绪');
+        showToast('输入框暂不可用');
         return;
     }
     window.showGlassPrompt({ title, placeholder, value: value || '', onSubmit: cb });
@@ -464,7 +464,7 @@ function applyPreset(id) {
     if (!p) { renderPanel(); return; }
     const run = () => {
         const res = applyRecipe(p.recipe);
-        if (!res.ok) { showToast(res.reason === 'invalid' ? '配方不合法，已拒绝应用' : '设置未就绪'); return; }
+        if (!res.ok) { showToast(res.reason === 'invalid' ? '配方不合法，已拒绝应用' : '设置暂不可用'); return; }
         showToast('已应用配方「' + p.name + '」');
         renderPanel();
     };
@@ -674,7 +674,7 @@ function mountSettingsGroup() {
             <div class="setting-row">
                 <div>
                     <div class="setting-label">保存 / 分享当前所有视觉参数</div>
-                    <div class="setting-desc">把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API Key、登录态、本地路径、语言与快捷键都不在内。</div>
+                    <div class="setting-desc">把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API 密钥、登录态、本地路径、语言与快捷键都不在内。</div>
                 </div>
                 <div class="setting-control"><button type="button" class="setting-btn" id="vrOpenFromSettings">管理配方</button></div>
             </div>`;

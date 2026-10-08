@@ -22,9 +22,9 @@
     显式报错并继续重试（不得兜底成「等待扫码…」、不得 stopPoll）；scanned 状态下
     必须优先透出 vendor 的 progress message（否则手机已确认、界面还停在「已扫码」）；
  8. 每日推荐栏必须出现第 4 个 tab（汽水）；点开要么出歌，要么给
-    「本机汽水服务未就绪」——汽水没有平台开关，「去设置里启用」的引导对它是错的；
+    「汽水服务未启动」——汽水没有平台开关，「去设置里启用」的引导对它是错的；
  9. 歌单页必须有汽水入口；后端 200+{ok:false,code:'UNAUTHENTICATED'} 必须映射成
-    「未登录」而不是「该账号暂无歌单」（后者会让用户以为账号是空的、不会去登录）；
+    「未登录」而不是「账号下暂无歌单」（后者会让用户以为账号是空的、不会去登录）；
 10. 全程无新增致命控制台错误。
 
 运行前提：python server.py 已在 :8001 启动。
@@ -292,7 +292,7 @@ with sync_playwright() as p:
     # ---------- 6.6 每日推荐：第 4 个 tab（汽水）+ 推荐流 ----------
     # ★ 汽水的「日推」= 字节推荐流 /luna/pc/feed/song-tab，**匿名可用**且没有平台开关。
     #   这里的契约是「它必须出现在日推栏里、点开能出歌」—— 若本机没有 vendor
-    #   （CI 不装 _eval/），必须走「本机汽水服务未就绪」这条明确分支，
+    #   （CI 不装 _eval/），必须走「汽水服务未启动」这条明确分支，
     #   而不是悄悄少一个 tab（那才是真回归）。
     daily = page.evaluate("""async () => {
         document.getElementById('openDailyBtn').click();
@@ -301,7 +301,7 @@ with sync_playwright() as p:
         const names = tabs.map(b => b.dataset.daily);
         const q = tabs.find(b => b.dataset.daily === 'qishui');
         /* ★ 探针失败字段刻意不叫 err：下面 out 里的 err 是**页面上那条合法的离线提示**
-           （"本机汽水服务未就绪"），两者同名会把「无 vendor 时的正确降级」误判成失败
+           （"汽水服务未启动"），两者同名会把「无 vendor 时的正确降级」误判成失败
            —— CI（无 _eval/）一直红在这条上。 */
         if (!q) return { probeErr: 'no qishui daily tab', names };
         const qLabel = q.textContent.trim();
@@ -325,7 +325,7 @@ with sync_playwright() as p:
         check("qishui-daily-tab-label", daily["qLabel"] == "汽水音乐", daily["qLabel"])
         if daily["rows"] > 0:
             check("qishui-daily-feed-returns-rows", True, "rows=%d" % daily["rows"])
-        elif "本机汽水服务未就绪" in (daily["err"] or ""):
+        elif "汽水服务未启动" in (daily["err"] or ""):
             # 无 vendor 的机器（CI）：这条分支本身就是要被钉住的行为 ——
             # 汽水没有平台开关，"去设置里启用" 的引导对它是错的。
             check("qishui-daily-offline-explicit", True, "offline -> %s" % (daily["err"] or "")[:90])
@@ -337,7 +337,7 @@ with sync_playwright() as p:
     # ★ 两个契约：
     #   ① 歌单页必须有汽水入口，点进去渲染平台歌单卡片；
     #   ② 未登录时后端回 200 + {ok:false,code:'UNAUTHENTICATED'}（不是 HTTP 错误！），
-    #      前端若只看 res.ok 就会渲染成「该账号暂无歌单」—— 用户会以为账号是空的，
+    #      前端若只看 res.ok 就会渲染成「账号下暂无歌单」—— 用户会以为账号是空的，
     #      根本不会想到去登录。所以这里用打桩把这条分支单独钉住。
     pl = page.evaluate("""async () => {
         const realFetch = window.fetch.bind(window);
@@ -377,7 +377,7 @@ with sync_playwright() as p:
 
         /* ① 契约钉在**模块 API 层**：UNAUTHENTICATED 的映射就写在 selfhostPlaylists 里
            （后端把业务失败包成 200 + {ok:false,code:'UNAUTHENTICATED'}，前端不判 ok
-             就会渲染成「该账号暂无歌单」，用户以为账号是空的、不会去登录）。
+             就会渲染成「账号下暂无歌单」，用户以为账号是空的、不会去登录）。
            刻意不走"点入口看 DOM"：入口点击要先等后台 _refreshPlaylistDynamic 把
            selfPlatMetaCache 填好，而它受 /api/selfhost/status 影响（无 vendor 时十几秒），
            CI 上实测「点击前状态就位=False」—— 那一步压根没落地，于是成了一条
@@ -420,7 +420,7 @@ with sync_playwright() as p:
         check("qishui-selfplat-card-count", any(c.get("count") == 12 for c in ok_cards),
               "counts=%s" % [c.get("count") for c in ok_cards])
         # 契约②（未登录映射）：200 + {ok:false,code:'UNAUTHENTICATED'} 必须变成「未登录」，
-        # 而不是「该账号暂无歌单」—— 后者会让用户以为账号是空的、不会去登录。
+        # 而不是「账号下暂无歌单」—— 后者会让用户以为账号是空的、不会去登录。
         unauth_err = (pl.get("unauthRes") or {}).get("err") or ""
         check("qishui-playlists-unauth-explicit", "未登录" in unauth_err,
               "后端 200+{ok:false,UNAUTHENTICATED} 必须映射成「未登录」。"
@@ -428,7 +428,7 @@ with sync_playwright() as p:
         check("qishui-playlists-no-fake-empty",
               "暂无歌单" not in unauth_err
               and "暂无歌单" not in ((pl.get("afterClick") or {}).get("errorText") or ""),
-              "未登录不得显示成「该账号暂无歌单」。unauthRes=%s afterClick=%s"
+              "未登录不得显示成「账号下暂无歌单」。unauthRes=%s afterClick=%s"
               % (pl.get("unauthRes"), pl.get("afterClick")))
 
     # ---------- 7. 预热：等副进程就绪（首启需一次 npm 库加载 + 端口监听）----------

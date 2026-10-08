@@ -10,7 +10,18 @@
 
 - 多源在线音乐搜索与播放（QQ 音乐、网易云、酷我、咪咕、聚合兜底、任意存量 API）
 - 逐字（卡拉OK式）歌词高亮渲染，支持原词 / 翻译 / 罗马音三行布局
-- 多种歌词可视化模式（默认模式之外的八种全屏视觉）：**拾光 Lyrics**（全屏逐字滚动）、**飞白 Fly-In**（逐字飞入发光）、**词云 WordCloud**（二维词云 + 相机跟焦）、**诗镜 Verse**（SonnetEngine，folia-major 移植的多镜头歌词影像：巨字特写/杂志排版/碎片拼贴）、**版画 Tempera**（网点印刷风 PV：色块挖窗 + 歌词反色 + 121 镜头变体）、**格律 Mondrian**（色块拼画，手工预设布局表按句组轮换）、**穿行 Tunnel**（3D 空间粒子流体）、**活字 Letterpress**（印刷压印隐喻 + 纸色随段落情绪）。霓虹 Neon 引擎代码保留（NeonVisualizer.js）但已从样式选择器下线。长卷 Scroll 已于 2026-10-05 整体删除
+- 多种歌词可视化模式（默认模式之外共十种全屏视觉）：
+  - **拾光 Lyrics**：全屏逐字滚动
+  - **飞白 Fly-In**：逐字飞入发光
+  - **云涌 WordCloud**：二维词云 + 相机跟焦
+  - **诗镜 Verse**：SonnetEngine，folia-major 移植的多镜头歌词影像（巨字特写 / 杂志排版 / 碎片拼贴）
+  - **版画 Tempera**：网点印刷风 PV（色块挖窗 + 歌词反色 + 121 种镜头变体）
+  - **格律 Mondrian**：色块拼画，按句组轮换预设布局
+  - **穿行 Tunnel**：3D 空间粒子流体
+  - **穿行 Dimension**：浮空层叠的三维歌词
+  - **活字 Letterpress**：印刷压印隐喻，纸色随段落情绪
+  - **字面 Jizura**：日系文字 PV 引擎（JIZURA 移植，MIT）
+  - 霓虹 Neon 引擎代码保留（`NeonVisualizer.js`）但已从样式选择器下线；长卷 Scroll 已于 2026-10-05 整体删除
 - 手机遥控器（`--lan` 模式下手机浏览器访问 `/remote.html`，经 `/api/remote/*` 总线远程控制播放）
 - 听歌识曲（Node sidecar 调用 Shazam 指纹识别；Shazam 失败时回退到 Vosk 语音转写 + 歌词反查）
 - 本地音乐管理（上传、结构化落盘、Enhanced LRC 逐字歌词生成）
@@ -164,7 +175,7 @@
 | `/api/font/list` | → `local_music_server.list_local_fonts` | 本机字体列表 |
 | `/api/config/load` | → `local_music_server.load_user_config` | 用户全量配置（localStorage 侧另有全量保存） |
 | `/api/recognize/cache` | → `local_music_server.load_recognize_cache` | 识曲 ISRC 本地化缓存 |
-| `/api/audio/stream?url=&songId=&nc=` | `_handle_audio_stream` | ★ 在线音频流式代理（边下边转、.tmp 缓存、无缝续流） |
+| `/api/audio/stream?url=&songId=&nc=` | `_handle_audio_stream` | 在线音频流式代理（边下边转、.tmp 缓存、无缝续流） |
 | `/api/audio/check?url=` | `_handle_audio_check` | 轻量探测播放性（Range 读 2KB 即断） |
 | `/api/migu/search?keyword=` | `_handle_migu` | 咪咕搜索（官方 H5 接口 + 加密解密） |
 | `/api/migu/url?contentId=&copyrightId=` | `_handle_migu` | 咪咕取链（HQ/SQ/ZQ24/PQ 降级 + 免登录兜底 + 探测） |
@@ -261,17 +272,17 @@
 
 | 分片 | 职责 | 关键函数/导出 |
 |---|---|---|
-| `000-tooltip.js` | ★ 全局统一 tooltip：无论 `data-tooltip` 还是原生 `title`，悬停统一渲染为黑色圆角气泡（挂在 `<body>`，`position:fixed`，不随父级旋转/缩放动画），并自动迁移 `title`→`data-tooltip` 消除系统白色原生提示 | 自执行 IIFE，全局注入 `#aria-tip` 样式与元素 |
+| `000-tooltip.js` | 全局统一 tooltip：无论 `data-tooltip` 还是原生 `title`，悬停统一渲染为黑色圆角气泡（挂在 `<body>`，`position:fixed`，不随父级旋转/缩放动画），并自动迁移 `title`→`data-tooltip` 消除系统白色原生提示 | 自执行 IIFE，全局注入 `#aria-tip` 样式与元素 |
 | `10-config-state.js` | 全局状态与配置初始化：词云状态、歌词偏移、代际计数器、下一曲预加载、播放方式、倍速/下载、EQ、在线搜索、预设合集、`tunnelEngineInstance` | `PERFORMANCE_PROFILES`、`langFamilyName()`、`initDomCache()` |
-| `20-lyrics-render.js` | ★ 基础歌词渲染：创建/维护 `audio` 元素、DOM 引用、歌词行渲染 | `audio`、`renderLyrics` |
+| `20-lyrics-render.js` | 基础歌词渲染：创建/维护 `audio` 元素、DOM 引用、歌词行渲染 | `audio`、`renderLyrics` |
 | `30-dom-refs.js` | DOM 引用集中缓存，避免各分片重复 querySelector | `playBtn`、`progressEl`… |
 | `40-playback-state.js` | 播放状态数据（播放/暂停/当前行/子行时间） | `updateLineTimes()`、`getLyricOffset()` |
 | `55-wc-tuning.js` | 词云模式参数驱动（滑块 → 词云布局） | — |
 | `56-playback-misc.js` | 播放杂项：时长获取、飞入模式翻译/罗马音区更新 | `getDuration()`、`updateFlyinTranslation()` |
-| `57-wordcloud-camera.js` | ★ 词云相机：焦点字选择、缩放/平移非线性补间、双向移动、上下采样 | `updateWordcloudCamera()` |
+| `57-wordcloud-camera.js` | 词云相机：焦点字选择、缩放/平移非线性补间、双向移动、上下采样 | `updateWordcloudCamera()` |
 | `60-mobile-dual-page.js` | 触控双页（控件页 ↔ 歌词页）左右滑动 | — |
 | `65-playback-position.js` | 播放位置：进度条/时间更新、`play/pause` 统一入口 | `waitForAudioReady()`、`togglePlayPause()`、`PLAY_ICON_PATH` |
-| `70-audio-engine.js` | ★ 音频引擎：事件驱动 + 停滞自愈（8s 无进度→回退 2s 续播、3 连败整曲重试）、缓冲状态同步 | `handleAudioPlayError()`、`attemptStallRecovery()` |
+| `70-audio-engine.js` | 音频引擎：事件驱动 + 停滞自愈（8s 无进度→回退 2s 续播、3 连败整曲重试）、缓冲状态同步 | `handleAudioPlayError()`、`attemptStallRecovery()` |
 | `75-play-mode.js` | 播放方式（顺序/循环/随机）图标与切换 | `updatePlayModeIcon()` |
 | `80-context-menu.js` | 右键菜单与确认弹窗 | `showCtxMenu/ctxConfirmOk…` |
 | `85-rate-download.js` | 倍速/变速不变调/下载 | `applyPlaybackRate()`、`applyPreservesPitch()`、`downloadCurrentSong()` |
@@ -291,26 +302,26 @@
 | `160-text-normalize.js` | 听歌识曲：ISRC 缓存/本地化命名、文字脚本检测 | `detectScript/getIsrcCache/localizeRecognizedName` |
 | `165-audio-recognize.js` | 识曲 UI + 录音/上传 + Shazam 对接；失败 → Vosk 转写 + 歌词反查 | — |
 | `170-lyric-sources.js` | 多源歌词：真实探测（并发）+ 匹配度 + 来源徽章/弹窗/极速切换 | `switchLyricSource()`、`lyricSourceProbeCache` |
-| `175-track-index-online.js` | ★ 在线歌曲加载链路：QQ 主链（解析池 + ygking 并行竞速 → vkeys）→ 网易（byfuns 降级 → 外链）→ 关联源接管；预加载 | `loadOnlineSong()`、`initPlayer()`、`pickInitialTrackSelection()` |
+| `175-track-index-online.js` | 在线歌曲加载链路：QQ 主链（解析池 + ygking 并行竞速 → vkeys）→ 网易（byfuns 降级 → 外链）→ 关联源接管；预加载 | `loadOnlineSong()`、`initPlayer()`、`pickInitialTrackSelection()` |
 | `180-boot-config.js` | 启动引导：预加载默认曲、配置装载、设置面板初始化 | `preloadDefaultSong()`、`getStreamCachedAudioUrl()` |
 | `190-settings-fontsize.js` | 全局设置应用（`applyAllSettings`）与字号 | `applyAllSettings()` |
 | `200-settings-panel.js` | 设置面板（外观/视图/均衡器等）事件绑定 | `initSettingsPanel()`、`refreshSettingsUI()` |
 | `210-color-multilang.js` | 颜色与多语言字体统一 | — |
 | `215-multilang-fonts.js` | 自定义字体（FontFace + unicode-range 分语言族），IndexedDB 加载 | `initCustomFonts()` |
-| `220-shortcuts-viewmode.js` | 快捷键 + 视图模式切换、设置提示、★流光隧道 AI 分析确认框（token 提醒/三模式/缓存记忆） | `showSettingsHint()`、`ensureTunnelAnalysis()` |
+| `220-shortcuts-viewmode.js` | 快捷键 + 视图模式切换、设置提示、流光隧道 AI 分析确认框（token 提醒/三模式/缓存记忆） | `showSettingsHint()`、`ensureTunnelAnalysis()` |
 | `230-touch-gestures.js` | 触控适配：双页滑动、滑杆拖拽、目标尺寸/热区外扩 | — |
 | `240-titlebar.js` | 自定义标题栏（透明背景、SVG 三键、随背景变色） | — |
-| `245-playlist-manager.js` | ★ 右下角「当前播放队列」快捷管理面板：列表样式与搜索页一致（封面/歌名/歌手/收藏）、点击切歌、丝滑拖拽排序（其余歌曲 FLIP 动画让位）、清空队列；import 20/120/135 | `render()`、FLIP 拖拽排序 |
-| `250-desktop-lyrics.js` | ★ 桌面歌词主窗口侧：开关状态 + 每 120ms 推送当前行/进度/逐字词/翻译/主题色到 localStorage('aria_dtk_state')，调 Tauri 命令 | `invoke('desktop_lyrics_show/click_through')` |
-| `258-rankings.js` | ★ 手写分片：音乐榜单页（QQ/酷狗/网易三大 Tab，右上角按钮、三源数据走服务端 /api/rank/*）、最近播放历史(localStorage，歌单列表入口)、播放统计(常听歌曲/歌手/近7日)、EQ 分享码(复制/导入，AriaEQ1.+base64) | `openRankings()`、`openRecent()`、`openStats()`、`recordRecentPlay()`、`ensureKugouFull()`、`copyEqShareCode()` |
+| `245-playlist-manager.js` | 右下角「当前播放队列」快捷管理面板：列表样式与搜索页一致（封面/歌名/歌手/收藏）、点击切歌、丝滑拖拽排序（其余歌曲 FLIP 动画让位）、清空队列；import 20/120/135 | `render()`、FLIP 拖拽排序 |
+| `250-desktop-lyrics.js` | 桌面歌词主窗口侧：开关状态 + 每 120ms 推送当前行/进度/逐字词/翻译/主题色到 localStorage('aria_dtk_state')，调 Tauri 命令 | `invoke('desktop_lyrics_show/click_through')` |
+| `258-rankings.js` | 手写分片：音乐榜单页（QQ/酷狗/网易三大 Tab，右上角按钮、三源数据走服务端 /api/rank/*）、最近播放历史(localStorage，歌单列表入口)、播放统计(常听歌曲/歌手/近7日)、EQ 分享码(复制/导入，AriaEQ1.+base64) | `openRankings()`、`openRecent()`、`openStats()`、`recordRecentPlay()`、`ensureKugouFull()`、`copyEqShareCode()` |
 | `259-selfhost-favorites.js` | 自建平台收藏：localStorage 缓存（5min）、播放全部/加入队列/收藏按钮 | — |
 | `275-play-source.js` | 取链透明化 UI：展示多梯队取链过程与结果来源 | 配合 `services/playSource.js` |
 | `288-lyric-search.js` | 歌词内搜索面板 | — |
 | `292-toolbar.js` / `core/toolbarLayout.js` | 工具栏自定义（布局/显隐） | — |
 | `293-word-upgrade.js` | 行级歌词升级：普通行歌词后台升级为真逐字 | — |
 | `296-audio-output.js` | 「输出设备」下拉：WebView2 走 `setSinkId`，原生独占接管时整条链改道引擎（列表/写入目标都换，见 `Aria.__nativeOutputBackend`） | `refreshAudioOutput()`、`applyAudioSink()` |
-| `298-native-output.js` | ★ WASAPI 独占输出开关：端到端体检 → 顶替活跃 deck → Automix/变速显式让位；关掉时还原 HTML 播放并交还设备 | `enableExclusive/disableExclusive`、`listNativeDevices` |
-| `201-settings-ai.js` | ★ AI 设置面板（全项目最大单文件，~2400 行）：Key/反代/隐私确认/状态面板，全量 i18n | — |
+| `298-native-output.js` | WASAPI 独占输出开关：端到端体检 → 顶替活跃 deck → Automix/变速显式让位；关掉时还原 HTML 播放并交还设备 | `enableExclusive/disableExclusive`、`listNativeDevices` |
+| `201-settings-ai.js` | AI 设置面板（全项目最大单文件，~2400 行）：Key/反代/隐私确认/状态面板，全量 i18n | — |
 | `999-global-audit.js` | 全局审计收尾分片（globalThis 键登记核查） | — |
 
 > 上表为核心分片节选（71 个分片全量见 `app/index.js` 的 import 列表）。分片编号是历史拆分顺序而非职责分层，存在 `135↔130↔120↔150` 循环依赖环（靠分片内 typeof 探测 + 惰性调用装配）——结构债，重构方案见 `docs/模块化重构方案.md`。
@@ -329,7 +340,7 @@
 | `chorusDetector.js` | 纯 JS 高潮检测（降采样/FFT/band 聚合/重复检测，可走 Worker） | `_fft()`、`_cosineSim()` |
 | `stallDetector.js` | 播放停滞检测（轮询 currentTime + stalled/waiting/playing） | `startStallCheck/stopStallCheck/setBuffering` |
 | `equalizer.js` | 10 段 Web Audio EQ 图；**空间音频（HRTF 卷积）+ 虚拟声场（M/S + Haas）**支路也在这里（EQ 后 / compressor 前） | `initEqAudioGraph/cleanupEqAudioGraph`、`applySpatialAudio/applyVirtualStage` |
-| `spatialTuning.js` | ★ **自动生成**（`scripts/build_spatial_tuning.mjs`）：档位→参数表 + HRTF 冲激响应 + 两侧同算法的 `resampleLinear` | `SPATIAL_TUNING/STAGE_TUNING/SPATIAL_IRS`、`spatialTuningFor/stageTuningFor/irFor` |
+| `spatialTuning.js` | **自动生成**（`scripts/build_spatial_tuning.mjs`）：档位→参数表 + HRTF 冲激响应 + 两侧同算法的 `resampleLinear` | `SPATIAL_TUNING/STAGE_TUNING/SPATIAL_IRS`、`spatialTuningFor/stageTuningFor/irFor` |
 | `fadeController.js` | rAF 平滑音量淡入淡出 | `fadeOutVolume/fadeInVolume/cancelAllFades` |
 | `nativeBridge.js` | 原生引擎 IPC 收口：**每次调用重新解析** `window.__TAURI__.core.invoke`（注入可能晚于模块求值）+ 超时 + 可用性探测（区分「没外壳」与「命令被 ACL 拦」） | `probe()`、`call()`、`CMD` |
 | `nativeDeck.js` | 把原生引擎伪装成 `<audio>` 元素（鸭子类型）：20Hz 快照 + 墙钟线性插值时钟、合成 play/pause/ended/loadedmetadata/canplay/error 事件、音量推送合并、EQ 变化检测下发 | `createNativeDeck()`、`isNativeDeck()` |
@@ -343,18 +354,18 @@
 | `visualizers/dimension/DimensionCamera.js` | 浮空模式 - 3D 位置(XYZ) + 欧拉角(Pitch/Yaw/Roll) 平滑阻尼摄像机，支持冲击震屏 | `setTarget()`、`addImpulse()`、`update()` |
 | `visualizers/dimension/DimensionShapes.js` | 浮空模式 - 纯点阵粒子几何引擎（圆柱/立方体星群，逐粒子映射频谱频段实时起伏，无棱边线条） | `createCylinderGeometry()` 等 |
 
-| `pvEngine/PVEngine.js` | ★ PV 模式主调度（编排 layout/camera/rendering/decorations/background） | `init()`、`applySettings()` |
+| `pvEngine/PVEngine.js` | PV 模式主调度（编排 layout/camera/rendering/decorations/background） | `init()`、`applySettings()` |
 | `pvEngine/PVLyricLayout.js` 等 | PV 布局、相机、渲染（SVG/CSS 逐字）、装饰、AI 主题背景 | — |
 | `pvEngine/WordSegmenter.js` | PV 逐字分词（含过长单词按字符上浮的切分）；`segmentFine()` 细粒度分词（日文 ≤4 字聚合） | `segment()`、`segmentFine()` |
 | `pvEngine_backup/`（目录） | PV 引擎旧版完整备份（`PVEngine.js/PVLyricLayout.js/...`），当前未启用，供对照与回滚，勿删 | — |
-| `tunnelEngine/TunnelEngine.js` | ★ 流光隧道主时间线：三级层级过渡检测（Shot→Group→Section）+ 词级排版构建 + 字符三态 + 焦点纯计算（防抖）+ 深浅背景反色 + shot 色相偏移 | `init()`、`setLyrics()`、`update()`、`applySettings()` |
+| `tunnelEngine/TunnelEngine.js` | 流光隧道主时间线：三级层级过渡检测（Shot→Group→Section）+ 词级排版构建 + 字符三态 + 焦点纯计算（防抖）+ 深浅背景反色 + shot 色相偏移 | `init()`、`setLyrics()`、`update()`、`applySettings()` |
 | `tunnelEngine/TunnelDirector.js` | 导演层：三级层级构建、ShotParams 参数化生成、四维样式合成、`assignWordLayouts()` 词级槽位（竖/横/斜）、`_refineBlocks()` 细拆、拆字粒度三档 | `build()`、`findShotAt()` |
-| `tunnelEngine/AILyricSegmenter.js` | ★ AI 驱动句意分段器：将词块按句意划为「页」(4~7 词/页)、页内按词组划分换行、分配对齐(left/center/right)与背景主题；消费 AI `line_analyses`（含 `page_index/line_breaks/alignment`），无 AI 数据时纯规则降级；与 Director 集成（`_refineBlocks()` 调用） | `segmentBlocksByAI()`、`multiPageSegment()` |
+| `tunnelEngine/AILyricSegmenter.js` | AI 驱动句意分段器：将词块按句意划为「页」(4~7 词/页)、页内按词组划分换行、分配对齐(left/center/right)与背景主题；消费 AI `line_analyses`（含 `page_index/line_breaks/alignment`），无 AI 数据时纯规则降级；与 Director 集成（`_refineBlocks()` 调用） | `segmentBlocksByAI()`、`multiPageSegment()` |
 | `tunnelEngine/TunnelCameraTrack.js` | 摄像机：Catmull-Rom 组轨道 + 运镜马达混合（push/dive/orbit/spiral…）+ 弹簧速度积分 + 焦点优先锁定 | `update()`、`planGroupTrack()` |
 | `tunnelEngine/TunnelDepthStack.js` | 3D 深度堆叠背景层（演完句组推入 Z 轴）+ 视差/涟漪/运动拉伸/方向光/DOF + 3D 粒子 Canvas | `pushGroupToBackground()`、`update()` |
 | `tunnelEngine/TunnelAnimations.js` | 8 大类 WAAPI 入场/出场库、几何蒙版转场、37 种装饰库（`DECORATION_LIBRARY`）、`splitToCharAnimParams()` 每字独立参数 | `playEnterAnimation()`、`pickDecorationCombo()` |
-| `visualizers/sonnet/`（SonnetEngine 等 ~20 文件） | ★ 诗镜 · Verse 引擎（folia-major 移植）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜池、逐字色散、运镜跟随，纯时间轴驱动。样式选择器中占 `data-mode="pv"` 位 | `SonnetEngine` |
-| `visualizers/tempera/` | ★ 版画 · Tempera 引擎：网点印刷风——色块构图挖窗 + 歌词动态反色 + 121 种镜头变体；`data-mode="tempera"` | — |
+| `visualizers/sonnet/`（SonnetEngine 等 ~20 文件） | 诗镜 · Verse 引擎（folia-major 移植）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜池、逐字色散、运镜跟随，纯时间轴驱动。样式选择器中占 `data-mode="pv"` 位 | `SonnetEngine` |
+| `visualizers/tempera/` | 版画 · Tempera 引擎：网点印刷风——色块构图挖窗 + 歌词动态反色 + 121 种镜头变体；`data-mode="tempera"` | — |
 
 > **命名陷阱（改这里必读）**：样式选择器的显示名与 `data-mode` 不对应——「格律 · Mondrian」=`tunnel`、`穿行 · Tunnel`=`dimension`、`诗镜 · Verse`=`pv`。新模式 tempera 名实相符。这两个新引擎（sonnet/tempera）不走 VisualizerManager 注册链，由 `220-shortcuts-viewmode.js` 直接调度，切走时的清理由各模式自己的守卫分支负责（注意凝彩清理必须在 `mode!=='pv'` 守卫之外，见 220 内注释）。
 
@@ -362,7 +373,7 @@
 
 | 模块 | 职责 | 关键函数 |
 |---|---|---|
-| `musicApi.js` | ★ 多源搜索/取链/歌词/代理封装 | `jsonp()`、`proxyFetch()`、`searchKugouSongs()`、`getPlayUrl()`、`fetchLyricFromOiapi()`、`fetchLyricWithFallback()`、`fetchRandomSong()`、`checkAudioUrlPlayable()`、`qqResolveUrl()`、`fetchSameSongUrlFrom()`、`fetchMiguSameSongUrl()` |
+| `musicApi.js` | 多源搜索/取链/歌词/代理封装 | `jsonp()`、`proxyFetch()`、`searchKugouSongs()`、`getPlayUrl()`、`fetchLyricFromOiapi()`、`fetchLyricWithFallback()`、`fetchRandomSong()`、`checkAudioUrlPlayable()`、`qqResolveUrl()`、`fetchSameSongUrlFrom()`、`fetchMiguSameSongUrl()` |
 | `aiClient.js` | Gemini/OpenAI 兼容客户端 + 代理 URL 统一 | `cleanApiBase()`、`buildGeminiUrl()`、`geminiGenerateContent()`、`testGeminiConnection()` |
 | `aiCache.js` | AI 分析结果 IndexedDB 缓存（**勿删**） | `aiCacheGet/Set/GetAll/BulkSet/Clear/Count` |
 | `localMusicManager.js` | 本地音乐生命周期：上传/识曲/歌词检索/匹配/Enhanced LRC 落盘 | `LocalMusicManager`、`processLocalMusicUpload()` |
@@ -425,18 +436,18 @@
   `AppManifest::commands`、`tauri.conf.json` 两个 capability 的 `allow-*`。
   漏了不会编译失败，而是运行期 invoke 报 "not allowed"。
 - **时钟契约**：是前端 20Hz 来取快照、rAF 里插值，**不是引擎推送**；绝不要逐帧 invoke。
-- ★ 本机实测：独占端点**不消费缓冲**（格式被接受、`Initialize` S_OK、`Write` 不报错，
+- 本机实测：独占端点**不消费缓冲**（格式被接受、`Initialize` S_OK、`Write` 不报错，
   `GetCurrentPadding` 恒定不变；轮询/事件 × 2/4/8× 缓冲 × s16/s24 全试过；共享模式正常）
   → 判定为设备/驱动/环境问题。代码的处理是**检测并如实报告**（`verify_streaming()` 体检 +
   `check_exclusive_usable()` 前置体检），而不是静默播空气。
 - 完整记录见 `docs/原生输出-WASAPI独占.md`。
 - **DSP 链序**：`ring → EqChain（10 段 biquad）→ SpatialChain（HRTF + 虚拟声场）→ 音量 → WASAPI`。
   顺序与 Web Audio 图刻意对齐（EQ 后 / 响度前）。`SpatialChain` 见 `dsp/spatial.rs`。
-- ★ **空间音频 / 虚拟声场双路径对齐**（2026-10-05）：
+- **空间音频 / 虚拟声场双路径对齐**（2026-10-05）：
   - 唯一参数源 `scripts/spatial/spatial_tuning.json` → `node scripts/build_spatial_tuning.mjs`
     同时产出 `web/src/core/spatialTuning.js` 与 `dsp/spatial_tuning.rs`（表 + IR + 同算法重采样）。
     **两个产物都勿手改**。
-  - 虚拟声场必须是 **M/S 形式**（`a=(1+S)/2`、`b=(1−S)/2`，`a+b≡1` ⇒ 单声道和不变）；
+  - 虚拟声场必须是 **M/S 形式**（`a=(1+S)/2`、`b=(1−S)/2`，`a+b≡1` → 单声道和不变）；
     同相串音是 crossfeed = **收窄**，别写反。
   - `taps` 取**重采样后**的实际长度（44.1k 下 512→470），用常量会越界。
   - 一致性守门：`tests/js/test_spatial_tuning.js` 直接解析 Rust 源逐项比对。
@@ -842,7 +853,8 @@ body::before {
 
 ### 21. 2026-09 更新（榜单/自建服务/歌单统一/桌面歌词）
 
-- **QQ 用户资料链路 TLS 风控**：c6.y.qq.com 按 TLS 指纹拒绝 node axios(code:1000)；_eval/qq-music-api-node/src/services/apis/user/getUserPlaylists.ts、getUserLikedSongs.ts 改用 undici etchWithTimeout；controllers/getUserLikedSongs.ts 必须 esolveRequestCookie 传 cookie。
+- **QQ 用户资料链路 TLS 风控**：c6.y.qq.com 按 TLS 指纹拒绝 node axios(code:1000)；_eval/qq-music-api-node/src/services/apis/user/getUserPlaylists.ts、getUserLikedSongs.ts 改用 undici etchWithTimeout；controllers/getUserLikedSongs.ts 必须 
+esolveRequestCookie 传 cookie。
 - **QQ 歌单/曲目**：vendor 响应包 {response:...} 需解包（getUserPlaylists→response.data.playlists；getSongListDetail→response.cdlist[0].songlist 无 data 层）。«我喜欢的歌»= getUserLikedSongs 的 info.id → getSongListDetail 拉全量（606首），前端 
 ormQQTracks 归一化，selfhostPlaylists('qq') 把喜欢卡片 unshift 进列表。
 - **QQ 日推**：个性化日推模块(web_srf_svr 等)对微信联邦账号 500003 不可用 → dayRecommend('qq') 回退「热门歌单聚合」(getSongLists categoryId=10000000&sortId=5 → 逐单 getSongListDetail 跳过下架空单 → 去重 cap 60)。
@@ -850,10 +862,14 @@ ormQQTracks 归一化，selfhostPlaylists('qq') 把喜欢卡片 unshift 进列�
 - **酷狗收藏/歌单**：playlist/track/all 参数键是 id（非 global_collection_id），响应在 data.songs；歌名/作者从 
 ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我喜欢的歌»=默认收藏(is_def=1)。
 - **网易云 uid**：登录/恢复后 uid 空时 status_all 经 _probe_netease_login 用 /login/status 探测（60s 缓存），失效则 loggedIn=false 引导重登；_fetch_netease_uid 重试 3 次。
-- **歌单页整合自建歌单**：130-playlists.js enderPlaylistsView 顶部顺序「当前播放→历史播放→本地音乐→网易云→酷狗→QQ→用户歌单」，平台项仅登录平台显示；enderSelfPlatList/renderSelfPlatSongs 复用 rank-board-grid/result-item/play-all 组件；返回钩子 window.__playlistBackHook（140 返回键优先调用）。
-- **榜单滚动联动**：榜宫格与榜内歌曲共用 #rankList → 视图切换时 esetRankScroll() 重置 scrollTop；setRankNav 同时控制 hidden/display；openRankings 不再手动显示 rankNav。
+- **歌单页整合自建歌单**：130-playlists.js 
+enderPlaylistsView 顶部顺序「当前播放→历史播放→本地音乐→网易云→酷狗→QQ→用户歌单」，平台项仅登录平台显示；
+enderSelfPlatList/renderSelfPlatSongs 复用 rank-board-grid/result-item/play-all 组件；返回钩子 window.__playlistBackHook（140 返回键优先调用）。
+- **榜单滚动联动**：榜宫格与榜内歌曲共用 #rankList → 视图切换时 
+esetRankScroll() 重置 scrollTop；setRankNav 同时控制 hidden/display；openRankings 不再手动显示 rankNav。
 - **自建收藏**：259-selfhost-favorites.js 增加 localStorage 缓存(5min，秒开+后台刷新)、播放全部/加入播放队列/收藏按钮；打开时重建平台 tab 修错乱。
-- **播放统计**：ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计 0s）。
+- **播放统计**：
+ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计 0s）。
 - **桌面歌词**：lyrics.html #tEmc.on 背景跟随主题色 --dtk-hl(color-mix)；情感词颜色只出现在扫过的 fill 层（stroke 不再提前上色，随进度渐进出现）。
 - **点击歌词跳转**：100-cover-background.js 点击行改为单次 0.35s 平滑滚动 + 交由 timeupdate 驱动高亮，避免双动画反向跳变。
 - **UI 收敛**：删除右上角自建服务按钮(openSelfHostBtn)与上传按钮(loadMusicBtn)（上传改走歌单页本地音乐入口）；歌单批量按钮 align-items:center 压缩高度；自定义主题色 checkbox；多选编辑「全选/全不选」；退出歌单自动退出编辑；编辑模式点歌曲卡片仅勾选不切歌。
@@ -1059,7 +1075,7 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
 用户反馈「automix 能用了，但不像 Apple Music」。拆成四条独立根因，逐条修：
 
 - **交叉时机（写死的重叠）**：此前 beatmatch/breath 固定 6s，segue 更以 `outroSparsePointMs`（能量 ≤ 峰值 10%，已近静音）为起点——于是大量曲目听感是「等 A 没声了再淡入」。现改为**结构驱动**：新增 `scheduler._resolveOverlap()`，取 analyzer 的 `outroPointMs`（其文档定义本身就是「A **最早可以开始交叉的位置**」，能量已入衰减但仍有声），重叠 = `durationMs - outroPointMs`，钳制 `[minOverlapMs 3s, maxOverlapMs 16s]`；`outroSparsePointMs` 降为兜底链第二级，尾部突断（outroPoint = 全曲长）退固定 `overlapMs 8s`。`armLeadMs` 15s → **22s**（必须 > maxOverlapMs，否则自然重叠够长时 ARM 来不及取链/分析/预载）。
-- **交接点（Apple Music 式提前换歌）**：crossfader 新增 `onSwapPoint` —— 交叉进度过半（`CROSSFADE_SWAP_AT = 0.5`，等功率曲线的能量分界点，此处切换听感最平顺）即通知 scheduler **提前**做角色顶替：播放栏标题/封面/进度条整体切到下一首，而音频曲线继续走完。曲线走完的 `onSwapped` 只做收尾（停旧 A、复位、预分析新 A）。★ `abort` 在交接点后退化为「立即完成」——UI 已切到 B，回滚会造成「显示 B、声音回 A」的更严重不一致。
+- **交接点（Apple Music 式提前换歌）**：crossfader 新增 `onSwapPoint` —— 交叉进度过半（`CROSSFADE_SWAP_AT = 0.5`，等功率曲线的能量分界点，此处切换听感最平顺）即通知 scheduler **提前**做角色顶替：播放栏标题/封面/进度条整体切到下一首，而音频曲线继续走完。曲线走完的 `onSwapped` 只做收尾（停旧 A、复位、预分析新 A）。`abort` 在交接点后退化为「立即完成」——UI 已切到 B，回滚会造成「显示 B、声音回 A」的更严重不一致。
 - **图标 / 时长 / 进度不同步（三个独立根因）**：① `scheduler._completeSwap` 里 `oldA.pause()` 在 `swapRoles()` **之前**执行，此时常驻 `pause` 监听还挂在旧 A 上，被触发后把图标刷成「已暂停」；随后监听搬到已在播放的 B，但 **B 的 `play` 事件早在交叉开始时（它还是影子 deck、身上没监听）就派发过了**，不会重放 → 图标永久停在错的一侧（表现为「点一下方向反、点两下才对」）。修法：顺序改为先 `swapRoles` 再停旧 A（那时旧 A 已无常驻监听，pause 静默），并在 `70-audio-engine`（图标/isPlaying/模糊背景/stall，抽成 `applyPlayingState()`）与 `220-shortcuts-viewmode`（底栏图标+底栏时长）各挂一条 `onRoleSwap` 主动同步。② `135-crossfade.js` 的 `formatTime(audio.duration)` **单位错**——`formatTime` 收毫秒，传秒会让 209 秒的歌算成 0 秒、总时长恒显示 `00:00`（全库仅此一处误用）。③ swap 后不刷进度，等下一个 `timeupdate` 有最长 250ms 空窗；现 `syncAfterSwapTimeline()` 立刻对齐，duration 用 `Number.isFinite` 守卫（`Infinity` 会写出 `Infinity:NaN`）并挂一次性探针补写（B 的 `loadedmetadata` 发生在 ARM 预载期，常驻监听收不到）。
 - **过渡态与动画**：crossfader 暴露逐帧进度（`onProgress` / `crossfadeProgress()`；GainNode 与 volume 两条路径**共用同一个 rAF 循环**——前者原本没有 rAF，只靠 `setValueCurveAtTime`）。`289-next-up` 在交叉期把预告条改成「过渡中」（`--nu-progress` 驱动条底细线，撤掉倒计时与「换一首」，交接点后收起）；`96-automix` 用 `sin(p·π)` 写 `--automix-dip`（p=0.5 最深）驱动封面「先沉后升」，与 `setCoverImage` 的 0.4s 交叉淡入接力。模糊背景层**不加**同类规则——它的 opacity 由 JS 逐层写（inline 优先级更高，CSS 覆盖不了），过渡由自身 0.8s 双缓冲承担。
 - **B 侧干预探针**：交接点后「当前元素」变成 B，用户在交叉后半段按暂停作用在 B 上——探针必须双挂（A 三事件 + B 的 `pause`，且 B 侧只在交接点后生效：越点前 B 的 pause 多来自 `currentTime` 赋值/`load` 的噪声）。
@@ -1087,13 +1103,13 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
   （见 `core/nextUp.js` 的 `trackTitle/trackArtist`：`title/song/name`、`artist/singer`）。
 - **后果远不止日志难看**：`fetchPlayUrlForPreload(songId, mid, source, **songName**, dur, singer)`
   的**跨源同名歌兜底链**（酷狗→网易→酷我）守卫正是 `if (!playUrl && songName)`；
-  `songName` 为空 ⇒ 这三条退路整条不掉用 ⇒ 本机自建/解析池/vkeys 一旦都没命中就
+  `songName` 为空 → 这三条退路整条不掉用 → 本机自建/解析池/vkeys 一旦都没命中就
   返回 null，预载与 ARM 取链一起失败。日志里紧跟的
   `[KuGou Lyric] 搜索无同名结果，放弃酷狗取词` 也是同一件事的歌词侧表现。
 - **顺带查出第二处同类缺陷**：`175` 里预载与 automix 补词的歌词调用写的是
   `fetchLyricWithFallback(String(track.id), src)` —— 该函数只在第一参是**对象**时
   才读 `songName`（`typeof songInfo === 'object' ? songInfo.song || … : ''`），
-  传字符串 ⇒ `songName` 恒空 ⇒ 同名歌兜底同样失效。改为传 `{ ...track, source: 归一后平台键 }`。
+  传字符串 → `songName` 恒空 → 同名歌兜底同样失效。改为传 `{ ...track, source: 归一后平台键 }`。
 - **修法（单一归属）**：在 `core/automix/scheduler.js` 增加 `_normTrack()`
   （基于 `core/nextUp.js` 的 `trackTitle/trackArtist`），并挂到**所有外部条目入口**：
   `notifyTrackStarted`、`getCurrentTrack`/`getNextTrack`（`_prewarmNext` / `_armAndGo` /
@@ -1108,8 +1124,7 @@ ame="作者 - 歌名" + singerinfo 解析；card count 用 count/m_count；«我
   `armLeadMs` 提到 **26s**，使 `armLeadMs − maxOverlapMs ≥ resolveTimeoutMs` 恒成立（差值 10s）。
   同时把 ARM 失败日志拆成「取链超时（8s）」与「解析链返回空（所有渠道均无直链）」——
   两者排查方向完全不同，此前共用一条文案无法区分。
-- **回归**：`test_automix_scheduler.js` +1（`{song, singer}` 形状的在线下一曲 ⇒
-  断言取链拿到的 `track.title/artist` 已归一、原字段保留、ARM 日志含真实歌名且不再出现 `A=?`），
+- **回归**：`test_automix_scheduler.js` +1（`{song, singer}` 形状的在线下一曲 → 断言取链拿到的 `track.title/artist` 已归一、原字段保留、ARM 日志含真实歌名且不再出现 `A=?`），
   并给 `setup()` 增加 `currentTrack`/`nextTrack` 覆盖参数。全量 JS 单测 **559/559**，
   ESLint 0 error，motion / i18n-coverage / resolve-instrumentation / test-registry /
   module-reachability 五道门禁全绿。

@@ -154,7 +154,7 @@ async function loadPlaylists(listEl) {
   }
   const cards = res.cards || [];
   if (!cards.length) {
-    if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = '<div class="rank-empty">该账号暂无歌单</div>';
+    if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = '<div class="rank-empty">账号下暂无歌单</div>';
     return;
   }
   state.cards = cards;

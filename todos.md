@@ -1,7 +1,7 @@
 # Aria 功能待办（面向用户体验的新增功能设想）
 
 > 口径：**成本** S ≈ 半天内；M ≈ 1~2 天；L ≈ 需要设计、跨多个分片。
-> **推荐度** ★ 越多越值得先做。
+> **推荐度** 越多越值得先做。
 > 本文只收「用户能明显感觉到」的功能，不含结构债/重构（那些在 `AGENTS.md` 约束速查与
 > `docs/模块化重构方案.md`）。
 >
@@ -94,7 +94,7 @@
 - **代码**：`core/vfxIntensity.js`（纯映射：四档 vfx 当插值端点，无 DOM 无 localStorage）+
   `app/295-vfx-intensity.js`（接线）+ `config/defaults.js` 的 `interface.vfxIntensity`（约束 11
   的安全落位）+ `180-boot-config.js` 的 `getVfxOverrides()` 叠加点。
-- **★ 叠加顺序是这件功能的全部难点**：生效值 = 档位 vfx ⊕ 滑杆 ⊕ 手动单项微调，
+- **叠加顺序是这件功能的全部难点**：生效值 = 档位 vfx ⊕ 滑杆 ⊕ 手动单项微调，
   **手动在最上层**。反过来（滑杆覆盖手调）等于用户拖一次滑杆就无声丢掉他调过的开关——
   那是数据丢失不是重置。配套两个坑：
   ① `setVfxOverride` 的基底必须读**原样手调表** `getManualVfxOverrides()`，不能读合并视图，
@@ -142,7 +142,7 @@
   意图、用 MutationObserver 等面板关掉再进。回归 `tests/test_zen_mode_ui.py` 13 例
   （含「设置面板开着时点开关 → 关掉面板后自动进入」这条主链路；变异验证：摘掉进入逻辑 → 3 条红）。
 
-### 8. 视觉模式自动导演 · 成本 M · ★★★★
+### 8. 视觉模式自动导演 · 成本 M · 
 - **用户感知**：不再需要手动切模式——按段落情绪或每 N 首自动换视觉模式（副歌进 PV、
   间奏进隧道、慢歌进活字），有惊喜感且完全不用学习。
 - **已有基础**：这块地基非常厚——AI 情绪分析（`core/aiAnalyzer.js`）、段落情绪分池
@@ -161,7 +161,7 @@
   ② 换视觉模式没有导出函数（220 的 `switchView` 关在 IIFE 里），走的是「点 `.view-mode-card`」
   这条与人手点完全相同的路，连带引擎装配、localStorage 记忆、设置分段一起带上。
 
-### 10. 全局主题跟随当前封面 · 成本 S-M · ★★★
+### 10. 全局主题跟随当前封面 · 成本 S-M · 
 - **用户感知**：换歌时整个界面（控制条描边、歌单卡、进度条、高亮色）平滑过渡到这张封面的
   主色，"每首歌有自己的样子"。
 - **已有基础**：`extractDominantColor`、`applyColorToLyrics`、`core/themeEngine.js`、
@@ -186,7 +186,7 @@
 
 ## 三、播放与控制
 
-### 12. 无缝专辑模式（gapless）· 成本 M · ★★★
+### 12. 无缝专辑模式（gapless）· 成本 M · 
 - **用户感知**：现场专辑、古典、概念专辑中间不断。现在每首歌切换都走淡入淡出与
   `applyVolumeOnSongChange`，会人为制造间隔。
 - **已有基础**：`app/135-crossfade.js`、`app/85-rate-download.js` 的 `applyPreservesPitch`、
@@ -246,7 +246,7 @@
   ③ 从 URL 猜音质**只能匹配 pathname**——QQ 直链的 `vkey` 是 hex 签名，实测出现以
   `…F320__v2…` 结尾的 key，整串匹配 `/320/` 会让角标把 m4a 谎报成 320k。
 
-### 16. 队列智能：去重、从当前之后插入、来源补齐 · 成本 M · ★★★
+### 16. 队列智能：去重、从当前之后插入、来源补齐 · 成本 M · 
 - **用户感知**：导入外部歌单不再出现 8 遍同一首；"把这首歌插到下一首之后"一步到位；
   某首歌无版权时自动并明确地告诉你"已用另一源补齐"。
 - **已有基础**：`app/145-playlist-import.js`（导入）、`app/175-track-index-online.js`
@@ -260,7 +260,7 @@
 - **落地形态**：`web/remote.html` 是专为手掌做的遥控页（大封面、大进度、上下曲、音量、队列），
   主界面**看不出有这个功能**——刻意如此，入口只在手机页。服务端侧 `app/291-phone-remote.js`
   推状态 / 取指令，总线是 `remote_bus.py`（纯标准库），`server.py` 把 `/api/remote/*` 转给它。
-- **★ 为什么是 HTTP 总线而不是照抄桌面歌词的 localStorage 通道**：桌面歌词窗口与主窗同源，
+- **为什么是 HTTP 总线而不是照抄桌面歌词的 localStorage 通道**：桌面歌词窗口与主窗同源，
   `localStorage + storage` 事件天然可达；手机是另一台设备上的另一个浏览器
   （origin `http://<局域网IP>:8001`），与 `http://localhost:8001` **不共享任何 web storage**——
   跨设备用 storage 物理上不成立。总线契约（谁写谁读、只在变化时推、接收端本地外推进度、字段命名）
@@ -289,7 +289,7 @@
 - **还缺测试**：`core/backgroundThrottle.js` 目前没有单测（全仓 grep `backgroundThrottle` 在
   `tests/` 命中 0）。分级判定与「恢复时不要复活本来就没跑的循环」这两条最值得钉住。
 
-### 19. 歌词屏保 / 氛围模式 · 成本 M · ★★
+### 19. 歌词屏保 / 氛围模式 · 成本 M · 
 - **用户感知**：没有播放时，屏幕上缓慢浮现常听歌曲的歌词金句，把播放器变成房间的一部分。
 - **已有基础**：最近播放与统计已落盘（`recordPlayStats` / `getRecentHistory`）、
   九套渲染模式全部可复用，只需要一个"无操作 → 随机取句 → 用轻模式渲染"的调度层。
@@ -313,7 +313,7 @@
   `200-settings-panel.js`，判定层 `perCharSynthesisWanted` 也照样成立），门槛是
   `WORD_UPGRADE_MIN_RATE = 0.9` 的**达标行数**而不是均值——均值会被一行错歌词拖过去，
   把一份对不上的词贴上去（`tests/js/test_word_per_char.js` 里有专门一条钉这个选择）。
-- **★ 代价必须知道**（AGENTS.md 约束 17）：`line.words.length` 从此**不再能证明真实性**。
+- **代价必须知道**（AGENTS.md 约束 17）：`line.words.length` 从此**不再能证明真实性**。
   合成行带 `wordTiming:'synthesized'`，任何拿 `words` 判**真值**的代码必须走
   `realWordsOf(line)` / `hasRealWordTiming(lines)`。已收口三处：下载 `.krc`、AI 喂词的
   时长权重、导出前 `stripSyntheticWords`。对齐成功的行反过来要**清掉**合成标记，否则
@@ -332,7 +332,7 @@
     （`perChar` 的 handler 也会把 `autoUpgrade` 按下去），且判定层口径不变。
   ④ **开关切换要切歌才生效**：`renderLyrics` 会把合成的 words 写回 `globalThis.lyrics`
     （约束 17 的同一份数组），所以「关掉后再渲染一次」数据里仍然全是逐字。
-    现在关闭路径先 `stripSyntheticWords()` 再渲染。★ 原来的 E2E 测不到，是因为它每次都
+    现在关闭路径先 `stripSyntheticWords()` 再渲染。原来的 E2E 测不到，是因为它每次都
     **重新播种**一份行级歌词——把被污染的数据换掉了；新增的 `toggle_off_clears_words_immediately`
     故意不重播种，用当前这份已被改过的数组测（实测 29 → 0 个 `.word`）。
 - **已验证**：`tests/js/test_parsers.js`、`test_word_per_char.js`（18 例，含真实取样回归 3 例）、
@@ -380,7 +380,7 @@
 > （全仓无 FPS 采样、无 `prefers-reduced-motion` 分支），内置 Pixi 模式**也不监听
 > `document.hidden`**。它的强项是**编排的确定性与图形手感**，不是性能。
 
-### 22. 一条共享 rAF 闸 + 帧脏检查 + 后台停帧 · 成本 M · ★★★★★
+### 22. 一条共享 rAF 闸 + 帧脏检查 + 后台停帧 · 成本 M · 
 - **为什么先做这个**：这是本次调研唯一直接命中「虚拟机 <10fps」的项。我们现在有
   **4 条互相独立的常驻绘制循环**（`core/pvEngine/PVEngine.js:585`、
   `core/pvEngine/PVBackground.js:153-169`、`core/visualizers/DimensionVisualizer.js:147`、
@@ -395,7 +395,7 @@
   四个引擎改用它；renderLoop 头部加脏检查；`document.hidden` 或 `audio.paused` 时停帧。
 - **注意**：这条与 #18 是同一件事的两个面，合并做，别分两次改引擎。
 
-### 23. renderScale 吸附到 2 次幂面积桶，并在 resize 里重算 · 成本 S-M · ★★★★
+### 23. renderScale 吸附到 2 次幂面积桶，并在 resize 里重算 · 成本 S-M · 
 - **它解决的问题**：全局降分辨率会让所有东西一起糊。它的纹理预算不是按字节记账，而是把
   renderScale **吸附到 Pixi 纹理池的 2 次幂桶**（`pixiTextureBudget.ts:52`
   `texturePoolAxis = nextPow2(ceil(css*res-1e-6))`、:86-113 `snapResolutionToTexturePool`），
@@ -427,7 +427,7 @@
 - **实测**：`tests/js/test_shape_field.js` 6 例（pathLength 覆盖率、确定性、错峰、粒子未受影响）；
   浏览器侧确认 `stroke-dashoffset` 从 `1px` 动画到 `0px`（delay 1.6s / dur 1.48s 那条），
   且 `tests/test_pv_geo_mosaic.py` 23 项全绿（含 `shape-orbit-anim` 未被新动画顶掉）。
-- **★ 一个必须记住的坑**：`.pv-shape` 的 `pv-shape-orbit` 已经占了 `transform`，
+- **一个必须记住的坑**：`.pv-shape` 的 `pv-shape-orbit` 已经占了 `transform`，
   再给同一元素加一个也写 `transform` 的入场动画并带 `both`，**列表里靠后的那个会全程压制前者**，
   漂移就永久锁死了。所以基础几何的落墨只动 `opacity`。
 - **VM 安全性**：整层 `.pv-shape-field` 在 `perf-low`/`perf-minimal`/`is-software-renderer` 下
@@ -464,7 +464,7 @@
   `sonnetAnimatedGraphics.ts:74-75` 漏了 `Math.random()`，破坏了自己的可复现性——
   我们的随机源已经收口在 `mulberry32(seed)` 一处，别在 `buildShapeFieldHTML` 里引入裸 `Math.random`。
 
-### 25. 视觉模式插件契约（mount(container, ctx) → dispose）· 成本 M · ★★
+### 25. 视觉模式插件契约（mount(container, ctx) → dispose）· 成本 M · 
 - **它的两层契约**：内置模式 = `VisualizerRegistryEntry`（`definition.ts:166-199`，
   `render/renderSettingsPanel/resetSettings/usesWordSegmentation/foliumTunables`），
   用 `import.meta.glob('./*/entry.tsx', {eager:true})` 发现 + 启动自检，renderer 内部再
@@ -473,7 +473,7 @@
   `mount(container, ctx) => dispose?`（:313），ctx 提供 `currentTime.on / subscribe / audio / getSettings`。
 - **隔离真相**：同 realm、**无沙箱**（`mods/README.md:27-31` 原文「模组是可信代码，不是沙箱」），
   边界是实验室总开关 + 主进程二次确认 + 内容摘要绑定的信任。
-- **为什么只给 ★★**：你是单人项目，第三方插件生态不是目标。真正值得抄的是**「宿主类型不外泄的
+- **为什么只给 **：你是单人项目，第三方插件生态不是目标。真正值得抄的是**「宿主类型不外泄的
   纯 DTO 契约」+「usesWordSegmentation 这种能力声明」**——我们 9 套模式现在靠 if/else 分发，
   抽一个 `VisualModeEntry` 能顺带把 #8 自动导演和 #9 视觉配方变成查表。
 - **推测项声明**：它「换歌不重建渲染上下文」（`pixiRuntimeHost.ts:4-9` + `drainSong` :72-96）

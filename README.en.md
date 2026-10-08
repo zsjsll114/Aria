@@ -10,11 +10,11 @@
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
-**A multi-source online music player built around word-by-word lyrics: QQ / KuGou / Netease / Kuwo / Soda search, nine full-screen lyric visual modes, a desktop lyrics overlay, a phone remote, and AI mood analysis**
+**A multi-source online music player: QQ / KuGou / Netease / Kuwo / Soda search, ten full-screen lyric visual modes, a desktop lyrics overlay, a phone remote and AI mood analysis**
 
 Web app + Tauri 2 desktop shell — a player built for one person's long listening sessions.
 
-[Visual Showcase](#nine-lyric-visuals) ·
+[Visual Showcase](#ten-lyric-visuals) ·
 [Core Features](#core-features) ·
 [Quick Start](#quick-start) ·
 [FAQ](#faq) ·
@@ -27,9 +27,9 @@ Web app + Tauri 2 desktop shell — a player built for one person's long listeni
 
 For personal use only. This repository contains no audio, lyrics, or cover art; online music-source APIs are provided at runtime by third-party open-source projects running locally — see the [Disclaimer](#third-party-sources-and-disclaimer) at the bottom.
 
-## Nine Lyric Visuals
+## Ten Lyric Visuals
 
-Beyond the default cover layout, there are nine full-screen lyric visuals, switchable from the style picker:
+Beyond the default cover layout there are ten full-screen lyric visuals, switchable from the style picker:
 
 | Mode | Description |
 |---|---|
@@ -39,10 +39,11 @@ Beyond the default cover layout, there are nine full-screen lyric visuals, switc
 | WordCloud | 2D word-cloud layout, damped camera focus tracking, per-word fill |
 | Verse | Multi-shot lyric film: giant close-ups / magazine layouts / collage fragments, per-word dispersion & camera moves, purely timeline-driven |
 | Tempera | Halftone-print lyric PV: color-block compositions with cut-out windows + dynamic lyric inversion + 121 camera variants |
-| Scroll | The whole song as one horizontal scroll: time advances leftward, sung lines stay on the roll as history, chapter color bands, no jump cuts |
 | Mondrian | Mondrian-style color-block collage: blocks split by line meaning, 8 geometric compositions, word blocks snap to color blocks with collision avoidance |
 | Tunnel | 3D particle flow in space, depth-of-field follows the theme color |
+| Dimension | Floating layered 3D lyrics; depth and parallax follow mood colors |
 | Letterpress | Letterpress layout: sung characters are inked in one by one, paper color follows section mood |
+| Jizura | Japanese text-PV engine ([JIZURA](https://github.com/852wa/JIZURA) port, MIT): 27 layouts × 860 parts auto-storyboard, cuts follow the lyrics |
 
 <table>
   <tr>
@@ -57,11 +58,11 @@ Beyond the default cover layout, there are nine full-screen lyric visuals, switc
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/lyrics2.png" width="100%" alt="Lyrics clean layout"><br><sub><b>Lyrics</b> (clean layout)</sub></td>
-    <td align="center" colspan="2"><sub>Screenshots for Verse / Tempera / Scroll to be added</sub></td>
+    <td align="center" colspan="2"><sub>Screenshots for Verse / Tempera / Jizura to be added</sub></td>
   </tr>
 </table>
 
-Everything shines brighter with AI mood analysis enabled: per-line emotion tags and chorus detection drive mood-aware palettes and compositions in the visual modes. No AI key? All modes still work — they fall back to purely timeline-driven behavior.
+AI mood analysis improves the result: per-line emotion tags and chorus detection drive mood-aware palettes and compositions. All modes also work without it, falling back to purely timeline-driven behavior.
 
 RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every visual mode, no configuration needed.
 
@@ -70,7 +71,7 @@ RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every 
 | Module | Description |
 |---|---|
 | Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout; automatic alignment fallback when word timing is missing |
-| Multi-source search | QQ Music / KuGou / Netease / Kuwo, multi-tier racing & aggregated fallback with a transparent resolve pipeline; hi-fi & daily mixes via self-hosted services. Soda Music runs on the local self-hosted source: search and word-by-word lyrics need no login, its daily mix (ByteDance feed) and "My playlists" are wired up, playback needs a QR scan, and it has no charts — the charts page stays 3-platform |
+| Multi-source search | QQ Music / KuGou / Netease / Kuwo, with multi-tier racing and aggregated fallback; self-hosted services add hi-fi and daily mixes. Soda Music runs on the local self-hosted source: search and word-by-word lyrics need no login, its daily mix and "My playlists" are wired up, and playback needs a QR scan. Soda has no charts — the charts page stays 3-platform |
 | AI mood analysis | Gemini or OpenAI-compatible APIs: per-line emotion tagging + chorus detection, driving layout & palette changes in visual modes |
 | Desktop lyrics | Standalone transparent window, free drag, click-through, local per-word interpolation |
 | Phone remote | Scan or type the address on your phone (same LAN) to control playback / track / volume (requires `--lan`) |
@@ -108,9 +109,9 @@ python server.py
 
 macOS / Linux have no .bat files — run the equivalent commands manually.
 
-## Before You Start (read these three)
+## Before You Start
 
-1. **Mainland users going through a Cloudflare Worker proxy for AI: the page URL must be `http://localhost:8001`**, not `127.0.0.1` — the Worker validates by page Origin, and `127.0.0.1` gets `403 Forbidden`. Calling the API directly (no Worker) has no such restriction.
+1. **Mainland users behind a Cloudflare Worker proxy: the page URL must be `http://localhost:8001`**, not `127.0.0.1` — the Worker validates the page Origin and returns `403 Forbidden` otherwise. Calling the API directly (no Worker) has no such restriction.
 2. **The server listens on localhost only by default.** To use it from your phone (including the phone remote), run `python server.py --lan`. This exposes search, proxy and config APIs (including AI keys) to your LAN — home WiFi only, turn it off afterwards.
 3. **Music-source services need separate logins.** Without login it automatically falls back to the free source pool: search and playback still work, but no hi-fi, daily mixes or playlist sync. Login lives in Settings → Self-Hosted.
 
@@ -149,7 +150,7 @@ Fill in an API key under Settings → AI (Gemini official and OpenAI-compatible 
 
 ## About How This Is Built
 
-This project is developed with extensive AI assistance: product shape, architecture decisions and code review are done by the author, while a large share of implementation, refactoring, tests and documentation is produced in collaboration with AI. No need to worry about who wrote what when filing issues — just report normally.
+Product shape, architecture decisions and code review are the author's work; implementation, tests and documentation are produced with AI assistance. When filing issues, just describe the problem — there is no need to distinguish who wrote what.
 
 ## FAQ
 
@@ -165,11 +166,11 @@ Please report issues with the [ISSUE template](.github/ISSUE_TEMPLATE/bug_report
 ## Architecture
 
 ```
-Tauri 2 shell (Rust) ── loads http://localhost:8001, spawns sidecars
+Tauri 2 shell (Rust) ── loads http://localhost:8001 and starts the backend
         │
 Python backend (stdlib-only http.server, port 8001)
   ├ serves web/ statically + /proxy + /api/* (incl. /api/remote/* phone-remote bus)
-  └ selfhost_service.py: four Node music-source sidecars (3100/3200/3201/3300, loopback-only)
+  └ selfhost_service.py: four Node music-source services (3100/3200/3201/3300, loopback-only)
 ```
 
 The frontend is a framework-free sharded module system (`web/src/app/*.js`, loaded by number), with visual engines in `web/src/core/` (pvEngine / tunnelEngine / visualizers). See [AGENTS.md](AGENTS.md) and [CODE_WIKI.md](CODE_WIKI.md) for details.
@@ -196,7 +197,7 @@ On top of that:
 
 [AGPL-3.0](LICENSE). The project as a whole is released under the GNU Affero General Public License v3.0.
 
-**Why not MIT**: the "Verse" (`web/src/core/visualizers/sonnet/`) and "Tempera" (`web/src/core/visualizers/tempera/`) visual engines, plus several utility modules (`pixiTextureBudget.js`, `utils/lyrics/*`, …), are **faithful line-by-line ports** of [chthollyphile/folia-major](https://github.com/chthollyphile/folia-major) (**AGPL-3.0**); some per-word entrance themes in the tunnel mode are adapted from JPV Lyrics Motion Kit (AGPL-3.0). AGPL's copyleft nature means the combined work must be released under AGPL-3.0 — the earlier MIT label did not hold for those parts and has been corrected.
+**Why AGPL**: the "Verse" (`web/src/core/visualizers/sonnet/`) and "Tempera" (`web/src/core/visualizers/tempera/`) visual engines, plus several utility modules (`pixiTextureBudget.js`, `utils/lyrics/*`, …), are **line-by-line ports** of [chthollyphile/folia-major](https://github.com/chthollyphile/folia-major) (**AGPL-3.0**); some per-word entrance themes in the tunnel mode are adapted from JPV Lyrics Motion Kit (AGPL-3.0). AGPL's copyleft nature means the combined work must be released under AGPL-3.0.
 
 - Third-party licenses and a **per-file origin list**: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 - Code that is original to this project may still be licensed separately by its copyright holder (e.g. under MIT), but this repository and its builds are an AGPL-3.0 combined work.

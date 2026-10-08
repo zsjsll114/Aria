@@ -453,7 +453,7 @@ export const FORBIDDEN_KEYS = [
     { key: 'ai', reason: 'AI 的 apiKey / apiBase / providerConfigs 全是凭据，落进分享码等于把 key 发给朋友' },
     { key: 'apiKey', reason: '第三方服务访问密钥' },
     { key: 'apiBase', reason: '自建反代地址，常带个人域名与鉴权参数' },
-    { key: 'providerConfigs', reason: '按平台分装的 API Key 集合，比单个 apiKey 泄漏面更大' },
+    { key: 'providerConfigs', reason: '按平台分装的 API 密钥集合，比单个 apiKey 泄漏面更大' },
     { key: 'selfhost', reason: 'QQ / 酷狗 / 网易云的登录态（q36 / musicu / QDone 之类），泄漏即可被冒用' },
     { key: 'token', reason: '任何形状的会话令牌' },
     { key: 'cookie', reason: '任何形状的会话 Cookie' },

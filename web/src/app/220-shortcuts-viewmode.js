@@ -411,11 +411,11 @@ document.getElementById('setAutoDetectPerf')?.addEventListener('click', async ()
                     /* 走统一毛玻璃确认弹窗（021-aria-dialog），无则退回原生 confirm */
                     window.showGlassConfirm({
                         title: '恢复出厂性能配置？',
-                        desc: '将清空全部「视觉开销」手动微调并回到高性能档，此操作不可撤销。',
+                        desc: '将清空全部「视觉开销」手动微调并回到高性能档，操作不可撤销。',
                         okText: '恢复',
                         danger: true
                     }).then((ok) => { if (ok) doReset(); }).catch((e) => logCatch('shortcutsViewmode', e));
-                } else if (typeof window !== 'undefined' && window.confirm && window.confirm('恢复出厂性能配置？将清空全部手动微调，此操作不可撤销。')) {
+                } else if (typeof window !== 'undefined' && window.confirm && window.confirm('恢复出厂性能配置？将清空全部手动微调，操作不可撤销。')) {
                     doReset();
                 } else {
                     doReset();
@@ -833,7 +833,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                         <div class="tunnel-ai-mode-list">
                             <button class="tunnel-ai-mode-btn selected" data-mode="ai">
                                 <div><div class="tunnel-ai-mode-name">AI 联网完整分析（效果最佳）</div>
-                                <div class="tunnel-ai-mode-sub">语义情感 + 段落结构 + 逐词权重，生成后缓存，同一首歌不再消耗${hasKey ? '' : '（未配置 API Key，不可用）'}</div></div>
+                                <div class="tunnel-ai-mode-sub">语义情感 + 段落结构 + 逐词权重，生成后缓存，同一首歌不再消耗${hasKey ? '' : '（未配置 API 密钥，不可用）'}</div></div>
                             </button>
                             <button class="tunnel-ai-mode-btn" data-mode="lightweight">
                                 <div><div class="tunnel-ai-mode-name">轻量分析（无 AI，不耗 Token）</div>

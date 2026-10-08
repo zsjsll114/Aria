@@ -41,7 +41,7 @@ Apple Music 的 Automix 本质 = **静音裁剪 + 智能 outro/intro 选点 + �
 交叉结束后把主元素 `src = B 的 blob; currentTime = t; play()`。  
 **否决**：在线源 streaming URL 的 seek+play 有 100~500ms 重缓冲缝隙，交叉无缝变缝中缝；blob 可以但在线源不能保证全量缓冲。
 
-### ⚠️ 方案 Y：全量改 `getActiveAudio()` 访问器
+### 方案 Y：全量改 `getActiveAudio()` 访问器
 
 30 个分片 + 6 个 core 模块逐个改读法。  
 **否决**：一次 PR 碰 36 个文件，与「结构重构委托外部、回流审查」的现状冲突；且 `app/` 本来就等着按职责重组，现在大规模改写是给未来的分片重组添乱。

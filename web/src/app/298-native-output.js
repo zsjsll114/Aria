@@ -247,7 +247,7 @@ async function enableExclusive(opts) {
         } catch (e) {
             const msg = String((e && e.message) || e || '');
             logWarn(TAG, 'exclusive check failed:', msg);
-            if (!quiet) showSettingsHint(translatePhrase('独占模式在本机不可用') + '：' + msg);
+            if (!quiet) showSettingsHint(translatePhrase('本机不支持独占输出') + '：' + msg);
             return false;
         }
 
@@ -287,7 +287,7 @@ async function enableExclusive(opts) {
         logInfo(TAG, 'native exclusive output enabled');
         notifyOutputUI();
         if (!quiet) {
-            showSettingsHint(translatePhrase('已启用 WASAPI 独占输出'));
+            showSettingsHint(translatePhrase('已启用独占输出'));
             warnUnsupportedFeatures();
         }
         return true;
@@ -346,7 +346,7 @@ async function disableExclusive(opts) {
         _fallbackDone = false;
         logInfo(TAG, 'native exclusive output disabled');
         notifyOutputUI();
-        if (!quiet) showSettingsHint(translatePhrase('已停用 WASAPI 独占输出，回到系统混音'));
+        if (!quiet) showSettingsHint(translatePhrase('已关闭独占输出，恢复系统混音'));
         return true;
     } catch (e) {
         logCatch(TAG, e);
@@ -483,7 +483,7 @@ try {
                 /* 体检没过：清掉偏好，让下次启动不再撞同一堵墙；
                    同时留一条提示说明为什么。 */
                 writePref(EXCLUSIVE_KEY, '0');
-                showSettingsHint(translatePhrase('独占模式在本机不可用，已保持系统默认输出'));
+                showSettingsHint(translatePhrase('本机不支持独占输出，已保持系统默认输出'));
             }
         }
     })().catch((e) => logCatch(TAG, e));

@@ -37,7 +37,7 @@
 | 源 | 结论 | 实测证据与要点 |
 |---|---|---|
 | 酷狗 | ✔ **最干净** | `GET /search?keywords=周杰伦&type=mv&page=1&pagesize=18` → `data.lists[]`，每条 `{MvID, MvName, MvHash, SingerName, Duration(秒), HistoryHeat, Pic}`。搜「周杰伦」返回 6 支正牌 MV（晴天/青花瓷/稻香/…），**无需过滤** |
-| 网易 | ✔ **但要过滤** | `GET /search?type=1004&keywords=周杰伦&limit=12` → `result.mvs[]`。⚠ 这是**视频**检索：12 条里 6 条是《超级面对面》访谈、2 条预告片、1 条 9 秒问候，**搜到的"MV"点开是主持人聊天**（周杰伦在网易云无 MV 版权） |
+| 网易 | ✔ **但要过滤** | `GET /search?type=1004&keywords=周杰伦&limit=12` → `result.mvs[]`。注意：这是**视频**检索：12 条里 6 条是《超级面对面》访谈、2 条预告片、1 条 9 秒问候，**搜到的"MV"点开是主持人聊天**（周杰伦在网易云无 MV 版权） |
 | QQ | ✔ **但走歌手维度** | `getSearchByKey` 实测 `mv=None`（**没有按关键词搜 MV 的能力**）。可行路径：先拿歌手 `mid` → `GET /getSingerMv?singermid=<mid>&limit=6` → `response.data.list[{vid,id,title,pic,singer_name,listenCount}]`。取址 `GET /getMvPlay?vid=` → `response.getMVUrl.data.<vid>.mp4[]`（**多档，前几档常是 `code:2000` + 空 url**，要挑可用最小档） |
 | 汽水 | ✘ | `scripts/qishui-server.mjs` 无任何 artist/mv 路由（`grep -n "mv\|video"` **0 命中**）；本机底层库 `ly-music-source` 的 `dist/client.d.ts` 能力清单**零 video** |
 | 酷我 | ✘ | 无自建 vendor（`_eval/` 只有四家），无歌手/MV 接口 |
@@ -131,8 +131,8 @@ MV 下载、MV 收藏、跨源 MV 合并（ID 域不通）、画中画、独立 
 3. **网易的"MV"里混着访谈**：必须两层过滤（见 `finalizeMvs`）——
    ① **时长下限 45 秒**（挡 9s 问候 / 36s、40s 预告）；
    ② **标题黑名单**（`超级面对面|访谈|专访|预告|花絮|幕后|探班|纪录片|彩排|发布会|记者会|播放次数最多`，挡 428~646 秒的访谈节目）。
-   ⚠ 判定必须是 `duration > 0 && duration < 45`：QQ 不给时长（0），写 `duration < 45` 会把整排 QQ 卡片误杀。
-   ⚠ 黑名单**刻意收窄**：只放"出现在歌名里概率≈0"的节目词。《对话》真是歌名，所以"对话"**不能**进表。
+   注意：判定必须是 `duration > 0 && duration < 45`：QQ 不给时长（0），写 `duration < 45` 会把整排 QQ 卡片误杀。
+   注意：黑名单**刻意收窄**：只放"出现在歌名里概率≈0"的节目词。《对话》真是歌名，所以"对话"**不能**进表。
 4. **绝不"一条不匹配就退回全量"**：`finalizeMvs` 按 `名称|歌手` 去重 + 歌手一致过滤（双向包含，兼容 `"初音未来;巡音流歌;KAITO"` 这种长串）。
    实测网易搜「晴天」前三条是高伟/邓天晴的翻唱（网易没有周杰伦版权）——退回全量就会把别人的翻唱当成《晴天》的 MV 摆出来。**宁可不显示，也不指错。**
 5. **酷狗封面 `Pic` 是裸文件名**，必须自己拼 `https://imge.kugou.com/mvhdpic/480/<Pic>`（`mvpic` 也有 200，但 `mvhdpic` 同尺寸清晰得多：16KB vs 37KB）。
@@ -145,7 +145,7 @@ MV 下载、MV 收藏、跨源 MV 合并（ID 域不通）、画中画、独立 
    随后 A 的响应回来判 stale，又把这层骨架和提示清掉 → B 源页面全空，**再点一次搜索才正常**。
    修法：标志**挂在 cache 对象上**（`cache.busy`），切源/换词天然隔离；清缓存把 cache 置 null，标志随之消失。
    顺带在 stale 分支加了 `if (live && live.busy) return;`——新源正在飞时，旧响应不许去动它的骨架和提示。
-8. **★「卡片时有时无」的真正根因：骨架屏的延迟写入 × 渲染函数里同步读异步缓存。**
+8. **「卡片时有时无」的真正根因：骨架屏的延迟写入 × 渲染函数里同步读异步缓存。**
    现象：酷狗搜「周杰伦」，`globalThis.searchExtras.kugou` 里明明 `done` 且有 6 歌手/6 MV，
    界面却一张卡都没有（约 1/6 概率复现，重搜一次就好）。
    链路（每一环单看都对，叠在一起才出错）：
@@ -159,13 +159,13 @@ MV 下载、MV 收藏、跨源 MV 合并（ID 域不通）、画中画、独立 
    4) 延迟写入落地的是**第 1 步那份空串**，之后再没有任何人补画 → 卡片永久丢失。
    修法：`_fillExtraRowsWhenReady(src)` —— 容器不在就**轮询等它出现**（80ms × 最多 12 次
    ≈ 1s > 280ms 的等待窗口），切源立即收手。
-   ⚠ 教训：**只补一拍（`setTimeout(…, 0)`）是不够的**，因为 DOM 写入被骨架延迟了整整 280ms。
-   ⚠ 同类隐患的判据：**任何"在 `renderSearchResults` 里同步读某个异步缓存"的写法都会踩这个坑**
+   注意：教训：**只补一拍（`setTimeout(…, 0)`）是不够的**，因为 DOM 写入被骨架延迟了整整 280ms。
+   注意：同类隐患的判据：**任何"在 `renderSearchResults` 里同步读某个异步缓存"的写法都会踩这个坑**
       （`getFavorites()` / `currentSongData` 是同步的所以没事）。新增这类内容时，一律走
       「容器就绪后再补画」的路径，别指望拼字符串那一刻数据已经到齐。
 9. **极端性能模式主动拒绝**：`perf-minimal` / `is-software-renderer` / `window.__isSoftwareRenderer` 命中时，
    `setMvBackground` 直接返回 `{ok:false, reason:'perf'}` 并给文案，不静默失败。
-   ⚠ 注意 headless chrome 的 GPU 是 `Microsoft Basic Render Driver`（真·软件渲染），
+   注意headless chrome 的 GPU 是 `Microsoft Basic Render Driver`（真·软件渲染），
    所以 **headless 里永远验证不到 MV 背景播放**——要么真机，要么临时摘掉该标记再测。
 10. **`toSec()` 只留给酷狗**（它的 `Duration` 是秒，且偶有毫秒歧义）；网易已改成固定 `/1000`。
 11. **探针读状态要读 `globalThis`，不要读模块内变量**：`searchSource` / `searchPageCache` /

@@ -154,7 +154,7 @@ if (typeof document !== 'undefined') {
             });
             /* ★ 保存为自定义预设：毛玻璃命名弹窗（showGlassPrompt 由 258 提供） */
             document.getElementById('eqSaveBtn')?.addEventListener('click', () => {
-                if (typeof window.showGlassPrompt !== 'function') { if (typeof setHint === 'function') setHint('预设面板未就绪'); return; }
+                if (typeof window.showGlassPrompt !== 'function') { if (typeof setHint === 'function') setHint('预设面板暂不可用'); return; }
                 window.showGlassPrompt({
                     title: '保存为自定义预设',
                     placeholder: '例如：我的重低音',

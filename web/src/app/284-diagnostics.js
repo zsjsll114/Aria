@@ -234,9 +234,9 @@ function sectionAudio() {
     const nativeOn = !!(A && typeof A.__nativeOutputActive === 'function' && A.__nativeOutputActive());
 
     rows.push(row('输出去向',
-        nativeOn ? tx('WASAPI 独占（原生引擎，声音不经 Web 音频图）') : tx('共享输出（WebView2 音频图）'),
+        nativeOn ? tx('独占输出（原生引擎，绕过系统混音器）') : tx('共享输出（WebView2 音频图）'),
         nativeOn ? WARN : DIM));
-    rows.push(row('AudioContext 状态',
+    rows.push(row('音频引擎状态',
         snap.hasCtx
             ? `${snap.ctxState} · ${snap.sampleRate} Hz${snap.sinkId ? ` · sink ${snap.sinkId === '' ? 'default' : snap.sinkId}` : ''}`
             : tx('无（音效图从未建立）'),
@@ -246,7 +246,7 @@ function sectionAudio() {
     let gTone = DIM;
     if (snap.initFailed) { graph = tx('初始化失败（本进程内不会出声，请重启 Aria）'); gTone = BAD; }
     else if (snap.inited) { graph = tx('已建立'); gTone = OK; }
-    else if (snap.sourceCaptured) { graph = tx('已拆（元素仍被捕获 → 靠直连旁通保声，音效此时不生效）'); gTone = WARN; }
+    else if (snap.sourceCaptured) { graph = tx('已拆（元素仍被捕获，靠直连旁通保声；此时音效不生效）'); gTone = WARN; }
     rows.push(row('音效图', graph, gTone));
     rows.push(row('元素已改道进音效图', yesNo(snap.sourceCaptured), snap.sourceCaptured ? WARN : DIM));
 
@@ -277,7 +277,7 @@ function sectionAudio() {
         bad ? tx('检测到可能静音的因素：从上往下看第一处非 ok 项') : tx('未发现静音因素'),
         bad ? BAD : OK));
     return section('audio', '音频输出与音效链路', rows,
-        '「有时候放歌没声音」先看这一段：AudioContext 非 running、元素已改道但音效图被拆掉、deck 增益为 0 —— 三者都会让界面一切正常却完全没声。');
+        '没有声音时先看这几项：音频引擎未运行、音效图已拆除、输出增益为 0，都会让界面看起来正常却没有声音。');
 }
 
 function sectionFrames() {
@@ -306,7 +306,7 @@ function sectionFrames() {
         ].filter(Boolean).join(' · '), tone));
     }
     return section('frames', '帧时（实时采样）', rows,
-        '引擎帧时需要在各引擎的 rAF 回调里加一行 frameProbe.frame(名称) 埋点；未埋点时只有内置心跳。');
+        '未埋点的引擎只有内置心跳。');
 }
 
 function sectionBoot() {
@@ -395,20 +395,20 @@ async function collectVendor() {
     for (const key of ['qq', 'kugou', 'netease', 'qishui']) {
         const s = ok ? (st[key] || null) : null;
         const bits = [
-            `${tx('副进程')} ${s ? (s.alive ? tx('在线') : tx('离线')) : '—'}`,
+            `${tx('本地服务')} ${s ? (s.alive ? tx('在线') : tx('离线')) : '—'}`,
             `${tx('登录态')} ${s ? (s.loggedIn ? tx('已登录') : tx('未登录')) : '—'}`,
         ];
         /* ★ 汽水没有平台开关（它的搜索源就是本机服务、播放也只有这一条路），
            照抄其它平台的「平台开关 未启用」是一句假话 —— 与其误导，不如说实话。 */
         if (key === 'qishui') bits.push(tx('无平台开关（搜索与播放始终走本机）'));
         else bits.push(`${tx('平台开关')} ${selfhostEnabled(key) ? tx('已启用') : tx('未启用')}`);
-        if (s && s.hasSource === false) bits.push(tx('源码缺失（未跑 scripts/setup-vendors.bat）'));
+        if (s && s.hasSource === false) bits.push(tx('本地组件缺失（未运行安装脚本）'));
         if (s && s.uid) bits.push(`uid ${s.uid}`);
         bits.push(`:${VENDOR_PORTS[key]}`);
         rows.push(row(VENDOR_NAMES[key], bits.join(' · '), (s && s.alive && s.loggedIn) ? OK : (s && s.alive ? WARN : BAD)));
     }
     return { section: section('vendor', '本机服务与 vendor', rows,
-        '公网上游（vkeys/ygking/byfuns）不主动探测：它们失联时是整体超时，探测会把面板卡住数秒。看下一段的实际渠道即可。'), ok };
+        '公网上游不主动探测（探测会让面板卡住数秒），请看下一段的实际渠道。'), ok };
 }
 
 function sectionResolve() {
@@ -462,7 +462,7 @@ function sectionGlobals() {
     if (missing.length) rows.push(row('未定义键名', missing.slice(0, 24).join(', '), WARN));
     rows.push(row('多写键', `${multi.length}${multi.length ? ` — ${multi.slice(0, 12).join(', ')}` : ''}`, multi.length ? DIM : OK));
     return section('globals', '全局状态登记表', rows,
-        '只读 listGlobals()，未跑 auditGlobals()（后者会灌日志缓冲，挤掉取链轨迹）');
+        '只读取当前全局变量，未做全量审计（避免挤掉取链轨迹）');
 }
 
 function sectionVerdict(hw, saved, frameStats, vendorOk) {
@@ -483,7 +483,7 @@ function sectionVerdict(hw, saved, frameStats, vendorOk) {
     const nav = readGlobal('navigator') || {};
     if (nav.onLine === false) rows.push(row('网络', tx('离线'), BAD));
     return section('verdict', '结论摘要', rows,
-        '本页只反映「当前这台设备 + 这次运行」的数据。开发机的帧率不代表虚拟机/无独显设备；换设备请重新打开本页。');
+        '本页数据仅反映当前设备与本次运行；更换设备后请重新打开本页。');
 }
 
 async function collectSections() {

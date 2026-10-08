@@ -1068,7 +1068,7 @@ document.getElementById('setOpenEq')?.addEventListener('click', () => {
                 if (typeof window.showGlassPrompt !== 'function') return;
                 const text = await window.showGlassPrompt({
                     title: '导入 AutoEQ PEQ',
-                    desc: '粘贴 AutoEQ / Peace 导出的参数均衡文本，自动折算并写入 10 段均衡器',
+                    desc: '粘贴 AutoEQ / Peace 导出的参数文本，自动折算为 10 段均衡设置',
                     placeholder: 'Preamp: -6.1 dB\nFilter 1: ON PK Fc 105 Hz Gain 6.1 dB Q 0.70\nFilter 2: ON LSC Fc 105 Hz Gain 5.0 dB Q 0.70',
                     multiline: true,
                     okText: '导入',
@@ -1179,7 +1179,7 @@ document.getElementById('setClearSearch')?.addEventListener('click', () => {
             });
 
 document.getElementById('setClearAll')?.addEventListener('click', () => {
-                window.showGlassConfirm({ title: '清除所有数据', desc: '确定要清除所有数据吗？此操作不可撤销，包括收藏、歌单、设置、均衡器和自定义字体。', danger: true }).then((ok) => {
+                window.showGlassConfirm({ title: '清除所有数据', desc: '确定要清除所有数据吗？操作不可撤销，包括收藏、歌单、设置、均衡器和自定义字体。', danger: true }).then((ok) => {
                 if (!ok) return;
                 localStorage.removeItem(FAV_STORAGE_KEY);
                 localStorage.removeItem(PLAYLIST_STORAGE_KEY);

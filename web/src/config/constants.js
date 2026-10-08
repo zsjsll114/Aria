@@ -100,7 +100,7 @@ export const AI_PROVIDERS = {
         defaultModel: 'glm-4-flash',
         models: ['glm-4-flash', 'glm-4-plus', 'glm-4-air', 'glm-4-long'],
         keyPlaceholder: 'xxx.yyy...',
-        baseDesc: '智谱开放平台 API 接口地址',
+        baseDesc: '智谱开放平台 API 地址',
         modelDesc: '推荐 glm-4-flash，免费调用且速度极快'
     },
     aliyun: {
