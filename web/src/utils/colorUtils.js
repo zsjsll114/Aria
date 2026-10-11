@@ -1,8 +1,15 @@
 /** utils/colorUtils.js — 颜色空间转换 & 饱和度/亮度优化 */
+/**
+ * @param {number} r 0~255
+ * @param {number} g 0~255
+ * @param {number} b 0~255
+ * @returns {[number, number, number]} [h, s, l]
+ *   元组而非 number[]：调用方都直接解构，元组能让元素保持确定的 number
+ */
 export function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h, s, l = (max + min) / 2;
+    let h = 0, s, l = (max + min) / 2;
     if (max === min) {
         h = s = 0;
     } else {
@@ -17,11 +24,18 @@ export function rgbToHsl(r, g, b) {
     return [h, s, l];
 }
 
+/**
+ * @param {number} h 0~1
+ * @param {number} s 0~1
+ * @param {number} l 0~1
+ * @returns {[number, number, number]} [r, g, b]（0~255）
+ */
 export function hslToRgb(h, s, l) {
     let r, g, b;
     if (s === 0) {
         r = g = b = l;
     } else {
+        /** @type {(p:number, q:number, t:number) => number} */
         const hue2rgb = (p, q, t) => {
             if (t < 0) t += 1;
             if (t > 1) t -= 1;
@@ -39,6 +53,7 @@ export function hslToRgb(h, s, l) {
     return [r * 255, g * 255, b * 255];
 }
 
+/** @param {string} hex @returns {[number, number, number]|null} 非法输入返回 null */
 export function hexToRgb(hex) {
     if (!hex || !hex.startsWith('#')) return null;
     const r = parseInt(hex.slice(1, 3), 16);
@@ -56,17 +71,29 @@ export function hexToRgb(hex) {
  * ============================================================================== */
 
 /** sRGB 单通道（0~255）→ 线性光强（0~1） */
+/** @param {number} channel8 @returns {number} */
 export function srgbToLinear(channel8) {
     const c = Math.min(255, Math.max(0, Number(channel8) || 0)) / 255;
     return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
 /** WCAG 2.1 相对亮度（0~1，非线性）。入参 0~255 的 r/g/b */
+/**
+ * @param {number} r 0~255
+ * @param {number} g 0~255
+ * @param {number} b 0~255
+ * @returns {number} 相对亮度
+ */
 export function relativeLuminance(r, g, b) {
     return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
 }
 
 /** WCAG 对比度（1~21）；两个都传亮度时直接算 */
+/**
+ * @param {number} lumA
+ * @param {number} lumB
+ * @returns {number}
+ */
 export function contrastRatio(lumA, lumB) {
     const hi = Math.max(lumA, lumB), lo = Math.min(lumA, lumB);
     return (hi + 0.05) / (lo + 0.05);
@@ -96,6 +123,11 @@ export function pickInk(bgLuminance, currentLight = true, margin = 1.6) {
     return { light, lightRatio, darkRatio, lead };
 }
 
+/**
+ * @param {string} hex
+ * @param {number} targetLightness 0~1
+ * @returns {string}
+ */
 export function adjustColorLightness(hex, targetLightness) {
     if (!hex || !hex.startsWith('#')) return hex;
     const rgb = hexToRgb(hex);
@@ -107,13 +139,14 @@ export function adjustColorLightness(hex, targetLightness) {
 }
 
 /** 降低颜色饱和度到 75% 以下，保持亮度不变，使 AI 主题色更高级 */
+/** @param {string} hex @returns {string} */
 export function refineColor(hex) {
     if (!hex || !hex.startsWith('#')) return hex;
     const rgb = hexToRgb(hex);
     if (!rgb) return hex;
     const [r, g, b] = rgb;
     const hsl = rgbToHsl(r, g, b);
-    const refinedHsl = [hsl[0], Math.min(hsl[1], 0.75), hsl[2]];
+    const refinedHsl = /** @type {[number, number, number]} */ ([hsl[0], Math.min(hsl[1], 0.75), hsl[2]]);
     const refinedRgb = hslToRgb(refinedHsl[0], refinedHsl[1], refinedHsl[2]);
     return '#' + refinedRgb.map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
 }
@@ -128,7 +161,7 @@ export function extractCoverPalette(img) {
     if (!img) return { primary: '#3a86ff', secondary: '#ff006e', accent: '#ffbe0b' };
     try {
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
         const w = 40, h = 40;
         canvas.width = w; canvas.height = h;
         ctx.drawImage(img, 0, 0, w, h);
@@ -141,8 +174,11 @@ export function extractCoverPalette(img) {
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
                 const idx = (y * w + x) * 4;
-                if (data[idx + 3] < 128) continue;
-                const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+                /* idx 由 x<w / y<h 推出，四个通道下标均界内 */
+                if (/** @type {number} */ (data[idx + 3]) < 128) continue;
+                const r = /** @type {number} */ (data[idx]);
+                const g = /** @type {number} */ (data[idx + 1]);
+                const b = /** @type {number} */ (data[idx + 2]);
                 if (y < h / 2 && x < w / 2) {
                     r1 += r; g1 += g; b1 += b; c1++;
                 } else if (y > h / 3 && y < 2 * h / 3 && x > w / 3 && x < 2 * w / 3) {
@@ -153,6 +189,7 @@ export function extractCoverPalette(img) {
             }
         }
 
+        /** @type {(r:number, g:number, b:number, count:number, def:string) => string} */
         const toHex = (r, g, b, count, def) => {
             if (count === 0) return def;
             const avgR = Math.round(r / count);

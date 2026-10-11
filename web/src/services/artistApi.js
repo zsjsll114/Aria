@@ -38,6 +38,12 @@ const enc = encodeURIComponent;
 
 /* ---------------- 基础请求 ---------------- */
 
+/**
+ * @param {string} source
+ * @param {string} path
+ * @param {number} [timeout]
+ * @returns {Promise<any>}
+ */
 async function shGet(source, path, timeout = SH_TIMEOUT) {
     const key = selfhostKeyOf(source);
     if (!key) return null;
@@ -58,25 +64,34 @@ async function shGet(source, path, timeout = SH_TIMEOUT) {
 /* ---------------- 归一化小工具 ---------------- */
 
 /* WebView2/tauri 页面下 http 图片会被 mixed-content 拦掉（先例见 150 的网易封面处理） */
+/** @param {string} u @returns {string} */
 function upHttps(u) {
     return typeof u === 'string' ? u.replace(/^http:\/\//, 'https://') : '';
 }
 
 /* 酷狗头像/封面 URL 里的 {size} 占位符必须替换，否则取到的是字面量路径 */
+/**
+ * @param {string} u
+ * @param {number} [size]
+ * @returns {string}
+ */
 function kgUrl(u, size) {
     return upHttps(String(u || '').replace('{size}', String(size || 480)));
 }
 
+/** @param {string} albumMid @returns {string} */
 function qqCoverOf(albumMid) {
     return albumMid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg` : '';
 }
 
+/** @param {string} mid @returns {string} */
 function qqAvatarOf(mid) {
     return mid ? `https://y.gtimg.cn/music/photo_new/T001R300x300M000${mid}.jpg` : '';
 }
 
 /* 酷狗 timelength 是毫秒、QQ interval 是秒、网易 dt 是毫秒 —— 统一到「秒」，
    用阈值判别而不是按源分支，少一处会写错的映射表。 */
+/** @param {any} v @returns {number} */
 function toSec(v) {
     const n = Number(v) || 0;
     return n > 10000 ? Math.round(n / 1000) : Math.round(n);
@@ -85,6 +100,7 @@ function toSec(v) {
 /* QQ 的 /getSingerDesc 返回的不是 JSON，而是一段 XML 字符串：
    { response: '<?xml ...<result>...<data><info><desc><![CDATA[简介…]]></desc>…' }
    必须从 CDATA 里抠，直接塞 DOM 会把整段 XML 显示出来。 */
+/** @param {any} raw @returns {string} */
 function qqDescFromXml(raw) {
     const s = typeof raw === 'string' ? raw : (raw && raw.desc) || '';
     if (!s) return '';
@@ -94,6 +110,7 @@ function qqDescFromXml(raw) {
     return m2 ? m2[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
 }
 
+/** @param {number} n @returns {string} */
 function fmtCount(n) {
     const v = Number(n) || 0;
     if (v >= 100000000) return String(Math.round(v / 1000000) / 100) + ' 亿';
@@ -104,25 +121,33 @@ function fmtCount(n) {
 /* ---------------- 歌手搜索 ---------------- */
 
 /** 该源是否支持「按关键词搜歌手」。QQ 的 getSearchByKey 实测不出歌手分组，汽水未暴露路由。 */
+/** @param {string} source @returns {boolean} */
 export function artistSearchSupported(source) {
     const k = selfhostKeyOf(source);
     return k === 'netease' || k === 'kugou';
 }
 
 /**
- * @returns {Promise<Array<{source,artistId,artistMid,name,avatar,sub}>>}
+ * @param {number|string} [limit=6] 期望条数（上限 20）
+ * @returns {Promise<Array<{source:string, artistId:string, artistMid:string, name:string, avatar:string, sub:string}>>}
  *          失败/不支持一律返回 []（调用方据此隐藏整块，不做报错打扰）
+ */
+/**
+ * @param {string} source
+ * @param {string} keyword
+ * @param {number} [limit]
+ * @returns {Promise<any[]>}
  */
 export async function searchArtists(source, keyword, limit = 6) {
     const kw = String(keyword || '').trim();
     if (!kw || !artistSearchSupported(source)) return [];
-    const n = Math.max(1, Math.min(20, parseInt(limit, 10) || 6));
+    const n = Math.max(1, Math.min(20, parseInt(String(limit), 10) || 6));
     const key = selfhostKeyOf(source);
 
     if (key === 'netease') {
         const j = await shGet('netease', `/cloudsearch?keywords=${enc(kw)}&limit=${n}&type=100`);
         const arr = ((j || {}).result || {}).artists || [];
-        return arr.map(a => ({
+        return /** @type {any[]} */ (arr).map(a => ({
             source: 'netease',
             artistId: String(a.id || ''),
             artistMid: '',
@@ -136,7 +161,7 @@ export async function searchArtists(source, keyword, limit = 6) {
     /* 酷狗：与歌曲搜索同一条 /search，靠 type=author 切分支（module/search.js 的 type 白名单） */
     const j = await shGet('kugou', `/search?keywords=${enc(kw)}&type=author&pagesize=${n}&page=1`);
     const arr = (((j || {}).data) || {}).lists || [];
-    return arr.map(a => ({
+    return /** @type {any[]} */ (arr).map(a => ({
         source: 'kugou',
         artistId: String(a.AuthorId || ''),
         artistMid: '',
@@ -162,13 +187,20 @@ const CACHE_TTL = 30 * 60 * 1000;
 const NAME_CACHE = new Map();
 const NAME_CACHE_MAX = 80;
 
+/**
+ * @param {string} source
+ * @param {string} name
+ * @returns {Promise<any>}
+ */
 async function resolveArtistByName(source, name) {
     const ck = `${source}:${String(name).toLowerCase()}`;
     if (NAME_CACHE.has(ck)) return NAME_CACHE.get(ck);
+    /** @type {any} */
     let hit = null;
     try {
         const list = await searchArtists(source, name, 5);
-        const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+        /** @param {any} s */
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
         hit = list.find(a => a.name === name)
             || list.find(a => norm(a.name) === norm(name))
             || null;
@@ -180,6 +212,7 @@ async function resolveArtistByName(source, name) {
 
 export function clearArtistCache() { CACHE.clear(); NAME_CACHE.clear(); }
 
+/** @param {string} key @returns {any} */
 function cacheGet(key) {
     const hit = CACHE.get(key);
     if (!hit) return null;
@@ -188,6 +221,11 @@ function cacheGet(key) {
     return hit.data;
 }
 
+/**
+ * @param {string} key
+ * @param {any} data
+ * @returns {void}
+ */
 function cacheSet(key, data) {
     CACHE.set(key, { at: Date.now(), data });
     while (CACHE.size > CACHE_MAX) CACHE.delete(CACHE.keys().next().value);
@@ -201,9 +239,15 @@ function cacheSet(key, data) {
  * - empty  ：连本体都没拿到（未登录 / 接口挂 / 该源不支持）
  * 绝不抛异常——页面按 empty/partial 决定降级文案。
  */
+/**
+ * @param {any} artist
+ * @param {{songLimit?:number}} [opts]
+ * @returns {Promise<any>}
+ */
 export async function fetchArtist(artist, opts = {}) {
     const src = String((artist && artist.source) || '');
     const key = selfhostKeyOf(src);
+    /** @type {any} */
     const result = {
         source: src,
         artistId: String((artist && artist.artistId) || ''),
@@ -235,7 +279,7 @@ export async function fetchArtist(artist, opts = {}) {
        酷狗 audios 可到 300。默认取 100（歌手页不做分页，一屏给足）。
        ★ 专辑一律 60：QQ 60→43、网易 60→44、酷狗 60→49，而 30 会把它们统统截断，
        这正是用户反馈「歌手页内容不全」的直接原因。 */
-    const want = Math.max(1, Math.min(300, parseInt(opts.songLimit, 10) || 100));
+    const want = Math.max(1, Math.min(300, parseInt(String(opts.songLimit ?? ''), 10) || 100));
     const ALBUM_LIMIT = 60;
 
     if (key === 'qq') {
@@ -249,14 +293,14 @@ export async function fetchArtist(artist, opts = {}) {
         ]);
         result.desc = qqDescFromXml(((descJ || {}).response !== undefined) ? descJ.response : descJ);
         const songlist = ((((hotJ || {}).response) || {}).singer || {}).data || {};
-        result.songs = (songlist.songlist || []).map(s => {
+        result.songs = /** @type {any[]} */ (songlist.songlist || []).map(s => {
             const ars = Array.isArray(s.singer) ? s.singer : [];
             const al = s.album || {};
             return {
                 id: s.mid, mid: s.mid,
                 song: s.name || s.title || '',
-                singer: ars.map(x => x.name).join('/') || result.name,
-                artists: ars.map(x => ({ id: String(x.id || ''), mid: x.mid || '', name: x.name || '' })).filter(a => a.name),
+                singer: /** @type {any[]} */ (ars).map(x => x.name).join('/') || result.name,
+                artists: /** @type {any[]} */ (ars).map(x => ({ id: String(x.id || ''), mid: x.mid || '', name: x.name || '' })).filter(a => a.name),
                 album: al.name || '',
                 cover: qqCoverOf(al.mid),
                 interval: toSec(s.interval),
@@ -264,7 +308,7 @@ export async function fetchArtist(artist, opts = {}) {
             };
         }).filter(s => s.id);
         const albumData = (((albJ || {}).response) || {}).singer || {};
-        result.albums = (((albumData.data || {}).albumList) || []).map(a => ({
+        result.albums = /** @type {any[]} */ (((albumData.data || {}).albumList) || []).map(a => ({
             id: a.albumMid || '',
             name: a.albumName || '',
             cover: qqCoverOf(a.albumMid),
@@ -297,21 +341,21 @@ export async function fetchArtist(artist, opts = {}) {
         const rawSongs = ((songJ || {}).songs && (songJ || {}).songs.length)
             ? songJ.songs
             : (((detJ || {}).hotSongs) || []);
-        result.songs = rawSongs.map(s => {
+        result.songs = /** @type {any[]} */ (rawSongs).map(s => {
             const al = s.al || {};
             const ars = Array.isArray(s.ar) ? s.ar : [];
             return {
                 id: String(s.id), mid: '',
                 song: s.name || '',
-                singer: ars.map(x => x.name).join('/') || result.name,
-                artists: ars.map(x => ({ id: String(x.id || ''), mid: '', name: x.name || '' })).filter(x => x.name),
+                singer: /** @type {any[]} */ (ars).map(x => x.name).join('/') || result.name,
+                artists: /** @type {any[]} */ (ars).map(x => ({ id: String(x.id || ''), mid: '', name: x.name || '' })).filter(x => x.name),
                 album: al.name || '',
                 cover: upHttps(al.picUrl),
                 interval: toSec(s.dt),
                 source: 'netease',
             };
         }).filter(s => s.id);
-        result.albums = (((albJ || {}).hotAlbums) || []).map(al => ({
+        result.albums = /** @type {any[]} */ (((albJ || {}).hotAlbums) || []).map(al => ({
             id: String(al.id || ''),
             name: al.name || '',
             cover: upHttps(al.picUrl),
@@ -336,7 +380,7 @@ export async function fetchArtist(artist, opts = {}) {
                 d.album_count ? `${d.album_count} 张专辑` : '',
                 d.audio_count ? `${d.audio_count} 首歌` : '',
             ].filter(Boolean).join(' · ');
-        result.songs = (((audJ || {}).data) || []).map(s => ({
+        result.songs = /** @type {any[]} */ (((audJ || {}).data) || []).map(s => ({
             id: s.hash || s.hash_320 || '',
             mid: s.hash || s.hash_320 || '',
             song: s.audio_name || '',
@@ -348,7 +392,7 @@ export async function fetchArtist(artist, opts = {}) {
             interval: toSec(s.timelength),
             source: 'kugou',
         })).filter(s => s.id);
-        result.albums = (((albJ || {}).data) || []).map(al => ({
+        result.albums = /** @type {any[]} */ (((albJ || {}).data) || []).map(al => ({
             id: String(al.album_id || ''),
             name: al.album_name || '',
             cover: kgUrl(al.sizable_cover, 400),

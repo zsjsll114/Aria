@@ -23,7 +23,11 @@ const ICON_PATHS = {
   'speaker': '<svg class="lucide lucide-speaker" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M12 6h.01" /><circle cx="12" cy="14" r="4" /><path d="M12 14h.01" />'
 };
 
-/** mulberry32 确定性伪随机：同一 seed 布局稳定 */
+/**
+ * mulberry32 确定性伪随机：同一 seed 布局稳定。
+ * @param {number} seed
+ * @returns {() => number}
+ */
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -74,7 +78,7 @@ export function buildShapeFieldHTML(seed = 0) {
     const growDur = (1.1 + rnd() * 1.3).toFixed(2);
     const ink = `--grow:${growDur}s;--grow-delay:${inkDelay}s;`;
     if (wantIcon) {
-      const key = ICON_KEYS[Math.floor(rnd() * ICON_KEYS.length)];
+      const key = /** @type {string} */ (ICON_KEYS[Math.floor(rnd() * ICON_KEYS.length)]);
       const op = (0.11 + rnd() * 0.08).toFixed(3);
       const breathe = (10 + rnd() * 10).toFixed(1);
       parts.push(`<div class="pv-shape pv-shape--icon" style="left:${x}%;top:${y}%;width:${size}px;height:${size}px;--dur:${dur}s;--delay:${delay}s;--rot0:${rot}deg;--dx:${dx}px;--dy:${dy}px;--op:${op};--breathe:${breathe}s;${ink}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS_INKED[key]}</svg></div>`);

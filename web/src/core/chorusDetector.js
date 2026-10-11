@@ -1,4 +1,4 @@
-import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
+import { logInfo, logCatch } from '../services/log.js';
 /**
  * 纯 JS 歌曲高潮检测模块 v4.0
  * - Web Worker 化，不阻塞主线程（解决歌词卡顿）
@@ -9,17 +9,44 @@ import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
  * 本文件同时作为主线程模块和 Worker 脚本：
  *   - 主线程：fetch + decode → 创建 Worker → 传输 PCM → 等待结果
  *   - Worker：接收 PCM → 降采样 → STFT → 能量分析 → 重复检测 → 返回
+ *
+ * ★ 索引命名的形状契约（noUncheckedIndexedAccess 下 index 访问一律带 undefined，
+ *   全文件统一用这几个 typedef 断言，而不是写成 any）：
+ */
+
+/**
+ * 时间窗/帧上的一个能量点。
+ * @typedef {{time:number, energy:number, signature:number[]}} EnergyPoint
+ */
+/**
+ * 判定完成的段落（带谱形签名，供第 7 步的余弦重复检测）。
+ * @typedef {{start:number, end:number, label:number, energy:number, signature:number[]}} Segment
+ */
+/**
+ * 最终高潮段（第 8 步产出，reason 说明命中理由）。
+ * @typedef {{start:number, end:number, energy:number, label:number, reason:string}} ChorusSegment
+ */
+/**
+ * 时间点上的能量（只有 time/energy，无谱形）。
+ * 边界细分的 0.5s 剖面、以及声学采集（AudioContext analyser）的采样点共用此形状。
+ * @typedef {{time:number, energy:number}} FineEnergyPoint
+ */
+/**
+ * 纯能量的中间段落（无谱形），用于采集分支的分段与合并。
+ * @typedef {{start:number, end:number, label:number, energy:number}} EnergySeg
  */
 
 /* 获取脚本自身 URL（用于创建 Worker） */
 var _chorusScriptSrc = '';
 if (typeof document !== 'undefined') {
-    _chorusScriptSrc = (document.currentScript && document.currentScript.src) || '';
+    _chorusScriptSrc = (/** @type {HTMLScriptElement|null} */ (document.currentScript))?.src || '';
     if (!_chorusScriptSrc) {
         var _scripts = document.getElementsByTagName('script');
         for (var i = _scripts.length - 1; i >= 0; i--) {
-            if (_scripts[i].src && _scripts[i].src.indexOf('chorusDetector') >= 0) {
-                _chorusScriptSrc = _scripts[i].src;
+            /* 守卫而非断言：HTMLCollection 是活集合，遍历期间 DOM 变动可能让下标失效 */
+            var _sc = _scripts[i];
+            if (_sc && _sc.src && _sc.src.indexOf('chorusDetector') >= 0) {
+                _chorusScriptSrc = _sc.src;
                 break;
             }
         }
@@ -28,6 +55,11 @@ if (typeof document !== 'undefined') {
 
 /* ==================== 共享计算函数（Worker 和主线程都能用）==================== */
 
+/**
+ * @param {any} re
+ * @param {any} im
+ * @returns {void}
+ */
 function _fft(re, im) {
     var n = re.length;
     if (n <= 1) return;
@@ -61,6 +93,7 @@ function _fft(re, im) {
     }
 }
 
+/** @param {number} n @returns {any} */
 function _hannWindow(n) {
     var w = new Float32Array(n);
     for (var i = 0; i < n; i++) {
@@ -72,6 +105,13 @@ function _hannWindow(n) {
 /**
  * STFT + 直接 band 聚合（不存完整频谱，大幅省内存）
  * 返回每帧的 { bands: Float32Array(numBands), energy: number }
+ */
+/**
+ * @param {any} samples
+ * @param {number} fftSize
+ * @param {number} hopSize
+ * @param {number} numBands
+ * @returns {any}
  */
 function _computeBandEnergy(samples, fftSize, hopSize, numBands) {
     var win = _hannWindow(fftSize);
@@ -93,9 +133,12 @@ function _computeBandEnergy(samples, fftSize, hopSize, numBands) {
         var bands = new Float32Array(numBands);
         var totalEnergy = 0;
         for (var b = 0; b < halfBins; b++) {
-            var mag = Math.sqrt(re[b] * re[b] + im[b] * im[b]);
+            /* 下标由循环边界保证界内（b < halfBins ≤ fftSize/2 == re.length） */
+            var rv = /** @type {number} */ (re[b]);
+            var iv = /** @type {number} */ (im[b]);
+            var mag = Math.sqrt(rv * rv + iv * iv);
             var bandIdx = Math.min(numBands - 1, Math.floor(b / binsPerBand));
-            bands[bandIdx] += mag;
+            bands[bandIdx] = /** @type {number} */ (bands[bandIdx]) + mag;
             totalEnergy += mag;
         }
         frames.push({ bands: bands, energy: totalEnergy });
@@ -104,6 +147,11 @@ function _computeBandEnergy(samples, fftSize, hopSize, numBands) {
 }
 
 /* 余弦相似度 */
+/**
+ * @param {any} a
+ * @param {any} b
+ * @returns {number}
+ */
 function _cosineSim(a, b) {
     var dot = 0, normA = 0, normB = 0;
     for (var i = 0; i < a.length; i++) {
@@ -119,7 +167,7 @@ function _cosineSim(a, b) {
  * 谱通量(spectral flux) onset 包络 → 自相关找主导周期 → BPM + 置信度 + 拍相位。
  * 复用 _computeBandEnergy 的 16-band 帧（零额外 FFT 开销），纯确定性。
  *
- * @param {Array} frames [{ bands: Float32Array(16), energy }]（STFT 帧序列）
+ * @param {Array<any>} frames [{ bands: Float32Array(16), energy }]（STFT 帧序列）
  * @param {number} hopSize STFT hop（采样点）
  * @param {number} sampleRate 当前采样率
  * @returns {{bpm:number, confidence:number, beatOffsetSec:number}|null}
@@ -145,17 +193,17 @@ function _estimateTempo(frames, hopSize, sampleRate) {
     /* ── 2. 平滑(±1) + 去局部均值 + 半波整流 ── */
     var smoothed = new Float32Array(n);
     for (var i = 0; i < n; i++) {
-        var s = onset[i], cnt = 1;
-        if (i > 0) { s += onset[i - 1]; cnt++; }
-        if (i < n - 1) { s += onset[i + 1]; cnt++; }
+        var s = /** @type {number} */ (onset[i]), cnt = 1;
+        if (i > 0) { s += /** @type {number} */ (onset[i - 1]); cnt++; }
+        if (i < n - 1) { s += /** @type {number} */ (onset[i + 1]); cnt++; }
         smoothed[i] = s / cnt;
     }
     var env = new Float32Array(n);
     var LOCAL = 24; /* ±24 帧 ≈ ±0.75s 局部均值窗 */
     for (var i2 = 0; i2 < n; i2++) {
         var sum = 0, c2 = 0;
-        for (var j = Math.max(0, i2 - LOCAL); j <= Math.min(n - 1, i2 + LOCAL); j++) { sum += smoothed[j]; c2++; }
-        var v = smoothed[i2] - sum / c2;
+        for (var j = Math.max(0, i2 - LOCAL); j <= Math.min(n - 1, i2 + LOCAL); j++) { sum += /** @type {number} */ (smoothed[j]); c2++; }
+        var v = /** @type {number} */ (smoothed[i2]) - sum / c2;
         env[i2] = v > 0 ? v : 0;
     }
 
@@ -167,7 +215,7 @@ function _estimateTempo(frames, hopSize, sampleRate) {
     var corrSum = 0, corrCnt = 0;
     for (var lag = minLag; lag <= maxLag; lag++) {
         var acc = 0, c3 = 0;
-        for (var k = 0; k + lag < n; k++) { acc += env[k] * env[k + lag]; c3++; }
+        for (var k = 0; k + lag < n; k++) { acc += /** @type {number} */ (env[k]) * /** @type {number} */ (env[k + lag]); c3++; }
         if (c3 < 8) continue;
         var r = acc / c3;
         corrSum += r; corrCnt++;
@@ -189,7 +237,7 @@ function _estimateTempo(frames, hopSize, sampleRate) {
     var bestPhase = 0, bestPhaseVal = -1;
     for (var p = 0; p < bestLag; p++) {
         var ps = 0;
-        for (var k2 = p; k2 < n; k2 += bestLag) ps += env[k2];
+        for (var k2 = p; k2 < n; k2 += bestLag) ps += /** @type {number} */ (env[k2]);
         if (ps > bestPhaseVal) { bestPhaseVal = ps; bestPhase = p; }
     }
 
@@ -201,6 +249,14 @@ function _estimateTempo(frames, hopSize, sampleRate) {
 }
 
 /* 构建段对象 */
+/**
+ * @param {any} normEnergy
+ * @param {number} startIdx
+ * @param {number} endIdx
+ * @param {any} label
+ * @param {number} duration
+ * @returns {any}
+ */
 function _makeSegment(normEnergy, startIdx, endIdx, label, duration) {
     var start = normEnergy[startIdx].time;
     var end = endIdx < normEnergy.length ? normEnergy[endIdx].time : duration;
@@ -222,6 +278,14 @@ function _makeSegment(normEnergy, startIdx, endIdx, label, duration) {
 /**
  * 核心算法：从 band 能量帧识别高潮段落
  * frames: [{ bands: Float32Array(16), energy: number }]
+ */
+/**
+ * @param {any[]} frames
+ * @param {number} hopSize
+ * @param {number} sampleRate
+ * @param {number} duration
+ * @param {Function} [onProgress]
+ * @returns {{chorusSegments:any[], allSegments:any[]}}
  */
 function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     var log = onProgress || function() {};
@@ -252,10 +316,10 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
         }
         var energy = count > 0 ? energySum / count : 0;
         var bandTotal = 0;
-        for (var b2 = 0; b2 < NUM_BANDS; b2++) bandTotal += bandSum[b2];
+        for (var b2 = 0; b2 < NUM_BANDS; b2++) bandTotal += /** @type {number} */ (bandSum[b2]);
         bandTotal = bandTotal || 1;
         var signature = [];
-        for (var b3 = 0; b3 < NUM_BANDS; b3++) signature.push(bandSum[b3] / bandTotal);
+        for (var b3 = 0; b3 < NUM_BANDS; b3++) signature.push(/** @type {number} */ (bandSum[b3]) / bandTotal);
         windowData.push({ time: w * WINDOW_SEC, energy: energy, signature: signature });
     }
 
@@ -267,36 +331,42 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     for (var i = 0; i < numWindows; i++) {
         var sum = 0, cnt = 0;
         for (var j = Math.max(0, i - SMOOTH_SIZE); j <= Math.min(numWindows - 1, i + SMOOTH_SIZE); j++) {
-            sum += windowData[j].energy;
+            sum += /** @type {EnergyPoint} */ (windowData[j]).energy;
             cnt++;
         }
-        smoothed.push({ time: windowData[i].time, energy: sum / cnt, signature: windowData[i].signature });
+        var wd = /** @type {EnergyPoint} */ (windowData[i]);
+        smoothed.push({ time: wd.time, energy: sum / cnt, signature: wd.signature });
     }
 
     /* ─── 第3步：Min-Max 归一化 ─── */
     var rawMax = 0.001, rawMin = Infinity;
     for (var i2 = 0; i2 < smoothed.length; i2++) {
-        if (smoothed[i2].energy > rawMax) rawMax = smoothed[i2].energy;
-        if (smoothed[i2].energy < rawMin) rawMin = smoothed[i2].energy;
+        /* 变量名避开 sp/sp2 —— 本函数体是同一 var 作用域，下方细化循环已用 sp/sp2 */
+        var epW = /** @type {EnergyPoint} */ (smoothed[i2]);
+        if (epW.energy > rawMax) rawMax = epW.energy;
+        if (epW.energy < rawMin) rawMin = epW.energy;
     }
     var range = rawMax - rawMin || 0.001;
     var normEnergy = [];
     for (var i3 = 0; i3 < smoothed.length; i3++) {
+        var sp3 = /** @type {EnergyPoint} */ (smoothed[i3]);
         normEnergy.push({
-            time: smoothed[i3].time,
-            energy: (smoothed[i3].energy - rawMin) / range,
-            signature: smoothed[i3].signature
+            time: sp3.time,
+            energy: (sp3.energy - rawMin) / range,
+            signature: sp3.signature
         });
     }
 
-    /* ─── 第4步：三级阈值（收紧 high 到 75 百分位，避免整首歌都是高潮）─── */
+    /* ─── 第4步：三级阈值（收紧 high 到 75 百分位，避免整首歌都是高潮）───
+       ★ 三处 sortedE[...] 在这里断言一次即可：median/low/high 三个阈值随后被
+         log、能量分布图、三级分段、多路回退共用十余次，在源头收口远干净于下游逐处断言。 */
     var sortedE = [];
-    for (var i4 = 0; i4 < normEnergy.length; i4++) sortedE.push(normEnergy[i4].energy);
+    for (var i4 = 0; i4 < normEnergy.length; i4++) sortedE.push(/** @type {EnergyPoint} */ (normEnergy[i4]).energy);
     sortedE.sort(function(a, b) { return a - b; });
-    var median = sortedE[Math.floor(sortedE.length * 0.5)];
+    var median = /** @type {number} */ (sortedE[Math.floor(sortedE.length * 0.5)]);
     /* high = 75 百分位（只有前 25% 能量才算高），low = 45 百分位 */
-    var highThresh = sortedE[Math.floor(sortedE.length * 0.75)];
-    var lowThresh = sortedE[Math.floor(sortedE.length * 0.45)];
+    var highThresh = /** @type {number} */ (sortedE[Math.floor(sortedE.length * 0.75)]);
+    var lowThresh = /** @type {number} */ (sortedE[Math.floor(sortedE.length * 0.45)]);
 
     log('  能量: min=' + rawMin.toFixed(1) + ', max=' + rawMax.toFixed(1) + ', median=' + median.toFixed(3));
     log('  阈值: low=' + lowThresh.toFixed(3) + ', high=' + highThresh.toFixed(3));
@@ -304,21 +374,24 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     /* 能量分布图 */
     var profile = '  能量分布:';
     for (var i5 = 0; i5 < normEnergy.length; i5 += 2) {
-        var e = normEnergy[i5].energy;
+        var ep5 = /** @type {EnergyPoint} */ (normEnergy[i5]);
+        var e = ep5.energy;
         var bar = '';
         var barLen = Math.round(e * 20);
         for (var bl = 0; bl < barLen; bl++) bar += '█';
         var mark = e >= highThresh ? '◆' : (e >= lowThresh ? '·' : ' ');
-        profile += '\n    ' + String(normEnergy[i5].time.toFixed(0)).padStart(3) + 's ' + mark + ' ' + bar + ' ' + e.toFixed(2);
+        profile += '\n    ' + String(ep5.time.toFixed(0)).padStart(3) + 's ' + mark + ' ' + bar + ' ' + e.toFixed(2);
     }
     log(profile);
 
-    /* ─── 第5步：三级分段 ─── */
+    /* ─── 第5步：三级分段 ─── 打标只读 energy，故抽成局部函数避免逐处断言 */
+    /** @param {number} v @returns {number} */
+    function labelOf(v) { return v >= highThresh ? 2 : (v >= lowThresh ? 1 : 0); }
     var segments = [];
     var segStart = 0;
-    var segLabel = normEnergy[0].energy >= highThresh ? 2 : (normEnergy[0].energy >= lowThresh ? 1 : 0);
+    var segLabel = labelOf((/** @type {EnergyPoint} */ (normEnergy[0])).energy);
     for (var i6 = 1; i6 < normEnergy.length; i6++) {
-        var label = normEnergy[i6].energy >= highThresh ? 2 : (normEnergy[i6].energy >= lowThresh ? 1 : 0);
+        var label = labelOf((/** @type {EnergyPoint} */ (normEnergy[i6])).energy);
         if (label !== segLabel) {
             segments.push(_makeSegment(normEnergy, segStart, i6, segLabel, duration));
             segStart = i6;
@@ -329,23 +402,29 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     log('  初始分段: ' + segments.length + ' 段');
 
     /* ─── 第6步：吸收 < 4s 短段 + 合并同类 ─── */
+    /** @type {Segment[]} */
     var absorbed = [];
     for (var si = 0; si < segments.length; si++) {
-        var seg = segments[si];
-        if (seg.end - seg.start < 4 && absorbed.length > 0) {
-            absorbed[absorbed.length - 1].end = seg.end;
-            if (seg.energy > absorbed[absorbed.length - 1].energy) {
-                absorbed[absorbed.length - 1].label = Math.max(absorbed[absorbed.length - 1].label, seg.label);
+        /* 变量名避开 seg —— 本函数体是同一 var 作用域，下方细化循环已用 seg */
+        var segAbs = /** @type {Segment} */ (segments[si]);
+        /* 末项用局部量接住：arr[arr.length-1] 的长度前提 TS 缩不了，而此处已判过 length > 0 */
+        var lastAbs = absorbed.length > 0 ? absorbed[absorbed.length - 1] : null;
+        if (segAbs.end - segAbs.start < 4 && lastAbs) {
+            lastAbs.end = segAbs.end;
+            if (segAbs.energy > lastAbs.energy) {
+                lastAbs.label = Math.max(lastAbs.label, segAbs.label);
             }
         } else {
-            absorbed.push({ start: seg.start, end: seg.end, label: seg.label, energy: seg.energy, signature: seg.signature.slice() });
+            absorbed.push({ start: segAbs.start, end: segAbs.end, label: segAbs.label, energy: segAbs.energy, signature: segAbs.signature.slice() });
         }
     }
+    /** @type {Segment[]} */
     var merged = [];
     for (var mi = 0; mi < absorbed.length; mi++) {
-        var seg2 = absorbed[mi];
-        if (merged.length > 0 && merged[merged.length - 1].label === seg2.label) {
-            merged[merged.length - 1].end = seg2.end;
+        var seg2 = /** @type {Segment} */ (absorbed[mi]);
+        var lastMg = merged.length > 0 ? merged[merged.length - 1] : null;
+        if (lastMg && lastMg.label === seg2.label) {
+            lastMg.end = seg2.end;
         } else {
             merged.push({ start: seg2.start, end: seg2.end, label: seg2.label, energy: seg2.energy, signature: seg2.signature });
         }
@@ -353,35 +432,43 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     var valid = merged.filter(function(s) { return s.end - s.start >= 6; });
     log('  合并后: ' + merged.length + ' 段, 过滤后(≥6s): ' + valid.length + ' 段');
     for (var vi = 0; vi < valid.length; vi++) {
-        log('    [' + valid[vi].label + '] ' + valid[vi].start.toFixed(1) + 's - ' + valid[vi].end.toFixed(1) + 's (能量=' + valid[vi].energy.toFixed(3) + ')');
+        var vs = /** @type {Segment} */ (valid[vi]);
+        log('    [' + vs.label + '] ' + vs.start.toFixed(1) + 's - ' + vs.end.toFixed(1) + 's (能量=' + vs.energy.toFixed(3) + ')');
     }
 
     /* ─── 第7步：频谱重复检测 ─── */
+    /** @type {number[]} */
     var repetitionCount = new Array(valid.length).fill(0);
     for (var ri = 0; ri < valid.length; ri++) {
+        var sri = /** @type {Segment} */ (valid[ri]);
         for (var rj = ri + 1; rj < valid.length; rj++) {
-            var sim = _cosineSim(valid[ri].signature, valid[rj].signature);
+            var srj = /** @type {Segment} */ (valid[rj]);
+            var sim = _cosineSim(sri.signature, srj.signature);
             if (sim > 0.88) {
-                repetitionCount[ri]++;
-                repetitionCount[rj]++;
+                repetitionCount[ri] = /** @type {number} */ (repetitionCount[ri]) + 1;
+                repetitionCount[rj] = /** @type {number} */ (repetitionCount[rj]) + 1;
             }
         }
     }
     for (var ri2 = 0; ri2 < valid.length; ri2++) {
-        if (repetitionCount[ri2] > 0) {
-            log('    ↻ 段 ' + ri2 + ' [' + valid[ri2].start.toFixed(0) + 's-' + valid[ri2].end.toFixed(0) + 's] 重复 ×' + repetitionCount[ri2]);
+        var rc = /** @type {number} */ (repetitionCount[ri2]);
+        if (rc > 0) {
+            var v2 = /** @type {Segment} */ (valid[ri2]);
+            log('    ↻ 段 ' + ri2 + ' [' + v2.start.toFixed(0) + 's-' + v2.end.toFixed(0) + 's] 重复 ×' + rc);
         }
     }
 
     /* ─── 第8步：高潮判定（收紧：高能量必须同时满足重复，或能量极高）─── */
+    /** @type {ChorusSegment[]} */
     var chorusSegments = [];
     for (var ci = 0; ci < valid.length; ci++) {
-        var seg3 = valid[ci];
+        var seg3 = /** @type {Segment} */ (valid[ci]);
+        var rep3 = /** @type {number} */ (repetitionCount[ci]);
         var isChorus = false, reason = '';
         /* 高能量 + 重复 = 确定高潮 */
-        if (seg3.label === 2 && repetitionCount[ci] >= 1) {
+        if (seg3.label === 2 && rep3 >= 1) {
             isChorus = true;
-            reason = '高能量+重复(×' + repetitionCount[ci] + ')';
+            reason = '高能量+重复(×' + rep3 + ')';
         }
         /* 高能量 + 能量极高（>0.85）= 也算高潮（即使没重复） */
         else if (seg3.label === 2 && seg3.energy > 0.85) {
@@ -389,9 +476,9 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
             reason = '极高能量';
         }
         /* 中等能量 + 重复 = 高潮 */
-        else if (seg3.label === 1 && repetitionCount[ci] >= 1) {
+        else if (seg3.label === 1 && rep3 >= 1) {
             isChorus = true;
-            reason = '中能量+重复(×' + repetitionCount[ci] + ')';
+            reason = '中能量+重复(×' + rep3 + ')';
         }
         if (isChorus) {
             chorusSegments.push({ start: seg3.start, end: seg3.end, energy: seg3.energy, label: seg3.label, reason: reason });
@@ -404,20 +491,22 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
         log('  ⚠️ 无高潮段，回退 A：取能量最高的 2 段...');
         var sortedValid = valid.slice().sort(function(a, b) { return b.energy - a.energy; });
         for (var fa = 0; fa < Math.min(2, sortedValid.length); fa++) {
-            chorusSegments.push({ start: sortedValid[fa].start, end: sortedValid[fa].end, energy: sortedValid[fa].energy, label: sortedValid[fa].label, reason: '回退-高能量' });
+            var sv = /** @type {Segment} */ (sortedValid[fa]);
+            chorusSegments.push({ start: sv.start, end: sv.end, energy: sv.energy, label: sv.label, reason: '回退-高能量' });
         }
     }
     if (chorusSegments.length === 0) {
         log('  ⚠️ 回退 B：寻找能量峰值...');
         var peakIdx = 0, peakEnergy = 0;
         for (var pi = 0; pi < normEnergy.length; pi++) {
-            if (normEnergy[pi].energy > peakEnergy) { peakEnergy = normEnergy[pi].energy; peakIdx = pi; }
+            var epi = /** @type {EnergyPoint} */ (normEnergy[pi]);
+            if (epi.energy > peakEnergy) { peakEnergy = epi.energy; peakIdx = pi; }
         }
         var ps = peakIdx, pe = peakIdx;
-        while (ps > 0 && normEnergy[ps - 1].energy >= lowThresh) ps--;
-        while (pe < normEnergy.length - 1 && normEnergy[pe + 1].energy >= lowThresh) pe++;
-        var pStart = normEnergy[ps].time;
-        var pEnd = pe < normEnergy.length - 1 ? normEnergy[pe + 1].time : duration;
+        while (ps > 0 && (/** @type {EnergyPoint} */ (normEnergy[ps - 1])).energy >= lowThresh) ps--;
+        while (pe < normEnergy.length - 1 && (/** @type {EnergyPoint} */ (normEnergy[pe + 1])).energy >= lowThresh) pe++;
+        var pStart = (/** @type {EnergyPoint} */ (normEnergy[ps])).time;
+        var pEnd = pe < normEnergy.length - 1 ? (/** @type {EnergyPoint} */ (normEnergy[pe + 1])).time : duration;
         if (pEnd - pStart >= 5) {
             chorusSegments.push({ start: pStart, end: pEnd, energy: peakEnergy, label: 2, reason: '回退-峰值' });
         }
@@ -431,6 +520,11 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
     var REFINE_SEARCH_SEC = 5;
     var refineSearchFrames = Math.floor(REFINE_SEARCH_SEC * sampleRate / hopSize);
 
+    /**
+     * @param {number} centerTime
+     * @param {number} searchRange
+     * @returns {FineEnergyPoint[]}
+     */
     function computeFineEnergy(centerTime, searchRange) {
         var centerFrame = Math.floor(centerTime * sampleRate / hopSize);
         var sFrame = Math.max(0, centerFrame - searchRange);
@@ -452,24 +546,30 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
         return profile;
     }
 
+    /* 细剖面取值：下标由下面四处遍历的边界保证界内，集中在此断言一次 */
+    /** @param {FineEnergyPoint[]} arr @param {number} i @returns {number} */
+    function atE(arr, i) { return /** @type {FineEnergyPoint} */ (arr[i]).energy; }
+    /** @param {FineEnergyPoint[]} arr @param {number} i @returns {number} */
+    function tAt(arr, i) { return /** @type {FineEnergyPoint} */ (arr[i]).time; }
+
     for (var bi = 0; bi < chorusSegments.length; bi++) {
-        var seg = chorusSegments[bi];
+        var seg = /** @type {any} */ (chorusSegments[bi]);
 
         /* 细分开始边界：找到能量从 lowThresh 升至 highThresh 的穿越点 */
         var startProfile = computeFineEnergy(seg.start, refineSearchFrames);
         var refinedStart = seg.start;
         /* 优先找能量从 lowThresh 下方升至上方的穿越点 */
         for (var sp = 0; sp < startProfile.length - 1; sp++) {
-            if (startProfile[sp].energy < lowThresh && startProfile[sp + 1].energy >= lowThresh) {
-                refinedStart = startProfile[sp + 1].time;
+            if (atE(startProfile, sp) < lowThresh && atE(startProfile, sp + 1) >= lowThresh) {
+                refinedStart = tAt(startProfile, sp + 1);
                 break;
             }
         }
         /* 如果没找到穿越点，尝试找能量从 highThresh 下方升至上方的点 */
         if (refinedStart === seg.start) {
             for (var sp2 = 0; sp2 < startProfile.length - 1; sp2++) {
-                if (startProfile[sp2].energy < highThresh && startProfile[sp2 + 1].energy >= highThresh) {
-                    refinedStart = startProfile[sp2 + 1].time;
+                if (atE(startProfile, sp2) < highThresh && atE(startProfile, sp2 + 1) >= highThresh) {
+                    refinedStart = tAt(startProfile, sp2 + 1);
                     break;
                 }
             }
@@ -480,16 +580,16 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
         var refinedEnd = seg.end;
         /* 优先找能量从 lowThresh 上方降至下方的穿越点 */
         for (var ep = endProfile.length - 1; ep > 0; ep--) {
-            if (endProfile[ep].energy < lowThresh && endProfile[ep - 1].energy >= lowThresh) {
-                refinedEnd = endProfile[ep].time;
+            if (atE(endProfile, ep) < lowThresh && atE(endProfile, ep - 1) >= lowThresh) {
+                refinedEnd = tAt(endProfile, ep);
                 break;
             }
         }
         /* 如果没找到穿越点，尝试找能量从 highThresh 上方降至下方的点 */
         if (refinedEnd === seg.end) {
             for (var ep2 = endProfile.length - 1; ep2 > 0; ep2--) {
-                if (endProfile[ep2].energy < highThresh && endProfile[ep2 - 1].energy >= highThresh) {
-                    refinedEnd = endProfile[ep2].time;
+                if (atE(endProfile, ep2) < highThresh && atE(endProfile, ep2 - 1) >= highThresh) {
+                    refinedEnd = tAt(endProfile, ep2);
                     break;
                 }
             }
@@ -507,12 +607,14 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
 
     /* ─── 第10步：合并相邻高潮段 + 覆盖率限制 ─── */
     chorusSegments.sort(function(a, b) { return a.start - b.start; });
+    /** @type {ChorusSegment[]} */
     var finalChorus = [];
     for (var fi = 0; fi < chorusSegments.length; fi++) {
-        var cseg = chorusSegments[fi];
-        if (finalChorus.length > 0 && cseg.start - finalChorus[finalChorus.length - 1].end < 5) {
-            finalChorus[finalChorus.length - 1].end = cseg.end;
-            finalChorus[finalChorus.length - 1].energy = Math.max(finalChorus[finalChorus.length - 1].energy, cseg.energy);
+        var cseg = /** @type {ChorusSegment} */ (chorusSegments[fi]);
+        var lastFc = finalChorus.length > 0 ? finalChorus[finalChorus.length - 1] : null;
+        if (lastFc && cseg.start - lastFc.end < 5) {
+            lastFc.end = cseg.end;
+            lastFc.energy = Math.max(lastFc.energy, cseg.energy);
         } else {
             finalChorus.push({ start: cseg.start, end: cseg.end, energy: cseg.energy, label: cseg.label, reason: cseg.reason });
         }
@@ -520,18 +622,23 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
 
     /* ─── 第11步：覆盖率限制（高潮段总长不应超过歌曲的 50%）─── */
     var totalChorusLen = 0;
-    for (var tci = 0; tci < finalChorus.length; tci++) totalChorusLen += finalChorus[tci].end - finalChorus[tci].start;
+    for (var tci = 0; tci < finalChorus.length; tci++) {
+        var tc = /** @type {ChorusSegment} */ (finalChorus[tci]);
+        totalChorusLen += tc.end - tc.start;
+    }
     var coverage = totalChorusLen / duration;
     log('  覆盖率: ' + (coverage * 100).toFixed(0) + '% (' + totalChorusLen.toFixed(0) + 's / ' + duration.toFixed(0) + 's)');
     if (coverage > 0.5 && finalChorus.length > 1) {
         log('  ⚠️ 覆盖率过高，只保留能量最高的段...');
         finalChorus.sort(function(a, b) { return b.energy - a.energy; });
         var keptLen = 0;
+        /** @type {ChorusSegment[]} */
         var kept = [];
         for (var ki = 0; ki < finalChorus.length; ki++) {
-            if (keptLen + (finalChorus[ki].end - finalChorus[ki].start) > duration * 0.4) break;
-            kept.push(finalChorus[ki]);
-            keptLen += finalChorus[ki].end - finalChorus[ki].start;
+            var kc = /** @type {ChorusSegment} */ (finalChorus[ki]);
+            if (keptLen + (kc.end - kc.start) > duration * 0.4) break;
+            kept.push(kc);
+            keptLen += kc.end - kc.start;
         }
         finalChorus = kept.sort(function(a, b) { return a.start - b.start; });
         log('  限制后覆盖率: ' + (keptLen / duration * 100).toFixed(0) + '%');
@@ -539,7 +646,8 @@ function _identifyChorus(frames, hopSize, sampleRate, duration, onProgress) {
 
     log('  最终高潮段落: ' + finalChorus.length + ' 个');
     for (var ffi = 0; ffi < finalChorus.length; ffi++) {
-        log('    → ' + finalChorus[ffi].start.toFixed(1) + 's - ' + finalChorus[ffi].end.toFixed(1) + 's (能量=' + finalChorus[ffi].energy.toFixed(3) + ') [' + finalChorus[ffi].reason + ']');
+        var fcs = /** @type {ChorusSegment} */ (finalChorus[ffi]);
+        log('    → ' + fcs.start.toFixed(1) + 's - ' + fcs.end.toFixed(1) + 's (能量=' + fcs.energy.toFixed(3) + ') [' + fcs.reason + ']');
     }
 
     return { chorusSegments: finalChorus, allSegments: valid };
@@ -554,6 +662,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
         var sampleRate = e.data.sampleRate;
         var duration = e.data.duration;
 
+        /** @param {any} msg */
         var log = function(msg) { self.postMessage({ type: 'progress', msg: msg }); };
 
         try {
@@ -617,7 +726,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
                     })
                 }
             });
-        } catch (err) {
+        } catch (/** @type {any} */ err) {
             self.postMessage({ type: 'error', error: err.message });
         }
     };
@@ -626,21 +735,27 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
 /* ==================== 核心模块定义 ==================== */
 const ChorusDetector = {
 
-        async detect(audioUrl, onProgress) {
-            var log = function(msg) { if (onProgress) onProgress(msg); };
+        /**
+     * @param {string} audioUrl
+     * @param {Function} [onProgress]
+     * @returns {Promise<any>}
+     */
+    async detect(audioUrl, onProgress) {
+            /** @param {any} msg */
+        var log = function(msg) { if (onProgress) onProgress(msg); };
 
             log('正在下载音频数据... [v4.2]');
 
             /* 获取音频数据（带进度回调） */
+            /** @type {any} */
             var arrayBuffer = null;
-            var fetchError = null;
 
             try {
                 var response = await fetch(audioUrl);
                 if (response.ok) {
                     /* 流式读取，显示下载进度 */
                     var total = parseInt(response.headers.get('content-length') || '0');
-                    var reader = response.body.getReader();
+                    var reader = /** @type {any} */ (response.body).getReader();
                     var chunks = [];
                     var received = 0;
                     while (true) {
@@ -662,8 +777,9 @@ const ChorusDetector = {
                     }
                     log('音频数据已下载 (' + (received / 1048576).toFixed(1) + ' MB)');
                 }
-            } catch (e) {
-                fetchError = e;
+            } catch (/** @type {any} */ e) {
+                /* 下载失败不是终点：下面还有 XHR 兜底与时间线兜底两路，这里只留痕 */
+                logCatch('chorusDetector', e);
             }
 
             if (!arrayBuffer) {
@@ -680,8 +796,9 @@ const ChorusDetector = {
                         xhr.send();
                     });
                     log('音频数据已获取（XHR）');
-                } catch (e) {
-                    fetchError = e;
+                } catch (/** @type {any} */ e) {
+                    /* XHR 兜底也失败 → 交给下一段的时间线兜底 */
+                    logCatch('chorusDetector', e);
                 }
             }
 
@@ -705,19 +822,27 @@ const ChorusDetector = {
             /* 尝试 Worker */
             try {
                 return await this._detectViaWorker(samples, sampleRate, duration, onProgress);
-            } catch (e) {
+            } catch (/** @type {any} */ e) {
                 log('  ⚠️ Worker 不可用，回退主线程: ' + e.message);
                 return this._detectMainThread(samples, sampleRate, duration, onProgress);
             }
         },
 
         /* 通过 Worker 计算（不阻塞主线程） */
-        async _detectViaWorker(samples, sampleRate, duration, onProgress) {
+        /**
+     * @param {any} samples
+     * @param {number} sampleRate
+     * @param {number} duration
+     * @param {Function} [onProgress]
+     * @returns {Promise<any>}
+     */
+    async _detectViaWorker(samples, sampleRate, duration, onProgress) {
+            /** @type {any} */
             var worker = null;
             if (_chorusScriptSrc) {
                 try {
                     worker = new Worker(_chorusScriptSrc);
-                } catch (e) { logCatch('chorusDetector', e); }
+                } catch (/** @type {any} */ e) { logCatch('chorusDetector', e); }
             }
             if (!worker && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
                 try {
@@ -734,7 +859,8 @@ const ChorusDetector = {
                             var samples = e.data.samples;
                             var sampleRate = e.data.sampleRate;
                             var duration = e.data.duration;
-                            var log = function(msg) { self.postMessage({ type: 'progress', msg: msg }); };
+                            /** @param {any} msg */
+            var log = function(msg) { self.postMessage({ type: 'progress', msg: msg }); };
                             try {
                                 var targetRate = 16000;
                                 var ds, dsRate;
@@ -769,20 +895,21 @@ const ChorusDetector = {
                                         })
                                     }
                                 });
-                            } catch (err) {
+                            } catch (/** @type {any} */ err) {
                                 self.postMessage({ type: 'error', error: err.message });
                             }
                         };
                     `;
                     var blob = new Blob([workerCode], { type: 'application/javascript' });
                     worker = new Worker(URL.createObjectURL(blob));
-                } catch (e) { logCatch('chorusDetector', e); }
+                } catch (/** @type {any} */ e) { logCatch('chorusDetector', e); }
             }
             if (!worker) throw new Error('无法创建 Worker，回退主线程');
 
             return new Promise(function(resolve, reject) {
                 var settled = false;
-                worker.onmessage = function(e) {
+                /** @param {any} e */
+        worker.onmessage = function(e) {
                     if (!e.data) return;
                     if (e.data.type === 'progress') {
                         if (onProgress) onProgress(e.data.msg);
@@ -798,7 +925,8 @@ const ChorusDetector = {
                         reject(new Error(e.data.error));
                     }
                 };
-                worker.onerror = function(e) {
+                /** @param {any} e */
+        worker.onerror = function(e) {
                     if (settled) return;
                     settled = true;
                     worker.terminate();
@@ -817,7 +945,14 @@ const ChorusDetector = {
         },
 
         /* 主线程回退方案（Worker 不可用时） */
-        _detectMainThread(samples, sampleRate, duration, onProgress) {
+        /**
+     * @param {any} samples
+     * @param {number} sampleRate
+     * @param {number} duration
+     * @param {Function} [onProgress]
+     * @returns {any}
+     */
+    _detectMainThread(samples, sampleRate, duration, onProgress) {
             var log = onProgress || function() {};
 
             /* 降采样 */
@@ -873,7 +1008,12 @@ const ChorusDetector = {
         },
 
         /* CORS 回退方案 */
-        async _detectViaMediaElement(audioUrl, onProgress) {
+        /**
+     * @param {string} audioUrl
+     * @param {Function} [onProgress]
+     * @returns {Promise<any>}
+     */
+    async _detectViaMediaElement(audioUrl, onProgress) {
             var log = onProgress || function() {};
 
             log('正在通过独立 audio 元素采集频谱...');
@@ -883,11 +1023,11 @@ const ChorusDetector = {
             tempAudio.src = audioUrl;
             tempAudio.muted = true;
 
-            await new Promise(function(resolve, reject) {
+            await /** @type {Promise<void>} */ (new Promise(function(resolve, reject) {
                 var timeout = setTimeout(function() { reject(new Error('音频加载超时')); }, 15000);
                 tempAudio.addEventListener('loadedmetadata', function() { clearTimeout(timeout); resolve(); }, { once: true });
                 tempAudio.addEventListener('error', function() { clearTimeout(timeout); reject(new Error('音频加载失败')); }, { once: true });
-            });
+            }));
 
             var duration = tempAudio.duration;
             if (!duration || duration < 5) {
@@ -917,7 +1057,7 @@ const ChorusDetector = {
                 analyser.getByteFrequencyData(freqData);
 
                 var sum = 0;
-                for (var j = 0; j < binCount; j++) sum += freqData[j];
+                for (var j = 0; j < binCount; j++) sum += /** @type {number} */ (freqData[j]);
                 samples.push({ time: targetTime, energy: sum / binCount / 255 });
 
                 if ((i + 1) % 30 === 0) log('采集进度: ' + (i + 1) + '/' + numSamples);
@@ -925,7 +1065,8 @@ const ChorusDetector = {
 
             var maxE = 0;
             for (var si = 0; si < samples.length; si++) {
-                if (samples[si].energy > maxE) maxE = samples[si].energy;
+                var sx = /** @type {FineEnergyPoint} */ (samples[si]);
+                if (sx.energy > maxE) maxE = sx.energy;
             }
             if (maxE < 0.01) {
                 audioCtx.close();
@@ -940,45 +1081,56 @@ const ChorusDetector = {
             /* 简化版高潮识别（无 band 签名，纯能量） */
             if (samples.length < 4) return { duration: duration, chorusSegments: [], allSegments: [] };
 
+            /** @type {FineEnergyPoint[]} */
             var normSamples = samples.map(function(s) { return { time: s.time, energy: s.energy / maxE }; });
             var sortedE2 = normSamples.map(function(s) { return s.energy; }).sort(function(a, b) { return a - b; });
-            var lowThresh2 = sortedE2[Math.floor(sortedE2.length * 0.4)];
-            var highThresh2 = sortedE2[Math.floor(sortedE2.length * 0.7)];
+            /* 同第 4 步：两个阈值在此收口，下游（打标 / 筛选）多处引用 */
+            var lowThresh2 = /** @type {number} */ (sortedE2[Math.floor(sortedE2.length * 0.4)]);
+            var highThresh2 = /** @type {number} */ (sortedE2[Math.floor(sortedE2.length * 0.7)]);
 
+            /** @param {number} v @returns {number} */
+            function labelOf2(v) { return v >= highThresh2 ? 2 : (v >= lowThresh2 ? 1 : 0); }
+            /** @type {EnergySeg[]} */
             var segs = [];
             var ss = 0;
-            var sl = normSamples[0].energy >= highThresh2 ? 2 : (normSamples[0].energy >= lowThresh2 ? 1 : 0);
+            var sl = labelOf2((/** @type {FineEnergyPoint} */ (normSamples[0])).energy);
             for (var i2 = 1; i2 < normSamples.length; i2++) {
-                var lbl = normSamples[i2].energy >= highThresh2 ? 2 : (normSamples[i2].energy >= lowThresh2 ? 1 : 0);
+                var lbl = labelOf2((/** @type {FineEnergyPoint} */ (normSamples[i2])).energy);
                 if (lbl !== sl) {
                     var es = 0;
-                    for (var k2 = ss; k2 < i2; k2++) es += normSamples[k2].energy;
-                    segs.push({ start: normSamples[ss].time, end: normSamples[i2].time, label: sl, energy: es / (i2 - ss) });
+                    for (var k2 = ss; k2 < i2; k2++) es += (/** @type {FineEnergyPoint} */ (normSamples[k2])).energy;
+                    segs.push({ start: (/** @type {FineEnergyPoint} */ (normSamples[ss])).time, end: (/** @type {FineEnergyPoint} */ (normSamples[i2])).time, label: sl, energy: es / (i2 - ss) });
                     ss = i2;
                     sl = lbl;
                 }
             }
             var es2 = 0;
-            for (var k3 = ss; k3 < normSamples.length; k3++) es2 += normSamples[k3].energy;
-            segs.push({ start: normSamples[ss].time, end: duration, label: sl, energy: es2 / (normSamples.length - ss) });
+            for (var k3 = ss; k3 < normSamples.length; k3++) es2 += (/** @type {FineEnergyPoint} */ (normSamples[k3])).energy;
+            segs.push({ start: (/** @type {FineEnergyPoint} */ (normSamples[ss])).time, end: duration, label: sl, energy: es2 / (normSamples.length - ss) });
 
+            /** @type {EnergySeg[]} */
             var mg = [];
             for (var mi = 0; mi < segs.length; mi++) {
-                if (mg.length > 0 && segs[mi].start - mg[mg.length - 1].end < 5 && mg[mg.length - 1].label === segs[mi].label) {
-                    mg[mg.length - 1].end = segs[mi].end;
+                var sg = /** @type {EnergySeg} */ (segs[mi]);
+                var lastMg2 = mg.length > 0 ? mg[mg.length - 1] : null;
+                if (lastMg2 && sg.start - lastMg2.end < 5 && lastMg2.label === sg.label) {
+                    lastMg2.end = sg.end;
                 } else {
-                    mg.push({ start: segs[mi].start, end: segs[mi].end, label: segs[mi].label, energy: segs[mi].energy });
+                    mg.push({ start: sg.start, end: sg.end, label: sg.label, energy: sg.energy });
                 }
             }
             var valid2 = mg.filter(function(s) { return s.end - s.start >= 8; });
             var chorus = valid2.filter(function(s) { return s.label === 2 || s.energy >= highThresh2; });
             chorus.sort(function(a, b) { return a.start - b.start; });
+            /** @type {{start:number, end:number}[]} */
             var fc = [];
             for (var ci = 0; ci < chorus.length; ci++) {
-                if (fc.length > 0 && chorus[ci].start - fc[fc.length - 1].end < 3) {
-                    fc[fc.length - 1].end = chorus[ci].end;
+                var cs = /** @type {EnergySeg} */ (chorus[ci]);
+                var lastFc2 = fc.length > 0 ? fc[fc.length - 1] : null;
+                if (lastFc2 && cs.start - lastFc2.end < 3) {
+                    lastFc2.end = cs.end;
                 } else {
-                    fc.push({ start: chorus[ci].start, end: chorus[ci].end });
+                    fc.push({ start: cs.start, end: cs.end });
                 }
             }
 
@@ -994,7 +1146,12 @@ const ChorusDetector = {
         },
 
         /* 智能时间线/歌词密度高潮副歌回退算法 (100% 免疫任何网络与跨域限制) */
-        _detectViaTimelineFallback(audioUrl, onProgress) {
+        /**
+     * @param {string} _audioUrl 保留入参以维持调用签名（本兜底只看 audio.duration，不读 URL）
+     * @param {Function} [onProgress]
+     * @returns {any}
+     */
+    _detectViaTimelineFallback(_audioUrl, onProgress) {
             var log = onProgress || function() {};
             var dur = (typeof audio !== 'undefined' && audio && audio.duration && !isNaN(audio.duration) && audio.duration > 0)
                 ? audio.duration
@@ -1032,8 +1189,18 @@ const ChorusDetector = {
         module.exports = ChorusDetector;
     }
 
-    /* ★ 命名导出：仅供 node 单测（tests/js/test_rhythm_tempo.js）直接调用内部纯函数；
-       浏览器侧一律走 ChorusDetector.detect()（Worker 路径） */
-    export { _estimateTempo as estimateTempo, _computeBandEnergy as computeBandEnergyFrames };
+    /* ★ 命名导出：仅供 node 单测直接调用内部纯函数
+       （tests/js/test_rhythm_tempo.js、tests/js/test_chorus_detector.js）；
+       浏览器侧一律走 ChorusDetector.detect()（Worker 路径）。
+       本文件本就是 ES module（顶层有 export default），故加命名导出不会破坏
+       Worker 那条路（Worker 以 type:'module' 加载）。 */
+    export {
+        _estimateTempo as estimateTempo,
+        _computeBandEnergy as computeBandEnergyFrames,
+        _fft as fft,
+        _hannWindow as hannWindow,
+        _cosineSim as cosineSim,
+        _identifyChorus as identifyChorus,
+    };
 
     export default ChorusDetector;

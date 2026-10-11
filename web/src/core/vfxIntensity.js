@@ -31,6 +31,7 @@ const RENDER_SCALE_STEP = 0.05;
 /** 0.05 网格的整数刻度（1/step），插值后用 `×RENDER_SCALE_GRID ÷RENDER_SCALE_GRID` 吸附 */
 const RENDER_SCALE_GRID = Math.round(1 / RENDER_SCALE_STEP);
 
+/** @param {any} value @returns {number|null} 未设定/脏值返回 null（= 跟随性能等级） */
 export function clampIntensity(value) {
     /* ★ 必须先挡 nullish / 空串再 Number：`Number(null) === 0`、`Number('') === 0`，
        直接转换会把「未设定」读成 0 = 极简档，等于每次启动都把用户拖到最低特效
@@ -42,6 +43,10 @@ export function clampIntensity(value) {
 }
 
 /** 落在哪两个端点之间：{lo, hi, t}，t 是 lo→hi 的插值比例 */
+/**
+ * @param {any} value
+ * @returns {{lo:number, hi:number, t:number}}
+ */
 export function intensitySegment(value) {
     const n = clampIntensity(value) ?? 0;
     const pos = (n / VFX_INTENSITY_MAX) * (VFX_INTENSITY_ANCHORS.length - 1);
@@ -49,17 +54,20 @@ export function intensitySegment(value) {
     return { lo, hi: lo + 1, t: pos - lo };
 }
 
+/** @param {string} anchor @returns {any} */
 function vfxOf(anchor) {
-    return PERFORMANCE_PROFILES[anchor].vfx || {};
+    return /** @type {Record<string, any>} */ (PERFORMANCE_PROFILES)[anchor].vfx || {};
 }
 
 /** 0~100 → 生效的 vfx 矩阵（10 个键，与档位 vfx 同形） */
+/** @param {any} value @returns {Record<string, any>} */
 export function vfxFromIntensity(value) {
     const n = clampIntensity(value);
     if (n === null) return {};                 // 未设定 → 不覆盖任何键
     const { lo, hi, t } = intensitySegment(n);
-    const a = vfxOf(VFX_INTENSITY_ANCHORS[lo]);
-    const b = vfxOf(VFX_INTENSITY_ANCHORS[hi]);
+    const a = vfxOf(/** @type {string} */ (VFX_INTENSITY_ANCHORS[lo]));
+    const b = vfxOf(/** @type {string} */ (VFX_INTENSITY_ANCHORS[hi]));
+    /** @type {Record<string, any>} */
     const out = {};
     for (const key of NUMERIC_KEYS) {
         const raw = (a[key] ?? 0) * (1 - t) + (b[key] ?? 0) * t;
@@ -79,6 +87,7 @@ export function vfxFromIntensity(value) {
 }
 
 /** 档位 → 滑杆初始位置（滑杆未设定时用它显示「现在跟着哪一档」） */
+/** @param {string} profileName @returns {number|null} 非已知档位时 null */
 export function intensityForProfile(profileName) {
     const i = VFX_INTENSITY_ANCHORS.indexOf(profileName);
     if (i < 0) return null;
@@ -86,15 +95,17 @@ export function intensityForProfile(profileName) {
 }
 
 /** 最近的端点名：说明行用它告诉用户「这一点约等于哪一档」 */
+/** @param {number} value @returns {string|null} 无有效取值时 null */
 export function nearestAnchor(value) {
     const { lo, hi, t } = intensitySegment(value);
-    return VFX_INTENSITY_ANCHORS[t < 0.5 ? lo : hi];
+    return /** @type {string} */ (VFX_INTENSITY_ANCHORS[t < 0.5 ? lo : hi]);
 }
 
 /**
  * 说明文案的分档键（返回**键**而不是中文：文案要走 i18n 登记处，见约束 7）。
  * 分界刻意与端点重合，所以「拉满 = full」「拉到 0 = bare」不会和上面的数字打架。
  */
+/** @param {number} value @returns {string} */
 export function intensityBand(value) {
     const n = clampIntensity(value);
     if (n === null) return 'follow';
@@ -131,7 +142,7 @@ const LABELS = {
  */
 export function describeVfxIntensity(value, profileName, tx = (s) => s) {
     const n = clampIntensity(value);
-    const followTier = PERFORMANCE_PROFILES[profileName] ? profileName : 'medium';
+    const followTier = /** @type {Record<string, any>} */ (PERFORMANCE_PROFILES)[profileName] ? profileName : 'medium';
     const shown = n === null ? intensityForProfile(followTier) : n;
     const vfx = vfxFromIntensity(shown);
     const parts = [
@@ -141,10 +152,10 @@ export function describeVfxIntensity(value, profileName, tx = (s) => s) {
         `${tx(LABELS.renderScale)} ${Math.round(vfx.renderScale * 100)}%`,
     ];
     for (const key of BOOL_KEYS) {
-        parts.push(`${tx(LABELS[key])} ${vfx[key] ? tx('开') : tx('关')}`);
+        parts.push(`${tx(/** @type {string} */ (/** @type {Record<string, string>} */ (LABELS)[key]))} ${vfx[key] ? tx('开') : tx('关')}`);
     }
     const head = n === null
-        ? `${tx('当前跟随档位')}「${tx(PERFORMANCE_PROFILES[followTier].name)}」${tx('等效')} ${shown}`
+        ? `${tx('当前跟随档位')}「${tx(/** @type {Record<string, any>} */ (PERFORMANCE_PROFILES)[followTier].name)}」${tx('等效')} ${shown}`
         : `${tx('动效强度')} ${n}${n <= 0 ? '（' + tx('只保留逐字高亮，不做背景模糊与粒子') + '）' : ''}`;
     return `${head} —— ${parts.join(' · ')}`;
 }

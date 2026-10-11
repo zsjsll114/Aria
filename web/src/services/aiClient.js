@@ -37,7 +37,7 @@ export function cleanApiBase(apiBase, useProxy = true) {
  * @param {boolean} [options.stream=false] 是否启用 SSE 流式
  * @returns {string} 完整的请求 URL
  */
-export function buildGeminiUrl({ apiBase, model, apiKey, action = 'generateContent', stream = false }) {
+export function buildGeminiUrl({ apiBase, model, apiKey: _apiKey, action = 'generateContent', stream = false }) {
     const base = cleanApiBase(apiBase);
     const mdl = (model || GEMINI_DEFAULT_MODEL).trim();
     /* ★ Key 不再拼进 URL query（避免落在前置 CDN / 访问日志里被记录），
@@ -107,7 +107,7 @@ export function formatGeminiError(err, status = 0, rawData = null) {
 
 /**
  * 提取 Gemini 响应文本
- * @param {Object} data 响应 JSON
+ * @param {any} data 响应 JSON
  * @returns {string}
  */
 export function extractGeminiText(data) {
@@ -127,6 +127,10 @@ export function extractGeminiText(data) {
  * ★ 按模型返回原生最大输出 token 数（不同模型不同上限）。
  * 不匹配时返回空对象（由 provider 使用其默认最大输出），避免写死限死长歌词分析。
  */
+/**
+ * @param {string} model
+ * @returns {number}
+ */
 export function geminiMaxOutput(model) {
     const mdl = String(model || '').toLowerCase();
     if (/(3\.5[-_]?|flash[-_]?lite)/.test(mdl)) return 65536;   // Gemini 3.x / Flash-Lite 原生 64K 输出
@@ -144,8 +148,9 @@ export function geminiMaxOutput(model) {
  * @param {string} [params.model] 模型名
  * @param {boolean} [params.stream=false] 是否流式
  * @param {boolean} [params.isReasoningModel=false] 是否为推理/思考模型
- * @param {AbortSignal} [params.signal] AbortSignal
+ * @param {AbortSignal|null} [params.signal] AbortSignal
  * @param {number} [params.timeoutMs=60000] 超时时间
+ * @param {string} [params.proxyToken] Gemini 反代令牌（缺省读 appSettings.ai.proxyToken）
  * @returns {Promise<{ ok: boolean, text?: string, data?: any, error?: string, status?: number }>}
  */
 export async function geminiGenerateContent({
@@ -169,6 +174,7 @@ export async function geminiGenerateContent({
     const action = stream ? 'streamGenerateContent' : 'generateContent';
     const url = buildGeminiUrl({ apiBase, model, apiKey: key, action, stream });
 
+    /** @type {{maxOutputTokens:number, thinkingConfig?:any, temperature?:number}} */
     const genConfig = {
         // ★ 默认按模型原生最大输出（不同模型不同上限），不再写死 8192，避免长歌词排版被截断
         maxOutputTokens: geminiMaxOutput(model)
@@ -179,6 +185,7 @@ export async function geminiGenerateContent({
         genConfig.temperature = 0.7;
     }
 
+    /** @type {{contents: any[], generationConfig: any, systemInstruction?: any}} */
     const bodyObj = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: genConfig
@@ -220,7 +227,7 @@ export async function geminiGenerateContent({
 
         const text = extractGeminiText(data);
         return { ok: true, status: resp.status, text, data };
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
         clearTimeout(timeoutTimer);
         if (signal) signal.removeEventListener('abort', onParentAbort);
         let errorMsg = formatGeminiError(err, 0, null);

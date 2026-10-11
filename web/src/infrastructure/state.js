@@ -4,6 +4,13 @@
  * 所有模块通过 import { state } 使用，写入时直接 state.xxx = yyy
  */
 
+/* ★ 类型说明（2026-10-10，strictNullChecks）：state 是全局状态袋，字段真实类型五花八门
+   （AudioContext / 定时器句柄 / DOM 节点 / 配置对象），且初值多为 null。
+   若不声明，TS 会把「初值 null」的字段类型推断成 `null`，缩窄后变 `never` ——
+   于是所有使用点（如 state.audioCtx.createGain）都报与真实缺陷无关的错。
+   这里标成索引类型收口；字段级精确类型由各处约定维护，不在 strictNullChecks 档强制。
+   （回归：这些字段的 owner 与写入者在 `app/10-config-state.js` + `globalBridge.js`。） */
+/** @type {Record<string, any>} */
 export const state = {
     // ===== 播放器状态 =====
     isPlaying: false,
@@ -100,7 +107,10 @@ export const state = {
     appSettings: null,
 };
 
-/** 批量更新状态 */
+/**
+ * 批量更新状态。
+ * @param {any} updates
+ */
 export function setState(updates) {
     Object.assign(state, updates);
 }

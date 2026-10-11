@@ -13,6 +13,7 @@
 /**
  * 毫秒转标准 [mm:ss.xx] 格式字符串
  */
+/** @param {number} ms @returns {string} */
 export function formatTimestamp(ms) {
     if (ms < 0 || isNaN(ms)) ms = 0;
     const totalSec = ms / 1000;
@@ -30,6 +31,7 @@ export function formatTimestamp(ms) {
 /**
  * 毫秒转音节打点 <mm:ss.xx> 格式字符串
  */
+/** @param {number} ms @returns {string} */
 export function formatWordTimestamp(ms) {
     if (ms < 0 || isNaN(ms)) ms = 0;
     const totalSec = ms / 1000;
@@ -46,8 +48,8 @@ export function formatWordTimestamp(ms) {
 
 /**
  * 将解析好的多源歌词对象（含 YRC / KRC / QRC 逐字数据）转换为标准增强型 LRC 文本
- * @param {Array<Object>} lines - 歌词行数组 [{ start, end, original, words: [{text, start, end}], translation, romaji }]
- * @param {Object} metadata - { title, artist, album, duration }
+ * @param {Array<any>} lines - 歌词行数组 [{ start, end, original, words: [{text, start, end}], translation, romaji }]
+ * @param {any} metadata - { title, artist, album, duration }
  * @returns {string} 增强型 LRC 文本
  */
 export function convertToEnhancedLrc(lines, metadata = {}) {
@@ -123,10 +125,13 @@ export function parseEnhancedLrc(lrcText) {
 
     // 解析时间戳正则 [mm:ss.xx]
     const timeTagRegex = /\[(\d{2,}):(\d{2})(?:\.(\d{2,3}))?\]/g;
-    // 解析逐字时间戳 <mm:ss.xx>
-    const wordTagRegex = /<(\d{2,}):(\d{2})(?:\.(\d{2,3}))?>/g;
-
-    function timeToMs(m, s, msStr) {
+    /**
+ * @param {string} m
+ * @param {string} s
+ * @param {string} [msStr]
+ * @returns {number}
+ */
+function timeToMs(m, s, msStr) {
         const min = parseInt(m, 10);
         const sec = parseInt(s, 10);
         let ms = 0;
@@ -144,8 +149,8 @@ export function parseEnhancedLrc(lrcText) {
         // 解析元数据 [ti:xxx]
         const metaMatch = line.match(/^\[([a-zA-Z]+):(.*)\]$/);
         if (metaMatch) {
-            const key = metaMatch[1].toLowerCase();
-            const val = metaMatch[2].trim();
+            const key = (/** @type {string} */ (metaMatch[1])).toLowerCase();
+            const val = (/** @type {string} */ (metaMatch[2])).trim();
             if (['ti', 'title'].includes(key)) metadata.title = val;
             else if (['ar', 'artist'].includes(key)) metadata.artist = val;
             else if (['al', 'album'].includes(key)) metadata.album = val;
@@ -158,7 +163,7 @@ export function parseEnhancedLrc(lrcText) {
         timeTagRegex.lastIndex = 0;
         while ((match = timeTagRegex.exec(line)) !== null) {
             timestamps.push({
-                ms: timeToMs(match[1], match[2], match[3]),
+                ms: timeToMs(/** @type {string} */ (match[1]), /** @type {string} */ (match[2]), match[3]),
                 raw: match[0]
             });
         }
@@ -190,13 +195,14 @@ export function parseEnhancedLrc(lrcText) {
 
             // 切分逐字时间戳与文本
             const parts = textContent.split(/(<\d{2,}:\d{2}(?:\.\d{2,3})?>)/g).filter(Boolean);
-            let currentWordStart = timestamps[0].ms;
+            /* 无时间标签的行已在上方 continue，此处 timestamps 非空 */
+            let currentWordStart = (/** @type {{ms:number}} */ (timestamps[0])).ms;
 
             for (let i = 0; i < parts.length; i++) {
-                const part = parts[i];
+                const part = /** @type {string} */ (parts[i]);
                 const tagMatch = part.match(/^<(\d{2,}):(\d{2})(?:\.(\d{2,3}))?>$/);
                 if (tagMatch) {
-                    currentWordStart = timeToMs(tagMatch[1], tagMatch[2], tagMatch[3]);
+                    currentWordStart = timeToMs(/** @type {string} */ (tagMatch[1]), /** @type {string} */ (tagMatch[2]), tagMatch[3]);
                 } else if (part) {
                     pureText += part;
                     words.push({
@@ -209,7 +215,8 @@ export function parseEnhancedLrc(lrcText) {
 
             // 修正每个字的结束时间为其下一个字的开始时间
             for (let w = 0; w < words.length - 1; w++) {
-                words[w].end = words[w + 1].start;
+                const cw = /** @type {any} */ (words[w]);
+                cw.end = (/** @type {any} */ (words[w + 1])).start;
             }
 
             for (const t of timestamps) {
@@ -237,9 +244,10 @@ export function parseEnhancedLrc(lrcText) {
 
     // 补齐行结束时间、翻译与罗马音
     for (let i = 0; i < parsedLines.length; i++) {
+        /** @type {any} */
         const item = parsedLines[i];
         if (i < parsedLines.length - 1) {
-            item.end = parsedLines[i + 1].start;
+            item.end = (/** @type {any} */ (parsedLines[i + 1])).start;
         }
         item.duration = item.end - item.start;
 
@@ -248,7 +256,7 @@ export function parseEnhancedLrc(lrcText) {
         } else if (translationMap.size > 0) {
             let closestTime = -1;
             let minDiff = Infinity;
-            for (const [t, text] of translationMap.entries()) {
+            for (const [t] of translationMap.entries()) {
                 const diff = Math.abs(item.start - t);
                 if (diff < minDiff && diff <= 1500) {
                     minDiff = diff;
@@ -265,7 +273,7 @@ export function parseEnhancedLrc(lrcText) {
         } else if (romajiMap.size > 0) {
             let closestTime = -1;
             let minDiff = Infinity;
-            for (const [t, text] of romajiMap.entries()) {
+            for (const [t] of romajiMap.entries()) {
                 const diff = Math.abs(item.start - t);
                 if (diff < minDiff && diff <= 1500) {
                     minDiff = diff;

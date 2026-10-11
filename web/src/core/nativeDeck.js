@@ -66,6 +66,7 @@ const now = () => (typeof performance !== 'undefined' && performance.now ? perfo
  *   `<audio>.playbackRate` 到不了那里，不下发就是"独占模式下变速完全没反应"。
  */
 export function createNativeDeck(opts) {
+    /** @type {any} */
     const api = (opts && opts.api) || bridge;
     const pollMs = (opts && opts.pollMs) || POLL_MS;
     const eqProvider = (opts && opts.eqProvider) || null;
@@ -75,21 +76,51 @@ export function createNativeDeck(opts) {
     return new NativeDeck(api, pollMs, eqProvider, spatialProvider, rateProvider);
 }
 
-/** 判定一个对象是不是本模块产的 deck（app 层用它决定要不要走原生分支） */
+/**
+ * 判定一个对象是不是本模块产的 deck（app 层用它决定要不要走原生分支）。
+ * @param {any} x
+ * @returns {boolean}
+ */
 export function isNativeDeck(x) {
     return !!(x && x.__nativeDeck === true);
 }
 
+/**
+ * 原生桥音频 API（由 nativeBridge 暴露；单测用桩实现同一套）。
+ * 只声明本文件用到的部分；返回值标成 Promise 是为了让 `.catch(cb)` 的
+ * 回调参数拿到上下文类型（否则 each callback 参数都会报隐式 any）。
+ * @typedef {object} NativeAudioApi
+ * @property {(...args: any[]) => Promise<any>} pause
+ * @property {(...args: any[]) => Promise<any>} setEq
+ * @property {(...args: any[]) => Promise<any>} load
+ * @property {(...args: any[]) => Promise<any>} play
+ * @property {(...args: any[]) => Promise<any>} seek
+ * @property {(...args: any[]) => Promise<any>} setRate
+ * @property {(...args: any[]) => Promise<any>} setSpatial
+ * @property {(...args: any[]) => Promise<any>} setVolume
+ * @property {(...args: any[]) => any} snapshot
+ */
+
 class NativeDeck {
+    /**
+     * @param {NativeAudioApi} api
+     * @param {number} pollMs
+     * @param {any} eqProvider
+     * @param {any} spatialProvider
+     * @param {any} rateProvider
+     */
     constructor(api, pollMs, eqProvider, spatialProvider, rateProvider) {
         this.__nativeDeck = true;
         this._api = api;
         this._pollMs = pollMs;
         this._eqProvider = eqProvider;
+        /** @type {any} */
         this._eqKey = null;
         this._spatialProvider = spatialProvider;
+        /** @type {any} */
         this._spatialKey = null;
         this._rateProvider = rateProvider;
+        /** @type {any} */
         this._rateKey = null;
 
         /* ---- 元素属性 ---- */
@@ -135,6 +166,12 @@ class NativeDeck {
 
     /* ==================== 事件 ==================== */
 
+    /**
+     * @param {string} type
+     * @param {(ev: any) => void} fn
+     * @param {any} [options]
+     * @returns {void}
+     */
     addEventListener(type, fn, options) {
         if (typeof fn !== 'function') return;
         let set = this._listeners.get(type);
@@ -144,11 +181,17 @@ class NativeDeck {
         }
         /* once 语义：包一层而不是记 flag —— 分片里 canplay 探针普遍用 {once:true} */
         const once = !!(options && options.once);
+        /** @type {(ev: any) => void} */
         const entry = once ? (ev) => { this.removeEventListener(type, entry); fn(ev); } : fn;
-        entry.__original = fn;
+        /** @type {any} */ (entry).__original = fn;
         set.add(entry);
     }
 
+    /**
+     * @param {string} type
+     * @param {(ev: any) => void} fn
+     * @returns {void}
+     */
     removeEventListener(type, fn) {
         const set = this._listeners.get(type);
         if (!set) return;
@@ -157,6 +200,11 @@ class NativeDeck {
         }
     }
 
+    /**
+     * @param {string} type
+     * @param {any} [detail]
+     * @returns {void}
+     */
     _emit(type, detail) {
         const set = this._listeners.get(type);
         if (!set || set.size === 0) return;
@@ -355,6 +403,7 @@ class NativeDeck {
      * ★ 这里额外给引擎发一次 pause：元素的 src 没了但引擎还在出声，
      *   就是「界面显示没在播放、喇叭在响」这类最难查的不一致。
      */
+    /** @param {string} name @returns {void} */
     removeAttribute(name) {
         if (name !== 'src') return;
         this._src = '';
@@ -366,12 +415,22 @@ class NativeDeck {
     /* ==================== 引擎侧写入口 ==================== */
 
     /** 音效链变化时由 app/298 调用（引擎 EQ 是跨曲目偏好，与 element 图无关） */
+    /**
+     * @param {boolean} enabled
+     * @param {any} gainsDb
+     * @returns {any} 透传桥调用的 Promise
+     */
     applyEq(enabled, gainsDb) {
         if (this._disposed) return Promise.resolve();
         return this._api.setEq(enabled, gainsDb).catch((e) => logCatch(TAG, e));
     }
 
     /** 输出设备/模式变化后由 app/298 调用；deck 自身不关心设备，只更新缓存字段 */
+    /**
+     * @param {string} mode
+     * @param {string} [sampleFormat]
+     * @returns {void}
+     */
     noteOutput(mode, sampleFormat) {
         if (typeof mode === 'string') this._outputMode = mode;
         if (typeof sampleFormat === 'string') this._sampleFormat = sampleFormat;
@@ -419,6 +478,7 @@ class NativeDeck {
         if (wasPlaying) this._emit('pause');
     }
 
+    /** @param {any} e @returns {void} */
     _failLoad(e) {
         const msg = String((e && e.message) || e || 'native load failed');
         this._pendingLoad = false;
@@ -471,6 +531,7 @@ class NativeDeck {
         this._onSnapshot(s);
     }
 
+    /** @param {any} s @returns {void} */
     _onSnapshot(s) {
         /* ---- 加载完成：hasTrack 由 false 变 true ---- */
         if (s.hasTrack && !this._hasTrack) {
@@ -628,12 +689,15 @@ class NativeDeck {
     }
 
     /** 等 canplay / error / 超时。仅供内部 play() 在未就绪时使用 */
+    /** @param {number} [timeoutMs] @returns {Promise<any>} */
     _awaitReady(timeoutMs) {
         const budget = timeoutMs || 8000;
         return new Promise((resolve, reject) => {
             let settled = false;
+            /** @type {any} */
             let timer = null;
-            const done = (fn) => {
+            /** @param {Function} fn */
+        const done = (fn) => {
                 if (settled) return;
                 settled = true;
                 this.removeEventListener('canplay', onReady);
@@ -653,11 +717,17 @@ class NativeDeck {
     }
 }
 
+/** @param {number} v @returns {number} */
 function clamp01(v) {
     if (!Number.isFinite(v)) return 1;
     return Math.max(0, Math.min(1, v));
 }
 
+/**
+ * @param {any} v
+ * @param {number} fallback
+ * @returns {number}
+ */
 function numberOr(v, fallback) {
     return Number.isFinite(v) ? v : fallback;
 }

@@ -35,7 +35,10 @@
   （`docs/cf-gemini-auth-worker.js`），它按 `ALLOWED_ORIGINS` 校验浏览器 `Origin`，线上只放行了  
   `http://localhost:8001`；换成 127.0.0.1 会 403 `Forbidden: origin not allowed`，AI 全废  
   （`src-tauri/src/lib.rs` 与 `tauri.conf.json` 的窗口 URL 因此固定写 localhost，别"优化"成 127.0.0.1）。  
-  局域网/手机访问的 Origin 是 `http://<局域网IP>:8001`，需显式加进该白名单。
+  局域网/手机访问的 Origin 是 `http://<局域网IP>:8001`，需显式加进该白名单。  
+  ★ 2026-10-09 起有门禁把这条钉死：`node scripts/audits/localhost-origin.mjs --check`  
+  （扫 `tauri.conf.json` 的窗口 `url` 与 `lib.rs` 的 `Url::parse`，写成 127.0.0.1 即 CI 红）。  
+  ⚠ 第 33 行说的 `127.0.0.1:8001` 指**后端监听/请求地址**，与「页面 URL」是两回事，别混。
 - **监听地址默认只绑本机回环**（`server.py` 的 `BIND_HOST = '127.0.0.1'`）。加 `--lan` 才绑  
   `0.0.0.0` 开放局域网（手机/平板连接用，见「启动本地服务器-局域网.bat」）。
 - Python 侧只允许标准库；Node vendor 位于 `_eval/`，启动命令在 `selfhost_service.py _SERVICES`。
@@ -163,7 +166,7 @@
       分片关注点的门面，还重复定义了 PLAY/PAUSE_ICON_PATH；接管=重写播放主链路，  
       而主链路活路径目前无测试覆盖，理由写在其文件头）。  
       门禁 A（`no-restricted-imports`）禁止存活模块 import 未解冻的那些。复扫：  
-      `node scripts/audits/module-reachability.mjs`（2026-09-27 实测 161 模块 / 不可达 4）。  
+      `node scripts/audits/module-reachability.mjs`（2026-10-11 实测 **306 模块 / 不可达 4**，即门禁 A 名单本身；同日已删除两个视觉器残件 `NeonVisualizer.js`、`sonnet/sonnetShotMg.js`）。  
       注意：它的 import 抽取曾把**副作用 import 整条吃掉**（`[\s\S]*?` 越界撞到下一条 `from`），  
       于是只被 `import 'x.js';` 引用的模块（实测 `utils/numberStepper.js`）被误报成影子模块，  
       不可达数 4→5。现已抽成 `scripts/audits/lib/import-scan.mjs` 并由  
@@ -196,10 +199,11 @@
     `loadSettings` 的合并块里补一行 `{ ...DEFAULT_SETTINGS.x, ...(saved.x || {}) }`，否则该键  
     重启后被静默丢弃、持久化功能**不报错但永远失效**（2026-09-25 两个新功能都踩过，靠人肉发现）。  
     规避办法：把偏好挂到 `appSettings.interface.<key>` 下（已全量展开，无需改 180）。  
-    复扫（**按名字查，不要按 spread 模式查**——同一个键可能写成 `x: (() => {…})()` 的 IIFE，  
-    只 grep `...DEFAULT_SETTINGS.x` 会把 `ai`/`modeSettings` 误报成没处理）：  
-    `grep -o "^    [a-zA-Z]*: {" web/src/config/defaults.js` 取顶层组名，逐个在  
-    `web/src/app/180-boot-config.js` 的 `loadSettings` 重建块里确认有对应键。
+    ★ 2026-10-09 起这条已门禁化，不用再人肉复扫：  
+    `node scripts/audits/settings-contract.mjs --check`（CI 里跑）——它按名字锚定顶层缩进，
+    逐个断言 `DEFAULT_SETTINGS` 的顶层键都在 180 的重建块里补齐（`ai`/`modeSettings` 这类
+    IIFE 形态也能认出），漏一个即红；重建块结构被改也会报 error。  
+    历史：2026-09-25 两个新功能踩过、`backup` 键是 2026-10-09 才补齐的活标本。
 12. **性能降级选择器必须锚在 `#ariaRoot` 上（2026-09-25 确立）。** `<html id="ariaRoot">` 是  
     刻意留的**特异性锚点**：`modals.css` 里 `body.perf-low *` / `.is-software-renderer *` 这类  
     纯类降级规则只有 (0,1,0)，会被组件里 `.search-overlay .search-modal { backdrop-filter: …
@@ -296,6 +300,34 @@
    各分片的字符串字面量，否则英文会失配、i18n 棘轮会红（见约束 7），并同步断言了原句的测试；
    ③ 正文不堆装饰符号（`★` / `⚠` / `⇒`），不写"为什么这样设计"的自我解释，不用括号塞长注解 ——
    一句话讲清用户要做什么即可（历史遗留的装饰符号与解释稿已按此清理）。
+18. **JSDoc 类型注释不再是装饰（2026-10-09 起）。** `tsconfig.json` + `scripts/audits/tsc-ratchet.mjs`
+   让 tsc（`noEmit`，不产物、不改「源码即运行时」）真正消费仓库里的 `@param`/`@returns`/`@typedef`，
+   类型错误数**只降不升**，当前范围 = `types/` + `infrastructure/` + `core/`、`services/`、
+   `parsers/`、`config/`、`utils/` 顶层，**基线为 0**；新增文件若落进 include 范围，类型错误必须为 0。
+   `app/` 暂不纳入（经 import 链拉入 Pixi，产生 706 条第三方噪音，见 `tsconfig.json` 注释）。
+   严格度分档：P4 已全部落地（`noImplicitThis`/`strictFunctionTypes`/`strictBindCallApply`/
+   `alwaysStrict` 四个零成本档，加 `strictNullChecks` 581→0、`noImplicitAny` 2258→0、
+   `useUnknownInCatchVariables` 51→0）；P5 再开四档（`noImplicitReturns`/
+   `noFallthroughCasesInSwitch` 开箱即 0，`noUnusedLocals`/`noUnusedParameters` 27 条存量已还完）。
+   铁律不变：**一次一档、修回 0 基线再开下一档**——**不要一次性全开**把 0 基线顶成存量债。
+   注意 `noUnusedLocals` **没有** `_` 前缀豁免（死变量只能删），只有 `noUnusedParameters` 有；
+   因签名兼容而有意不读的入参一律改 `_` 前缀，并在 JSDoc 里写明「为什么可以不读」。
+   第三方 vendor（如 `services/vendor/han-convert`）用**同目录同名 `.d.mts`** 挡在 `checkJs` 之外，
+   不要改 vendor 源码、也别指望 `exclude`（它对「被 import 的文件」无效）。
+   P6 又开四档：`noImplicitOverride` / `noUncheckedSideEffectImports`（开箱即 0）、
+   `exactOptionalPropertyTypes`（9→0）、`noUncheckedIndexedAccess`（**431→0**，本档最大）。
+   ⚠ 开了最后一档后，`arr[i]` 一律要收口——**含定长 TypedArray**（探针实测该档连
+   `Float32Array` 的索引读取都加 `undefined`，且 `for (i<arr.length)` 不被豁免）。`.js` 里
+   不能用 TS 的 `!`，故规则是：**界内可证的用 JSDoc 断言、真可能 undefined 的用守卫**；
+   形状统一收在各文件头的 `@typedef`，不要就地写 any。两个必看坑：
+   ① 新增局部量要避开函数内既有的 `var` 名——`var` 不隔离作用域，同名不同类型会直接产出
+   "Subsequent variable declarations must have the same type" 加一串级联（本轮踩出 7 条新错）；
+   ② **别在 `tsconfig.json` 的块注释里写 JSDoc 的结束定界符**——注释会被提前闭合、tsconfig
+   变成非法 JSON，tsc 转而忽略配置去扫全仓（表现为错误数暴增、且来源是 `scratch/`、
+   `src-tauri/target/` 这类本不该纳入的目录）。唯一未开档：`noPropertyAccessFromIndexSignature`(533)。
+   （分档实测表、探针结论与全部清账手法见 `docs/typescript-类型化路线.md`）。
+   全局键声明由 `scripts/audits/globals-dts.mjs` 从 eslint 的 `PROJECT_GLOBAL_KEYS` 生成，
+   改清单必须重新生成（CI 有同步门禁）。**不迁移 `.ts`**；路线见 `docs/typescript-类型化路线.md`。
 
 1. **逐字兜底在 `renderLyrics` 一处生效，但「有 words」不再等于「真实逐字」（2026-09-25 确立）。**  
    只有行级时间戳的歌词（普通 LRC、多数外部源）由 `parsers/wordTiming.js` 按行时长摊平出  

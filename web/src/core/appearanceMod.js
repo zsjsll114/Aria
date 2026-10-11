@@ -19,6 +19,7 @@
 const TOKEN_RE = /^--aria-[a-z0-9-]+$/;
 
 /** 已由本模块写下的令牌（清场只回滚自己写过的，不碰别人的行内值）。 */
+/** @type {any[]} */
 let _applied = [];
 
 /**
@@ -46,7 +47,11 @@ export function applyAppearanceTokens(tokens, opts) {
 	return { applied, cleared };
 }
 
-/** 回滚本模块写过的令牌（行内层清掉即回到 tokens.css 的默认值）。 */
+/**
+ * 回滚本模块写过的令牌（行内层清掉即回到 tokens.css 的默认值）。
+ * @param {{doc?: Document}} [opts]
+ * @returns {number} 清掉的条数
+ */
 export function clearAppearanceTokens(opts) {
 	const doc = (opts && opts.doc) || (typeof document !== 'undefined' ? document : null);
 	if (!doc) return 0;
@@ -58,10 +63,15 @@ export function clearAppearanceTokens(opts) {
 	return n;
 }
 
-/** 当前生效的令牌快照（行内层），诊断与测试用。 */
+/**
+ * 当前生效的令牌快照（行内层），诊断与测试用。
+ * @param {{doc?: Document}} [opts]
+ * @returns {Record<string,string>}
+ */
 export function appliedAppearanceTokens(opts) {
 	const doc = (opts && opts.doc) || (typeof document !== 'undefined' ? document : null);
 	if (!doc) return {};
+	/** @type {Record<string,string>} */
 	const out = {};
 	for (const key of _applied) out[key] = doc.documentElement.style.getPropertyValue(key);
 	return out;

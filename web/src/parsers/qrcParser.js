@@ -9,6 +9,10 @@
 /* QRC-JSON 行解析：lrc 字段为「每行一条 JSON」的逐字歌词（kthri/now-playing 实测格式）。
    元数据行（{"t":..,"type":1,"txt":..} 无 c 数组）与空 c 行（间奏）自动跳过。
    返回 [{start: 毫秒, text, original}]，不足 2 行视为无可解析歌词返回 null。 */
+/**
+ * @param {string} text
+ * @returns {Array<{start:number, text:string, original:string}>|null}
+ */
 export function parseQrcLyric(text) {
     if (!text || typeof text !== 'string') return null;
     const lines = text.split('\n');
@@ -19,7 +23,7 @@ export function parseQrcLyric(text) {
         try {
             const o = JSON.parse(line);
             if (typeof o.t === 'number' && Array.isArray(o.c)) {
-                const txt = o.c.map(x => (x && typeof x.tx === 'string' ? x.tx : '')).join('').trim();
+                const txt = /** @type {any[]} */ (o.c).map(x => (x && typeof x.tx === 'string' ? x.tx : '')).join('').trim();
                 if (txt) out.push({ start: o.t, text: txt, original: txt }); /* start 单位 ms */
             }
         } catch (_e) { /* 单行解析失败跳过 */ }
@@ -29,13 +33,17 @@ export function parseQrcLyric(text) {
 
 /* QRC-XML 行解析：逐字歌词（karaokeLyric）格式为
    <QrcInfos>...<LyricLine LyricTime="毫秒"><Text>文本</Text></LyricLine>... */
+/**
+ * @param {string} text
+ * @returns {Array<{start:number, text:string, original:string}>|null}
+ */
 export function parseQrcXml(text) {
     if (!text || typeof text !== 'string') return null;
     const out = [];
     const re = /<LyricLine\b[^>]*LyricTime="?(\d+)"?[^>]*>(?:<Text[^>]*>([\s\S]*?)<\/Text>)?/g;
     let m;
     while ((m = re.exec(text)) !== null) {
-        const t = parseInt(m[1], 10);
+        const t = parseInt(/** @type {string} */ (m[1]), 10);
         const txt = (m[2] || '').replace(/<[^>]+>/g, '').trim();
         if (isFinite(t) && txt) out.push({ start: t, text: txt, original: txt });
     }

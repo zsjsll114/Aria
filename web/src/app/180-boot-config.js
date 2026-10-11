@@ -798,6 +798,12 @@ function loadSettings() {
                             }
                         },
                         audio: { ...DEFAULT_SETTINGS.audio, ...(saved.audio || {}) },
+                        /* ★ 2026-10-09：backup 曾漏在这份白名单外 —— 只要 localStorage 里
+                           有存档，本块就会用「少一个键」的新对象整体替换 appSettings，
+                           于是 303-storage-backup.js 读到的自动备份开关静默变成 undefined
+                           （不报错、但功能永远失效）。此处补齐。
+                           配套门禁 scripts/audits/settings-contract.mjs 防复发。 */
+                        backup: { ...DEFAULT_SETTINGS.backup, ...(saved.backup || {}) },
                         sleepTimer: { ...DEFAULT_SETTINGS.sleepTimer, ...(saved.sleepTimer || {}) },
                         nowPlaying: { ...DEFAULT_SETTINGS.nowPlaying, ...(saved.nowPlaying || {}) },
                         quality: { ...DEFAULT_SETTINGS.quality, ...(saved.quality || {}) },

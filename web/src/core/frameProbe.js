@@ -38,6 +38,10 @@ const sources = new Map();
 let heartbeatId = 0;
 let heartbeatOn = false;
 
+/**
+ * @param {string} name
+ * @returns {any}
+ */
 function makeSource(name) {
     return {
         name,
@@ -53,6 +57,7 @@ function makeSource(name) {
     };
 }
 
+/** @param {string} name */
 function ensureSource(name) {
     let s = sources.get(name);
     if (s) return s;
@@ -102,14 +107,22 @@ export function frame(name, ts) {
     if (s.filled < RING_CAP) s.filled++;
 }
 
+/**
+ * @param {number[]} sorted
+ * @param {number} p 0~1
+ * @returns {number}
+ */
 function percentile(sorted, p) {
     const n = sorted.length;
     if (!n) return 0;
     const i = Math.min(n - 1, Math.max(0, Math.ceil(n * p) - 1));
-    return sorted[i];
+    return /** @type {number} */ (sorted[i]);
 }
 
-/** 单源统计（查询时才排序，热路径不做任何分配） */
+/**
+ * 单源统计（查询时才排序，热路径不做任何分配）。
+ * @param {any} s
+ */
 function statsOf(s) {
     const n = s.filled;
     const vals = new Array(n);
@@ -174,7 +187,10 @@ export function probeInfo() {
     return { ringCap: RING_CAP, activeMs: ACTIVE_MS, gapMs: GAP_MS, maxSources: MAX_SOURCES, registered: sources.size, heartbeatOn };
 }
 
-/** 清掉某个源（或全部）的样本：档位刚改完、想从零开始看时使用 */
+/**
+ * 清掉某个源（或全部）的样本：档位刚改完、想从零开始看时使用。
+ * @param {string} [name] 省略 = 全部
+ */
 export function reset(name) {
     const list = name ? [sources.get(name)] : Array.from(sources.values());
     for (const s of list) {
@@ -188,6 +204,7 @@ export function reset(name) {
     }
 }
 
+/** @param {number} ts rAF 时间戳 */
 function heartbeat(ts) {
     /* 先续期再打点：单次打点抛错不会把常驻心跳弄死 */
     heartbeatId = requestAnimationFrame(heartbeat);

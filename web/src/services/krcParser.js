@@ -1,4 +1,4 @@
-import { logInfo, logWarn, logError } from './log.js';
+import { logError } from './log.js';
 /**
  * services/krcParser.js — 酷狗 KRC 歌词解密与逐字解析
  */
@@ -35,7 +35,7 @@ export async function decryptKrc(base64Str) {
         // 3. XOR 解密
         const decrypted = new Uint8Array(payload.length);
         for (let i = 0; i < payload.length; i++) {
-            decrypted[i] = payload[i] ^ KRC_XOR_KEY[i % KRC_XOR_KEY.length];
+            decrypted[i] = (/** @type {number} */ (payload[i])) ^ (/** @type {number} */ (KRC_XOR_KEY[i % KRC_XOR_KEY.length]));
         }
 
         // 4. 原生 Zlib Inflate 解压
@@ -67,7 +67,7 @@ export async function decryptKrc(base64Str) {
  * 解析 KRC 文本为播放器标准逐字歌词数组
  * KRC 语法: [lineStart, lineDuration]<relWordStart, wordDuration, 0>wordText...
  * @param {string} krcText
- * @returns {Array<{start: number, end: number, duration: number, original: string, words: Array}>}
+ * @returns {Array<{start: number, end: number, duration: number, original: string, words: Array<any>}>}
  */
 export function parseKrc(krcText) {
     if (!krcText) return [];
@@ -87,9 +87,9 @@ export function parseKrc(krcText) {
         const lineMatch = line.match(/^\[(\d+),(\d+)\](.*)$/);
         if (!lineMatch) continue;
 
-        const lineStart = parseInt(lineMatch[1], 10);
-        const lineDuration = parseInt(lineMatch[2], 10);
-        const lineContent = lineMatch[3];
+        const lineStart = parseInt(/** @type {string} */ (lineMatch[1]), 10);
+        const lineDuration = parseInt(/** @type {string} */ (lineMatch[2]), 10);
+        const lineContent = lineMatch[3] || '';
 
         const words = [];
         // 匹配逐字时间戳: <relWordStart, wordDuration, 0>wordText
@@ -97,8 +97,8 @@ export function parseKrc(krcText) {
         let m;
 
         while ((m = wordRegex.exec(lineContent)) !== null) {
-            const relStart = parseInt(m[1], 10);
-            const wordDur = parseInt(m[2], 10);
+            const relStart = parseInt(/** @type {string} */ (m[1]), 10);
+            const wordDur = parseInt(/** @type {string} */ (m[2]), 10);
             const rawText = m[4];
 
             if (rawText !== undefined) {

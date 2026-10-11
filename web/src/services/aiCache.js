@@ -6,7 +6,7 @@
  * indexedDB.open，否则并发 open 竞争会漏建 store（历史上 chorusCache 缺失即由此而来）。
  */
 import { AI_DB_NAME, AI_DB_VERSION, AI_STORE_NAME } from '../config/constants.js';
-import { logInfo, logWarn, logError, logCatch } from './log.js';
+import { logInfo, logCatch } from './log.js';
 
 /* 高潮检测缓存 store（v4 起统一在本文件创建，不再由 200-settings-panel 私建） */
 const CHORUS_STORE_NAME = 'chorusCache';
@@ -15,6 +15,7 @@ const WORD_TIMING_STORE_NAME = 'wordTimingCache';
 /* Automix 轨道分析结果缓存 store（v6 起）：core/automix/analyzer.js 消费 */
 const AUTOMIX_STORE_NAME = 'automixCache';
 
+/** @type {Promise<any>|null} */
 let aiDbReady = null;
 
 /** 获取 IndexedDB 连接（懒初始化，幂等建库：哪个 store 缺就补哪个） */
@@ -29,7 +30,7 @@ function getAiDb() {
         req.onerror = () => reject(req.error);
         req.onsuccess = () => resolve(req.result);
         req.onupgradeneeded = (e) => {
-            const db = e.target.result;
+            const db = /** @type {IDBOpenDBRequest} */ (e.target).result;
             if (!db.objectStoreNames.contains(AI_STORE_NAME)) {
                 db.createObjectStore(AI_STORE_NAME, { keyPath: 'key' });
             }
@@ -48,6 +49,7 @@ function getAiDb() {
 }
 
 /** 从 IndexedDB 读取单条缓存 */
+/** @param {string} key @returns {Promise<any>} */
 export async function aiCacheGet(key) {
     try {
         const db = await getAiDb();
@@ -61,6 +63,11 @@ export async function aiCacheGet(key) {
 }
 
 /** 写入单条缓存到 IndexedDB */
+/**
+ * @param {string} key
+ * @param {any} data
+ * @returns {Promise<any>}
+ */
 export async function aiCacheSet(key, data) {
     try {
         const db = await getAiDb();
@@ -81,6 +88,7 @@ export async function aiCacheGetAll() {
             const tx = db.transaction(AI_STORE_NAME, 'readonly');
             const req = tx.objectStore(AI_STORE_NAME).getAll();
             req.onsuccess = () => {
+                /** @type {Record<string, any>} */
                 const result = {};
                 for (const row of (req.result || [])) {
                     result[row.key] = row.data;
@@ -93,6 +101,7 @@ export async function aiCacheGetAll() {
 }
 
 /** 批量导入缓存（用于导入配置文件） */
+/** @param {Array<{key:string, data:any}>} entries @returns {Promise<any>} */
 export async function aiCacheBulkSet(entries) {
     try {
         const db = await getAiDb();
@@ -139,6 +148,7 @@ export async function aiCacheCount() {
 /* ========== 高潮检测缓存读写（v4 起从此导出，200-settings-panel 仅 import） ========== */
 
 /** 读取单条高潮缓存 */
+/** @param {string} key @returns {Promise<any>} */
 export async function chorusCacheGet(key) {
     try {
         const db = await getAiDb();
@@ -152,6 +162,11 @@ export async function chorusCacheGet(key) {
 }
 
 /** 写入单条高潮缓存 */
+/**
+ * @param {string} key
+ * @param {any} data
+ * @returns {Promise<any>}
+ */
 export async function chorusCacheSet(key, data) {
     try {
         const db = await getAiDb();
@@ -195,6 +210,7 @@ export async function chorusCacheCount() {
    行级时间戳会变，只按歌曲键缓存会把上一份歌词的对齐结果贴到这一份上。 */
 
 /** 读取单条逐字对齐缓存 */
+/** @param {string} key @returns {Promise<any>} */
 export async function wordTimingCacheGet(key) {
     try {
         const db = await getAiDb();
@@ -208,6 +224,11 @@ export async function wordTimingCacheGet(key) {
 }
 
 /** 写入单条逐字对齐缓存 */
+/**
+ * @param {string} key
+ * @param {any} data
+ * @returns {Promise<any>}
+ */
 export async function wordTimingCacheSet(key, data) {
     try {
         const db = await getAiDb();
@@ -249,6 +270,7 @@ export async function wordTimingCacheCount() {
 /* ========== Automix 分析结果缓存（v6 起）：core/automix/analyzer.js 专用 ========== */
 
 /** 读取单条 Automix 分析缓存 */
+/** @param {string} key @returns {Promise<any>} */
 export async function automixCacheGet(key) {
     try {
         const db = await getAiDb();
@@ -262,6 +284,11 @@ export async function automixCacheGet(key) {
 }
 
 /** 写入单条 Automix 分析缓存 */
+/**
+ * @param {string} key
+ * @param {any} data
+ * @returns {Promise<any>}
+ */
 export async function automixCacheSet(key, data) {
     try {
         const db = await getAiDb();

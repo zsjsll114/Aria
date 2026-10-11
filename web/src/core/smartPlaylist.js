@@ -48,7 +48,10 @@ export const REJECT_REASONS = [
     'bpm',           /* 有 BPM 但不在区间内 */
 ];
 
-/** 归一化后的空规则（也是 normalizeSmartRule 的兜底形状） */
+/**
+ * 归一化后的空规则（也是 normalizeSmartRule 的兜底形状）。
+ * @returns {Record<string, any>}
+ */
 export function emptySmartRule() {
     return {
         version: SMART_RULE_VERSION,
@@ -64,6 +67,7 @@ export function emptySmartRule() {
 }
 
 /** 字符串数组收敛：去空、去首尾空格、按小写去重、截断、非字符串直接丢 */
+/** @param {any} list @returns {string[]} */
 function cleanWords(list) {
     if (!Array.isArray(list)) {
         /* LLM 常把单值写成裸字符串（"artists": "周杰伦"），容忍一次 */
@@ -91,8 +95,11 @@ function cleanWords(list) {
  * 上下界颠倒时自动交换（LLM 写反很常见，直接丢掉一整条规则太浪费）；
  * 只给一侧时另一侧留空（表示开区间）。
  */
+/** @param {any} raw @returns {any} 归一后的 BPM 区间 {min, max}；无有效值返回 null */
 function cleanBpm(raw) {
+    /** @type {number|null} */
     let min = null;
+    /** @type {number|null} */
     let max = null;
     if (Array.isArray(raw)) {
         min = Number(raw[0]);
@@ -121,6 +128,7 @@ function cleanBpm(raw) {
 }
 
 /** 顺序夹取：非数字/NaN 回落到默认值。`Number(null)===0` 这个坑在这里必须显式挡掉。 */
+/** @param {any} raw @returns {number} */
 function cleanLimit(raw) {
     if (raw === null || raw === undefined || raw === '') return SMART_LIMIT_DEFAULT;
     const n = Math.floor(Number(raw));
@@ -135,10 +143,12 @@ function cleanLimit(raw) {
  * 接受同义字段名：LLM 换写法的概率极高（`keywords` / `title_keywords` /
  * `titleKeywords` 都见过），不做同义归并的话同一条规则时好时坏。
  */
+/** @param {any} raw @returns {any} */
 export function normalizeSmartRule(raw) {
     const rule = emptySmartRule();
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return rule;
 
+    /** @type {(...names: any[]) => any} */
     const pick = (...names) => {
         for (const n of names) {
             if (raw[n] !== undefined && raw[n] !== null) return raw[n];
@@ -161,6 +171,7 @@ export function normalizeSmartRule(raw) {
  * 规则里是否**没有任何**筛选条件（等于"整库都要"）。
  * 上层用它来决定要不要提醒用户"你这句话没解析出条件"，而不是默默导出一个全库歌单。
  */
+/** @param {any} rule @returns {boolean} */
 export function isEmptySmartRule(rule) {
     const r = normalizeSmartRule(rule);
     return r.artists.length === 0
@@ -176,12 +187,18 @@ export function isEmptySmartRule(rule) {
  * 上层据此决定要不要去 IndexedDB 拉 automixCache / aiThemeCache ——
  * 不需要时不拉，几百首歌就是几百次无谓的 IDB 事务。
  */
+/** @param {any} rule @returns {boolean} */
 export function ruleNeedsAnalysis(rule) {
     const r = normalizeSmartRule(rule);
     return !!r.bpm || r.moods.length > 0;
 }
 
 /** 构造 AI 提示词：只要 JSON，且把字段表写死（比"输出规则"这种话可靠得多） */
+/**
+ * @param {string} description
+ * @param {any} [opts]
+ * @returns {{system:string, user:string}}
+ */
 export function buildSmartPrompt(description, opts) {
     const desc = String(description || '').trim().slice(0, 1000);
     const sources = Array.isArray(opts && opts.sources) ? opts.sources.filter(Boolean) : [];
@@ -220,6 +237,7 @@ export function buildSmartPrompt(description, opts) {
  * 解析失败返回 null（而不是空规则）——上层要能区分
  * "AI 说没有条件"与"AI 根本没给出可用的东西"，这两种提示不一样。
  */
+/** @param {string} text @returns {any} */
 export function parseSmartRuleReply(text) {
     if (typeof text !== 'string' || !text.trim()) return null;
     let s = text.trim();
@@ -258,6 +276,11 @@ export function parseSmartRuleReply(text) {
 /* ---------------- 本地匹配 ---------------- */
 
 /** 大小写无关的"包含任一" */
+/**
+ * @param {any} haystack 歌单条目字段可能缺省（undefined）
+ * @param {any[]} words
+ * @returns {boolean}
+ */
 function hitsAny(haystack, words) {
     const h = String(haystack || '').toLowerCase();
     if (!h) return false;
@@ -265,6 +288,11 @@ function hitsAny(haystack, words) {
 }
 
 /** 情绪匹配：本地缓存里的 mood 可能是字符串或数组，两种都认 */
+/**
+ * @param {any} entryMood
+ * @param {any} wanted
+ * @returns {boolean}
+ */
 function moodMatches(entryMood, wanted) {
     const got = Array.isArray(entryMood) ? entryMood : [entryMood];
     for (const g of got) {
@@ -275,12 +303,28 @@ function moodMatches(entryMood, wanted) {
 }
 
 /**
+ * 本地曲库条目（字段随来源而异，取到哪个用哪个）。
+ * @typedef {object} LibraryEntry
+ * @property {string} [key]
+ * @property {string} [url]
+ * @property {string} [source]
+ * @property {string|number} [id]
+ * @property {string} [mid]
+ * @property {string} [title]
+ * @property {string} [artist]
+ * @property {string} [album]
+ * @property {string} [cover]
+ * @property {number|string} [bpm]
+ * @property {string} [mood]
+ */
+
+/**
  * 用规则筛本地曲库。**纯函数**：不读 localStorage、不碰 DOM、不查 IndexedDB，
  * 所以能直接单测，也能在探针里用一份假曲库跑。
  *
  * @param {object} rule normalizeSmartRule 的结果（内部会再归一化一次，容忍调用方偷懒）
- * @param {Array<object>} library 条目：{key,title,artist,album,source,id,mid,url,cover,bpm,mood}
- * @returns {{matched:Array, rejected:Array<{entry:object,reason:string}>, overLimit:number}}
+ * @param {LibraryEntry[]} library 条目：{key,title,artist,album,source,id,mid,url,cover,bpm,mood}
+ * @returns {{matched:Array<any>, rejected:Array<{entry:object,reason:string}>, overLimit:number}}
  */
 export function queryLibrary(rule, library) {
     const r = normalizeSmartRule(rule);
@@ -327,6 +371,7 @@ export function queryLibrary(rule, library) {
 }
 
 /** 把规则渲染成"给用户确认"的纯文本（供 JSON 编辑框的旁注使用；不含 UI 文案） */
+/** @param {any} rule @returns {string} */
 export function ruleToJSON(rule) {
     const r = normalizeSmartRule(rule);
     const out = {};

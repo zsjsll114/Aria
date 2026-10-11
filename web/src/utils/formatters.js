@@ -1,4 +1,8 @@
 /** utils/formatters.js — 纯函数工具 */
+/**
+ * @param {number} ms
+ * @returns {string} mm:ss
+ */
 export function formatTime(ms) {
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -6,6 +10,10 @@ export function formatTime(ms) {
     return `${minutes}:${seconds}`;
 }
 
+/**
+ * @param {*} str 任意值（内部走 String()）
+ * @returns {string}
+ */
 export function escapeHtml(str) {
     if (str == null) return '';
     return String(str)
@@ -25,12 +33,21 @@ export function escapeHtml(str) {
    与 escapeHtml 同一实现，别在分片里再写本地副本。 */
 export const esc = escapeHtml;
 
+/**
+ * @param {string} text
+ * @returns {string}
+ */
 export function processTextForLatin(text) {
     if (!text) return '';
     const latinRegex = /([a-zA-Z0-9\s\p{P}\p{S}]+)/gu;
     return text.replace(latinRegex, '<span class="word-latin">$1</span>');
 }
 
+/**
+ * @param {string} text
+ * @param {number} [maxChars=20]
+ * @returns {string[]}
+ */
 export function splitLongLine(text, maxChars = 20) {
     if (!text || text.length <= maxChars) return [text];
     const words = text.split(/\s+/);

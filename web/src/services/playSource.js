@@ -53,8 +53,9 @@ const QUALITY_LABELS = {
     '128': '128k',
 };
 
+/** @param {string} id @returns {any} */
 export function channelMeta(id) {
-    return CHANNELS[id] || CHANNELS.unknown;
+    return /** @type {Record<string, any>} */ (CHANNELS)[id] || CHANNELS.unknown;
 }
 
 /* ★ 平台规范名（todos #15 / BUG「未知歌曲 + 加载慢」）：同一平台在各处的字段值不统一——
@@ -73,10 +74,11 @@ const PLATFORM_ALIAS = {
 };
 
 /** 任意来源标识 → 规范平台键（'' 表示未知） */
+/** @param {any} source @returns {string} */
 export function platformKeyOf(source) {
     const raw = String(source == null ? '' : source).trim().toLowerCase();
     if (!raw) return '';
-    return PLATFORM_ALIAS[raw] || raw;
+    return /** @type {Record<string, string>} */ (PLATFORM_ALIAS)[raw] || raw;
 }
 
 /* ★ 规范平台键 → **自建服务后端进程键**（selfhost_service._SERVICES 的键）。
@@ -92,9 +94,10 @@ export function platformKeyOf(source) {
 const SELFHOST_KEYS = { tencent: 'qq' };
 
 /** 任意来源标识 → 自建服务后端平台键（'qq'/'netease'/'kugou'/'qishui'；'' 表示无此平台） */
+/** @param {any} source @returns {string} */
 export function selfhostKeyOf(source) {
     const key = platformKeyOf(source);
-    return SELFHOST_KEYS[key] || key || '';
+    return /** @type {Record<string, string>} */ (SELFHOST_KEYS)[key] || key || '';
 }
 
 /* 有专门取链分支的平台。'local' / 'selfhost' / 拼写错的值都不在这里——
@@ -110,7 +113,7 @@ export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo', '
  *   拿它判分支就把网易的歌塞进 QQ 分支（用网易 id 去查 QQ mid → 全链失败 → 走同名歌兜底 → 慢）。
  * ★ 歌曲 source 不在 RESOLVE_SOURCES 里时退回 fallback（而不是硬用歌曲值），
  *   否则 'local' / 拼写错的值会掉进「未知音源 → vkeys」分支。
- * @param {Object} songInfo
+ * @param {any} songInfo
  * @param {string} [fallbackSource] 一般是模块级 currentSource
  */
 export function resolveSourceOf(songInfo, fallbackSource) {
@@ -137,7 +140,7 @@ export function resolveSourceOf(songInfo, fallbackSource) {
  *   ⇒ 现在按 id → mid → 歌名 依次回落；**三者全缺就返回空串**（空键不参与缓存、不承认领，
  *     宁可多解析一次，也不要张冠李戴）。mvVid/vid 进键是为了「同一首歌换了一支 MV」能区分。
  *
- * @param {Object} song 任意形状的歌曲对象（title/song/name、artist/singer、id/mid…）
+ * @param {any} song 任意形状的歌曲对象（title/song/name、artist/singer、id/mid…）
  * @param {string} [fallbackSource] 歌曲自身没写 source 时的兜底平台
  * @returns {string} 身份键；'' 表示身份不明（调用方必须按"不可比较"处理）
  */
@@ -155,14 +158,18 @@ export function songIdentityKey(song, fallbackSource) {
    所以只认已知档位或纯数字 kbps，其余一律不当音质显示——宁可显示容器格式也不要编造。 */
 const QUALITY_TOKEN_RE = /^(master|atmos|flac|mflac|hires|lossless|exhigh|higher|standard|\d{2,4})$/i;
 
+/** @param {any} q @returns {string} */
 export function qualityLabel(q) {
     if (q === null || q === undefined) return '';
     const s = String(q).trim();
     if (!s || !QUALITY_TOKEN_RE.test(s)) return '';
-    return QUALITY_LABELS[s] || s;
+    return /** @type {Record<string, string>} */ (QUALITY_LABELS)[s] || s;
 }
 
-let trace = null;
+/* 取链溯源记录：beginResolveTrace 每次切歌重建，使用点假定已开始（初值经 any 断言，
+   避免把字段类型推断成 null）。字段含义见 beginResolveTrace 的字面量。 */
+/** @type {Record<string, any>} */
+let trace = /** @type {any} */ (null);
 const listeners = new Set();
 
 function notify() {
@@ -173,6 +180,7 @@ function notify() {
 }
 
 /** 开始一次取链记录（切歌时调用） */
+/** @param {string} songKey @returns {any} */
 export function beginResolveTrace(songKey) {
     trace = {
         songKey: songKey || '',
@@ -199,11 +207,12 @@ export function beginResolveTrace(songKey) {
  */
 export function clearResolveTrace() {
     if (!trace) return;
-    trace = null;
+    trace = /** @type {any} */ (null);
     notify();
 }
 
 /** 安排了一次重试（还没放弃）——角标该说「重试中」而不是「失败」 */
+/** @param {number} attempt @param {number} total @returns {any} */
 export function markResolveRetry(attempt, total) {
     if (!trace) beginResolveTrace('');
     trace.failed = true;
@@ -217,7 +226,7 @@ export function markResolveRetry(attempt, total) {
  * @param {string} channelId CHANNELS 的键
  * @param {string} url       最终采用的直链
  * @param {string} [quality] 渠道自身报出的音质档位（权威值，优先于 URL 猜测）
- * @param {Object} [extra]   渠道独有的结构化补充，目前只有解析池用：
+ * @param {any} [extra]   渠道独有的结构化补充，目前只有解析池用：
  *                           { provider, ext, cached, tried:[{provider,ok,ms,quality,ext,err}] }
  *                           tried[] 即「每一级为什么失败」的权威答案，比抓日志行准
  */
@@ -254,12 +263,14 @@ export function getResolveTrace() {
     return trace;
 }
 
+/** @param {Function} cb @returns {() => void} 取消订阅 */
 export function onResolveChange(cb) {
     listeners.add(cb);
     return () => listeners.delete(cb);
 }
 
 /** 从直链反推平台（渠道没记到时的兜底归类） */
+/** @param {string} url @returns {string} */
 export function sniffPlatform(url) {
     if (!url) return '';
     if (url.startsWith('blob:') || url.startsWith('data:') || /^[a-z]:[\\/]/i.test(url) || url.startsWith('file:')) return '本地';
@@ -275,6 +286,7 @@ export function sniffPlatform(url) {
  * ★ 只匹配 pathname：QQ 直链的 vkey 是一串 hex，实测出现以「F320」结尾的 key，
  *   整串匹配会把 /?vkey=…F320…/ 当成 320k，角标于是 lied（真值是 m4a）。
  */
+/** @param {string} url @returns {string} */
 export function sniffQuality(url) {
     if (!url) return '';
     let path = '';
@@ -298,6 +310,7 @@ export function sniffQuality(url) {
 }
 
 /** 音质描述：优先渠道上报档位，其次 URL 猜，最后退回容器名（宁可保守也不编造） */
+/** @param {any} hit @returns {string} */
 function bestQuality(hit) {
     return qualityLabel(hit.quality) || qualityLabel(sniffQuality(hit.url))
         || (hit.ext ? String(hit.ext).toLowerCase() : '');
@@ -327,7 +340,7 @@ export function describeBadge() {
 
 /**
  * 详情面板数据：概要 + 本次取链走过的降级轨迹（读日志缓冲，不另埋点）。
- * @returns {{rows:Array<{k:string,v:string}>, logs:Array, hit:Object|null}}
+ * @returns {{rows:Array<{k:string,v:string}>, logs:Array<any>, hit:Object|null}}
  */
 export function describeDetail() {
     if (!trace) return { rows: [], logs: [], hit: null };
@@ -357,6 +370,7 @@ export function describeDetail() {
     };
 }
 
+/** @param {string} url @returns {string} */
 function hostOf(url) {
     try { return new URL(url, location.href).host; } catch (_) { return url ? url.slice(0, 40) : ''; }
 }

@@ -9,7 +9,8 @@
     "lint:fix": "eslint web/src scripts tests/js --fix",
     "format": "prettier --write \"web/src/**/*.js\"",
     "format:check": "prettier --check \"web/src/**/*.js\"",
-    "version:sync": "python scripts/sync_version.py"
+    "version:sync": "python scripts/sync_version.py",
+    "typecheck": "tsc --noEmit"
   },
   "author": "",
   "license": "AGPL-3.0-only",
@@ -18,7 +19,8 @@
     "@tauri-apps/cli": "^2.11.0",
     "eslint": "^10.10.0",
     "globals": "^17.12.0",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.9",

@@ -64,9 +64,10 @@ export function bridgeGlobalsToState(keys = BRIDGED) {
             continue;
         }
         const isAccessor = !!(desc && (desc.get || desc.set));
-        if (desc && !isAccessor && globalThis[key] !== undefined) {
+        const g = /** @type {any} */ (globalThis);
+        if (desc && !isAccessor && g[key] !== undefined) {
             /* 用已有值播种，避免桥接前就写进去的初值被 state 的默认值盖掉 */
-            state[key] = globalThis[key];
+            state[key] = g[key];
         }
         Object.defineProperty(globalThis, key, {
             configurable: true,
@@ -79,7 +80,11 @@ export function bridgeGlobalsToState(keys = BRIDGED) {
     return { bridged, skipped };
 }
 
-/** 供 DevTools / 审计确认某个键是否已桥接（而不是仍有独立存储） */
+/**
+ * 供 DevTools / 审计确认某个键是否已桥接（而不是仍有独立存储）。
+ * @param {string} key
+ * @returns {boolean}
+ */
 export function isBridged(key) {
     const desc = Object.getOwnPropertyDescriptor(globalThis, key);
     return !!(desc && desc.get && desc.set);

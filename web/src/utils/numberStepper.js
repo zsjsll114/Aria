@@ -12,9 +12,14 @@ import { logCatch } from '../services/log.js';
 
 const TAG = 'numberStepper';
 
+/** @type {(v:number, lo:number, hi:number) => number} */
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** 一次 ±：按 min/max/step 收口，并补发 input+change 让既有监听照常收到 */
+/**
+ * 一次 ±：按 min/max/step 收口，并补发 input+change 让既有监听照常收到。
+ * @param {HTMLInputElement} input
+ * @param {number} direction +1 / -1
+ */
 export function stepNumberInput(input, direction) {
     if (!input || input.type !== 'number') return;
     const step = Number(input.step) || 1;
@@ -37,11 +42,12 @@ export function bindNumberSteppers() {
     if (_bound || typeof document === 'undefined') return;
     _bound = true;
     document.addEventListener('click', (e) => {
-        const btn = e.target && e.target.closest ? e.target.closest('[data-num-step]') : null;
+        const t = /** @type {Element|null} */ (e.target);
+        const btn = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-num-step]') : null);
         if (!btn) return;
         try {
             const host = btn.closest('.num-stepper');
-            const input = host && host.querySelector('input[type="number"]');
+            const input = /** @type {HTMLInputElement|null} */ (host && host.querySelector('input[type="number"]'));
             if (!input) return;
             e.preventDefault();
             stepNumberInput(input, Number(btn.dataset.numStep) > 0 ? 1 : -1);

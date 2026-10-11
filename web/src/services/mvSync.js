@@ -60,6 +60,11 @@ export const ANALYZE_MAX_BYTES = 12 * 1024 * 1024;
  * ============================================================ */
 
 /** 短时 RMS 包络。pcm 为 [-1,1] 的 Float32Array。 */
+/**
+ * @param {any} pcm
+ * @param {number} [hop]
+ * @returns {any}
+ */
 export function envelopeOf(pcm, hop = HOP) {
     if (!pcm || !pcm.length || hop <= 0) return new Float32Array(0);
     const n = Math.floor(pcm.length / hop);
@@ -76,6 +81,12 @@ export function envelopeOf(pcm, hop = HOP) {
 /**
  * 在偏移 d（包络帧）上做**归一化**互相关。
  * 归一化是必须的：不做的话「重叠越长分数越高」，短前奏的错配反而会赢。
+ */
+/**
+ * @param {any} eMv
+ * @param {any} eSong
+ * @param {number} d
+ * @returns {{r:number, n:number}}
  */
 export function correlateAt(eMv, eSong, d) {
     const lo = Math.max(0, d);
@@ -94,6 +105,12 @@ export function correlateAt(eMv, eSong, d) {
 }
 
 /** 粗搜：stride 帧一个点。返回按 r 降序的 [{d, r}]。 */
+/**
+ * @param {any} eMv
+ * @param {any} eSong
+ * @param {{maxLagFrames?:number, stride?:number, minOverlapFrames?:number}} [opts]
+ * @returns {any}
+ */
 export function scanLags(eMv, eSong, opts = {}) {
     const maxLag = opts.maxLagFrames != null ? opts.maxLagFrames : Math.round(MAX_OFFSET_SEC * HOP_FPS);
     const stride = opts.stride || 4;
@@ -114,6 +131,13 @@ export function scanLags(eMv, eSong, opts = {}) {
 }
 
 /** 细搜：在主峰附近按 1 帧（20ms）分辨率收敛，消除 stride 造成的量化误差。 */
+/**
+ * @param {any} eMv
+ * @param {any} eSong
+ * @param {number} d0
+ * @param {number} [span]
+ * @returns {{d:number, r:number}}
+ */
 export function refineLag(eMv, eSong, d0, span = 4) {
     let best = { d: d0, r: -1 };
     for (let d = d0 - span; d <= d0 + span; d++) {
@@ -131,7 +155,8 @@ export function refineLag(eMv, eSong, d0, span = 4) {
  */
 export function judgeOffset(ranked) {
     if (!ranked || !ranked.length) return { ok: false, offsetSec: 0, r: 0, reason: 'no-candidate' };
-    const best = ranked[0];
+    /* 上方已判过 ranked.length，首项必然存在 —— 这一处收口消掉本函数下游 8 处判空 */
+    const best = /** @type {{d:number,r:number}} */ (ranked[0]);
     if (!(best.r > MIN_R)) return { ok: false, offsetSec: 0, r: best.r, reason: 'weak' };
     /* 次峰必须与主峰拉开距离：平台期说明这段音频区分度太低（例如整段都是淡入的
        环境音），此时"最佳 lag"只是噪声，纠正反而会把画面推错。 */
@@ -149,6 +174,11 @@ export function judgeOffset(ranked) {
 }
 
 /** 两条音轨的包络 → 偏移（秒）。纯计算，无 IO。 */
+/**
+ * @param {any} mvPcm
+ * @param {any} songPcm
+ * @returns {any}
+ */
 export function detectOffsetFromPcm(mvPcm, songPcm) {
     const eMv = envelopeOf(mvPcm);
     const eSong = envelopeOf(songPcm);
@@ -174,6 +204,11 @@ export function detectOffsetFromPcm(mvPcm, songPcm) {
  *
  * @returns {{analyze:boolean, reason:string}}
  */
+/**
+ * @param {number} mvDurSec
+ * @param {number} songDurSec
+ * @returns {{analyze:boolean, reason:string}}
+ */
 export function shouldAnalyzeOffset(mvDurSec, songDurSec) {
     if (!(mvDurSec > 0) || !(songDurSec > 0)) return { analyze: false, reason: 'no-duration' };
     if (mvDurSec > 900) return { analyze: false, reason: 'too-long' };
@@ -193,9 +228,11 @@ export function shouldAnalyzeOffset(mvDurSec, songDurSec) {
  *   认定"这个偏移在这台机器上跑不动"，由调用方回退到 0。
  */
 export function makeSeekBudget(maxSeeks = 8, windowMs = 10000) {
+    /** @type {any[]} */
     let stamps = [];
     return {
-        allow(now) {
+        /** @param {any} now @returns {boolean} */
+    allow(now) {
             stamps = stamps.filter(t => now - t < windowMs);
             if (stamps.length >= maxSeeks) return false;
             stamps.push(now);
@@ -243,6 +280,12 @@ export function judgeAppliedOffset(s) {
  *
  * @param {number} maxBytes >0 时用 Range 只取前这么多字节（0 = 不限）
  */
+/**
+ * @param {string} url
+ * @param {number} timeoutMs
+ * @param {number} [maxBytes]
+ * @returns {Promise<any>}
+ */
 async function fetchBuffer(url, timeoutMs, maxBytes = 0) {
     if (!url) return null;
     const headers = maxBytes > 0 ? { Range: `bytes=0-${maxBytes - 1}` } : undefined;
@@ -251,7 +294,7 @@ async function fetchBuffer(url, timeoutMs, maxBytes = 0) {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), timeoutMs);
         try {
-            const res = await fetch(url, { signal: ctl.signal, headers });
+            const res = await fetch(url, { signal: ctl.signal, ...(headers ? { headers } : {}) });
             if (res && res.ok) {
                 const ab = await res.arrayBuffer();
                 if (ab && ab.byteLength > 1024) return ab;
@@ -272,9 +315,10 @@ async function fetchBuffer(url, timeoutMs, maxBytes = 0) {
 }
 
 /** 解码成 8kHz 单声道。用 OfflineAudioContext 强制降采样：5 分钟歌 ≈ 9.6MB Float32。 */
+/** @param {any} ab @returns {Promise<any>} */
 async function decode8k(ab) {
     const AC = (typeof OfflineAudioContext !== 'undefined') ? OfflineAudioContext
-        : (typeof globalThis !== 'undefined' ? globalThis.webkitOfflineAudioContext : undefined);
+        : (typeof globalThis !== 'undefined' ? /** @type {any} */ (globalThis).webkitOfflineAudioContext : undefined);
     if (!AC) return null;
     const ctx = new AC(1, 1, SYNC_SR);
     const buf = await ctx.decodeAudioData(ab);
@@ -346,12 +390,18 @@ function readAll() {
     } catch { return {}; }
 }
 
+/** @param {string} key @returns {any} */
 export function readOffsetCache(key) {
     if (!key) return null;
     const v = readAll()[key];
     return (typeof v === 'number' && isFinite(v)) ? v : null;
 }
 
+/**
+ * @param {string} key
+ * @param {number} offsetSec
+ * @returns {void}
+ */
 export function writeOffsetCache(key, offsetSec) {
     if (!key || typeof offsetSec !== 'number' || !isFinite(offsetSec)) return;
     try {

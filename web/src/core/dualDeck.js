@@ -26,10 +26,14 @@
  * ============================================================ */
 import { logInfo, logCatch } from '../services/log.js';
 
+/** @type {any} */
 let deckA = null;   /* 活跃 deck = 全库语义上的「当前播放元素」 */
+/** @type {any} */
 let deckB = null;   /* 影子 deck：Phase 2 预载/交叉用 */
 
+/** @type {any[]} */
 const swapCallbacks = [];
+/** @type {any[]} */
 const listenerTable = [];   /* { type, fn, options }——swap 时成对搬运 */
 
 /**
@@ -74,6 +78,12 @@ export function getShadowAudio() {
  * swap 后自动迁移到新活跃元素，调用方无感知。
  * 一次性探针勿用此 API（见文件头）。
  */
+/**
+ * @param {string} type
+ * @param {Function} fn
+ * @param {any} [options]
+ * @returns {void}
+ */
 export function registerAudioListener(type, fn, options) {
     listenerTable.push({ type, fn, options });
     if (deckA) deckA.addEventListener(type, fn, options);
@@ -83,6 +93,7 @@ export function registerAudioListener(type, fn, options) {
  * 卸载常驻监听：搬运表同步移除并从当前活跃元素摘除。
  * 供 installTempoBoost 等带卸载语义的模块使用；找不到时静默（幂等）。
  */
+/** @param {string} type @param {Function} fn @returns {void} */
 export function unregisterAudioListener(type, fn) {
     const i = listenerTable.findIndex(l => l.type === type && l.fn === fn);
     if (i >= 0) listenerTable.splice(i, 1);
@@ -145,6 +156,7 @@ export function replaceActiveDeck(next) {
 }
 
 /** 把搬运表里的常驻监听全挂到某个 deck 上 */
+/** @param {any} to @returns {void} */
 function _attachListeners(to) {
     if (!to) return;
     for (const { type, fn, options } of listenerTable) {
@@ -153,6 +165,7 @@ function _attachListeners(to) {
 }
 
 /** 常驻监听成对搬运（swapRoles / replaceActiveDeck 的唯一实现，别抄第二份） */
+/** @param {any} from @param {any} to @returns {void} */
 function _moveListeners(from, to) {
     if (!from || !to) return;
     for (const { type, fn, options } of listenerTable) {

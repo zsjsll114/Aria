@@ -2119,7 +2119,7 @@ let currentLang = 'zh-CN';
 
 try {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved && DICTIONARY[saved]) {
+  if (saved && /** @type {Record<string, any>} */ (DICTIONARY)[saved]) {
     currentLang = saved;
   }
 } catch (_) { logCatch('i18n', _); }
@@ -2139,24 +2139,31 @@ export function getLanguage() {
  *   已经落地，i18n 的 DOM 扫描器按「整段文本节点等于中文」匹配，翻不到已经翻过的，
  *   所以必须在渲染前逐条查表；普通 textContent 赋值仍可由 observer 兜住。
  */
+/** @param {string} zh @returns {string} */
 export function translatePhrase(zh) {
   if (typeof zh !== 'string' || !zh) return zh;
   if (currentLang !== 'en-US') return zh;
-  return STATIC_PHRASE_MAP[zh] || zh;
+  return /** @type {Record<string, string>} */ (STATIC_PHRASE_MAP)[zh] || zh;
 }
 
 /** 翻译：先查 KEY_PHRASES（双语对象），再查 DICTIONARY（当前语言词典），最后回退 fallback */
+/**
+ * @param {string} key
+ * @param {string} [fallback]
+ * @returns {string}
+ */
 export function t(key, fallback = '') {
-  const kp = KEY_PHRASES[key];
+  const kp = /** @type {Record<string, any>} */ (KEY_PHRASES)[key];
   if (kp) return kp[currentLang] || kp['zh-CN'] || fallback || key;
-  const dict = DICTIONARY[currentLang] || DICTIONARY['zh-CN'];
+  const dict = /** @type {Record<string, any>} */ (DICTIONARY)[currentLang] || DICTIONARY['zh-CN'];
   if (dict && dict[key] !== undefined) return dict[key];
   return fallback || key;
 }
 
 /** 切换语言 */
+/** @param {string} lang @returns {void} */
 export function setLanguage(lang) {
-  if (!DICTIONARY[lang]) return;
+  if (!/** @type {Record<string, any>} */ (DICTIONARY)[lang]) return;
   currentLang = lang;
   try {
     localStorage.setItem(STORAGE_KEY, lang);
@@ -2168,10 +2175,12 @@ export function setLanguage(lang) {
 }
 
 /** 单节点文本翻译：整句匹配 → 数字句式正则 → 前缀匹配（保留尾部数字/括号内容） */
+/** @param {string} text @returns {string|null} 无可译内容时 null */
 function translateTextNode(text) {
   const t0 = String(text || '').trim();
   if (!t0) return null;
-  if (STATIC_PHRASE_MAP[t0]) return STATIC_PHRASE_MAP[t0];
+  const _phraseHit = /** @type {Record<string, string>} */ (STATIC_PHRASE_MAP)[t0];
+  if (_phraseHit) return _phraseHit;
   /* 动态数字句式（页码/加载计数/级别/核数） */
   let m = /^第\s*(\d+)\s*页\s*·\s*共\s*(\d+)\s*首$/.exec(t0);
   if (m) return `Page ${m[1]} · ${m[2]} songs`;
@@ -2244,31 +2253,37 @@ function translateTextNode(text) {
 }
 
 /** 核心：对指定根扫描并应用翻译（供全量/局部两路复用） */
-function _scanI18n(root, deadline) {
+/**
+ * @param {any} root 扫描起点（Document 或子树根）
+ * @param {number} [_deadline] 预算截止时刻（performance.now 基准）。本函数**不读**它——
+ *   超时判断由调用方（applyLanguageToUiRoots）在每次调用前统一做，这里只保留签名
+ * @returns {void}
+ */
+function _scanI18n(root, _deadline) {
   if (!root) return;
   const isEn = (currentLang === 'en-US');
 
   // 1. 声明式 data-i18n 属性更新
-  root.querySelectorAll?.('[data-i18n]').forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.('[data-i18n]') || []).forEach(el => {
     const k = el.getAttribute('data-i18n');
     if (k) el.textContent = t(k, el.textContent);
   });
-  root.querySelectorAll?.('[data-i18n-placeholder]').forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.('[data-i18n-placeholder]') || []).forEach(el => {
     const k = el.getAttribute('data-i18n-placeholder');
     if (k) el.placeholder = t(k, el.placeholder);
   });
-  root.querySelectorAll?.('[data-i18n-title]').forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.('[data-i18n-title]') || []).forEach(el => {
     const k = el.getAttribute('data-i18n-title');
     if (k) el.title = t(k, el.title);
   });
 
   // 2. 输入类 placeholder
-  root.querySelectorAll?.('input[placeholder]').forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.('input[placeholder]') || []).forEach(el => {
     const ph = (el.placeholder || '').trim();
     if (isEn) {
-      if (STATIC_PHRASE_MAP[ph]) {
+      if (/** @type {Record<string, string>} */ (STATIC_PHRASE_MAP)[ph]) {
         if (!el.dataset.i18nOriginPh) el.dataset.i18nOriginPh = ph;
-        el.placeholder = STATIC_PHRASE_MAP[ph];
+        el.placeholder = /** @type {Record<string, string>} */ (STATIC_PHRASE_MAP)[ph];
       }
     } else if (el.dataset.i18nOriginPh) {
       el.placeholder = el.dataset.i18nOriginPh;
@@ -2296,7 +2311,7 @@ function _scanI18n(root, deadline) {
     '.aria-dialog-title, .aria-dialog-desc, .aria-dialog-btn, .apc-text small, ' +
     /* 外观设置：分区标题「视图模式」+ 模式分段按钮（词条早就在表里，类名一直不在名单） */
     '.appearance-section-title, .appearance-mode-btn';
-  root.querySelectorAll?.(textSel).forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.(textSel) || []).forEach(el => {
     /* ★ svg 图标按钮（<svg>…文本）保护：此类节点 children>0，但直接文本子节点
        可安全翻译（如 rank-playall「播放全部（N）」——此前被整节点跳过永不翻译） */
     if (el.children.length > 0) {
@@ -2332,11 +2347,11 @@ function _scanI18n(root, deadline) {
   });
 
   // 4. title/data-tooltip 属性翻译
-  root.querySelectorAll?.('[data-tooltip],[title]').forEach(el => {
+  /** @type {any[]} */ (root.querySelectorAll?.('[data-tooltip],[title]') || []).forEach(el => {
     const val = (el.getAttribute('data-tooltip') || el.getAttribute('title') || '').trim();
     if (!val || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
     if (isEn) {
-      const en = STATIC_PHRASE_MAP[val];
+      const en = /** @type {Record<string, string>} */ (STATIC_PHRASE_MAP)[val];
       if (en && en !== val) {
         if (!el.dataset.i18nOriginTip) el.dataset.i18nOriginTip = val;
         if (el.hasAttribute('data-tooltip')) el.setAttribute('data-tooltip', en);
@@ -2414,8 +2429,10 @@ export function applyLanguageToUiRoots(scopeSelector) {
    做法：看得见的弹层容器**同步**翻（几百节点），其余排到 idle 分片补齐。
    正确性不丢：aria:languagechange 仍在同一帧派发，各分片自译照旧；
    兜底扫描最迟 2 秒后一定跑完（requestIdleCallback 的 timeout）。 */
+/** @type {any} */
 let _fullScanIdle = null;
 
+/** @param {any} root @returns {void} */
 function _scheduleFullScan(root) {
   const clear = () => {
     if (_fullScanIdle === null) return;
@@ -2445,7 +2462,7 @@ export function applyLanguageToDocument(root = (typeof document !== 'undefined' 
 
 // 挂载到全局
 if (typeof window !== 'undefined') {
-  globalThis.AriaI18n = {
+  /** @type {any} */ (globalThis).AriaI18n = {
     getLanguage,
     setLanguage,
     t,
@@ -2464,13 +2481,15 @@ if (typeof window !== 'undefined') {
      目标落在 UI 弹层根内才安排扫描；歌词区的 textContent 高频变更被
      closest 过滤挡掉，不产生扫描。 */
   try {
-    let _i18nTimer = null;
+    /** @type {any} */
+let _i18nTimer = null;
     /* ★ 「这个节点在不在弹层里」按节点缓存（2026-09-27 用户实测：切英文后
        **整页动画持续卡**，中文不卡）。原因就在这段：observer 对每次 DOM 变更都调
        `closest(UI_ROOT_SELECTOR)`，而播放时逐字高亮每帧要写几百个文本节点，
        等于把这笔查询按帧交一遍；中文分支在上一行就 return 了，所以只有英文卡。
        歌词节点是复用的（同一批 .word / fill 反复变更），缓存命中率接近 100%。 */
     const _inUiRoot = new WeakMap();
+    /** @param {any} node @returns {boolean} */
     const inUiRoot = (node) => {
       if (!node || !(node.nodeType === 1 ? node.closest : null)) return false;
       const el = node.nodeType === 1 ? node : node.parentElement;
@@ -2482,6 +2501,7 @@ if (typeof window !== 'undefined') {
       }
       return hit;
     };
+    /** @param {any} muts @returns {boolean} */
     const _mutationRelevant = (muts) => {
       for (const m of muts) {
         if (inUiRoot(m.target)) return true;

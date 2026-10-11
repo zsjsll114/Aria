@@ -11,6 +11,7 @@ import { parseKrc } from '../services/krcParser.js';
 const KANA_RE = /[\u3040-\u30ff\u31f0-\u31ff]/;   /* 日文假名（有假名 = 日文行） */
 const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
+/** @param {string} text @returns {number} */
 function cjkRatio(text) {
     const t = String(text || '').replace(/\s+/g, '');
     if (!t.length) return 0;
@@ -20,6 +21,7 @@ function cjkRatio(text) {
 }
 
 /* 中文主导行：含较多汉字且无假名。日文歌（含假名）不在此列，日→中翻译不受影响 */
+/** @param {string} text @returns {boolean} */
 function isChineseLine(text) {
     const t = String(text || '');
     return !KANA_RE.test(t) && cjkRatio(t) > 0.55;
@@ -27,6 +29,7 @@ function isChineseLine(text) {
 
 /* 制作信息/版权行：字段冒号开头（出品：xx / 作词：xx）、方括号授权声明、
    整句版权套话。保守匹配，宁可漏掉也不误伤正常歌词。 */
+/** @param {string} text @returns {boolean} */
 function isJunkCreditLine(text) {
     const t = String(text || '').trim();
     if (!t) return false;
@@ -79,6 +82,7 @@ const ALIGN = {
 };
 
 /* 时间戳清洗：只接受有限数字（NaN/undefined/字符串脏数据 → null，该行不参与对齐） */
+/** @param {any} v @returns {number|null} 非法值返回 null */
 function toFiniteTime(v) {
     if (typeof v === 'number') return Number.isFinite(v) ? v : null;
     if (typeof v === 'string' && v.trim() !== '') {
@@ -88,7 +92,13 @@ function toFiniteTime(v) {
     return null;
 }
 
+/**
+ * @param {any[]} list
+ * @param {(x: any) => number} timeOf
+ * @returns {any[]}
+ */
 function toTimedEntries(list, timeOf) {
+    /** @type {any[]} */
     const out = [];
     if (!Array.isArray(list)) return out;
     for (const obj of list) {
@@ -103,14 +113,17 @@ function toTimedEntries(list, timeOf) {
 }
 
 /* 中位数（入参无需有序；样本量都是"行数"级别，排序成本忽略） */
+/** @param {number[]} values @returns {number} */
 function median(values) {
     if (!values.length) return 0;
     const s = values.slice().sort((a, b) => a - b);
     const mid = s.length >> 1;
-    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    const hi = /** @type {number} */ (s[mid]);
+    return s.length % 2 ? hi : (/** @type {number} */ (s[mid - 1]) + hi) / 2;
 }
 
 /* 中位行距：只统计"真正推进了"的间隔（全 0 时间戳时返回 Infinity，由 hasOrderingInfo 拦下） */
+/** @param {any[]} entries @returns {number} */
 function medianSpacing(entries) {
     const gaps = [];
     for (let i = 1; i < entries.length; i++) {
@@ -120,6 +133,7 @@ function medianSpacing(entries) {
     return gaps.length ? median(gaps) : Infinity;
 }
 
+/** @param {any[]} entries @returns {number} */
 function residualTolerance(entries) {
     const sp = medianSpacing(entries);
     if (!Number.isFinite(sp)) return ALIGN.residualMax;
@@ -127,6 +141,7 @@ function residualTolerance(entries) {
 }
 
 /* 时间戳全是同一个值（典型：整轨 [00:00.00]）→ 没有任何顺序信息，按数组下标硬配等于编造 */
+/** @param {any[]} entries @returns {boolean} */
 function hasOrderingInfo(entries) {
     return entries.length < 2 || entries[0].t < entries[entries.length - 1].t;
 }
@@ -137,6 +152,11 @@ function hasOrderingInfo(entries) {
           天然关于真偏移对称，所以缺几行、多一条开头行都带不偏它。
       pickOffsets —— 同一批差值按密度聚簇，最密的几个簇心才是送进 DP 的候选偏移
           （并列时偏移小的优先；anchor 只在同分候选之间择一，见 isBetterModel）。 */
+/**
+ * @param {any[]} R
+ * @param {any[]} T
+ * @returns {any[]}
+ */
 function collectDeltas(R, T) {
     const tArr = T.map(x => x.t);
     const deltas = [];
@@ -154,6 +174,7 @@ function collectDeltas(R, T) {
     return deltas;
 }
 
+/** @param {number[]} deltas @returns {any} */
 function pickOffsets(deltas) {
     if (!deltas.length) return [];
     const sorted = deltas.slice().sort((a, b) => a - b);
@@ -162,10 +183,11 @@ function pickOffsets(deltas) {
     let end = 0;
     for (let s = 0; s < sorted.length; s++) {
         if (end < s) end = s;
-        while (end + 1 < sorted.length && sorted[end + 1] - sorted[s] <= width) end++;
-        clusters.push({ center: sorted[(s + end) >> 1], count: end - s + 1 });
+        while (end + 1 < sorted.length && /** @type {number} */ (sorted[end + 1]) - /** @type {number} */ (sorted[s]) <= width) end++;
+        clusters.push({ center: /** @type {number} */ (sorted[(s + end) >> 1]), count: end - s + 1 });
     }
     clusters.sort((a, b) => (b.count - a.count) || (Math.abs(a.center) - Math.abs(b.center)));
+    /** @type {number[]} */
     const picked = [];
     for (const c of clusters) {
         if (Math.abs(c.center) < 1) continue;                       /* 0 偏移是基线，不必投 */
@@ -180,6 +202,13 @@ function pickOffsets(deltas) {
 /* ② 单调 1:1 最优指派（DP）。pred[i] = 第 i 行译文"应该"出现的时间；
       每配一对得 (gain - 残差/窗)，gain = n+m+1 > 任何单对罚分(≤1)，
       所以先最大化配对数、再最小化残差之和。返回的 pairs 按行号升序且互不交叉。 */
+/**
+ * @param {any[]} R
+ * @param {number[]} tArr
+ * @param {number[]} pred 预测时间轴（按下标取值）
+ * @param {number} tol
+ * @returns {any}
+ */
 function assignByDp(R, tArr, pred, tol) {
     const n = R.length, m = tArr.length, cols = m + 1;
     const gain = n + m + 1;
@@ -187,15 +216,16 @@ function assignByDp(R, tArr, pred, tol) {
     let prev = new Float64Array(cols);
     let cur = new Float64Array(cols);
     for (let i = 1; i <= n; i++) {
-        const p = pred[i - 1];
+        const p = /** @type {number} */ (pred[i - 1]);
         cur[0] = 0;
         for (let j = 1; j <= m; j++) {
-            let score = prev[j];
+            let score = /** @type {number} */ (prev[j]);
             let d = 0;
-            if (cur[j - 1] > score) { score = cur[j - 1]; d = 1; }
-            const res = Math.abs(p - tArr[j - 1]);
+            const left = /** @type {number} */ (cur[j - 1]);
+            if (left > score) { score = left; d = 1; }
+            const res = Math.abs(p - /** @type {number} */ (tArr[j - 1]));
             if (res <= tol) {
-                const pairScore = prev[j - 1] + gain - res / tol;
+                const pairScore = /** @type {number} */ (prev[j - 1]) + gain - res / tol;
                 if (pairScore > score) { score = pairScore; d = 2; }
             }
             cur[j] = score;
@@ -215,24 +245,39 @@ function assignByDp(R, tArr, pred, tol) {
 }
 
 /* 病态规模（行×译文超过 maxDpCells）才走这里：同一套校正后的时间，单遍贪心，放弃全局最优 */
+/**
+ * @param {any[]} R
+ * @param {number[]} tArr
+ * @param {number[]} pred 预测时间轴（按下标取值）
+ * @param {number} tol
+ * @returns {any}
+ */
 function assignBySweep(R, tArr, pred, tol) {
     const pairs = [];
     let j = 0;
     for (let i = 0; i < R.length && j < tArr.length; i++) {
-        while (j < tArr.length && tArr[j] < pred[i] - tol) j++;     /* 这条译文已经早过头，作废 */
-        if (j >= tArr.length) break;
-        if (Math.abs(tArr[j] - pred[i]) <= tol) { pairs.push([i, j]); j++; }
+        while (j < tArr.length && /** @type {number} */ (tArr[j]) < (/** @type {number} */ (pred[i])) - tol) j++;     /* 这条译文已经早过头，作废 */
+        if (j >= tArr.length) break;   /* 此处 break 之后 j < tArr.length 成立，下行取值才安全 */
+        if (Math.abs((/** @type {number} */ (tArr[j])) - (/** @type {number} */ (pred[i]))) <= tol) { pairs.push([i, j]); j++; }
     }
     return pairs;
 }
 
 /* 一次指派的完整打分：配对 + 残差之和 + 这个配对所依据的偏移假设 */
+/**
+ * @param {any[]} R
+ * @param {number[]} tArr
+ * @param {number[]} pred 预测时间轴（按下标取值）
+ * @param {number} tol
+ * @param {number} offset
+ * @returns {any}
+ */
 function scoreModel(R, tArr, pred, tol, offset) {
     const pairs = (R.length + 1) * (tArr.length + 1) > ALIGN.maxDpCells
         ? assignBySweep(R, tArr, pred, tol)
         : assignByDp(R, tArr, pred, tol);
     let residualSum = 0;
-    for (const [i, j] of pairs) residualSum += Math.abs(pred[i] - tArr[j]);
+    for (const [i, j] of pairs) residualSum += Math.abs((/** @type {number} */ (pred[i])) - (/** @type {number} */ (tArr[j])));
     return { pairs, residualSum, offset };
 }
 
@@ -240,6 +285,13 @@ function scoreModel(R, tArr, pred, tol, offset) {
    ① 非零偏移必须先攒够证据（minSupport）才有资格上台，防止"两句话的巧合"劫持整轨；
    ② 第三档是必需的：整体平移 k 个行距往往能凑出**同样多、同样准**的另一套配对
       （每行都拿到邻居的译文，残差全是 0），此时只有"哪个偏移是两轨共同的主张"能分辨。 */
+/**
+ * @param {any} a
+ * @param {any} b
+ * @param {number} minSupport
+ * @param {any} anchor
+ * @returns {boolean}
+ */
 function isBetterModel(a, b, minSupport, anchor) {
     if (a.offset !== 0 && a.pairs.length < minSupport) return false;
     if (a.pairs.length !== b.pairs.length) return a.pairs.length > b.pairs.length;
@@ -252,9 +304,19 @@ function isBetterModel(a, b, minSupport, anchor) {
 /* ③ 漂移细化：锚点上的"实际偏移"若随行时间爬升（两份词各自打点、误差累积），
       用两半中位数拟合一条直线再指派一次。只接受严格提高配对数的结果——
       这一步只会补回覆盖，不可能把已经配对正确的行换走。 */
+/**
+ * @param {any[]} R
+ * @param {number[]} tArr
+ * @param {any} best
+ * @param {number} tol
+ * @returns {any}
+ */
 function fitDrift(R, tArr, best, tol) {
     if (best.pairs.length < ALIGN.minAnchorsForDrift) return null;
-    const anchors = best.pairs.map(([i, j]) => ({ x: R[i].t, y: tArr[j] - R[i].t }));
+    const anchors = /** @type {any[]} */ (best.pairs).map(([i, j]) => {
+        const rt = /** @type {any} */ (R[i]).t;
+        return { x: rt, y: (/** @type {number} */ (tArr[j])) - rt };
+    });
     const mid = median(anchors.map(a => a.x));
     const low = anchors.filter(a => a.x < mid);
     const high = anchors.filter(a => a.x >= mid);
@@ -269,6 +331,13 @@ function fitDrift(R, tArr, best, tol) {
 }
 
 /* 保留 v1 的名字：语义仍是"单调 1:1 对齐"，只是窗口从绝对改成了「整体偏移 + 残差」 */
+/**
+ * @param {any[]} rows
+ * @param {any[]} tracks
+ * @param {(x: any) => number} rowTime
+ * @param {(x: any) => number} trackTime
+ * @returns {any}
+ */
 function monotonicAlign(rows, tracks, rowTime, trackTime) {
     const map = new Map();
     const R = toTimedEntries(rows, rowTime);
@@ -295,6 +364,12 @@ function monotonicAlign(rows, tracks, rowTime, trackTime) {
     return map;
 }
 
+/**
+ * @param {any[]} originals
+ * @param {any[]} [translations]
+ * @param {any[]} [romaji]
+ * @returns {any}
+ */
 export function mergeLyrics(originals, translations = [], romaji = []) {
     const merged = [];
     const hasTranslations = translations && translations.length > 0;
@@ -337,6 +412,7 @@ export function mergeLyrics(originals, translations = [], romaji = []) {
     return merged;
 }
 
+/** @param {any} data @returns {any} */
 export function detectAndParseLyrics(data) {
     if (!data) return { format: 'empty', originals: [], translations: [], romaji: [] };
 
@@ -374,6 +450,7 @@ export function detectAndParseLyrics(data) {
     }
 
     let format = 'unknown';
+    /** @type {any[]} */
     let originals = [];
     let translations = [];
     let romaji = [];

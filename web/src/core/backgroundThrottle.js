@@ -36,18 +36,28 @@ export const TIER_HIDDEN = 'hidden';
 export const BG_THROTTLE_DEFAULTS = { enabled: true, blurGraceMs: 1200, reassertMs: 3000 };
 
 /** 目标表：{id, tier, get, isBusy, pause, resume, skipWhen?} */
+/** @type {any[]} */
 const _targets = [];
 /** 我们真正停下来的目标：id -> 当时那个实例 */
 const _paused = new Map();
 const _listeners = new Set();
 
+/** 注入的运行环境（`{document, ...}`；未注入时用 defaultEnv） */
+/** @type {any} */
 let _env = null;
 let _installed = false;
 let _tier = TIER_NONE;
 let _occluded = false;
+/** @type {any} */
 let _blurTimer = null;
+/** @type {any} */
 let _reassertTimer = null;
 
+/**
+ * @param {any} v
+ * @param {number} fallback
+ * @returns {number}
+ */
 function num(v, fallback) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
@@ -72,19 +82,31 @@ export function bgThrottlePrefs() {
     return p;
 }
 
+/**
+ * @param {Function} fn
+ * @param {any} [arg]
+ * @returns {any}
+ */
 function call(fn, arg) {
     if (typeof fn !== 'function') return undefined;
     return fn(arg);
 }
 
+/**
+ * @param {any} t
+ * @param {any} inst
+ * @returns {boolean}
+ */
 function safeBusy(t, inst) {
     try { return !!call(t.isBusy, inst); } catch (e) { logCatch('backgroundThrottle', e); return false; }
 }
 
+/** @param {any} t @returns {boolean} */
 function safeSkip(t) {
     try { return !!call(t.skipWhen); } catch (e) { logCatch('backgroundThrottle', e); return false; }
 }
 
+/** @param {any} t @returns {any} */
 function resolveInstance(t) {
     try { return t.get() || null; } catch (e) { logCatch('backgroundThrottle', e); return null; }
 }
@@ -108,6 +130,8 @@ export function registerThrottleTarget(target) {
     return true;
 }
 
+/** @param {string} id @returns {boolean} 是否真的注销了 */
+/** @param {string} id @returns {boolean} 是否真的注销了 */
 export function unregisterThrottleTarget(id) {
     const i = _targets.findIndex(t => t.id === id);
     if (i < 0) return false;
@@ -142,6 +166,7 @@ export function backgroundThrottleSnapshot() {
     };
 }
 
+/** @param {any} reason @returns {void} */
 function emit(reason) {
     const snap = Object.assign({ reason: reason || '' }, backgroundThrottleSnapshot());
     _listeners.forEach(fn => {
@@ -214,6 +239,7 @@ export function syncBackgroundThrottle(reason, forceTier) {
     return _tier;
 }
 
+/** @param {string} tier @returns {void} */
 function markRoot(tier) {
     try {
         const doc = _env && _env.document;
@@ -279,6 +305,12 @@ function onPageHide() {
     syncBackgroundThrottle('pagehide');
 }
 
+/**
+ * @param {any} target
+ * @param {string} type
+ * @param {Function} fn
+ * @returns {() => void} 解绑函数
+ */
 function bind(target, type, fn) {
     if (!target || typeof target.addEventListener !== 'function') return () => {};
     target.addEventListener(type, fn);
@@ -319,7 +351,7 @@ export function installBackgroundThrottle(deps = {}) {
         clearBlurTimer();
         stopReassert();
         _occluded = false;
-        unbinds.forEach(fn => { try { fn(); } catch (e) { logCatch('backgroundThrottle', e); } });
+        /** @type {any[]} */ (unbinds).forEach(fn => { try { fn(); } catch (e) { logCatch('backgroundThrottle', e); } });
         /* 卸载必须把停下过的循环交还原主，不能给下一次装配留脏账 */
         syncBackgroundThrottle('uninstall', TIER_NONE);
     };

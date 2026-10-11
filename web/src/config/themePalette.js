@@ -30,7 +30,7 @@ export const ACCENT_PRESETS = [
 
 /** 默认强调色：defaults.js 与 styles/tokens.css 的 --aria-accent 都指向这里，
  *  别再写第二份字面量（两处一致性由 tests/js/test_design_tokens.js 的 T1 钉住） */
-export const DEFAULT_ACCENT = ACCENT_PRESETS[0].hex;
+export const DEFAULT_ACCENT = (/** @type {any} */ (ACCENT_PRESETS[0])).hex;
 
 /** 灰阶：非高亮歌词行 */
 export const TEXT_PRESETS = ['#ffffff', 'rgba(255,255,255,0.6)', 'rgba(255,255,255,0.4)', '#cccccc', '#888888'];
@@ -63,12 +63,19 @@ export const PALETTES = {
 
 const ACCENT_SET = new Set(ACCENT_PRESETS.map(p => p.hex.toLowerCase()));
 
-/** 是不是预设强调色（202 的下载歌词/主题面板用它决定"要不要显示成预设名"） */
+/**
+ * 是不是预设强调色（202 的下载歌词/主题面板用它决定"要不要显示成预设名"）。
+ * @param {string} hex
+ */
 export function isPresetAccent(hex) {
     return typeof hex === 'string' && ACCENT_SET.has(hex.trim().toLowerCase());
 }
 
-/** 按色值取预设名（找不到返回 null，说明是自定义色） */
+/**
+ * 按色值取预设名（找不到返回 null，说明是自定义色）。
+ * @param {string} hex
+ * @returns {Record<string, any>|null}
+ */
 export function accentPresetOf(hex) {
     const k = typeof hex === 'string' ? hex.trim().toLowerCase() : '';
     return ACCENT_PRESETS.find(p => p.hex.toLowerCase() === k) || null;

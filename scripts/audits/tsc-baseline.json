@@ -1,0 +1,28 @@
+{
+    "errors": 0,
+    "scope": [
+        "web/src/types/**/*.d.ts",
+        "web/src/infrastructure/**/*.js",
+        "web/src/core/*.js",
+        "web/src/services/*.js",
+        "web/src/parsers/*.js",
+        "web/src/config/*.js",
+        "web/src/utils/*.js",
+        "web/src/ui/*.js",
+        "web/src/components/*.js"
+    ],
+    "exclude": [
+        "web/src/vendor/**",
+        "web/src/core/visualizers/**",
+        "web/src/core/pvEngine/**",
+        "web/src/core/tunnelEngine/**",
+        "web/src/core/previewEngine.js",
+        "web/src/core/proceduralLayout.js",
+        "web/src/core/audioPlayer.js",
+        "web/src/services/favoritesService.js",
+        "web/src/services/fontService.js",
+        "web/src/services/playlistService.js"
+    ],
+    "updatedAt": "2026-10-11",
+    "note": "棘轮基线：类型错误数只降不升。P4：严格度分档已全部落地（strictNullChecks 581→0、useUnknownInCatchVariables 51→0、noImplicitAny 2258→0、四档零成本档）。P5（2026-10-11）：再开四档 noImplicitReturns / noFallthroughCasesInSwitch / noUnusedLocals / noUnusedParameters，开档前后基线均为 0（前两档开箱即 0；后两档 27 条存量已逐条清理：死变量死导入直接删，因签名兼容而有意不读的入参改 _ 前缀并注明）。★ 原基线 24 条第三方噪音已用 B 方案解决：services/vendor/han-convert/index.d.mts 是手写同名声明，tsc 解析 './index.mjs' 时先剥扩展名、优先命中 .d.mts，那份 minified JS 从此不进 checkJs（--traceResolution 已验证：「'index.mjs' has a '.mjs' extension - stripping it」→「'index.d.mts' exists - use it」）。要点：TS 的 exclude 对「被 import 的文件」无效，同目录同名声明是唯一能把第三方 JS 挡在检查外的机制——后续给别的 vendor 挡噪音可复用此法。P6（2026-10-11）：四档全开——noImplicitOverride / noUncheckedSideEffectImports（开箱即 0）、exactOptionalPropertyTypes（9→0）、noUncheckedIndexedAccess（431→0，本档最大）。最后一档的推进方式：先给热路径补行为测试（新增 4 个测试文件 / 52 条，JS 测试 986→1038，覆盖缺口 24→0），再逐文件清 431 处。探针实证该档连「Float32Array 索引读取」都会加 undefined、且 for(i<arr.length) 这类界内循环不豁免，故规则是「界内可证用 JSDoc 断言、真可能 undefined 用守卫」；一处源头收口常能消掉十几条下游判空，返回类型改元组也能一并消掉全部解构点。两个坑：① 新增局部量要避开函数内既有 var 名（var 不隔离作用域，同名不同类型直接报错，本轮踩出 7 条新错）；② 别在 tsconfig.json 的块注释里写 JSDoc 结束定界符——注释提前闭合 → tsconfig 非法 → tsc 忽略配置去扫全仓，错误数暴涨且来源是 scratch/、src-tauri/target/（极具误导性）。剩 noPropertyAccessFromIndexSignature(533) 未开。经验汇总：① 编辑批次与验证命令必须分轮（并行会让 tsc 读到中间态，出现行号错位的假故障）；② 动手前逐行确认缩进——本仓 4 空格/2 空格/Tab/顶格四种并存，且同一文件内模块级与函数体常常不同；③ 写 @returns/@param 前先读实现，函数名像「返回一个数」但实际返回结构体的很多；④ {Object} / {Array} 是最大污染源：Object 无任何属性、Array 缺类型参数；⑤ 运行期补齐字段的对象用 any，不要用联合推断；⑥ 收口动态键用 Record<string, any> 而不是给 Window/globalThis 加索引签名（后者会放弃拼写检查）；⑦ 回调密集的对象写 @typedef（NativeAudioApi / LyricFetchers）；⑧ 类型收窄要想清下游——把 root 收成 Document|Element 反而让 el 失去 placeholder/dataset；⑨ exactOptionalPropertyTypes 区分「属性缺席」与「值为 undefined」，修法看目标类型归属：库类型（RequestInit）改条件展开让键真缺席（零行为变化），自有 @typedef/@param 则说明声明本身没写实、应补 |undefined，别往调用点塞断言；⑩ 第三方 vendor 用「同目录同名 .d.mts」挡在 checkJs 之外（exclude 对「被 import 的文件」无效）；⑪ noUncheckedIndexedAccess 下把 number[] 返回类型改成元组，能让所有 `const [a,b,c] = …` 解构点一次确定（数组字面量同样要标元组）；⑫ 两处与类型无关但代价极高的坑：var 不隔离作用域（新增局部量撞名即报错）、tsconfig 块注释里不能出现 JSDoc 结束定界符（会让 tsc 忽略整份配置）。"
+}

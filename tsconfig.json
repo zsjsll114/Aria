@@ -1,0 +1,113 @@
+{
+    /* ============================================================
+     * tsconfig.json — 只做类型检查，不产出任何东西（noEmit）。
+     *
+     * 本仓库的哲学是「源码即运行时」：web/ 下是浏览器直接加载的 .js，没有构建步骤。
+     * 所以这里**不迁移 .ts**，只用 TypeScript 的类型引擎去消费仓库里已写了两年的
+     * JSDoc 注释（@param/@returns/@typedef）——把「白写的注释」变成真约束。
+     *
+     * 当前范围：types/*.d.ts，加 config/ utils/ ui/ components/ core/ services/ parsers/
+     * 各目录顶层的 *.js；并 exclude 掉 vendor（第三方浏览器构建）、Pixi 视觉引擎与
+     * 影子模块（未接线）。基线见 tsc-baseline.json。第三方 vendor 另用手写同名
+     * .d.mts 挡在 checkJs 之外（见 services/vendor/han-convert/index.d.mts）。
+     * 扩大范围 = 调 include/exclude，再由 scripts/audits/tsc-ratchet.mjs 的基线
+     * （只降不升）兜住增量。详见 docs/typescript-类型化路线.md。
+     *
+     * 严格度起步放宽（strict:false / noImplicitAny:false）：一次性开 strict 会产出
+     * 成千上万条噪音，噪音规则等于没有规则。靠棘轮逐目录收紧。
+     * ============================================================ */
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "strict": false,
+        /* P4 第三档（2026-10-10 开）：noImplicitAny —— 隐式 any 的参数/变量必须显式标注 */
+        "noImplicitAny": true,
+        /* ★ P4 第一档（2026-10-10 开）：strictNullChecks —— null/undefined 安全，价值最高，
+           且高度集中在 mvUpscale(111) / equalizer(97) 两个文件。存量挂基线、逐文件修、
+           修一批用 `tsc-ratchet.mjs --update` 降一批。 */
+        "strictNullChecks": true,
+        /* P4 分档收紧：下列四项实测**零成本**（开与不开错误数都是 0），直接开。
+           P4 的另外三档存量已全部还完（见 docs/typescript-类型化路线.md）：
+             useUnknownInCatchVariables  51 → 0
+             strictNullChecks           581 → 0
+             noImplicitAny             2258 → 0（2026-10-11 清零，故上面已置 true）
+           推进方式始终是「一批一档、棘轮锁住」：先把存量还到 0 再开档，
+           绝不让 0 基线被存量债顶高（顶高一次，棘轮就从「防线」退化成「账本」）。 */
+        "noImplicitThis": true,
+        "strictFunctionTypes": true,
+        "strictBindCallApply": true,
+        "alwaysStrict": true,
+        "useUnknownInCatchVariables": true,
+        /* ★ P5 新增四档（2026-10-11）：四档全开前后基线都是 0。
+           noImplicitReturns / noFallthroughCasesInSwitch 开箱即 0（本项目无此类疏漏）；
+           noUnusedLocals(18) / noUnusedParameters(9) 的 27 条存量已逐条清理——
+           死变量与死导入直接删，因「签名兼容」而有意不读的入参改 _ 前缀并注明原因。
+           注意 noUnusedLocals **没有** _ 前缀豁免（只有 noUnusedParameters 有），
+           所以前者只能删、不能靠改名；解构位要用 `key: _key` 形式。 */
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        /* ★ P6（2026-10-11）：本轮新开四档。
+           前两档实测开箱即 0（本项目无「该写 override 没写」的类继承疏漏），直接开；
+           exactOptionalPropertyTypes 的 9 条存量已逐处还完——它区分「属性缺席」与
+           「属性存在但值为 undefined」，本仓踩的全是后者（把可能 undefined 的局部量
+           塞进 `xxx?: T` 的对象字面量）。
+
+           noUncheckedIndexedAccess：431 条已全部还完（先补 DSP/解析热路径的行为测试、
+           再逐文件清；实测与手法见 docs/typescript-类型化路线.md「P6 分档实测」）。
+           ⚠ 这一档连**定长 TypedArray** 的索引读取都会加上 undefined（探针实测），
+           故 DSP 循环里 `arr[i]` 的收口一律用 JSDoc 断言包住取值
+           （注意：本行所在的块注释里不能出现 JSDoc 的结束定界符，否则注释会被提前闭合、
+           整份 tsconfig 变成非法 JSON，tsc 转而忽略它去扫全仓——本轮已踩过一次）
+           —— `.js` 文件里也不能用 TS 的 `!` 非空断言。
+           形状约定统一收在各文件头的 @typedef，不要就地写 any。
+           ★ 新增局部量必须避开函数内既有的 `var` 名：var 不隔离作用域，
+             同名不同类型会直接产出 "Subsequent variable declarations must have the same type"。 */
+        "noImplicitOverride": true,
+        "noUncheckedSideEffectImports": true,
+        "exactOptionalPropertyTypes": true,
+        "noUncheckedIndexedAccess": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "types": []
+    },
+    "include": [
+        "web/src/types/**/*.d.ts",
+        "web/src/infrastructure/**/*.js",
+        "web/src/config/*.js",
+        "web/src/utils/*.js",
+        "web/src/ui/*.js",
+        "web/src/components/*.js",
+        "web/src/core/*.js",
+        "web/src/services/*.js",
+        "web/src/parsers/*.js"
+    ],
+    /* ★ 为什么 app/ 不在列（2026-10-09 实测）：app 分片经 import 链拉入 Pixi
+       （`web/vendor/pixi/pixi.mjs`，第三方打包产物），会带进 706 条第三方噪音 +
+       111 条视觉引擎噪音。TS 的 exclude 对「被 import 的文件」无效（只作用于
+       include 的 glob 展开），所以隔离第三方的唯一办法是不 include 触发它的分片。
+       app/ 待 Pixi 有可用的类型声明（或视觉引擎单独处理）后再纳入。 */
+    /* vendor（第三方浏览器构建）与视觉引擎（Pixi 渲染层）不纳入：
+       它们大量使用 Pixi 内部类型与外部全局，报错属第三方噪音而非项目债。 */
+    "exclude": [
+        "web/src/vendor/**",
+        "web/src/core/visualizers/**",
+        "web/src/core/pvEngine/**",
+        "web/src/core/tunnelEngine/**",
+        "web/src/core/previewEngine.js",
+        "web/src/core/proceduralLayout.js",
+        /* 影子模块（module-reachability 已确认「存在但未被接线」）：它们的历史不一致
+           由影子层门禁单独跟踪，不是本棘轮该背的债。 */
+        "web/src/core/audioPlayer.js",
+        "web/src/services/favoritesService.js",
+        "web/src/services/fontService.js",
+        "web/src/services/playlistService.js"
+    ]
+}

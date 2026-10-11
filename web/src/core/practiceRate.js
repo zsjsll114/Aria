@@ -61,7 +61,11 @@ export function practicePlanFor(on, rate, userPreservesPitch = true) {
 	return { rate: planRate, preservesPitch: userPreservesPitch !== false };
 }
 
-/** 把 0.05 网格上的值格式化成滑杆标签（固定两位小数）。 */
+/**
+ * 把 0.05 网格上的值格式化成滑杆标签（固定两位小数）。
+ * @param {number} rate
+ * @returns {string}
+ */
 export function formatPracticeRate(rate) {
 	return `${clampPracticeRate(rate).toFixed(2)}×`;
 }

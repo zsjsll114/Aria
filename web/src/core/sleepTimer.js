@@ -21,16 +21,24 @@ export const SLEEP_FADE_MS = 60000;
 export const SLEEP_MIN_MINUTES = 1;
 export const SLEEP_MAX_MINUTES = 600;
 
+/** @type {any} */
 let _audio = null;
 let _swapHooked = false;
 let _endAt = 0;           /* 墙钟 ms；0 = 未设定 */
 let _minutes = 0;
 let _fading = false;
+/** @type {any} */
 let _tickTimer = null;    /* 1s：剩余时间广播 / 进入淡出窗 / 到期兜底 */
+/** @type {any} */
 let _fadeRafId = null;    /* 淡出期逐帧斜坡（前台平滑） */
+/** @type {any} */
 let _fadeWatchdogId = null; /* rAF 被节流的后台时的 1s 补帧 + 到期检测 */
 const _listeners = new Set();
 
+/**
+ * @param {number} v
+ * @returns {number} 落在 [0,1]
+ */
 function clamp01(v) {
     return Math.max(0, Math.min(1, v));
 }
@@ -45,6 +53,7 @@ function baseGain() {
     return volumePercentToGain(volumePercent());
 }
 
+/** @param {number} gain 0~1 */
 function setAudioVolume(gain) {
     if (!_audio) return;
     try {
@@ -62,6 +71,7 @@ function clearFadeHandles() {
     if (_fadeWatchdogId) { clearInterval(_fadeWatchdogId); _fadeWatchdogId = null; }
 }
 
+/** @param {boolean} fired 是否到期触发 */
 function emit(fired) {
     const snap = {
         active: _endAt > 0,
@@ -144,7 +154,10 @@ function fire() {
     logWarn('sleepTimer', '定时到达，已暂停播放（队列保留）');
 }
 
-/** 注入 audio 元素（#audioPlayer）。必须在 startSleepTimer 前调用一次。 */
+/**
+ * 注入 audio 元素（#audioPlayer）。必须在 startSleepTimer 前调用一次。
+ * @param {HTMLAudioElement} audio
+ */
 export function initSleepTimer(audio) {
     _audio = audio || null;
     /* ★ Automix Phase 2（swap 适配）：角色互换后 _audio 重指新活跃元素，

@@ -30,6 +30,7 @@
 import { logCatch } from '../services/log.js';
 
 /** 打开中的浮层栈；栈顶优先接收 ESC */
+/** @type {any[]} */
 const stack = [];
 
 /** 可聚焦元素选择器（键盘陷阱用） */
@@ -42,6 +43,11 @@ const FOCUSABLE = [
     '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+/**
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
 function readZToken(name, fallback) {
     if (typeof document === 'undefined') return fallback;
     try {
@@ -53,6 +59,7 @@ function readZToken(name, fallback) {
     }
 }
 
+/** @param {any} root @returns {any[]} */
 function focusableIn(root) {
     if (!root || typeof getComputedStyle !== 'function') return [];
     return Array.from(root.querySelectorAll(FOCUSABLE)).filter((el) => {
@@ -71,11 +78,17 @@ export function topOverlay() {
     return stack.length ? stack[stack.length - 1] : null;
 }
 
+/** @param {any} el @returns {boolean} */
 export function isOverlayOpen(el) {
     return stack.some((e) => e.el === el);
 }
 
 /* Tab 焦点陷阱：只在 shell 内部循环，不让焦点跑到背后的页面上 */
+/**
+ * @param {any} e
+ * @param {any} shell
+ * @returns {void}
+ */
 function trapTab(e, shell) {
     const list = focusableIn(shell);
     if (list.length === 0) {
@@ -99,12 +112,15 @@ function trapTab(e, shell) {
  * @param {HTMLElement} el 全屏容器（遮罩）
  * @param {object} [opts]
  * @param {string} [opts.shell='.aria-modal-shell'] 面板选择器
+ * @param {HTMLElement} [opts.shellEl] 直接指定面板元素（绕过 shell 选择器）
  * @param {string} [opts.labelledBy] 作为标题的元素选择器（会挂 aria-labelledby）
  * @param {string} [opts.label] 无标题时的 aria-label
  * @param {boolean} [opts.escClose=true]
  * @param {boolean} [opts.backdropClose=true]
  * @param {*} [opts.cancelResult=null] ESC / 点遮罩触发关闭时传给 onClose 的结果
  * @param {boolean} [opts.removeOnClose=true] 关闭时是否从 DOM 移除
+ * @param {string} [opts.zToken='--aria-z-modal'] 层级令牌（CSS 变量名）
+ * @param {boolean} [opts.selectOnFocus] 自动聚焦到可 select 的元素时是否全选
  * @param {Function} [opts.onClose] 唯一结算点，只调用一次
  * @returns {{el:HTMLElement, shell:HTMLElement, close:Function}|null}
  */
@@ -113,7 +129,8 @@ export function openOverlay(el, opts = {}) {
     const existing = stack.find((e) => e.el === el);
     if (existing) return existing.handle;
 
-    const shell = (opts.shell && el.querySelector(opts.shell)) || opts.shellEl || el;
+    const shell = /** @type {HTMLElement} */ ((opts.shell && el.querySelector(opts.shell)) || opts.shellEl || el);
+    /** @type {Record<string, any>} */
     const entry = {
         el,
         shell,
@@ -124,7 +141,7 @@ export function openOverlay(el, opts = {}) {
         cancelResult: opts.cancelResult === undefined ? null : opts.cancelResult,
         onClose: typeof opts.onClose === 'function' ? opts.onClose : null,
         settled: false,
-        handle: null,
+        handle: /** @type {any} */ (null),
     };
 
     el.classList.add('aria-modal-backdrop');
@@ -148,7 +165,7 @@ export function openOverlay(el, opts = {}) {
         shell.setAttribute('aria-label', opts.label);
     }
 
-    entry.onKeydown = (e) => {
+    entry.onKeydown = /** @type {(e: any) => void} */ ((e) => {
         /* 只响应最顶层：嵌套浮层时 ESC 关的是最上面那个 */
         if (topOverlay() !== entry) return;
         if (e.key === 'Escape' && entry.escClose) {
@@ -158,13 +175,15 @@ export function openOverlay(el, opts = {}) {
             return;
         }
         if (e.key === 'Tab') trapTab(e, shell);
-    };
-    entry.onBackdropClick = (e) => {
+    });
+    entry.onBackdropClick = /** @type {(e: any) => void} */ ((e) => {
         if (topOverlay() !== entry) return;
         if (entry.backdropClose && e.target === el) entry.handle.close(entry.cancelResult);
-    };
+    });
 
-    entry.handle = { el, shell, close: (result) => closeOverlay(el, result) };
+    /** @type {(result: any) => void} */
+    const closeWithResult = (result) => closeOverlay(el, result);
+    entry.handle = { el, shell, close: closeWithResult };
     stack.push(entry);
 
     document.addEventListener('keydown', entry.onKeydown, true);
@@ -189,6 +208,11 @@ export function openOverlay(el, opts = {}) {
 /**
  * 关闭浮层。幂等：重复调用只生效一次。
  * onClose 是唯一结算点（Promise 的 resolve 都挂在它上面）。
+ */
+/**
+ * @param {any} el
+ * @param {any} [result] 结算值（透传给 onClose）
+ * @returns {boolean} 是否真的关了（已结算/未入栈时为 false）
  */
 export function closeOverlay(el, result) {
     const idx = stack.findIndex((e) => e.el === el);

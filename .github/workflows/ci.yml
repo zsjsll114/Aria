@@ -74,6 +74,37 @@ jobs:
       - name: Resolve instrumentation gate self-test (门禁本身必须会响)
         run: node --test tests/js/test_resolve_instrumentation.js
 
+      # ★ 配置键契约门禁（AGENTS.md 约束 11）：DEFAULT_SETTINGS 顶层键必须在
+      #   loadSettings 重建块里补齐，否则有存档时该键被静默丢弃（backup 键踩过）。
+      - name: Settings key-contract gate (DEFAULT_SETTINGS 顶层键必须在 loadSettings 重建块里)
+        run: node scripts/audits/settings-contract.mjs --check
+
+      - name: Settings key-contract gate self-test (门禁本身必须会响)
+        run: node --test tests/js/test_settings_contract.js
+
+      # ★ 页面 URL 必须 localhost（AI 反代 Worker 按 ALLOWED_ORIGINS 校验 Origin）
+      - name: Window URL must be localhost gate (127.0.0.1 会让 AI 反代 403)
+        run: node scripts/audits/localhost-origin.mjs --check
+
+      - name: Window URL gate self-test (门禁本身必须会响)
+        run: node --test tests/js/test_localhost_origin.js
+
+      # ★ TypeScript 类型检查棘轮（noEmit，不产物）：让 JSDoc 类型注释真正生效，
+      #   错误数只降不升；起步只查 web/src/infrastructure/（当前 0 错误）。
+      #   扩大 include 范围的路线见 docs/typescript-类型化路线.md。
+      - name: TypeScript type-check ratchet (JSDoc 类型只增不减)
+        run: node scripts/audits/tsc-ratchet.mjs --check
+
+      - name: TypeScript type-check ratchet self-test (门禁本身必须会响)
+        run: node --test tests/js/test_tsc_ratchet.js
+
+      # ★ globals.d.ts 与 eslint 的 PROJECT_GLOBAL_KEYS 必须同步（改清单未重新生成即红）
+      - name: globals.d.ts sync gate (清单唯一源 = eslint.config.mjs)
+        run: node scripts/audits/globals-dts.mjs --check
+
+      - name: globals.d.ts sync gate self-test (门禁本身必须会响)
+        run: node --test tests/js/test_globals_dts.js
+
       # ★ 新增测试文件不得「写了但没进 CI」（本仓库真漏过 15 个，全靠人肉发现）
       - name: Test registry gate (每个 tests/**/test_*.?(js|py) 必须在 ci.yml 里跑到)
         run: node scripts/audits/test-registry.mjs --check

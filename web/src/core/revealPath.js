@@ -25,13 +25,14 @@ export async function canReveal() {
 	try {
 		const dir = await downloadsDir();
 		return !!dir;
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch(TAG, e);
 		return false;
 	}
 }
 
 /** 系统下载目录（绝对路径）；拿不到返回 null。★ 结果缓存，整会话只问一次。 */
+/** @type {Promise<any>|null} */
 let _dirPromise = null;
 export function downloadsDir() {
 	if (_dirPromise) return _dirPromise;
@@ -41,7 +42,7 @@ export function downloadsDir() {
 			try {
 				const d = await call('plugin:path|resolve_directory', args, CALL_TIMEOUT);
 				if (d && typeof d === 'string') return d;
-			} catch (e) {
+			} catch (/** @type {any} */ e) {
 				if (e && e.message === UNAVAILABLE.NO_SHELL) return null;
 				logCatch(TAG, e);
 			}
@@ -69,12 +70,12 @@ export async function revealInExplorer(fileName) {
 				await call('plugin:opener|reveal_item_in_dir', { path: p }, CALL_TIMEOUT);
 				logInfo(TAG, '已定位:', p);
 				return true;
-			} catch (e) {
+			} catch (/** @type {any} */ e) {
 				logCatch(TAG, e);
 			}
 		}
 		return false;
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch(TAG, e);
 		return false;
 	}
@@ -105,7 +106,7 @@ export async function offerReveal(fileName, opts = {}) {
 		});
 		if (ok) await revealInExplorer(fileName);
 		return true;
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch(TAG, e);
 		return false;
 	}

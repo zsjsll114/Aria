@@ -26,15 +26,25 @@ export const OSD_RATE_MIN = 0.5;
 export const OSD_RATE_MAX = 2;
 
 const _listeners = new Set();
+/** @type {{kind: string|null, visible: boolean, revision: number, entered: boolean, merged: number, data: any}} */
 let _state = { kind: null, visible: false, revision: 0, entered: false, merged: 0, data: null };
+/** @type {any} */
 let _hideTimer = null;
+/** @type {any} */
 let _seekRun = null;
 
+/** @param {any} v @returns {number} */
 function toNum(v) {
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? n : NaN;
 }
 
+/**
+ * @param {number} v
+ * @param {number} lo
+ * @param {number} hi
+ * @returns {number}
+ */
 function clamp(v, lo, hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
@@ -83,6 +93,10 @@ function emit() {
 /**
  * 呈现一次内容。合并语义的唯一落点：
  * 新类别/从隐藏态起来 → entered=true（UI 播一次入场），同类刷新只 bump revision。
+ */
+/**
+ * @param {string} kind
+ * @param {any} data
  */
 function present(kind, data) {
     const isFresh = !_state.visible || _state.kind !== kind;

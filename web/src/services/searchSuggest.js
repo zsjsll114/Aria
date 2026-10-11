@@ -37,28 +37,43 @@ const HOT_PATHS = {
     kugou: '/search/hot',
 };
 
+/** @type {Record<string, (kw: string) => string>} */
 const SUGGEST_PATHS = {
     tencent: kw => `/getSmartbox?key=${encodeURIComponent(kw)}`,
     netease: kw => `/search/suggest?keywords=${encodeURIComponent(kw)}`,
     kugou: kw => `/search/suggest?keywords=${encodeURIComponent(kw)}`,
 };
 
-/** 该源（或其回退源）能不能出热词 */
+/**
+ * 该源（或其回退源）能不能出热词。
+ * @param {string} source
+ * @returns {boolean}
+ */
 export function hotSupported(source) {
-    return Boolean(HOT_PATHS[source] || HOT_FALLBACK[source]);
+    return Boolean(/** @type {Record<string, any>} */ (HOT_PATHS)[source] || /** @type {Record<string, any>} */ (HOT_FALLBACK)[source]);
 }
-/** 该源（或其回退源）能不能出联想词 */
+/**
+ * 该源（或其回退源）能不能出联想词。
+ * @param {string} source
+ * @returns {boolean}
+ */
 export function suggestSupported(source) {
-    return Boolean(SUGGEST_PATHS[source] || SUGGEST_FALLBACK[source]);
+    return Boolean(/** @type {Record<string, any>} */ (SUGGEST_PATHS)[source] || /** @type {Record<string, any>} */ (SUGGEST_FALLBACK)[source]);
 }
 
-/** 实际用于请求的源（回退后） */
+/**
+ * 实际用于请求的源（回退后）。
+ * @param {string} source
+ * @param {Record<string, any>} fallback
+ * @returns {string}
+ */
 export function effectiveSource(source, fallback) {
     return fallback[source] ? fallback[source] : source;
 }
 
 /* ---------- 纯解析 ---------- */
 
+/** @param {any} s @returns {string} */
 function cleanText(s) {
     /* 上游爱在关键词尾部塞空格（QQ 的 hotkey.k 实测带尾空格），也可能带
        <em> 高亮标记（酷狗搜索的 SongName 就是），一并剥掉。 */
@@ -68,6 +83,11 @@ function cleanText(s) {
         .trim();
 }
 
+/**
+ * @param {any[]} list
+ * @param {number} max
+ * @returns {string[]}
+ */
 function uniqWords(list, max) {
     const out = [];
     const seen = new Set();
@@ -86,23 +106,29 @@ function uniqWords(list, max) {
 /**
  * 热词解析。返回字符串数组（已去重、去空白、限长）。
  * @param {'tencent'|'netease'|'kugou'} source 实际请求的源
- * @param {object} json 上游原始 JSON
+ * @param {Record<string, any>} json 上游原始 JSON
+ */
+/**
+ * @param {string} source
+ * @param {any} json
+ * @returns {string[]}
  */
 export function parseHotWords(source, json) {
     if (!json) return [];
     if (source === 'tencent') {
         const arr = (((json.response || {}).data || {}).hotkey) || [];
-        return uniqWords(arr.map(x => x && x.k), MAX_HOT);
+        return uniqWords(/** @type {any[]} */ (arr).map(x => x && x.k), MAX_HOT);
     }
     if (source === 'netease') {
         const arr = (((json.result || {}).hots) || []);
-        return uniqWords(arr.map(x => x && (x.first || x.keyword)), MAX_HOT);
+        return uniqWords(/** @type {any[]} */ (arr).map(x => x && (x.first || x.keyword)), MAX_HOT);
     }
     if (source === 'kugou') {
         const groups = (((json.data || {}).list) || []);
+        /** @type {any[]} */
         const flat = [];
-        groups.forEach(g => {
-            ((g && g.keywords) || []).forEach(k => flat.push(k && k.keyword));
+        /** @type {any[]} */ (groups).forEach(g => {
+            /** @type {any[]} */ ((g && g.keywords) || []).forEach(k => flat.push(k && k.keyword));
         });
         return uniqWords(flat, MAX_HOT);
     }
@@ -111,35 +137,39 @@ export function parseHotWords(source, json) {
 
 /**
  * 联想词解析。返回字符串数组（已去重、去空白、限长）。
- * @param {'tencent'|'netease'|'kugou'} source 实际请求的源
- * @param {object} json 上游原始 JSON
+ * @param {string} source 实际请求的源（回退后）
+ * @param {Record<string, any>} json 上游原始 JSON
+ * @returns {string[]}
  */
 export function parseSuggestions(source, json) {
     if (!json) return [];
     if (source === 'tencent') {
         const d = (json.response || {}).data || {};
+        /** @type {any[]} */
         const flat = [];
         /* 歌曲优先：用户点联想词基本都是想搜歌，歌手/专辑/MV 放后面补位 */
         ['song', 'singer', 'album', 'mv'].forEach(k => {
             const it = d[k];
-            ((it && it.itemlist) || []).forEach(x => flat.push(x && x.name));
+            /** @type {any[]} */ ((it && it.itemlist) || []).forEach(x => flat.push(x && x.name));
         });
         return uniqWords(flat, MAX_SUGGEST);
     }
     if (source === 'netease') {
         const r = (json.result || {});
+        /** @type {any[]} */
         const flat = [];
         ['songs', 'artists', 'albums', 'playlists', 'mvs'].forEach(k => {
-            (r[k] || []).forEach(x => flat.push(x && x.name));
+            /** @type {any[]} */ (r[k] || []).forEach(x => flat.push(x && x.name));
         });
         return uniqWords(flat, MAX_SUGGEST);
     }
     if (source === 'kugou') {
         const d = json.data;
         const groups = Array.isArray(d) ? d : (d ? [d] : []);
+        /** @type {any[]} */
         const flat = [];
         groups.forEach(g => {
-            ((g && g.RecordDatas) || []).forEach(x => flat.push(x && x.HintInfo));
+            /** @type {any[]} */ ((g && g.RecordDatas) || []).forEach(x => flat.push(x && x.HintInfo));
         });
         return uniqWords(flat, MAX_SUGGEST);
     }
@@ -148,6 +178,11 @@ export function parseSuggestions(source, json) {
 
 /* ---------- 请求 ---------- */
 
+/**
+ * @param {string} source
+ * @param {string} path
+ * @returns {Promise<any>}
+ */
 async function shGet(source, path) {
     const key = selfhostKeyOf(source);
     if (!key) return null;
@@ -167,19 +202,25 @@ async function shGet(source, path) {
 }
 
 /** 拿该源的热词（不可用/失败一律回 []，调用方只管渲染）。 */
+/** @param {string} source @returns {Promise<string[]>} */
 export async function fetchHotWords(source) {
     if (!hotSupported(source)) return [];
     const eff = effectiveSource(source, HOT_FALLBACK);
-    const j = await shGet(eff, HOT_PATHS[eff]);
+    const j = await shGet(eff, /** @type {string} */ (/** @type {Record<string, string>} */ (HOT_PATHS)[eff]));
     return parseHotWords(eff, j);
 }
 
 /** 拿该源的联想词。keyword 为空直接回 []（不发请求）。 */
+/**
+ * @param {string} source
+ * @param {string} keyword
+ * @returns {Promise<string[]>}
+ */
 export async function fetchSuggestions(source, keyword) {
     const kw = String(keyword || '').trim();
     if (!kw) return [];
     if (!suggestSupported(source)) return [];
     const eff = effectiveSource(source, SUGGEST_FALLBACK);
-    const j = await shGet(eff, SUGGEST_PATHS[eff](kw));
+    const j = await shGet(eff, (/** @type {(kw: string) => string} */ (SUGGEST_PATHS[eff]))(kw));
     return parseSuggestions(eff, j);
 }

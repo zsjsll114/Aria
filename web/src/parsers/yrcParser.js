@@ -2,6 +2,7 @@
    （该空格本意是词间距，但行首/行尾处属于残留）。若不清除：
    渲染"逐字歌词"时首词会拆出一个空字符(空格) → 视觉上"少了第一个字"；
    英文行则表现为"第一个词缺失"。只清理边界，保留词与词之间的内嵌空格。 */
+/** @param {any[]} words */
 function trimLineBoundaryWords(words) {
     if (!words || words.length === 0) return;
     while (words.length && !words[0].text.replace(/^\s+/, '')) {
@@ -14,6 +15,11 @@ function trimLineBoundaryWords(words) {
     if (words.length) words[words.length - 1].text = words[words.length - 1].text.replace(/\s+$/, '');
 }
 
+/**
+ * YRC 行内的一条逐字标记：起始 ms、时长 ms、以及在行内的字符区间 [from, to)。
+ * @typedef {{s:number, d:number, from:number, to:number}} YrcMarker
+ */
+/** @param {string} yrcText */
 export function parseYrc(yrcText) {
     if (!yrcText) return [];
     /* 统一换行符，避免 \r\n 导致解析问题 */
@@ -22,9 +28,11 @@ export function parseYrc(yrcText) {
     for (const line of lines) {
         const lineMatch = line.match(/^\[(\d+),(\d+)\](.*)$/);
         if (!lineMatch) continue;
-        const start = parseInt(lineMatch[1]);
-        const duration = parseInt(lineMatch[2]);
-        const body = lineMatch[3];
+        /* 正则组在类型上是 `string | undefined`。!lineMatch 已判过存在，组 [1]/[2] 必然命中；
+           组 [3] 允许为空串，故用 `|| ''`（而非断言）—— 这一处收口同时消掉下游对 body 的十处判空 */
+        const start = parseInt(/** @type {string} */ (lineMatch[1]));
+        const duration = parseInt(/** @type {string} */ (lineMatch[2]));
+        const body = lineMatch[3] || '';
         const words = [];
         /* ★ QQ YRC 存在两种排布，必须按行自动识别：
            A. 文本在标记前：`编(6750,375)曲(7125,375)` —— 词文本位于「上一标记结束 ~ 本标记开始」之间，
@@ -33,10 +41,11 @@ export function parseYrc(yrcText) {
            旧实现固定按 B 解析：A 类数据中首词(位于行首、首个标记之前)会被整段丢弃 ——
               这正是"每行歌词缺失第一个字/第一个词"的根因，且行内逐字时间轴整体错位一格。 */
         const markerRe = /\((\d+),(\d+)(?:,\d+)?\)/g;
+        /** @type {YrcMarker[]} */
         const markers = [];
         let m;
         while ((m = markerRe.exec(body)) !== null) {
-            markers.push({ s: parseInt(m[1]), d: parseInt(m[2]), from: m.index, to: m.index + m[0].length });
+            markers.push({ s: parseInt(/** @type {string} */ (m[1])), d: parseInt(/** @type {string} */ (m[2])), from: m.index, to: m.index + m[0].length });
         }
         if (markers.length === 0) {
             /* 无逐字标记的普通行，作为整体保留，确保不会丢句 */
@@ -47,12 +56,15 @@ export function parseYrc(yrcText) {
             continue;
         }
         /* 首个标记之前存在非空文本 → A（文本在标记前）；否则 → B（文本在标记后） */
-        const textBefore = body.slice(0, markers[0].from).replace(/\s+/g, ' ').trim().length > 0;
+        const firstFrom = (/** @type {YrcMarker} */ (markers[0])).from;
+        const textBefore = body.slice(0, firstFrom).replace(/\s+/g, ' ').trim().length > 0;
         for (let k = 0; k < markers.length; k++) {
-            const mk = markers[k];
+            const mk = /** @type {YrcMarker} */ (markers[k]);
+            const prevTo = k === 0 ? 0 : (/** @type {YrcMarker} */ (markers[k - 1])).to;
+            const nextFrom = k + 1 < markers.length ? (/** @type {YrcMarker} */ (markers[k + 1])).from : body.length;
             const seg = textBefore
-                ? body.slice(k === 0 ? 0 : markers[k - 1].to, mk.from)   /* A：文本在前 */
-                : body.slice(mk.to, k + 1 < markers.length ? markers[k + 1].from : body.length); /* B：文本在后 */
+                ? body.slice(prevTo, mk.from)   /* A：文本在前 */
+                : body.slice(mk.to, nextFrom); /* B：文本在后 */
             const cleanWordText = seg.replace(/\s+/g, ' ');
             if (cleanWordText.trim() || cleanWordText === ' ') {
                 words.push({ text: cleanWordText, start: mk.s, end: mk.s + mk.d });
@@ -60,12 +72,12 @@ export function parseYrc(yrcText) {
         }
         if (textBefore) {
             /* A 格式：最后一个标记之后的残留文本（少见）并入末词，避免丢字 */
-            const tail = body.slice(markers[markers.length - 1].to).replace(/\s+/g, ' ');
+            const lastMarker = /** @type {YrcMarker} */ (markers[markers.length - 1]);
+            const tail = body.slice(lastMarker.to).replace(/\s+/g, ' ');
             if (tail.trim() && words.length) {
-                words[words.length - 1].text += tail;
+                (/** @type {{text:string}} */ (words[words.length - 1])).text += tail;
             } else if (tail.trim()) {
-                const last = markers[markers.length - 1];
-                words.push({ text: tail, start: last.s, end: last.s + last.d });
+                words.push({ text: tail, start: lastMarker.s, end: lastMarker.s + lastMarker.d });
             }
         }
         if (words.length > 0) {
@@ -97,6 +109,7 @@ if (typeof window !== 'undefined') {
 const LATIN_ADJACENT = /[A-Za-z0-9\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u1E00-\u1EFF]/;
 /* 左侧允许收尾标点（fallin' / word) / quote"），这些词仍是 Latin 词 */
 const LATIN_TAIL_PUNCT = /[''"")}»\u2019\u201D]$/;
+/** @param {any[]} words */
 function joinWordTexts(words) {
     let out = '';
     words.forEach(w => {
@@ -112,6 +125,7 @@ function joinWordTexts(words) {
     return out;
 }
 
+/** @param {string} yrcText */
 export function parseNeteaseYrc(yrcText) {
     if (!yrcText) return [];
     const lines = yrcText.replace(/\r\n/g, '\n').split('\n');
@@ -119,15 +133,15 @@ export function parseNeteaseYrc(yrcText) {
     for (const line of lines) {
         const lineMatch = line.match(/^\[(\d+),(\d+)\](.*)$/);
         if (!lineMatch) continue;
-        const start = parseInt(lineMatch[1]);
-        const duration = parseInt(lineMatch[2]);
-        const text = lineMatch[3];
+        const start = parseInt(/** @type {string} */ (lineMatch[1]));
+        const duration = parseInt(/** @type {string} */ (lineMatch[2]));
+        const text = lineMatch[3] || '';
         const words = [];
         const wordRegex = /\((\d+),(\d+),(\d+)\)([^()]+)/g;
         let match;
         while ((match = wordRegex.exec(text)) !== null) {
-            const wordStart = parseInt(match[1]);
-            const wordDuration = parseInt(match[2]);
+            const wordStart = parseInt(/** @type {string} */ (match[1]));
+            const wordDuration = parseInt(/** @type {string} */ (match[2]));
             const rawWordText = match[4];
             /* 折叠空白但保留单个空格：修复英文逐字歌词单词间距丢失 */
             const cleanWordText = (rawWordText || '').replace(/\s+/g, ' ');

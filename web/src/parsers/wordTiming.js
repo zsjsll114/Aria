@@ -28,6 +28,7 @@ const FALLBACK_LINE_MS = 4000;
 export const SYNTHESIZED = 'synthesized';
 
 /** 这一行的 words 是不是合成出来的 */
+/** @param {any} line @returns {boolean} */
 export function isSyntheticWordLine(line) {
     return !!(line && line.wordTiming === SYNTHESIZED);
 }
@@ -36,7 +37,7 @@ export function isSyntheticWordLine(line) {
  * 取一行**真实**的逐字数据；合成的或脏数据一律返回 null。
  * 给「拿 line.words 判真值」的一侧用：下载歌词、"逐字歌词"标签、歌词源质量打分。
  * 渲染侧不要用这个——它要的就是有就用（合成的也比整行一跳好）。
- * @param {Object} line
+ * @param {any} line
  * @returns {Array<{text:string,start:number,end:number}>|null}
  */
 export function realWordsOf(line) {
@@ -66,14 +67,15 @@ export function stripSyntheticWords(lines) {
  * @returns {Array<{text: string, weight: number}>}
  */
 export function tokenizeForKaraoke(text) {
+    /** @type {Array<{text: string, weight: number}>} */
     const out = [];
     const s = String(text == null ? '' : text);
     const n = s.length;
     let i = 0;
     while (i < n) {
-        const ch = s[i];
+        const ch = /** @type {string} */ (s[i]);
         if (/\s/.test(ch)) {
-            if (out.length) out[out.length - 1].text += ch;
+            if (out.length) (/** @type {{text:string}} */ (out[out.length - 1])).text += ch;
             else out.push({ text: ch, weight: 0 });   /* 行首空白：独立占位词元 */
             i++;
             continue;
@@ -84,7 +86,7 @@ export function tokenizeForKaraoke(text) {
             continue;
         }
         let j = i;
-        while (j < n && !/\s/.test(s[j]) && !CJK_RE.test(s[j])) j++;
+        while (j < n && !/\s/.test(/** @type {string} */ (s[j])) && !CJK_RE.test(/** @type {string} */ (s[j]))) j++;
         const seg = s.slice(i, j);
         out.push({ text: seg, weight: Math.max(1, Math.min(seg.length, 6)) });
         i = j;
@@ -93,6 +95,13 @@ export function tokenizeForKaraoke(text) {
 }
 
 /** 取一行的起止（ms）：优先行自带 end，否则用下一行 start / 总时长 / 兜底 */
+/**
+ * @param {any[]} lines
+ * @param {number} i
+ * @param {number} totalMs
+ * @param {number} maxLineMs
+ * @returns {{start:number, end:number}}
+ */
 function resolveLineRange(lines, i, totalMs, maxLineMs) {
     const line = lines[i];
     const start = Number(line.start) || 0;
@@ -124,6 +133,7 @@ export function synthesizeWords(lines, opts = {}) {
     const maxLineMs = Number(opts.maxLineMs) || DEFAULT_MAX_LINE_MS;
     const out = [];
     for (let i = 0; i < lines.length; i++) {
+        /** @type {any} */
         const line = lines[i];
         if (!line) { out.push(line); continue; }
         const text = String(line.text != null ? line.text : (line.original != null ? line.original : ''));
@@ -150,6 +160,7 @@ export function synthesizeWords(lines, opts = {}) {
 }
 
 /** 这一行自己带不带可信的真实逐字时间（合成出来的不算） */
+/** @param {any} line @returns {boolean} */
 function lineHasRealWords(line) {
     return !!(line && !isSyntheticWordLine(line) && Array.isArray(line.words) && line.words.length > 0
         && typeof line.words[0].start === 'number' && typeof line.words[0].end === 'number'
@@ -161,6 +172,7 @@ function lineHasRealWords(line) {
  * 合成出来的 words 不算——否则「合成过一次」就会被当成「平台给了精确逐字」，
  * 既让二次合成失效，也让真值判定（下载/标签/选源）被骗。
  */
+/** @param {any[]} lines @returns {boolean} */
 export function hasRealWordTiming(lines) {
     if (!Array.isArray(lines)) return false;
     return lines.some(lineHasRealWords);
@@ -183,5 +195,5 @@ export function ensureWordTiming(lines, opts = {}) {
     if (lines.every(lineHasRealWords)) return lines;
     /* 合成整组只为拿到逐行的位次区间，带真实节拍的行原样留着 */
     const fallback = synthesizeWords(lines, opts);
-    return lines.map((line, i) => (lineHasRealWords(line) ? line : fallback[i]));
+    return lines.map((line, i) => (lineHasRealWords(line) ? line : /** @type {Object} */ (fallback[i])));
 }

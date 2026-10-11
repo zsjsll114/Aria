@@ -65,6 +65,12 @@ const MV_TITLE_DENY = /超级面对面|访谈|专访|预告|花絮|幕后|探班
 
 /* 自建 vendor 代理（与 artistApi 同一条通道）。平台键必须过 selfhostKeyOf：
    搜索页的 source 是 'tencent'，后端 _SERVICES 的键是 'qq'，直接拼就是 404。 */
+/**
+ * @param {string} source
+ * @param {string} path
+ * @param {number} [timeout]
+ * @returns {Promise<any>}
+ */
 async function shGet(source, path, timeout = SH_TIMEOUT) {
     const key = selfhostKeyOf(source);
     if (!key) return null;
@@ -74,7 +80,7 @@ async function shGet(source, path, timeout = SH_TIMEOUT) {
         const res = await fetch(`/api/selfhost/${key}/proxy?path=${enc(path)}`, { signal: ctl.signal });
         if (!res.ok) return null;
         return await res.json();
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvApi', e);
         return null;
     } finally {
@@ -96,19 +102,22 @@ async function shGet(source, path, timeout = SH_TIMEOUT) {
    实测 `loadedmetadata` + `play()` 均 OK）。⇒ **MKV 不是问题，我上一版把它当嫌疑是误判。**
    ⇒ 对这批 host 保留 CDN 给出的原协议，不做无脑升级。 */
 const HTTPS_UNSUPPORTED = /(^|\.)kugou\.com$/i;
+/** @param {string} u @returns {string} */
 export function upHttps(u) {
     if (typeof u !== 'string' || !u) return '';
     try {
         if (HTTPS_UNSUPPORTED.test(new URL(u).hostname)) return u;
-    } catch (e) { /* 非绝对 URL（或环境无 URL）：落到下面的常规替换 */ }
+    } catch (/** @type {any} */ e) { /* 非绝对 URL（或环境无 URL）：落到下面的常规替换 */ }
     return u.replace(/^http:\/\//, 'https://');
 }
 
+/** @param {any} v @returns {number} */
 function toSec(v) {
     const n = Number(v) || 0;
     return n > 10000 ? Math.round(n / 1000) : Math.round(n);
 }
 
+/** @param {number} n @returns {string} */
 function fmtCount(n) {
     const v = Number(n) || 0;
     if (v >= 100000000) return String(Math.round(v / 1000000) / 100) + ' 亿';
@@ -119,6 +128,7 @@ function fmtCount(n) {
 /* ---------------- 能力声明 ---------------- */
 
 /** 该源是否支持搜索出 MV。汽水底层库没有任何 video 方法（见 docs/搜索扩展…§二），一律 false。 */
+/** @param {string} source @returns {boolean} */
 export function mvSearchSupported(source) {
     const k = selfhostKeyOf(source);
     return k === 'qq' || k === 'netease' || k === 'kugou';
@@ -132,15 +142,15 @@ export function mvSearchSupported(source) {
  * @param {string} source  'tencent' | 'netease' | 'kugou'
  * @param {string} keyword 搜索词
  * @param {Object} [opts]
- * @param {number} [opts.limit=6]  期望条数（上限 12）
- * @param {Array}  [opts.artists]  相关性基准歌手（**必须是歌曲结果里提取的那些**，
+ * @param {number|string} [opts.limit=6]  期望条数（上限 12）
+ * @param {Array<any>}  [opts.artists]  相关性基准歌手（**必须是歌曲结果里提取的那些**，
  *                                 不是"按关键词搜到的歌手"——见 finalizeMvs 的说明）
- * @param {Array}  [opts.songs]    本次搜索的歌曲结果（QQ 靠它取每首歌自带的 vid）
- * @returns {Promise<Array<{source,mvId,vid,hash,name,singer,cover,duration,playCount}>>}
+ * @param {Array<any>}  [opts.songs]    本次搜索的歌曲结果（QQ 靠它取每首歌自带的 vid）
+ * @returns {Promise<Array<{source:string, mvId:string, vid:string, hash:string, name:string, singer:string, cover:string, duration:number, playCount:number}>>}
  */
 export async function searchMvs(source, keyword, opts = {}) {
     const kw = String(keyword || '').trim();
-    const limit = Math.max(1, Math.min(12, parseInt(opts.limit, 10) || 6));
+    const limit = Math.max(1, Math.min(12, parseInt(String(opts.limit), 10) || 6));
     const artists = Array.isArray(opts.artists) ? opts.artists : [];
     const songs = Array.isArray(opts.songs) ? opts.songs : [];
     const key = selfhostKeyOf(source);
@@ -160,7 +170,7 @@ export async function searchMvs(source, keyword, opts = {}) {
            这些卡片就是"搜索结果里这些歌各自的 MV"，不需要关键词检索。 */
         else raw = mvsFromQqSongs(songs, pool);
         return finalizeMvs(raw, kw, artists, limit);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvApi', e);
         return [];
     }
@@ -187,9 +197,9 @@ export async function searchMvs(source, keyword, opts = {}) {
  *   可上游其实老老实实返回了 5 条、头两条正是 Mili 的 MV。改用歌曲自带的 artists
  *   做基准后立刻恢复。（同名歌手卡仍可用于**展示**，两者分离。）
  *
- * @param {Array} raw      各源归一化后的原始候选（可能是 limit 的 3 倍）
+ * @param {Array<any>} raw      各源归一化后的原始候选（可能是 limit 的 3 倍）
  * @param {string} keyword 搜索词
- * @param {Array} artists  **歌曲搜索结果里的歌手**（用来判定"原唱"，见上方说明）
+ * @param {Array<any>} artists  **歌曲搜索结果里的歌手**（用来判定"原唱"，见上方说明）
  * @param {number} limit   最终条数
  */
 export function finalizeMvs(raw, keyword, artists, limit) {
@@ -215,6 +225,7 @@ export function finalizeMvs(raw, keyword, artists, limit) {
 
     const kw = norm(keyword);
     const names = (Array.isArray(artists) ? artists : []).map(a => norm(a && a.name)).filter(Boolean);
+    /** @param {any} mv */
     const artistHit = (mv) => {
         const singer = norm(mv.singer);
         if (!singer) return false;
@@ -224,7 +235,7 @@ export function finalizeMvs(raw, keyword, artists, limit) {
     };
     const keep = names.length
         ? artistHit
-        : (mv) => !!kw && norm(mv.name).includes(kw);
+        : (/** @type {any} */ mv) => !!kw && norm(mv.name).includes(kw);
 
     const picked = uniq.filter(keep);
     if (uniq.length && !picked.length) {
@@ -241,6 +252,7 @@ export function finalizeMvs(raw, keyword, artists, limit) {
 /* 归一化比较用：去空白 + 去括号内容 + 小写（"追光使者(Vsinger Live)" → "追光使者"）。
    括号分两类各写一条正则：合成 `[（(【\[]…[)）】\]]` 时字符类里的 `\[` 会被 eslint
    判为多余转义，且 "（abc]" 这种跨类型配对本就是误匹配，拆开更准。 */
+/** @param {any} s @returns {string} */
 function norm(s) {
     return String(s == null ? '' : s)
         .replace(/[（(【].*?[)）】]/g, '')
@@ -250,11 +262,16 @@ function norm(s) {
 }
 
 /* 网易：/search?type=1004 → result.mvs[]（一条请求搞定，相关性由本地 finalize 精排） */
+/**
+ * @param {string} kw
+ * @param {number} limit
+ * @returns {Promise<any[]>}
+ */
 async function searchNeteaseMvs(kw, limit) {
     if (!kw) return [];
     const j = await shGet('netease', `/search?type=1004&keywords=${enc(kw)}&limit=${limit}`);
     const arr = (((j || {}).result) || {}).mvs || [];
-    return arr.map(mv => ({
+    return /** @type {any[]} */ (arr).map(mv => ({
         source: 'netease',
         mvId: String(mv.id || ''),
         vid: '', hash: '',
@@ -273,11 +290,16 @@ async function searchNeteaseMvs(kw, limit) {
    ★ 取址要的是 MvHash（实测 /video/url?hash=<MvHash> 直出 .mp4），不是 MvID。
    ★ 封面字段 Pic 是**裸文件名**，必须自己拼 imge.kugou.com/mvhdpic/{size}/
      （mvpic 也有 200，但 mvhdpic 同尺寸清晰得多：实测 16KB vs 37KB）。 */
+/**
+ * @param {string} kw
+ * @param {number} limit
+ * @returns {Promise<any[]>}
+ */
 async function searchKugouMvs(kw, limit) {
     if (!kw) return [];
     const j = await shGet('kugou', `/search?keywords=${enc(kw)}&type=mv&page=1&pagesize=${limit}`);
     const arr = (((j || {}).data) || {}).lists || [];
-    return arr.map(mv => {
+    return /** @type {any[]} */ (arr).map(mv => {
         const pic = String(mv.Pic || '').replace('{size}', '480');
         return {
             source: 'kugou',
@@ -298,6 +320,11 @@ async function searchKugouMvs(kw, limit) {
    ★ 字段来源一律是那首歌自己：name=song、cover=歌曲封面、singer=歌曲歌手、duration=interval。
      这样卡片文案与点开后播的视频必然同源，不会出现「卡上是这首、播的是另一首」。
    ★ `mvId` 用 vid 本身（QQ 的 MV 没有单独的对外 id 字段；vid 就是它的身份）。 */
+/**
+ * @param {any[]} songs
+ * @param {number} [limit]
+ * @returns {any[]}
+ */
 export function mvsFromQqSongs(songs, limit = 18) {
     const out = [];
     const seen = new Set();
@@ -338,8 +365,8 @@ export function mvsFromQqSongs(songs, limit = 18) {
  *   （青花瓷 `l00131om505` / 晴天 `w0026q7f01a`）—— 这一路的信息此前白丢了。
  *   ★ 网易的 vkeys 条目确实没有 MV 字段，但它有 /search?type=1004 兜底，故不受影响。
  *
- * @param {Array} list vkeys 搜索条目（**就地修改**）
- * @returns {Array} 同一个 list（便于链式调用）
+ * @param {Array<any>} list vkeys 搜索条目（**就地修改**）
+ * @returns {Array<any>} 同一个 list（便于链式调用）
  */
 export function adoptVkeysMvFields(list) {
     for (const it of (Array.isArray(list) ? list : [])) {
@@ -381,25 +408,27 @@ export async function fetchMvUrl(mv) {
         if (!mv.vid) return null;
         const j = await shGet('tencent', `/getMvPlay?vid=${enc(mv.vid)}`, 15000);
         return pickQqMp4(j);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvApi', e);
         return null;
     }
 }
 
 /** 从 getMvPlay 报文里挑一条可用的最小档 mp4（https 优先）。纯函数，可单测。 */
+/** @param {any} j @returns {string|null} */
 export function pickQqMp4(j) {
     const data = ((((j || {}).response) || {}).getMVUrl || {}).data;
     if (!data || typeof data !== 'object') return null;
     const key = Object.keys(data)[0];
     if (!key) return null;
     const mp4s = (data[key] && data[key].mp4) || [];
+    /** @type {any} */
     let best = null;
     for (const item of mp4s) {
-        const urls = (Array.isArray(item && item.freeflow_url) ? item.freeflow_url : [])
+        const urls = /** @type {any[]} */ (Array.isArray(item && item.freeflow_url) ? item.freeflow_url : [])
             .filter(u => typeof u === 'string' && u.startsWith('http'));
         if (!urls.length) continue;
-        const https = urls.find(u => u.startsWith('https://')) || urls[0];
+        const https = /** @type {string[]} */ (urls).find(u => u.startsWith('https://')) || urls[0];
         const size = Number((item && item.fileSize) || 0);
         if (!best || (size > 0 && (best.size === 0 || size < best.size))) {
             best = { url: https, size };
@@ -437,6 +466,7 @@ export function pickQqMp4(j) {
 /* 歌手归一化：去括号补充、去分隔符、去空白、小写。
    分隔符要去掉而不是统一：上游写法五花八门（"周杰伦/费玉清"、"A & B"、"A、B"），
    统一成某个字符反而更难比。去掉之后用双向包含判，四种写法都能互相命中。 */
+/** @param {any} s @returns {string} */
 function normSinger(s) {
     return String(s == null ? '' : s)
         .replace(/[（(【].*?[)）】]/g, '')
@@ -450,6 +480,7 @@ function normSinger(s) {
  * 这是「歌曲自带 mv 字段」的配套：字段只给 id，详情（名称/歌手/封面/时长）得再拉一次。
  * ★ duration 恒为**毫秒**（实测 364290 → 364s），与 searchNeteaseMvs 同口径。
  */
+/** @param {string} mvid @returns {Promise<any>} */
 export async function neteaseMvDetail(mvid) {
     const id = String(mvid || '').trim();
     if (!id || id === '0' || id === 'undefined') return null;
@@ -467,7 +498,7 @@ export async function neteaseMvDetail(mvid) {
             duration: Math.round((Number(d.duration) || 0) / 1000),
             playCount: fmtCount(d.playCount),
         };
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvApi', e);
         return null;
     }
@@ -478,17 +509,24 @@ export async function neteaseMvDetail(mvid) {
  * 与 searchMvs 的区别：searchMvs 会经 finalizeMvs **按歌手**筛，而"按歌名搜 MV"
  * 恰恰需要拿原始池自己按「歌名+歌手」判（见 matchMvFromCandidates）。
  * QQ 返回 []：它没有关键词搜 MV 的接口（见文件头）。
+ * @param {number|string} [pool=18] 候选池条数
+ */
+/**
+ * @param {string} source
+ * @param {string} keyword
+ * @param {number} [pool]
+ * @returns {Promise<any[]>}
  */
 export async function fetchMvCandidates(source, keyword, pool = 18) {
     const kw = String(keyword || '').trim();
     const key = selfhostKeyOf(source);
     if (!kw || !key || key === 'qq') return [];
-    const n = Math.max(1, Math.min(30, parseInt(pool, 10) || 18));
+    const n = Math.max(1, Math.min(30, parseInt(String(pool), 10) || 18));
     try {
         if (key === 'netease') return await searchNeteaseMvs(kw, n);
         if (key === 'kugou') return await searchKugouMvs(kw, n);
         return [];
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvApi', e);
         return [];
     }
@@ -507,7 +545,7 @@ export async function fetchMvCandidates(source, keyword, pool = 18) {
  *   放宽到包含会指错。
  * ★ 时长下限与标题黑名单沿用 finalizeMvs 的口径（花絮/访谈不是 MV）。
  *
- * @param {Array}  cands  fetchMvCandidates 的产物（原始候选）
+ * @param {Array<any>}  cands  fetchMvCandidates 的产物（原始候选）
  * @param {{title?:string,singer?:string}} info 目标歌曲
  * @param {{strict?:boolean}} [opts]
  */
@@ -516,6 +554,7 @@ export function matchMvFromCandidates(cands, info, opts = {}) {
     const nt = norm(info && info.title);
     const ns = normSinger(info && info.singer);
     if (!nt) return null;
+    /** @type {any} */
     let best = null;
     let bestScore = -1;
     for (const mv of (Array.isArray(cands) ? cands : [])) {
@@ -574,7 +613,7 @@ async function qqVidBySongSearch(title, singer, mid) {
         const list = ((((j || {}).response || {}).data || {}).song || {}).list || [];
         const vid = pickQqVidFromSongs(list, info);
         if (vid) return vid;
-    } catch (e) { logCatch('mvApi', e); }
+    } catch (/** @type {any} */ e) { logCatch('mvApi', e); }
     /* ② 回落到 vkeys 公网歌曲搜索 —— 它的 QQ 条目同样自带 vid（实测青花瓷 l00131om505），
        只是字段名不同（song / mid / singer 字符串）。
        ★ 这条**必须有**：自建开关没开或未登录时 ① 会整条失败，而用户那边「QQ 搜索」本身
@@ -583,14 +622,14 @@ async function qqVidBySongSearch(title, singer, mid) {
         const res = await proxyFetch(`${API_BASE}/tencent?word=${enc(kw)}&num=10&page=1`, { timeout: 6000 });
         const j = await res.json();
         const arr = (j && j.code === 200 && j.data) ? (Array.isArray(j.data) ? j.data : [j.data]) : [];
-        const vid = pickQqVidFromSongs(arr.map(it => ({
+        const vid = pickQqVidFromSongs(/** @type {any[]} */ (arr).map(it => ({
             songmid: (it && it.mid) || '',
             songname: (it && it.song) || '',
             vid: (it && it.vid) || '',
             singer: [{ name: (it && it.singer) || '' }],
         })), info);
         if (vid) return vid;
-    } catch (e) { logCatch('mvApi', e); }
+    } catch (/** @type {any} */ e) { logCatch('mvApi', e); }
     return '';
 }
 
@@ -605,8 +644,9 @@ async function qqVidBySongSearch(title, singer, mid) {
  *        先宽后严会让 Live 版抢走正主、铺上演唱会版的 MV（两者 vid 实测不同）。
  *   ③ 给了歌手基准就必须命中（双向包含，容忍「周杰伦/阿信」与大小写/分隔符写法）；
  *      候选没写歌手时不敢认。
- * @param {Array} list  getSearchByKey → response.data.song.list
- * @param {{title?:string,singer?:string,mid?:string}} info 目标歌曲
+ * @param {Array<any>} list  getSearchByKey → response.data.song.list
+ * @param {{title?:string|undefined,singer?:string|undefined,mid?:string|undefined}} info 目标歌曲
+ *   （三个键都可缺、也可显式 undefined：调用点直接传 `{title, singer, mid}` 三个局部量）
  */
 export function pickQqVidFromSongs(list, info = {}) {
     const arr = Array.isArray(list) ? list : [];
@@ -620,9 +660,10 @@ export function pickQqVidFromSongs(list, info = {}) {
     const nt = norm(t);
     const ns = normSinger(info.singer);
     /* 歌手必须先过关（没有歌手基准时只判歌名）；歌名分两轮，先严后宽。 */
+    /** @param {any} s */
     const singerOk = (s) => {
         if (!ns) return true;
-        const names = Array.isArray(s.singer) ? s.singer.map(x => (x && x.name) || '').join('/') : String(s.singer || '');
+        const names = Array.isArray(s.singer) ? /** @type {any[]} */ (s.singer).map(x => (x && x.name) || '').join('/') : String(s.singer || '');
         const sx = normSinger(names);
         return !!sx && (sx.includes(ns) || ns.includes(sx));
     };
@@ -641,7 +682,8 @@ export function pickQqVidFromSongs(list, info = {}) {
  *
  * @param {string} source  当前歌曲来源（'tencent'|'netease'|'kugou'|…）
  * @param {{title?:string,song?:string,name?:string,singer?:string,artist?:string,cover?:string,
- *          mvId?:string,mvVid?:string,vid?:string,mvHash?:string}} info
+ *          mvId?:string,mvid?:string,mvVid?:string,vid?:string,mvHash?:string,
+ *          mid?:string}} info
  * @returns {Promise<Object|null>} mvApi 形状的 MV 描述符（多一个 via 字段：vendor|search|cross）
  */
 export async function resolveMvForSong(source, info = {}) {
@@ -669,7 +711,7 @@ export async function resolveMvForSong(source, info = {}) {
                无法区分是「反查没查到」还是「反查到但取址失败」还是「压根没走这条链」。
                现在每次反查都打一行（含耗时），QQ MV 问题一眼可判。 */
             logInfo('mvApi', `[MV] QQ vid 反查${mvVid ? '命中' : '未命中'}「${title}」mid=${info.mid || '-'} → ${mvVid || '(空)'}（${Date.now() - t0}ms）`);
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('mvApi', `[MV] QQ vid 反查异常「${title}」: ${e && e.message ? e.message : e}`);
             logCatch('mvApi', e);
         }
@@ -731,10 +773,16 @@ export async function resolveMvForSong(source, info = {}) {
  * ★ 搜索词本身就是歌手名时（搜「周杰伦」）不补搜：那本来就是"看这个歌手的 MV"，
  *   空就是真的空。
  */
+/**
+ * @param {string} source
+ * @param {string} word
+ * @param {{limit?:number, artists?:any[], songs?:any[]}} [opts]
+ * @returns {Promise<any[]>}
+ */
 export async function searchMvsForWord(source, word, opts = {}) {
     const kw = String(word || '').trim();
     if (!kw) return [];
-    const limit = Math.max(1, Math.min(12, parseInt(opts.limit, 10) || 6));
+    const limit = Math.max(1, Math.min(12, parseInt(String(opts.limit ?? ''), 10) || 6));
     const artists = Array.isArray(opts.artists) ? opts.artists : [];
     const key = selfhostKeyOf(source);
     const primary = await searchMvs(source, kw, opts);
@@ -775,12 +823,19 @@ export async function searchMvsForWord(source, word, opts = {}) {
 /**
  * vkeys 公网 QQ MV 搜索。**只作兜底**，见文件头说明：全站视频检索、相关性差，
  * 且 perPage 恒为 1 —— 只能靠多页并发凑条数，条数多时容易撞风控(110000)。
- * @returns {Promise<Array>}
+ * @param {number|string} [limit=6] 期望条数（上限 8）
+ * @returns {Promise<Array<any>>}
  */
-export async function searchMvsViaVkeys(source, keyword, limit = 6) {
+/**
+ * @param {string} _source 保留入参以维持调用签名——本函数只走 vkeys 的腾讯 MV 接口，不看 source
+ * @param {string} keyword
+ * @param {number} [limit]
+ * @returns {Promise<any[]>}
+ */
+export async function searchMvsViaVkeys(_source, keyword, limit = 6) {
     const url = `${API_BASE}/music/tencent/search/mv?keyword=${enc(String(keyword || '').trim())}`;
     if (!keyword) return [];
-    const wanted = Math.max(1, Math.min(8, parseInt(limit, 10) || 6));
+    const wanted = Math.max(1, Math.min(8, parseInt(String(limit), 10) || 6));
     const pages = await Promise.all(Array.from({ length: wanted }, (_, i) => (async () => {
         try {
             const res = await proxyFetch(`${url}&page=${i + 1}`, { timeout: 6000 });

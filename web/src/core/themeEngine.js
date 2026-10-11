@@ -3,20 +3,20 @@
  * 封面颜色提取、CSS 变量管理、AI 动态主题应用、情感词着色
  */
 import { state } from '../infrastructure/state.js';
-import { dom, getBlurBgLayers, getCoverLayers } from '../infrastructure/dom.js';
-import { refineColor, rgbToHsl, hslToRgb } from '../utils/colorUtils.js';
+import { getBlurBgLayers } from '../infrastructure/dom.js';
 
 /* ★ 嶌新的倍率字号系统 */
 const FONT_BASE_ORIGINAL = 24;
 const FONT_BASE_SUB = 16;
 
+/** @param {number} size @returns {void} */
 export function applyLyricFontSize(size) {
     let scale;
     if (typeof size === 'string' && (size === 'small' || size === 'medium' || size === 'large' || size === 'xlarge')) {
         const map = { small: 0.75, medium: 1.0, large: 1.35, xlarge: 1.7 };
         scale = map[size] || 1.0;
     } else {
-        scale = parseFloat(size);
+        scale = parseFloat(String(size));
         if (isNaN(scale) || scale <= 0) scale = 1.0;
         /* ★ 迁移旧像素值：如果 >3 说明是旧的 px 值，自动转为倍率 */
         if (scale > 3) scale = scale / FONT_BASE_ORIGINAL;
@@ -33,6 +33,7 @@ export function applyLyricFontSize(size) {
     `;
 }
 
+/** @param {number} level @returns {void} */
 export function applyLyricBlurLevel(level) {
     let style = document.getElementById('lyric-blur-style');
     if (!style) { style = document.createElement('style'); style.id = 'lyric-blur-style'; document.head.appendChild(style); }
@@ -47,6 +48,7 @@ export function applyLyricBlurLevel(level) {
     style.textContent = css;
 }
 
+/** @param {string} color @returns {void} */
 export function applyHighlightColor(color) {
     const l = state.appSettings.lyrics;
     const highlightColor = color || l.highlightColor;
@@ -119,15 +121,15 @@ export function extractMainColor(imgUrl) {
         img.onload = () => {
             try {
                 const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+                const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
                 const w = 50, h = 50;
                 canvas.width = w; canvas.height = h;
                 ctx.drawImage(img, 0, 0, w, h);
                 const data = ctx.getImageData(0, 0, w, h).data;
                 let r = 0, g = 0, b = 0, count = 0;
                 for (let i = 0; i < data.length; i += 4) {
-                    if (data[i + 3] < 128) continue;
-                    r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+                    if (/** @type {number} */ (data[i + 3]) < 128) continue;
+                    r += /** @type {number} */ (data[i]); g += /** @type {number} */ (data[i + 1]); b += /** @type {number} */ (data[i + 2]); count++;
                 }
                 if (count === 0) { resolve(null); return; }
                 r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
@@ -157,7 +159,8 @@ export function applyAITheme(themeObj) {
     if (existingBlur) existingBlur.remove();
 
     /* 情感关键词着色 */
-    state.aiEmotionWords = Array.isArray(themeObj.emotion_words) ? themeObj.emotion_words : [];
+    const tw = /** @type {any} */ (themeObj);
+    state.aiEmotionWords = Array.isArray(tw.emotion_words) ? tw.emotion_words : [];
     applyEmotionWordColors();
 
     state.currentAiTheme = themeObj;
@@ -177,7 +180,7 @@ export function applyEmotionWordColors() {
         document.head.appendChild(emotionStyle);
     }
     let css = '';
-    state.aiEmotionWords.forEach((item, idx) => {
+    /** @type {any[]} */ (state.aiEmotionWords).forEach((item, idx) => {
         if (item.word && item.color) {
             css += `.word-emotion-${idx} { color: ${item.color} !important; }\n`;
             css += `.word-emotion-${idx} .word-highlight { color: ${item.color} !important; }\n`;
@@ -186,15 +189,14 @@ export function applyEmotionWordColors() {
     emotionStyle.textContent = css;
 
     /* 遍历歌词 DOM，标记匹配的情感词 */
-    state.lineElements.forEach((lineEl, lineIdx) => {
-        const words = state.wordElementsByLine[lineIdx] || [];
+    /** @type {any[]} */ (state.lineElements).forEach((_lineEl, lineIdx) => {
+        const words = /** @type {any[]} */ (state.wordElementsByLine[lineIdx] || []);
         if (words.length === 0) return;
 
         /* 拼接行内所有 word 的文本 */
         const fullText = words.map(w => w.textContent).join('');
-        let searchOffset = 0;
 
-        state.aiEmotionWords.forEach((item, eIdx) => {
+        /** @type {any[]} */ (state.aiEmotionWords).forEach((item, eIdx) => {
             if (!item.word) return;
             let searchPos = 0;
             while (searchPos < fullText.length) {

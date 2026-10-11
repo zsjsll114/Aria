@@ -7,6 +7,7 @@ export const MIN_FONT_WEIGHT = 100;
 export const MAX_FONT_WEIGHT = 900;
 export const FONT_WEIGHT_STEP = 10;
 
+/** @type {(fontWeight:any) => number|null} 非法值返回 null */
 export const normalizeFontWeight = (fontWeight) => {
     if (typeof fontWeight !== 'number' || !Number.isFinite(fontWeight)) return null;
 
@@ -14,6 +15,7 @@ export const normalizeFontWeight = (fontWeight) => {
     return Math.round(clamped / FONT_WEIGHT_STEP) * FONT_WEIGHT_STEP;
 };
 
+/** @type {(theme:any, fallback:any) => any} */
 export const resolveThemeFontWeight = (theme, fallback) => normalizeFontWeight(theme?.fontWeight) ?? fallback;
 
 const SUGAR_SERIF_FAMILY = '"獅尾四季春加糖SC"';
@@ -46,8 +48,10 @@ const CSS_GENERIC_FONT_FAMILIES = new Set([
     'fangsong',
 ]);
 
+/** @type {(fontFamily:string) => string} */
 const quoteFontFamily = (fontFamily) => `"${fontFamily.replace(/["\\]/g, '\\$&')}"`;
 
+/** @type {(fontFamily:string) => string} */
 const normalizeFontFamilyName = (fontFamily) => fontFamily.trim().replace(/^['"]|['"]$/g, '').trim();
 
 /**
@@ -60,11 +64,13 @@ const normalizeFontFamilyName = (fontFamily) => fontFamily.trim().replace(/^['"]
  * 回退 10px 默认字体（字号 249px 渲染成 7×12，用户实测「tempera 字怎么都调不大」）。
  * 按逗号拆开逐段归一化即根治；对上游的单族名输入是恒等变换。
  */
+/** @type {(input:string) => string[]} */
 const splitFontFamilyStack = (input) => {
     if (typeof input !== 'string') return [];
     return input.split(',').map(segment => segment.trim()).filter(Boolean);
 };
 
+/** @type {(fontFamily:string) => string|null} */
 const formatFontFamily = (fontFamily) => {
     const normalized = normalizeFontFamilyName(fontFamily);
     if (!normalized) return null;
@@ -74,11 +80,13 @@ const formatFontFamily = (fontFamily) => {
         : quoteFontFamily(normalized);
 };
 
+/** @type {(fontFamilies:any) => string[]} */
 export const normalizeFontFamilyStack = (fontFamilies) => {
     const seen = new Set();
+    /** @type {string[]} */
     const stack = [];
 
-    fontFamilies?.forEach(fontFamily => {
+    /** @type {any[]} */ (fontFamilies || []).forEach(fontFamily => {
         /* ★ Aria 适配：先按逗号拆（见 splitFontFamilyStack 注释），再逐段去引号去重 */
         splitFontFamilyStack(fontFamily ?? '').forEach(familyName => {
             const normalized = normalizeFontFamilyName(familyName);
@@ -100,10 +108,11 @@ export const normalizeFontFamilyStack = (fontFamilies) => {
  * 供不走 resolveThemeFontStack 的直接消费者使用（sonnet/scroll 的 engine.fontFamily
  * 会直接进 Pixi TextStyle——嵌套污染段会让渲染回退 10px 字体）。
  */
+/** @type {(input:any, fallback?:string) => string} */
 export const sanitizeCssFontFamily = (input, fallback = 'sans-serif') => {
-    const stack = normalizeFontFamilyStack(input ? [input] : [])
+    const stack = /** @type {string[]} */ (normalizeFontFamilyStack(input ? [input] : [])
         .map(formatFontFamily)
-        .filter(Boolean);
+        .filter(Boolean));
     if (stack.length === 0) return fallback;
     if (!stack.some(name => CSS_GENERIC_FONT_FAMILIES.has(name.toLowerCase()))) {
         stack.push(fallback);
@@ -111,6 +120,7 @@ export const sanitizeCssFontFamily = (input, fallback = 'sans-serif') => {
     return stack.join(', ');
 };
 
+/** @type {(theme:any) => any[]} */
 const buildCustomFontFamilyStack = (theme) => {
     const familiesToNormalize = [
         ...(theme.fontFamily ? [theme.fontFamily] : []),
@@ -126,10 +136,12 @@ const buildCustomFontFamilyStack = (theme) => {
         .filter((fontFamily) => Boolean(fontFamily));
 };
 
+/** @type {(fontStyle:any) => string} */
 export const getBuiltinThemeFontStack = (fontStyle) => {
-    return BUILTIN_FONT_STACKS[fontStyle] ?? BUILTIN_FONT_STACKS.sans;
+    return /** @type {Record<string, string>} */ (BUILTIN_FONT_STACKS)[fontStyle] ?? BUILTIN_FONT_STACKS.sans;
 };
 
+/** @type {(theme:any) => string} */
 export const resolveThemeFontStack = (theme) => {
     const fallbackStack = getBuiltinThemeFontStack(theme.fontStyle);
     const customFontStack = buildCustomFontFamilyStack(theme);
@@ -141,8 +153,9 @@ export const resolveThemeFontStack = (theme) => {
     return `${customFontStack.join(', ')}, ${fallbackStack}`;
 };
 
+/** @type {(theme:any) => string} */
 export const resolveThemeTranslationFontStack = (theme) => {
-    const fallbackStack = TRANSLATION_FONT_STACKS[theme.fontStyle] ?? TRANSLATION_FONT_STACKS.sans;
+    const fallbackStack = /** @type {Record<string, string>} */ (TRANSLATION_FONT_STACKS)[theme.fontStyle] ?? TRANSLATION_FONT_STACKS.sans;
     const customFontStack = buildCustomFontFamilyStack(theme);
 
     if (customFontStack.length === 0) {

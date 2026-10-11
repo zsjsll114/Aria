@@ -11,6 +11,12 @@ import { selfhostKeyOf } from './playSource.js';
  * 浏览器端 JSONP 跨域请求
  * 绕过一切浏览器 CORS 限制与 Mixed Content 限制（纯原生 <script> 注入）
  */
+/**
+ * @param {string} url
+ * @param {string} [paramName]
+ * @param {number} [timeout]
+ * @returns {Promise<any>}
+ */
 function jsonp(url, paramName = 'callback', timeout = 8000) {
     return new Promise((resolve, reject) => {
         if (typeof document === 'undefined') {
@@ -18,12 +24,13 @@ function jsonp(url, paramName = 'callback', timeout = 8000) {
         }
         const cbName = '__kg_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
         const script = document.createElement('script');
-        let timer = null;
+        /** @type {any} */
+let timer = null;
 
         const cleanup = () => {
             if (timer) { clearTimeout(timer); timer = null; }
             if (script.parentNode) script.parentNode.removeChild(script);
-            try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+            try { delete /** @type {any} */ (window)[cbName]; } catch (/** @type {any} */ e) { /** @type {any} */ (window)[cbName] = undefined; }
         };
 
         timer = setTimeout(() => {
@@ -31,12 +38,12 @@ function jsonp(url, paramName = 'callback', timeout = 8000) {
             reject(new Error('JSONP 请求超时'));
         }, timeout);
 
-        window[cbName] = (data) => {
+        /** @type {any} */ (window)[cbName] = /** @type {(data: any) => void} */ ((data) => {
             cleanup();
             resolve(data);
-        };
+        });
 
-        script.onerror = (e) => {
+        script.onerror = () => {
             cleanup();
             reject(new Error('JSONP 脚本加载失败'));
         };
@@ -53,6 +60,11 @@ function jsonp(url, paramName = 'callback', timeout = 8000) {
  * 1. 同源相对路径 /proxy?url= (server.py / app.py 本地服务器)
  * 2. 本地端口代理 http://127.0.0.1:8001/proxy?url= 或 http://127.0.0.1:18089/proxy?url=
  * 3. 直连 fetch (若目标支持跨域)
+ */
+/**
+ * @param {string} targetUrl
+ * @param {{timeout?:number, headers?:any, [k:string]:any}} [options]
+ * @returns {Promise<any>}
  */
 export async function proxyFetch(targetUrl, options = {}) {
     const timeoutMs = options.timeout || 8000;
@@ -77,7 +89,7 @@ export async function proxyFetch(targetUrl, options = {}) {
             if (res.ok) {
                 return res;
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             // 继续尝试下一个候选端点
         }
     }
@@ -87,6 +99,12 @@ export async function proxyFetch(targetUrl, options = {}) {
 /**
  * 搜索酷狗音乐
  * 优先采用官方 songsearch JSONP 接口，100% 免 CORS 免代理运行于浏览器
+ */
+/**
+ * @param {string} keyword
+ * @param {number} [page]
+ * @param {number} [pagesize]
+ * @returns {Promise<any>}
  */
 export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
     if (!keyword) return { success: false, message: '请输入关键词' };
@@ -98,7 +116,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
         const data = await jsonp(jsonpUrl, 'callback', 6000);
         const lists = (data && data.data && data.data.lists) || [];
         if (lists.length > 0) {
-            const list = lists.map(item => {
+            const list = /** @type {any[]} */ (lists).map(item => {
                 const song = (item.SongName || '').replace(/<\/?em>/g, '') || item.FileName || '未知歌曲';
                 const singer = (item.SingerName || '').replace(/<\/?em>/g, '') || '未知歌手';
                 const hash = item.FileHash || item.HQFileHash || item.SQFileHash || item.ResFileHash || '';
@@ -114,7 +132,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
                        点歌手名无从跳转。id 就是歌手页所需的 AuthorId（实测与
                        /search?type=author 的 AuthorId 一致）。 */
                     artists: Array.isArray(item.Singers)
-                        ? item.Singers.map(s => ({ id: String((s && s.id) || ''), mid: '', name: (s && s.name) || '' })).filter(a => a.name)
+                        ? /** @type {any[]} */ (item.Singers).map(s => ({ id: String((s && s.id) || ''), mid: '', name: (s && s.name) || '' })).filter(a => a.name)
                         : [],
                     album: album,
                     duration: item.Duration || item.HQDuration || 0,
@@ -126,7 +144,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
                 return { success: true, list };
             }
         }
-    } catch (jsonpErr) {
+    } catch (/** @type {any} */ jsonpErr) {
         logWarn('musicApi', '[KuGou Search] JSONP 搜索异常，尝试代理回退:', jsonpErr.message);
     }
 
@@ -136,7 +154,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
         const res = await proxyFetch(mobileUrl, { timeout: 6000 });
         const json = await res.json();
         const info = (json && json.data && json.data.info) || [];
-        const list = info.map(item => {
+        const list = /** @type {any[]} */ (info).map(item => {
             const songName = item.songname || item.filename || '未知歌曲';
             const singerName = item.singername || '未知歌手';
             const hash = item.hash || item['320hash'] || item.sqhash || '';
@@ -161,7 +179,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
             };
         }).filter(item => item.hash);
         return { success: true, list };
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
         logError('musicApi', '[KuGou Search] 搜索全部失败:', err);
         return { success: false, message: '搜索失败，请检查网络或本地服务器状态' };
     }
@@ -170,6 +188,7 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
 /**
  * 时长归一化：vkeys 的 interval 为中文格式（"4分29秒"），酷狗等为秒数
  */
+/** @param {any} s @returns {number} */
 export function intervalToSec(s) {
     if (typeof s === 'number') return s > 0 ? s : 0;
     const str = String(s || '');
@@ -181,14 +200,20 @@ export function intervalToSec(s) {
         const n = parseInt(str, 10);
         return isNaN(n) ? 0 : n;
     }
-    return (h ? +h[1] * 3600 : 0) + (m ? +m[1] * 60 : 0) + (sec ? +sec[1] : 0);
+    return (h ? +(/** @type {string} */ (h[1])) * 3600 : 0) + (m ? +(/** @type {string} */ (m[1])) * 60 : 0) + (sec ? +(/** @type {string} */ (sec[1])) : 0);
 }
 
 /**
  * QQ 解析池完整结果：除直链外带回 provider / quality / ext / cached / tried[]。
  * tried[] 是服务端逐 provider 记下的「每一级为什么失败」，取链详情面板（todos #15）
  * 直接用它，比翻控制台或猜 URL 前缀都准。
- * @returns {Promise<{url:string,provider:string,quality:string,ext:string,cached:boolean,tried:Array,duration:number}|null>}
+ * @returns {Promise<{url:string,provider:string,quality:string,ext:string,cached:boolean,tried:Array<any>,duration:number}|null>}
+ */
+/**
+ * @param {string} mid
+ * @param {number} [dur]
+ * @param {string} [quality]
+ * @returns {Promise<any>}
  */
 export async function qqResolveInfo(mid, dur, quality) {
     if (!mid) return null;
@@ -215,7 +240,7 @@ export async function qqResolveInfo(mid, dur, quality) {
             };
         }
         logWarn('musicApi', '[QQResolve] 解析池未命中，落回前端原链:', data && data.err);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[QQResolve] 本地解析池不可用，落回前端原链:', e.message);
     }
     return null;
@@ -226,6 +251,12 @@ export async function qqResolveInfo(mid, dur, quality) {
  * 本地服务器不在线或全源失败时返回 null，调用方落回前端原链
  * @returns {Promise<string|null>}
  */
+/**
+ * @param {string} mid
+ * @param {number} [dur]
+ * @param {string} [quality]
+ * @returns {Promise<any>}
+ */
 export async function qqResolveUrl(mid, dur, quality) {
     const info = await qqResolveInfo(mid, dur, quality);
     return info ? info.url : null;
@@ -233,7 +264,12 @@ export async function qqResolveUrl(mid, dur, quality) {
 
 /**
  * 聚合跨源兜底（服务端 gdstudio 多源：酷我→网易），仅在前三源全失败时被调用
- * @returns {Promise<{url:string}|null>}
+ * @returns {Promise<{url:string, cover:string}|null>}
+ */
+/**
+ * @param {string} songTitle
+ * @param {string} [singer]
+ * @returns {Promise<any>}
  */
 export async function fetchAggSameSongUrl(songTitle, singer = '') {
     if (!songTitle) return null;
@@ -251,7 +287,7 @@ export async function fetchAggSameSongUrl(songTitle, singer = '') {
             return { url: data.url, cover: '' };
         }
         logWarn('musicApi', '[AggResolve] 聚合兜底未命中:', data && data.err);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[AggResolve] 聚合兜底不可用:', e.message);
     }
     return null;
@@ -261,6 +297,12 @@ export async function fetchAggSameSongUrl(songTitle, singer = '') {
 
 /* 酷我搜索：返回与 vkeys 条目同构的列表 [{song,singer,id,source:'kuwo',interval,cover}]
    page 为真实后端翻页（gdstudio pages），单页上限实测 99 */
+/**
+ * @param {string} word
+ * @param {number} [num]
+ * @param {number} [page]
+ * @returns {Promise<any>}
+ */
 export async function fetchKuwoSearch(word, num = 99, page = 1) {
     if (!word) return [];
     try {
@@ -273,13 +315,18 @@ export async function fetchKuwoSearch(word, num = 99, page = 1) {
         } finally { clearTimeout(timer); }
         if (data && data.ok && Array.isArray(data.list)) return data.list;
         logWarn('musicApi', '[Kuwo] 搜索失败:', data && data.err);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[Kuwo] 搜索不可用:', e.message);
     }
     return [];
 }
 
 /* 酷我取链：按用户播放音质走服务端阶梯校验与 bugpk 接口。成功返回直链字符串，失败 null */
+/**
+ * @param {any} songId
+ * @param {string} [quality]
+ * @returns {Promise<any>}
+ */
 export async function fetchKuwoUrl(songId, quality) {
     if (!songId) return null;
     // 1. 优先尝试本地后端 /api/kuwo/url（内置 bugpk 与 gdstudio 校验兜底）
@@ -296,7 +343,7 @@ export async function fetchKuwoUrl(songId, quality) {
             logInfo('musicApi', `[Kuwo] 取链命中 br=${data.quality}${data.cached ? ' (缓存)' : ''}`);
             return data.url;
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[Kuwo] 本地取链接口异常，尝试前端直连备用:', e.message);
     }
 
@@ -310,7 +357,7 @@ export async function fetchKuwoUrl(songId, quality) {
             logInfo('musicApi', '[Kuwo] bugpk 直链获取成功');
             return mUrl;
         }
-    } catch (e) { logWarn('musicApi', e); }
+    } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
 
     return null;
 }
@@ -318,6 +365,12 @@ export async function fetchKuwoUrl(songId, quality) {
 /**
  * 酷我音乐一站式获取：单次调用同时获取播放直链、高清封面、官方歌词
  * 若酷我因 VIP/付费版权返回限制（如周杰伦等），自动平滑回退到 QQ音乐/酷狗 原唱直链与逐字歌词
+ */
+/**
+ * @param {any} songId
+ * @param {string} [songTitle]
+ * @param {string} [singer]
+ * @returns {Promise<any>}
  */
 export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
     const sid = songId ? String(songId).trim() : '';
@@ -329,7 +382,8 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
         try {
             const data = await fetch(`/api/kuwo/detail?id=${encodeURIComponent(sid)}`).then(r => r.json());
             if (data && data.ok && data.url) {
-                let parsedList = [];
+                /** @type {any[]} */
+    let parsedList = [];
                 if (data.lrc && data.lrc.includes('[')) {
                     parsedList = parseLrc(data.lrc).map((item, index, arr) => ({
                         start: item.time,
@@ -348,7 +402,7 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     artist: data.artist || cleanSinger
                 };
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
 
         // 2. 备用：直连/代理请求 bugpk 酷我接口
         try {
@@ -357,7 +411,8 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
             const json = await res.json();
             if (json && json.data && json.data.music_url) {
                 const d = json.data;
-                let parsedList = [];
+                /** @type {any[]} */
+    let parsedList = [];
                 if (d.lyrics_url && d.lyrics_url.includes('[')) {
                     parsedList = parseLrc(d.lyrics_url).map((item, index, arr) => ({
                         start: item.time,
@@ -376,7 +431,7 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     artist: d.artist || cleanSinger
                 };
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
     }
 
     // 3. 酷我 VIP / 付费限制歌曲平滑跨源回退（周杰伦等巨星原唱版权主要在 QQ 音乐）
@@ -390,7 +445,7 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
             clearTimeout(qqTimer);
             if (qqRes.code === 200 && qqRes.data && qqRes.data.length > 0) {
                 const candidates = Array.isArray(qqRes.data) ? qqRes.data : [qqRes.data];
-                const bestSong = candidates.find(c => {
+                const bestSong = /** @type {any[]} */ (candidates).find(c => {
                     const cSinger = (c.singer || '').trim();
                     return cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
                 }) || candidates[0];
@@ -407,15 +462,16 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                             if (vkeysRes.code === 200 && vkeysRes.data && vkeysRes.data.url) {
                                 playUrl = vkeysRes.data.url;
                             }
-                        } catch (e) { logWarn('musicApi', e); }
+                        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
                     }
 
                     if (playUrl) {
                         // 同步获取原唱逐字/官方歌词
+                        /** @type {any} */
                         let lyricObj = {};
                         try {
                             lyricObj = await fetchLyricWithFallback(String(bestSong.mid || bestSong.id), 'tencent') || {};
-                        } catch (e) { logWarn('musicApi', e); }
+                        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
                         return {
                             url: playUrl,
                             cover: bestSong.cover || '',
@@ -428,7 +484,7 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     }
                 }
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[Kuwo Fallback] QQ原唱回退异常:', e.message);
         }
     }
@@ -437,24 +493,29 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
 }
 
 /* 酷我封面：优先从本地 /api/kuwo/pic 或 bugpk 获取 500x500 高清封面。失败返回 '' */
+/** @param {any} songId @returns {Promise<any>} */
 export async function fetchKuwoPic(songId) {
     if (!songId) return '';
     try {
         const data = await fetch(`/api/kuwo/pic?id=${encodeURIComponent(String(songId))}`).then(r => r.json());
         if (data && data.ok && data.url) return data.url;
-    } catch (e) { /* 静默 */ }
+    } catch (/** @type {any} */ e) { /* 静默 */ }
     try {
         const bpUrl = `https://api.bugpk.com/api/kuwo?url=https://www.kuwo.cn/play_detail/${encodeURIComponent(String(songId))}`;
         const res = await proxyFetch(bpUrl, { timeout: 6000 });
         const json = await res.json();
         const pic = (json && json.data && (json.data.pic || json.data.albumpic || json.data.pic120)) || '';
         if (pic && pic.startsWith('http')) return pic;
-    } catch (e) { logWarn('musicApi', e); }
+    } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
     return '';
 }
 
 /**
  * 酷我歌词获取：通过本地 /api/kuwo/lyric 或 bugpk 获取官方 LRC 歌词，失败回退全网原唱歌词
+ */
+/**
+ * @param {any} songInfo
+ * @returns {Promise<any>}
  */
 export async function fetchKuwoLyric(songInfo) {
     let songId = typeof songInfo === 'object' ? songInfo.id : songInfo;
@@ -468,7 +529,7 @@ export async function fetchKuwoLyric(songInfo) {
             if (list && list.length > 0) {
                 songId = list[0].id;
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
     }
 
     // 2. 尝试本地后端 /api/kuwo/lyric（带超时，防挂起导致歌词永久空）
@@ -487,7 +548,7 @@ export async function fetchKuwoLyric(songInfo) {
                     return { parsedList, lrc: data.lrc, source: 'kuwo' };
                 }
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
 
         // 3. 备用：直接/代理调用 bugpk 接口
         try {
@@ -507,7 +568,7 @@ export async function fetchKuwoLyric(songInfo) {
                     return { parsedList, lrc: lrcText, source: 'kuwo' };
                 }
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
     }
 
     // 4. 酷我因 VIP/版权未返回歌词时：从 QQ音乐 / 备用源 检索同名原唱歌词
@@ -524,7 +585,7 @@ export async function fetchKuwoLyric(songInfo) {
                     }
                 }
             }
-        } catch (e) { logWarn('musicApi', e); }
+        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
     }
 
     return {};
@@ -543,6 +604,7 @@ export async function fetchKuwoLyric(songInfo) {
 const INSTRUMENTAL_TAG = /纯音乐|伴奏|instrumental|off\s*vocal|karaoke|无人声|钢琴版|吉他版|试听|官方伴奏/i;
 /** 归一化歌名：去 (Live)/（伴奏）/【…】 这类括号补充、去 HTML 标记、去空白、小写
  *  （导出仅为可测：tests/js/test_music_api_fallback.js 钉住跨源候选的可信度判据） */
+/** @param {any} s @returns {string} */
 export function normSongName(s) {
     return String(s == null ? '' : s)
         .replace(/[（(【].*?[）)】]/g, '')
@@ -553,6 +615,7 @@ export function normSongName(s) {
 }
 /** 跨源候选是否可信：歌名对得上，且不是纯音乐/伴奏这类换皮版本。
  *  （导出仅为可测，见 normSongName 注释） */
+/** @param {any} cand @param {string} cleanTitle @returns {boolean} */
 export function isTrustworthyCrossMatch(cand, cleanTitle) {
     if (!cand) return false;
     const raw = `${cand.song || cand.name || cand.title || ''} ${cand.singer || cand.artist || ''}`;
@@ -563,6 +626,13 @@ export function isTrustworthyCrossMatch(cand, cleanTitle) {
     return ct === nt || ct.includes(nt) || nt.includes(ct);
 }
 
+/**
+ * @param {string} hash
+ * @param {string} [songTitle]
+ * @param {string} [singer]
+ * @param {string} [quality]
+ * @returns {Promise<any>}
+ */
 export async function getKugouPlayInfo(hash, songTitle = '', singer = '', quality = '320') {
     // 1. 尝试酷狗官方 playInfo
     if (hash) {
@@ -581,7 +651,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                    没 MV / 跨源回退时仍是空串，交给关键词搜索兜底。 */
                 return { url: playUrl, cover: img || '', provider: 'kugou', mvHash: String(json.mvhash || '') };
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[KuGou Play] playInfo 获取失败:', e.message);
         }
     }
@@ -601,11 +671,11 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
             if (qqRes.code === 200 && qqRes.data && qqRes.data.length > 0) {
                 const candidates = Array.isArray(qqRes.data) ? qqRes.data : [qqRes.data];
                 // 优先选择歌手名匹配度最高的原唱版本，排除 live/翻唱/纯音乐杂音
-                const bestSong = candidates.find(c => {
+                const bestSong = /** @type {any[]} */ (candidates).find(c => {
                     const cSinger = (c.singer || '').trim();
                     const singerOk = cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
                     return singerOk && isTrustworthyCrossMatch(c, cleanTitle);
-                }) || candidates.find(c => isTrustworthyCrossMatch(c, cleanTitle));
+                }) || /** @type {any[]} */ (candidates).find(c => isTrustworthyCrossMatch(c, cleanTitle));
 
                 if (bestSong && bestSong.mid) {
                     // 优先走本地解析池（多源竞速 + 防试听校验），按用户播放音质裁剪阶梯
@@ -630,10 +700,10 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                         if (vkeysUrl.code === 200 && vkeysUrl.data && vkeysUrl.data.url) {
                             return { url: vkeysUrl.data.url, cover: bestSong.cover || '', provider: 'vkeysPrefetch' };
                         }
-                    } catch (e) { logWarn('musicApi', e); }
+                    } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
                 }
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[KuGou Play] QQ 音乐音频流调度异常:', e.message);
         }
 
@@ -646,7 +716,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
             if (ncmRes.code === 200 && ncmRes.data && ncmRes.data.length > 0) {
                 const candidates = Array.isArray(ncmRes.data) ? ncmRes.data : [ncmRes.data];
                 // 必须严格匹配歌手名，杜绝非原唱/翻唱账号；且歌名要对得上、不是纯音乐/伴奏
-                const validSong = candidates.find(c => {
+                const validSong = /** @type {any[]} */ (candidates).find(c => {
                     const cSinger = (c.singer || '').trim();
                     if (!isTrustworthyCrossMatch(c, cleanTitle)) return false;
                     if (!cleanSinger) return true;
@@ -666,12 +736,12 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                             if (text && text.startsWith('http')) {
                                 return { url: text.trim(), cover: validSong.cover || '', provider: 'byfuns' };
                             }
-                        } catch (e) { /* 尝试下一音质 */ }
+                        } catch (/** @type {any} */ e) { /* 尝试下一音质 */ }
                     }
                     return { url: `https://music.163.com/song/media/outer/url?id=${validSong.id}`, cover: validSong.cover || '', provider: 'neteaseOuter' };
                 }
             }
-        } catch (e) { /* 忽略网易云回退异常 */ }
+        } catch (/** @type {any} */ e) { /* 忽略网易云回退异常 */ }
     }
 
     return null;
@@ -681,7 +751,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
  * 搜索歌曲
  * @param {string} source - 'tencent' | 'netease' | 'kugou'
  * @param {string} keyword - 搜索关键词
- * @returns {Promise<{success: boolean, list?: Array, message?: string}>}
+ * @returns {Promise<{success: boolean, list?: Array<any>, message?: string}>}
  */
 export async function apiSearchSongs(source, keyword) {
     if (!keyword) return { success: false, message: '请输入关键词' };
@@ -699,7 +769,7 @@ export async function apiSearchSongs(source, keyword) {
         }
         const list = Array.isArray(json.data) ? json.data : [json.data];
         return { success: true, list };
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
         logError('musicApi', '搜索出错:', err);
         return { success: false, message: '搜索失败，请检查网络' };
     }
@@ -709,6 +779,7 @@ export async function apiSearchSongs(source, keyword) {
  * 酷狗官方 playInfo 直链（免费歌有效；VIP/付费歌返回空 url，status=0）
  * 独立于 getKugouPlayInfo：不绕行 QQ 中间链，避免拿到失效试听地址
  */
+/** @param {string} hash @returns {Promise<any>} */
 export async function getKugouDirectUrl(hash) {
     if (!hash) return null;
     const url = `https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${hash}`;
@@ -734,6 +805,7 @@ const JUNK_SONG_PATTERN = /[\(（\[【](?:DJ版|剪辑版|片段|抖音版|翻�
    历史缺陷：本函数定义曾在拆分中丢失（git 初始提交已缺），导致
    fetchSameSongUrlFrom 一旦被调用即 ReferenceError，被上层 catch
    静默吞掉，跨源同名歌回退整条链路形同虚设。现补回原语义。 */
+/** @param {any} s @returns {string} */
 function stripEm(s) {
     return String(s == null ? '' : s)
         .replace(/[\p{So}\p{Cf}\u200D]/gu, '')
@@ -741,6 +813,11 @@ function stripEm(s) {
         .trim();
 }
 
+/**
+ * @param {any[]} list
+ * @param {string} originalTitle
+ * @returns {any[]}
+ */
 function filterCleanSongCandidates(list, originalTitle) {
     if (!Array.isArray(list) || list.length === 0) return [];
     const origHasJunk = JUNK_SONG_PATTERN.test(originalTitle);
@@ -752,6 +829,12 @@ function filterCleanSongCandidates(list, originalTitle) {
     return cleanList.length > 0 ? cleanList : list;
 }
 
+/**
+ * @param {string} source
+ * @param {string} title
+ * @param {string} [singer]
+ * @returns {Promise<any>}
+ */
 export async function fetchSameSongUrlFrom(source, title, singer) {
     const cleanTitle = stripEm(title);
     const cleanSinger = stripEm(singer);
@@ -779,10 +862,10 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
                             return { url, cover: best.cover || '' };
                         }
                         logWarn('musicApi', `[跨源] 酷狗 playInfo 无直链(疑似VIP): ${best.song}`);
-                    } catch (e) { /* 试下一候选 */ }
+                    } catch (/** @type {any} */ e) { /* 试下一候选 */ }
                 }
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[跨源] 酷狗同名歌检索异常:', e.message);
         }
         return null;
@@ -800,7 +883,7 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
             const rawCandidates = Array.isArray(res.data) ? res.data : [res.data];
             const candidates = filterCleanSongCandidates(rawCandidates, cleanTitle);
             /* 优先精确歌手匹配，防翻唱/伴奏 */
-            const valid = candidates.find(c => {
+            const valid = /** @type {any[]} */ (candidates).find(c => {
                 const cs = (c.singer || '').trim();
                 return !cleanSinger || cs === cleanSinger || cs.includes(cleanSinger);
             }) || candidates[0];
@@ -817,11 +900,11 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
                         logInfo('musicApi', `[跨源] 网易云同名歌成功: ${valid.song} - ${valid.singer} (音质:${level})`);
                         return { url: text, cover: valid.cover || '', id: String(valid.id) };
                     }
-                } catch (e) { /* 试下一音质 */ }
+                } catch (/** @type {any} */ e) { /* 试下一音质 */ }
             }
             /* byfuns 全败：网易外链兜底（版权受限歌可能404，交给音频错误处理链接管） */
             return { url: `https://music.163.com/song/media/outer/url?id=${valid.id}`, cover: valid.cover || '', id: String(valid.id) };
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[跨源] 网易云同名歌检索异常:', e.message);
         }
         return null;
@@ -834,6 +917,13 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
  * 在线音频播放性校验：服务端读目标URL首2KB即断（本地已有完整缓存时秒回 ok）
  * 解决"取链成功≠可播"缺口：试听链/失效链/防盗链在提交给 <audio> 前即被拦截
  * @returns {Promise<boolean>} true=可播
+ */
+/**
+ * @param {string} url
+ * @param {any} [songId]
+ * @param {string} [referer]
+ * @param {number} [expectedSec]
+ * @returns {Promise<boolean>}
  */
 export async function checkAudioUrlPlayable(url, songId, referer, expectedSec) {
     if (!url || !url.startsWith('http')) return false;
@@ -862,7 +952,7 @@ export async function checkAudioUrlPlayable(url, songId, referer, expectedSec) {
             logWarn('musicApi', `[AudioCheck] 不可播: ${why} | ${(url || '').slice(0, 90)}`);
         }
         return ok;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[AudioCheck] 校验异常(按不可播处理):', e.message);
         return false;
     }
@@ -872,6 +962,11 @@ export async function checkAudioUrlPlayable(url, songId, referer, expectedSec) {
  * 咪咕同名歌取链（官方 H5 接口，后端已内置探测校验与免登录兜底）
  * 链路: /api/migu/search 搜索 → 歌名/歌手双匹配选歌 → /api/migu/url 取HQ直链
  * @returns {Promise<{url:string, id?:string}|null>}
+ */
+/**
+ * @param {string} title
+ * @param {string} [singer]
+ * @returns {Promise<any>}
  */
 export async function fetchMiguSameSongUrl(title, singer) {
     const cleanTitle = stripEm(title);
@@ -889,10 +984,10 @@ export async function fetchMiguSameSongUrl(title, singer) {
         const kw = cleanTitle.toLowerCase();
         const ks = cleanSinger.toLowerCase();
         /* 双匹配 > 仅歌名（与酷狗/网易云同名歌策略一致） */
-        const best = res.songs.find(s =>
+        const best = /** @type {any[]} */ (res.songs).find(s =>
             (s.name || '').toLowerCase().includes(kw) &&
             ks && (s.singer || '').toLowerCase().includes(ks))
-            || res.songs.find(s => (s.name || '').toLowerCase().includes(kw));
+            || /** @type {any[]} */ (res.songs).find(s => (s.name || '').toLowerCase().includes(kw));
         if (!best) return null;
         const q = new URLSearchParams({ contentId: best.contentId, copyrightId: best.copyrightId });
         const d2 = await fetch(`/api/migu/url?${q.toString()}`).then(r => r.json());
@@ -901,7 +996,7 @@ export async function fetchMiguSameSongUrl(title, singer) {
             return { url: d2.url, id: `migu_${best.contentId}` };
         }
         return null;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[跨源] 咪咕同名歌检索异常:', e.message);
         return null;
     }
@@ -909,6 +1004,11 @@ export async function fetchMiguSameSongUrl(title, singer) {
 
 /**
  * 获取播放链接
+ */
+/**
+ * @param {any} songInfo
+ * @param {string} [source]
+ * @returns {Promise<any>}
  */
 export async function getPlayUrl(songInfo, source) {
     if (songInfo.url) return songInfo.url;
@@ -942,7 +1042,7 @@ export async function getPlayUrl(songInfo, source) {
                     logInfo('musicApi', `moeyao meting 获取成功: ${songInfo.song}`);
                     return text.trim();
                 }
-            } catch (e) {
+            } catch (/** @type {any} */ e) {
                 logWarn('musicApi', 'moeyao meting 获取失败:', e.message);
             }
         }
@@ -956,7 +1056,7 @@ export async function getPlayUrl(songInfo, source) {
                 logInfo('musicApi', `vkeys 获取成功: ${songInfo.song}`);
                 return urlJson.data.url;
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', 'QQ音乐 vkeys 请求失败:', e);
         }
 
@@ -973,7 +1073,7 @@ export async function getPlayUrl(songInfo, source) {
                     logInfo('musicApi', `byfuns API 获取成功 (音质: ${level}): ${songInfo.song}`);
                     return text.trim();
                 }
-            } catch (e) {
+            } catch (/** @type {any} */ e) {
                 logWarn('musicApi', `byfuns API ${level} 获取失败:`, e.message);
             }
         }
@@ -990,7 +1090,7 @@ export async function getPlayUrl(songInfo, source) {
             if (urlJson.code === 200 && urlJson.data && urlJson.data.url) {
                 return urlJson.data.url;
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', 'vkeys 请求失败:', e);
         }
     }
@@ -1001,6 +1101,7 @@ export async function getPlayUrl(songInfo, source) {
 /**
  * oiapi.net 备用歌词获取（仅用于 QQ 音乐歌曲，返回 {yrc} 或 {lrc}）
  */
+/** @param {any} songId @returns {Promise<any>} */
 export async function fetchLyricFromOiapi(songId) {
     try {
         const controller = new AbortController();
@@ -1012,7 +1113,7 @@ export async function fetchLyricFromOiapi(songId) {
             logInfo('musicApi', 'oiapi.net QRC 歌词获取成功');
             return { yrc: json.data.content };
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', 'oiapi.net QRC 歌词获取失败:', e.message);
     }
     try {
@@ -1025,7 +1126,7 @@ export async function fetchLyricFromOiapi(songId) {
             logInfo('musicApi', 'oiapi.net LRC 歌词获取成功');
             return { lrc: json.data.content };
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', 'oiapi.net LRC 歌词获取失败:', e.message);
     }
     return {};
@@ -1035,6 +1136,7 @@ export async function fetchLyricFromOiapi(songId) {
  * 获取酷狗 KRC 逐字歌词
  * 支持 2 步智能检索：当无 hash 时自动先搜索同名歌曲获取最优 hash 与 KRC
  */
+/** @param {any} songInfo @returns {Promise<any>} */
 export async function fetchKugouLyric(songInfo) {
     const title = songInfo.song || songInfo.title || songInfo.name || '';
     const singer = songInfo.singer || songInfo.artist || '';
@@ -1052,10 +1154,11 @@ export async function fetchKugouLyric(songInfo) {
                    ★ 这一步曾经绕过 fetchSameNameLyric 里的 _pickBest 校验，所以必须在这里
                    也做名称校验：去括号后比较，要求存在包含关系，否则放弃酷狗这条路
                    （交给网易云/腾讯，宁可暂时没词也不显示别的歌的词）。 */
-                const norm = (t) => String(t || '').toLowerCase()
+                /** @param {any} t */
+    const norm = (t) => String(t || '').toLowerCase()
                     .replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
                 const want = norm(title);
-                const best = sRes.list.find((it) => {
+                const best = /** @type {any[]} */ (sRes.list).find((it) => {
                     const got = norm(it.song);
                     return !!(got && want && (got === want || got.includes(want) || want.includes(got)));
                 });
@@ -1066,7 +1169,7 @@ export async function fetchKugouLyric(songInfo) {
                 hash = best.hash;
                 if (!durMs && best.duration) durMs = best.duration * 1000;
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[KuGou Lyric] 搜索匹配歌曲异常:', e);
         }
     }
@@ -1104,7 +1207,7 @@ export async function fetchKugouLyric(songInfo) {
                     }
                 }
             }
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[KuGou Lyric] KRC 候选接口异常:', e.message);
         }
     }
@@ -1134,7 +1237,7 @@ export async function fetchKugouLyric(songInfo) {
                         };
                     }
                 }
-            } catch (e) { /* 尝试下一个 meting 源 */ }
+            } catch (/** @type {any} */ e) { /* 尝试下一个 meting 源 */ }
         }
     }
 
@@ -1151,6 +1254,7 @@ export async function fetchKugouLyric(songInfo) {
  *   渲染层以后多要一个字段就会在这里静默漏。转一道 KRC 文本，下游拿到的对象
  *   与酷狗那条路**逐字段同构**，渲染层零分支。
  */
+/** @param {any} songInfo @returns {Promise<any>} */
 export async function fetchQishuiLyric(songInfo) {
     const id = String((songInfo && (songInfo.qishuiId || songInfo.id)) || '');
     if (!id) return {};
@@ -1170,7 +1274,7 @@ export async function fetchQishuiLyric(songInfo) {
         if (!parsedList.length) return {};
         logInfo('musicApi', `[Qishui Lyric] 逐字歌词解析成功: ${parsedList.length} 行`);
         return { parsedList, source: 'qishui' };
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '[Qishui Lyric] 取词异常:', e.message);
         return {};
     }
@@ -1182,12 +1286,14 @@ export async function fetchQishuiLyric(songInfo) {
  * 整首最后一行没有下一行时给 800ms，**不允许出现 0 时长**——0 会让高亮进度除零
  * （英文歌的「高亮滞后」就是这条链上 math.round 造出 0 宽度引起的）。
  */
+/** @param {any[]} lines @returns {string} */
 export function qishuiLinesToKrc(lines) {
     const src = Array.isArray(lines) ? lines : [];
     const out = [];
     for (let i = 0; i < src.length; i++) {
         const ln = src[i] || {};
         const start = Math.max(0, Math.round(Number(ln.timeMs) || 0));
+        /** @type {any[]} */
         const words = (Array.isArray(ln.words) && ln.words.length)
             ? ln.words
             : [{ timeMs: start, text: String(ln.text == null ? '' : ln.text) }];
@@ -1197,9 +1303,9 @@ export function qishuiLinesToKrc(lines) {
         let lastEnd = start + 1;
         const parts = [];
         for (let k = 0; k < words.length; k++) {
-            const ws = starts[k];
+            const ws = /** @type {number} */ (starts[k]);
             let we;
-            if (k + 1 < words.length) we = starts[k + 1];
+            if (k + 1 < words.length) we = /** @type {number} */ (starts[k + 1]);
             else if (nextStart != null) we = nextStart;
             else we = ws + 800;
             we = Math.max(ws + 1, we);
@@ -1216,13 +1322,18 @@ export function qishuiLinesToKrc(lines) {
 
 /* 带超时的 JSON fetch：兜底链路的每一环都必须 bounded，
    否则某个外部接口挂起会让 lyricPromise 永不落地 → 歌词永久为空（切歌场景已复现） */
+/**
+ * @param {string} url
+ * @param {number} [timeoutMs]
+ * @returns {Promise<any>}
+ */
 async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
     const ctl = new AbortController();
     const tid = setTimeout(() => ctl.abort(), timeoutMs);
     try {
         const res = await fetch(url, { signal: ctl.signal });
         return await res.json();
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         return {};
     } finally {
         clearTimeout(tid);
@@ -1237,6 +1348,11 @@ async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
  *   统一规范化为 {lrc, trans}（与 vkeys 形状一致，lyricMerger 直接消费）。
  *   失败/未在线返回 null，由调用方回落公网 vkeys。
  * ============================================================ */
+/**
+ * @param {string} source
+ * @param {any} songId
+ * @returns {Promise<any>}
+ */
 export async function fetchVendorLyric(source, songId) {
     try {
         if (!songId) return null;
@@ -1268,7 +1384,7 @@ export async function fetchVendorLyric(source, songId) {
         const trans = ((j.tlyric || {}).lyric) || '';
         if (lrc && lrc.includes('[')) return trans ? { lrc, trans } : { lrc };
         return null;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         return null;  /* vendor 未在线/超时 → 静默回退公网 */
     }
 }
@@ -1281,6 +1397,7 @@ export async function fetchVendorLyric(source, songId) {
  *   返回 { yrc, trans, roma } 形状 —— 与 detectAndParseLyrics 的 qq_yrc 分支一一对应
  *   （yrc=逐字、trans=内容翻译 LRC、roma=罗马音），无需新增合并逻辑。
  *   失败返回 null，由调用方回落 vendor LRC / vkeys。 */
+/** @param {any} songId @returns {Promise<any>} */
 export async function fetchQQQrcLyric(songId) {
     try {
         if (!songId) return null;
@@ -1301,7 +1418,7 @@ export async function fetchQQQrcLyric(songId) {
         const j = await res.json();
         if (!j || !j.ok || !j.qrc) return null;
         return { yrc: j.qrc, trans: j.trans || '', roma: j.roma || '' };
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         return null;  /* 服务端未就绪/超时 → 静默回落 */
     }
 }
@@ -1310,10 +1427,16 @@ export async function fetchQQQrcLyric(songId) {
  * 带多源备用的歌词获取：先 vkeys（失败自动重试一次），再 oiapi / 酷狗同名 / 网易云同名 / 腾讯同名，
  * 保证冷启动开头几首歌也能稳定拿到歌词（外网接口慢/超时不再直接空窗）
  */
+/**
+ * @param {any} songInfo
+ * @param {string} [source]
+ * @returns {Promise<any>}
+ */
 export async function fetchLyricWithFallback(songInfo, source) {
     const songId = typeof songInfo === 'object' ? songInfo.id : songInfo;
     const effSource = (typeof songInfo === 'object' && songInfo.source) || source;
     const songName = typeof songInfo === 'object' ? (songInfo.song || songInfo.name || songInfo.title || '') : '';
+    /** @param {any} d */
     const hasContent = (d) => !!d && (d.yrc || d.lrc || d.krc || d.parsedList || d.lrcList || d.lrclist);
 
     /* ★ QQ 逐字优先（2026-10-03）：QRC 是唯一同时带「逐字 + 翻译 + 罗马音」的
@@ -1342,12 +1465,19 @@ export async function fetchLyricWithFallback(songInfo, source) {
        依次尝试 酷狗(KRC高精度) → 网易云(自带双语 trans) → 腾讯QQ ，
        ★ 必须做名称/歌手契合度校验：防止拿酷我/酷狗的 id 去别的源查到完全不同的歌
        （实测发生过取到《Voyage 滨崎步》之类的错误歌词，最终渲染 0 行）。 */
+    /**
+     * @param {any[]} list
+     * @param {string} word
+     * @param {string} [singer]
+     */
     const _pickBest = (list, word, singer) => {
         if (!Array.isArray(list) || list.length === 0) return null;
         const w = String(word || '').toLowerCase().trim();
         const s = String(singer || '').toLowerCase().trim();
-        const cap = (t) => String(t || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
-        let hit = null;
+        /** @param {any} t */
+    const cap = (t) => String(t || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+        /** @type {any} */
+let hit = null;
         for (const it of list) {
             const t = it.song || it.name || it.title || '';
             const a = it.singer || it.artist || '';
@@ -1381,7 +1511,7 @@ export async function fetchLyricWithFallback(songInfo, source) {
             try {
                 const kg = await fetchKugouLyric(typeof songInfo === 'object' ? songInfo : { song: songName });
                 return (kg && hasContent(kg)) ? kg : null;
-            } catch (e) { return null; }
+            } catch (/** @type {any} */ e) { return null; }
         })();
         const neteaseP = (async () => {
             try {
@@ -1392,7 +1522,7 @@ export async function fetchLyricWithFallback(songInfo, source) {
                     const lyr = await fetchJsonWithTimeout(`${API_BASE}/netease/lyric?id=${nItem.id}`);
                     if (lyr.code === 200 && lyr.data && (lyr.data.yrc || lyr.data.lrc)) return lyr.data;
                 }
-            } catch (e) { logWarn('musicApi', e); }
+            } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
             return null;
         })();
         const tencentP = (async () => {
@@ -1407,7 +1537,7 @@ export async function fetchLyricWithFallback(songInfo, source) {
                     const lyr = await fetchJsonWithTimeout(`${API_BASE}/tencent/lyric?id=${tItem.id}`);
                     if (lyr.code === 200 && lyr.data && (lyr.data.yrc || lyr.data.lrc)) return lyr.data;
                 }
-            } catch (e) { logWarn('musicApi', e); }
+            } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
             return null;
         })();
         /* 竞速取第一个"有内容"的结果；全部失败时返回 {}。总预算 20s 兜底。 */
@@ -1436,15 +1566,17 @@ export async function fetchLyricWithFallback(songInfo, source) {
     // ★ 歌词主链路必须带超时：loadOnlineSong 会先 await 歌词再开始播放，
     //   若此请求挂起会同时卡住"歌词显示 + 歌曲播放"，只有刷新才能恢复。
     //   冷启动/网络抖动时首次易超时：失败后自动重试一次，再走备用源。
+    /** @type {any} */
     let lyricData = {};
     for (let attempt = 0; attempt < 2; attempt++) {
         const lyController = new AbortController();
         const lyTimer = setTimeout(() => lyController.abort(), 7000);
+        /** @type {any} */
         let lyricRes = {};
         try {
             lyricRes = await fetch(`${API_BASE}/${effSource}/lyric?id=${songId}`, { signal: lyController.signal })
                 .then(r => r.json());
-        } catch (e) { /* 超时/网络错误，进入重试或备用源 */ }
+        } catch (/** @type {any} */ e) { /* 超时/网络错误，进入重试或备用源 */ }
         clearTimeout(lyTimer);
         if (lyricRes.code === 200 && lyricRes.data && (lyricRes.data.yrc || lyricRes.data.lrc)) {
             lyricData = lyricRes.data;
@@ -1480,7 +1612,7 @@ export async function fetchRandomSong(source = 'tencent') {
         if (json.code === 200 && json.data) {
             return json.data;
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('musicApi', '随机歌曲获取失败:', e);
     }
     return null;

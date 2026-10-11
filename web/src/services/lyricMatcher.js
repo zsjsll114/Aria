@@ -23,12 +23,14 @@ import { toSimplified as toSimplifiedHan } from './vendor/han-convert/index.mjs'
  * 繁→简大体一对一（合字简化），仅极少数按读音存在一对多（著→著/着、乾→乾/干、徵→徵/征、
  * 藉→藉/借、於→於/于），单字模式取常规默认值。两侧走同一确定性变换，结果恒一致，不影响匹配。
  */
+/** @param {any} value @returns {string} */
 function toSimplified(value) {
   return toSimplifiedHan(String(value || ''));
 }
 
 
 /* 归一化：繁→简 + 小写 + 去标点符号 + 空格规整（保留跨语言字符） */
+/** @param {any} value @returns {string} */
 function normalizeLyricMatchText(value) {
     return toSimplified(String(value || ''))
         .toLowerCase()
@@ -40,6 +42,7 @@ function normalizeLyricMatchText(value) {
 /* 标题归一化：删 feat 从属；括号内容仅当命中版本标记时整段剔除，否则保留 */
 const VERSION_MARKER_PATTERN = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/iu;
 
+/** @param {any} value @returns {string} */
 function normalizeTitleForMatch(value) {
     return normalizeLyricMatchText(
         String(value || '')
@@ -51,6 +54,12 @@ function normalizeTitleForMatch(value) {
 }
 
 /* Jaccard 字符相似度；完全相等=1，一方被包含按长度比例 */
+/**
+ * @param {string} s1
+ * @param {string} s2
+ * @param {(v: any) => string} [normalizer]
+ * @returns {number}
+ */
 function stringSimilarity(s1, s2, normalizer = normalizeLyricMatchText) {
     const n1 = normalizer(s1);
     const n2 = normalizer(s2);
@@ -66,6 +75,7 @@ function stringSimilarity(s1, s2, normalizer = normalizeLyricMatchText) {
 }
 
 /* 歌手拆分：支持 ,&、/ feat 等分隔，返回归一化后的艺人名数组 */
+/** @param {any} artistText @returns {string[]} */
 function splitArtistsForMatch(artistText) {
     return String(artistText || '')
         .split(/[,&、/]|feat\.?|ft\.?|featuring|与/i)
@@ -73,6 +83,11 @@ function splitArtistsForMatch(artistText) {
         .filter(s => s.length > 0);
 }
 
+/**
+ * @param {string} target
+ * @param {string} search
+ * @returns {number}
+ */
 function calculateArtistSimilarity(target, search) {
     const tArtists = splitArtistsForMatch(target);
     const sArtists = splitArtistsForMatch(search);
@@ -104,6 +119,11 @@ function calculateArtistSimilarity(target, search) {
     return Math.max(mainBonus, stringSimilarity(target, search));
 }
 
+/**
+ * @param {any} [currentSong]
+ * @param {any} [candidateLyric]
+ * @returns {any}
+ */
 export function calculateLyricMatchScore(currentSong = {}, candidateLyric = {}) {
     if (!candidateLyric || !candidateLyric.parsedLines || candidateLyric.parsedLines.length === 0) {
         return 0;

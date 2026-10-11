@@ -30,9 +30,15 @@ export const CONCEAL_CLASS = 'is-concealing';
 export const CONCEAL_ANIM = 'ariaConcealOut';
 
 /** CSS 令牌缓存，只在第一次读时付 getComputedStyle 的代价 */
+/** @type {any} */
 let tokenCache = null;
 
 /** 解析 CSS 时间值（'160ms' / '0.16s' / ''）；解析不出就用 fallback */
+/**
+ * @param {any} raw
+ * @param {number} [fallback=0]
+ * @returns {number}
+ */
 export function parseTimeMs(raw, fallback = 0) {
     if (typeof raw !== 'string') return fallback;
     const t = raw.trim();
@@ -43,6 +49,11 @@ export function parseTimeMs(raw, fallback = 0) {
 }
 
 /** 解析 CSS 长度值；非 px 一律按 0，不值得为动效幅度做单位换算 */
+/**
+ * @param {any} raw
+ * @param {number} [fallback=0]
+ * @returns {number}
+ */
 export function parseLen(raw, fallback = 0) {
     if (typeof raw !== 'string') return fallback;
     const t = raw.trim();
@@ -58,6 +69,7 @@ export function motionTokens(refresh = false) {
     const s = typeof document !== 'undefined' && document.documentElement
         ? getComputedStyle(document.documentElement)
         : null;
+    /** @param {string} n */
     const get = (n) => (s ? s.getPropertyValue(n) : '');
     tokenCache = {
         dFast: parseTimeMs(get('--d-fast'), 160),
@@ -86,7 +98,7 @@ export function prefersReducedMotion() {
  * 同一个元素上连开两次时，前一次的 onHidden 不会执行——否则「快速切走又切回」
  * 会让陈旧回调把刚显示的界面藏掉。
  *
- * @param {Element} el
+ * @param {HTMLElement} el
  * @param {Object}   [opts]
  * @param {number}   [opts.durationMs] 缺省 --d-fast
  * @param {number}   [opts.y]          缺省 --dy-out（退场位移，比进场小）
@@ -108,7 +120,8 @@ export function conceal(el, opts = {}) {
     const y = reduced ? 0 : (opts.y ?? tk.dyOut);
     const scale = reduced ? 1 : (opts.scale ?? tk.sOut);
 
-    function onAnimEnd(ev) {
+    /** @param {AnimationEvent} ev */
+function onAnimEnd(ev) {
         /* 只认本元素、本条动画：子元素的 animationend 会冒泡上来 */
         if (!ev || ev.target !== el || ev.animationName !== CONCEAL_ANIM) return;
         finish();
@@ -137,9 +150,11 @@ export function conceal(el, opts = {}) {
 
     let done = false;
     /* 兜底 id 必须先声明再被 finish 引用：finish 可能在 setTimeout 返回前就被同步调用 */
-    let fallbackId = null;
+    /** @type {any} */
+let fallbackId = null;
     /* 返回的 promise 以「本次落地」为准，不是以动画结束为准：时间轴被冻住时
        若跟着它 await，调用方会永久挂住。 */
+    /** @type {any} */
     let resolveSettled;
     const settled = new Promise((r) => { resolveSettled = r; });
     const finish = () => {

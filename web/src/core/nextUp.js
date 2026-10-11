@@ -58,22 +58,30 @@ export const ACTION = {
 
 /* ---------- 小工具：把外部传进来的乱七八糟值收敛成可用值 ---------- */
 
+/** @param {any} v @returns {number|null} */
 function toFinite(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
 }
 
+/** @param {any} v @returns {number|null} */
 function positiveFinite(v) {
     const n = toFinite(v);
     return n !== null && n > 0 ? n : null;
 }
 
+/** @param {any} v @returns {number|null} */
 function nonNegativeFinite(v) {
     const n = toFinite(v);
     return n !== null && n >= 0 ? n : null;
 }
 
 /** null / undefined / 空串 / 非数字 = 「没设过」，一律回退默认；越界的数字才夹紧 */
+/**
+ * @param {any} raw
+ * @param {number} [fallback]
+ * @returns {number}
+ */
 export function normalizeLeadSeconds(raw, fallback = NEXTUP_DEFAULTS.leadSeconds) {
     if (raw === null || raw === undefined || raw === '') return fallback;
     const n = Math.round(Number(raw));
@@ -82,6 +90,7 @@ export function normalizeLeadSeconds(raw, fallback = NEXTUP_DEFAULTS.leadSeconds
 }
 
 /** 偏好归一：缺省=开（与 282 专注模式同一口径，不写进 defaults.js 也能生效） */
+/** @param {any} raw @returns {any} */
 export function normalizeNextUpPrefs(raw) {
     const src = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -92,28 +101,37 @@ export function normalizeNextUpPrefs(raw) {
 
 /* ---------- 队列条目的字段名不统一（title/song/name、artist/singer） ---------- */
 
+/** @param {any} entry @returns {string} */
 export function trackTitle(entry) {
     if (!entry || typeof entry !== 'object') return '';
     return String(entry.title || entry.song || entry.name || '');
 }
 
+/** @param {any} entry @returns {string} */
 export function trackArtist(entry) {
     if (!entry || typeof entry !== 'object') return '';
     return String(entry.artist || entry.singer || '');
 }
 
+/** @param {any} entry @returns {string} */
 export function trackCover(entry) {
     if (!entry || typeof entry !== 'object') return '';
     return String(entry.cover || entry.pic || '');
 }
 
 /** 能不能直接播：在线条目要有 source+id，本地条目要有 url（与 loadPlaylistTrack 的两个分支一致） */
+/** @param {any} entry @returns {boolean} */
 export function isPlayableTrack(entry) {
     if (!entry || typeof entry !== 'object') return false;
     const hasOnline = !!(entry.source && (entry.id || entry.mid));
     return hasOnline || !!entry.url;
 }
 
+/**
+ * @param {any[]} playlist
+ * @param {number} index
+ * @returns {any}
+ */
 function describeEntry(playlist, index) {
     const entry = playlist[index];
     return {
@@ -128,13 +146,14 @@ function describeEntry(playlist, index) {
 /* ---------- 下一首是谁（镜像 _stepTrack(+1) / getNextTrackIndex） ---------- */
 
 /**
- * @param {{length:number, currentIndex:number, playMode:string}} ctx
+ * @param {{length?:number, currentIndex?:number, playMode?:string}} [ctx]
  * @returns {{kind:string, index:number}} index=-1 表示「不可预知」（随机 / 空队列）
  */
+/** @param {any} [ctx] @returns {any} */
 export function pickNext(ctx = {}) {
     const len = Number(ctx.length) || 0;
     const currentIndex = Number(ctx.currentIndex);
-    const playMode = PLAY_MODES.indexOf(ctx.playMode) >= 0 ? ctx.playMode : 'sequence';
+    const playMode = PLAY_MODES.indexOf(ctx.playMode || '') >= 0 ? ctx.playMode : 'sequence';
     if (!len || !Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= len) {
         /* 空队列时 95 会去 fetchAndPlayRandomSong()：播的根本不是队列里的歌，不能报名 */
         return { kind: KIND.RANDOM, index: -1 };
@@ -155,6 +174,10 @@ export function pickNext(ctx = {}) {
  * （那两首不需要出现在候选里：一个是自己，一个是「不点就会播的」）。
  * @returns {{index:number,title:string,artist:string,cover:string,entry:Object}[]}
  */
+/**
+ * @param {{playlist?:any[], currentIndex?:number, predictedIndex?:number, limit?:number}} [opts]
+ * @returns {any}
+ */
 export function buildCandidates(opts = {}) {
     const playlist = Array.isArray(opts.playlist) ? opts.playlist : [];
     const len = playlist.length;
@@ -162,7 +185,8 @@ export function buildCandidates(opts = {}) {
     const rawCur = Number(opts.currentIndex);
     const currentIndex = Number.isInteger(rawCur) && rawCur >= 0 && rawCur < len ? rawCur : -1;
     const predicted = Number(opts.predictedIndex);
-    const limit = Number.isInteger(opts.limit) && opts.limit > 0 ? opts.limit : MAX_CANDIDATES;
+    const rawLimit = Number(opts.limit);
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : MAX_CANDIDATES;
     const from = currentIndex >= 0 ? currentIndex : -1;
     const out = [];
     for (let step = 1; step <= len && out.length < limit; step++) {
@@ -180,6 +204,7 @@ export function buildCandidates(opts = {}) {
  * 三者任一变化都说明「已经不是刚才那首」，预告必须作废（AGENTS todos #5 要求 3）。
  * 带上 src 是防有人新增一条不递增 playbackGeneration 的切歌路径。
  */
+/** @param {any} [snapshot] @returns {string} */
 export function songSignature(snapshot = {}) {
     const gen = toFinite(snapshot.generation);
     const idx = toFinite(snapshot.currentIndex);
@@ -189,6 +214,11 @@ export function songSignature(snapshot = {}) {
 
 /* ---------- 主判定 ---------- */
 
+/**
+ * @param {any} decision
+ * @param {string} reason
+ * @returns {any}
+ */
 function notShown(decision, reason) {
     decision.show = false;
     decision.reason = reason;
@@ -197,19 +227,20 @@ function notShown(decision, reason) {
 
 /**
  * 一帧的完整判定。
- * @param {Object} snapshot
- * @param {Array}  snapshot.playlist        当前播放队列（state.playlist）
- * @param {number} snapshot.currentIndex      当前索引（state.currentTrackIndex）
- * @param {string} snapshot.playMode         'sequence' | 'loop' | 'random'
- * @param {number} snapshot.durationSec      audio.duration
- * @param {number} snapshot.currentTimeSec   audio.currentTime
- * @param {boolean} snapshot.isPlaying       是否正在播（非暂停/非结束）
- * @param {boolean} snapshot.suppressed      专注模式 / 被系统接管 / 正在加载 / 有弹窗挡路
- * @param {Object} snapshot.prefs            { enabled, leadSeconds }
- * @param {boolean} snapshot.alreadyRevealed 预告条当前是否已浮出（迟滞判定用）
- * @param {number} snapshot.generation       playbackGeneration
- * @param {string} snapshot.src              audio.currentSrc
+ * @param {Object} [snapshot]
+ * @param {Array}  [snapshot.playlist]        当前播放队列（state.playlist）
+ * @param {number} [snapshot.currentIndex]      当前索引（state.currentTrackIndex）
+ * @param {string} [snapshot.playMode]         'sequence' | 'loop' | 'random'
+ * @param {number} [snapshot.durationSec]      audio.duration
+ * @param {number} [snapshot.currentTimeSec]   audio.currentTime
+ * @param {boolean} [snapshot.isPlaying]       是否正在播（非暂停/非结束）
+ * @param {boolean} [snapshot.suppressed]      专注模式 / 被系统接管 / 正在加载 / 有弹窗挡路
+ * @param {Object} [snapshot.prefs]            { enabled, leadSeconds }
+ * @param {boolean} [snapshot.alreadyRevealed] 预告条当前是否已浮出（迟滞判定用）
+ * @param {number} [snapshot.generation]       playbackGeneration
+ * @param {string} [snapshot.src]              audio.currentSrc
  */
+/** @param {any} [snapshot] @returns {any} */
 export function resolveNextUp(snapshot = {}) {
     const playlist = Array.isArray(snapshot.playlist) ? snapshot.playlist : [];
     const len = playlist.length;
@@ -217,7 +248,7 @@ export function resolveNextUp(snapshot = {}) {
     const rawIdx = Number(snapshot.currentIndex);
     const currentIndex = (Number.isInteger(rawIdx) && rawIdx >= 0 && rawIdx < len)
         ? rawIdx : (len > 0 ? 0 : -1);
-    const playMode = PLAY_MODES.indexOf(snapshot.playMode) >= 0 ? snapshot.playMode : 'sequence';
+    const playMode = PLAY_MODES.indexOf(snapshot.playMode || '') >= 0 ? snapshot.playMode : 'sequence';
 
     const durationSec = positiveFinite(snapshot.durationSec);
     const currentTimeSec = nonNegativeFinite(snapshot.currentTimeSec);
@@ -228,6 +259,7 @@ export function resolveNextUp(snapshot = {}) {
     const track = next.index >= 0 && next.index < len ? playlist[next.index] : null;
     const wraps = next.kind === KIND.TRACK && len > 1 && next.index === 0 && currentIndex === len - 1;
 
+    /** @type {any} */
     const decision = {
         show: false,
         reason: '',
@@ -280,7 +312,8 @@ export function resolveNextUp(snapshot = {}) {
 
 /**
  * 渲染层唯一的入口：把「当前是否已浮出」并进快照，返回该做什么。
- * @param {Object} snapshot resolveNextUp 的入参 + `revealed: { key, signature } | null`
+ * @param {any} [snapshot] resolveNextUp 的入参 + `revealed: { key, signature } | null`
+ * @returns {any}
  */
 export function evaluateNextUp(snapshot = {}) {
     const revealed = snapshot.revealed && typeof snapshot.revealed === 'object' ? snapshot.revealed : null;
@@ -297,6 +330,7 @@ export function evaluateNextUp(snapshot = {}) {
 
 /** 给诊断/日志用的一行摘要（不含歌词正文，只有歌名与索引，可安全落日志）。
  *  ★ 刻意全 ASCII：core 层只出日志，不出 UI 文案，别让它进 i18n 复扫的账。 */
+/** @param {any} decision @returns {string} */
 export function describeDecision(decision) {
     if (!decision) return 'null';
     if (!decision.show) return `hide(${decision.reason})`;

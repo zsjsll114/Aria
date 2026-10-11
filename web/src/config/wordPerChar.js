@@ -34,7 +34,7 @@ export const WORD_UPGRADE_MIN_LINES = 8;
 
 /**
  * 现在该不该给行级歌词合成逐字时间？
- * @param {Object} settings appSettings（缺字段按默认值处理）
+ * @param {{lyrics?: {autoUpgradeWordLyrics?: boolean, perCharFromLineLyrics?: boolean}}} settings appSettings（缺字段按默认值处理）
  * @param {string} mode     当前视图模式（currentViewMode）
  */
 export function perCharSynthesisWanted(settings, mode) {
@@ -45,7 +45,10 @@ export function perCharSynthesisWanted(settings, mode) {
     return PER_CHAR_MODES.has(String(mode || ''));
 }
 
-/** 开关2 是否生效（给渲染层与升级服务共用，避免两处各判一遍） */
+/**
+ * 开关2 是否生效（给渲染层与升级服务共用，避免两处各判一遍）。
+ * @param {any} settings appSettings
+ */
 export function wordUpgradeWanted(settings) {
     return !!((settings && settings.lyrics) || {}).autoUpgradeWordLyrics;
 }
@@ -66,7 +69,9 @@ export const WORD_SOURCE_VENDOR = { kugou: 'kugou', tencent: 'qq', netease: 'net
  * @param {(platform:string)=>boolean} isEnabled 该 vendor 是否可用（自建开关 + 登录）
  */
 export function orderWordCandidateSources(candidates, isEnabled) {
-    const rank = (src) => (WORD_SOURCE_VENDOR[src] && isEnabled(WORD_SOURCE_VENDOR[src]) ? 0 : 1);
+    const vendorTable = /** @type {Record<string,string>} */ (WORD_SOURCE_VENDOR);
+    /** @param {string} src */
+    const rank = (src) => (vendorTable[src] && isEnabled(vendorTable[src]) ? 0 : 1);
     return (candidates || [])
         .map((s, i) => ({ s, i }))
         .sort((a, b) => (rank(a.s) - rank(b.s)) || (a.i - b.i))

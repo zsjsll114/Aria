@@ -52,7 +52,8 @@ export const SPATIAL_DEFAULT = 'light';
  * @returns {{wet:number}}
  */
 export function spatialTuningFor(level) {
-    return SPATIAL_TUNING[level] || SPATIAL_TUNING[SPATIAL_DEFAULT];
+    const table = /** @type {Record<string, {wet:number}>} */ (SPATIAL_TUNING);
+    return /** @type {any} */ (table[level]) || table[SPATIAL_DEFAULT];
 }
 
 /* ---------------------------------------------------------------
@@ -616,7 +617,8 @@ export const SPATIAL_IRS = {
  * @returns {{label:string, left:Float32Array, right:Float32Array}}
  */
 export function irFor(name) {
-    return SPATIAL_IRS[name] || SPATIAL_IRS[IR_DEFAULT];
+    const table = /** @type {Record<string, any>} */ (SPATIAL_IRS);
+    return table[name] || table[IR_DEFAULT];
 }
 
 /**
@@ -639,8 +641,8 @@ export function resampleLinear(src, fromRate, toRate) {
         const pos = i / ratio;
         const i0 = Math.floor(pos);
         const frac = pos - i0;
-        const a = i0 < n ? src[i0] : 0;
-        const b = i0 + 1 < n ? src[i0 + 1] : 0;
+        const a = i0 < n ? /** @type {number} */ (src[i0]) : 0;
+        const b = i0 + 1 < n ? /** @type {number} */ (src[i0 + 1]) : 0;
         out[i] = a + (b - a) * frac;
     }
     return out;
@@ -673,7 +675,8 @@ export const STAGE_DEFAULT = 'light';
  * @returns {{stageS:number, haasMs:number, haasMix:number}}
  */
 export function stageTuningFor(level) {
-    return STAGE_TUNING[level] || STAGE_TUNING[STAGE_DEFAULT];
+    const table = /** @type {Record<string, {stageS:number, haasMs:number, haasMix:number}>} */ (STAGE_TUNING);
+    return /** @type {any} */ (table[level]) || table[STAGE_DEFAULT];
 }
 
 /** 自定义强档键位预留（跨耳抵消，方案明确不做）。保留常量名让「为什么没有 strong」可检索。 */

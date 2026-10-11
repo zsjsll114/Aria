@@ -18,10 +18,12 @@ import { state } from '../infrastructure/state.js';
 import { logWarn } from '../services/log.js';
 import { onRoleSwap } from './dualDeck.js';
 
+/** @type {any} */
 let _audio = null;
 let _swapHooked = false;
 
 /** 注入 audio 元素。必须在任何淡入淡出被调用前执行一次。 */
+/** @param {HTMLAudioElement} audio */
 export function initFadeController(audio) {
     _audio = audio || null;
     /* ★ Automix Phase 2（swap 适配）：角色互换后 _audio 重指新活跃元素
@@ -32,11 +34,16 @@ export function initFadeController(audio) {
     }
 }
 
+/** @param {number} v @returns {number} */
 function clamp01(v) {
     return Math.max(0, Math.min(1, v));
 }
 
 /* 未注入元素时不静默失败：直接设到目标音量并留痕（淡变只是观感优化，不该因此卡住播放链路） */
+/**
+ * @param {any} target
+ * @param {string} reason
+ */
 function bypass(target, reason) {
     if (_audio) _audio.volume = clamp01(target);
     logWarn('fadeController', `未初始化 audio 元素，淡变已跳过（${reason}）`);
@@ -70,6 +77,7 @@ export function fadeOutVolume(duration, callback) {
     if (!state.appSettings || !state.appSettings.playback.fadeInOut) { if (callback) callback(); return; }
     const startVol = _audio.volume;
     const startTime = performance.now();
+    /** @param {number} now */
     function step(now) {
         const t = Math.min(1, (now - startTime) / duration);
         _audio.volume = clamp01(startVol * (1 - t));
@@ -147,6 +155,7 @@ export function fadeInVolume(targetVol, duration, opts) {
     const effectiveDuration = Math.min(duration, 1000);
     const startVol = o.fromSilence ? 0 : Math.min(_audio.volume, targetVol * 0.35);
     const startTime = performance.now();
+    /** @param {number} now */
     function step(now) {
         const linearT = Math.min(1, (now - startTime) / effectiveDuration);
         const easeT = Math.sin(linearT * Math.PI / 2);
@@ -181,6 +190,10 @@ export function fadeInVolume(targetVol, duration, opts) {
  *   就会出现"两套斜坡抢着写 audio.volume"，听感是抖动而不是淡入。
  *   本函数自身只保证：一旦被调用，就与 fadeOut/fadeIn 共享同一套句柄（互相取消），
  *   不会把音量卡在 0。
+ */
+/**
+ * @param {number} targetVol
+ * @param {number} [duration]
  */
 export function fadeInOnStart(targetVol, duration) {
     if (!_audio) return bypass(targetVol, 'startFade');

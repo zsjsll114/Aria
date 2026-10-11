@@ -75,7 +75,6 @@
     <link rel="stylesheet" href="src/styles/pv.css">
     <link rel="stylesheet" href="src/styles/pv-tunnel.css?v=tunnel_fix_2">
     <link rel="stylesheet" href="src/styles/letterpress.css?v=lp_4">
-    <link rel="stylesheet" href="src/styles/neon.css?v=neon_3">
     <link rel="stylesheet" href="src/styles/jizura.css?v=jizura_1">
 
     <link rel="stylesheet" href="src/styles/visualizers.css">
@@ -572,7 +571,7 @@
                 </button>
             </div>
             <div class="view-mode-cards">
-                <div class="view-mode-card" data-mode="cover" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='cover')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='cover'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});var pc=document.querySelector('.player-container');if(pc){pc.classList.remove('view-letterpress','view-neon','view-tategaki','view-flyin','view-wordcloud','view-pv','view-tunnel','view-dimension');pc.classList.add('view-cover');}if(window.switchAppearanceMode)window.switchAppearanceMode('cover');})();">
+                <div class="view-mode-card" data-mode="cover" onclick="(function(){var c=document.getElementById('lyricStyleControls');if(!c)return;c.querySelectorAll('.appearance-mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode==='cover')});c.querySelectorAll('[data-mode-section]').forEach(function(s){if(s.dataset.modeSection==='cover'){s.classList.add('active');s.style.setProperty('display','block','important');}else{s.classList.remove('active');s.style.setProperty('display','none','important');}});var pc=document.querySelector('.player-container');if(pc){pc.classList.remove('view-letterpress','view-tategaki','view-flyin','view-wordcloud','view-pv','view-tunnel','view-dimension');pc.classList.add('view-cover');}if(window.switchAppearanceMode)window.switchAppearanceMode('cover');})();">
                     <div class="view-mode-preview view-mode-preview-cover">
                         <div class="view-mode-mock-cover">
                             <div class="view-mode-mock-disc"></div>

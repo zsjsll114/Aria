@@ -39,6 +39,7 @@ export const IDB_TARGETS = [
 ];
 
 /** 人类可读字节数 */
+/** @param {number} n @returns {string} */
 export function formatBytes(n) {
     const v = Number(n) || 0;
     if (v < 1024) return `${v} B`;
@@ -59,6 +60,7 @@ export function classifyLocalStorage(entries) {
     const byKey = new Map();
     for (const g of LS_GROUPS) for (const k of g.keys) byKey.set(k, g.id);
     const idxOf = new Map(groups.map((g, i) => [g.id, i]));
+    /** @type {any} */
     const unlisted = { count: 0, bytes: 0, keys: [] };
     let totalBytes = 0;
     for (const e of list) {
@@ -67,7 +69,7 @@ export function classifyLocalStorage(entries) {
         totalBytes += b;
         const gid = byKey.get(e.key);
         if (gid && idxOf.has(gid)) {
-            const gl = groups[idxOf.get(gid)];
+            const gl = /** @type {{count:number, bytes:number}} */ (groups[/** @type {number} */ (idxOf.get(gid))]);
             gl.count++;
             gl.bytes += b;
         } else {
@@ -82,10 +84,11 @@ export function classifyLocalStorage(entries) {
 /**
  * 达到上限时该清理谁（按「低价值 → 高价值」顺序给出建议）。
  * ★ 只从 cache / high 里选；**user 类永不入选**（需求 13 硬约束）。
- * @param {{idb?:Array, ls?:Array, totalBytes:number, limitMb:number}} usage
- * @returns {{need:boolean, overflowBytes:number, targets:Array}}
+ * @param {{idb?:Array<any>, ls?:Array<any>, totalBytes:number, limitMb:number}} usage
+ * @returns {{need:boolean, overflowBytes:number, targets:Array<any>}}
  */
 export function pickAutoPruneTargets(usage) {
+    /** @type {{idb?:Array<any>, ls?:Array<any>, totalBytes?:number, limitMb?:number}} */
     const u = usage || {};
     const limitBytes = Math.max(0, (Number(u.limitMb) || 0)) * 1024 * 1024;
     const total = Number(u.totalBytes) || 0;
@@ -96,6 +99,10 @@ export function pickAutoPruneTargets(usage) {
     /* 排序：① IDB 普通缓存 → ② IDB 高价值 → ③ localStorage 缓存组。
        IDB 优先于 LS，因为占用大头在 IDB（AI/对齐/分析），清它才降得下来。
        同级按占用倒序（先清大户，见效快）。 */
+    /**
+     * @param {string} type
+     * @param {string} kind
+     */
     const rank = (type, kind) => {
         if (type === 'idb') return kind === 'high' ? 1 : 0;
         return 2;
@@ -119,6 +126,7 @@ export function pickAutoPruneTargets(usage) {
 }
 
 /** 清理前的风险文案（供 UI 直接显示；纯函数便于单测） */
+/** @param {any} target @returns {string} */
 export function pruneWarning(target) {
     const t = target || {};
     if (t.kind === 'high') {

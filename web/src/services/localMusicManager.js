@@ -7,10 +7,20 @@
  * 3. 降级兜底逻辑（ID3 解析 ➔ 智能文件名解析 ➔ 用户自定义上传 LRC）
  */
 
-import { convertToEnhancedLrc, parseEnhancedLrc } from './enhancedLrcConverter.js';
+import { convertToEnhancedLrc } from './enhancedLrcConverter.js';
 import { calculateLyricMatchScore } from './lyricMatcher.js';
 import { logInfo, logWarn, logError } from './log.js';
 import { logCatch } from '../services/log.js';
+
+/**
+ * 各源取词函数字典（缺某源则该源不参与）。
+ * 声明返回 Promise 是为了让 `.then(res => …)` / `.catch(e => …)` 的回调获得上下文类型。
+ * @typedef {object} LyricFetchers
+ * @property {(title: string, artist: string) => Promise<any>} [fetchKugou]
+ * @property {(title: string, artist: string) => Promise<any>} [fetchNetease]
+ * @property {(title: string, artist: string) => Promise<any>} [fetchQQ]
+ * @property {(title: string, artist: string) => Promise<any>} [fetchLrcLib]
+ */
 
 export class LocalMusicManager {
     constructor() {
@@ -26,10 +36,11 @@ export class LocalMusicManager {
     /**
      * 辅助：文件转 Base64
      */
+    /** @param {Blob|File} file @returns {Promise<string>} */
     async fileToBase64(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
+            reader.onload = () => resolve(String(reader.result || ''));
             reader.onerror = reject;
             reader.readAsDataURL(file);
         });
@@ -75,7 +86,8 @@ export class LocalMusicManager {
         const dataBase64 = await this.fileToBase64(audioFile);
 
         // 1. 调用后端上传临时音频
-        let uploadResult = null;
+        /** @type {any} */
+let uploadResult = null;
         try {
             const uploadRes = await fetch(`${this.apiBase}/api/local-music/upload`, {
                 method: 'POST',
@@ -100,6 +112,7 @@ export class LocalMusicManager {
 
         // 2. 尝试提取元数据（第一级：Shazam 声学指纹 / 第二级：Vosk 本地离线歌词听写反查 / 第三级：ID3 / 第四级：文件名清洗）
         onProgress('正在进行智能多级识曲 (Shazam 声学指纹 / Vosk 歌词听写)...', 40);
+        /** @type {any} */
         let meta = await this._recognizeAudioMetadata(audioFile, uploadResult);
 
         if (!meta || !meta.title) {
@@ -129,16 +142,29 @@ export class LocalMusicManager {
         }
 
         // 排序：优先逐字、得分最高，且★歌手一致性过滤（拒绝同曲名不同歌手的“张冠李戴”）
-        const normArt = s => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^\w\u4e00-\u9fa5]+/g, '').trim();
-        const artistSim = (a, b) => {
+        /** @param {any} s */
+    const normArt = s => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^\w\u4e00-\u9fa5]+/g, '').trim();
+        /**
+     * @param {string} a
+     * @param {string} b
+     * @returns {number}
+     */
+    /**
+     * @param {string} a
+     * @param {string} b
+     * @returns {boolean}
+     */
+    const artistSim = (a, b) => {
             const x = normArt(a), y = normArt(b);
             if (!x || !y) return true;               // 候选无歌手信息则放行
             if (x.includes(y) || y.includes(x)) return true;
             return false;
         };
-        candidateLyrics.sort((a, b) => b.score - a.score);
-        const bestAllowed = candidateLyrics.find(c => !c.artist || artistSim(c.artist, meta.artist));
-        const bestCandidate = bestAllowed || candidateLyrics[0] || null;
+        /** @type {any[]} */
+        const candidates = candidateLyrics;
+        candidates.sort((a, b) => b.score - a.score);
+        const bestAllowed = candidates.find(c => !c.artist || artistSim(c.artist, meta.artist));
+        const bestCandidate = bestAllowed || candidates[0] || null;
 
         // 4. 将逐字歌词转换为增强型 LRC (Enhanced LRC)
         // ★ 2026-10-02 时间轴覆盖率校验（用户实测《逆光者》串成《早产儿》21s 词→
@@ -165,7 +191,7 @@ export class LocalMusicManager {
                 album: meta.album
             });
             // 纯逐行 LRC 备用
-            lrcText = bestCandidate.parsedLines.map(l => {
+            lrcText = /** @type {any[]} */ (bestCandidate.parsedLines).map(l => {
                 const mm = String(Math.floor(l.start / 60000)).padStart(2, '0');
                 const ss = String(Math.floor((l.start % 60000) / 1000)).padStart(2, '0');
                 const xx = String(Math.floor((l.start % 1000) / 10)).padStart(2, '0');
@@ -221,6 +247,12 @@ export class LocalMusicManager {
     /**
      * 手动为指定歌曲上传/替换本地 LRC 歌词文件
      */
+    /**
+     * @param {string} folderName
+     * @param {string} lrcText
+     * @param {boolean} [isEnhanced]
+     * @returns {Promise<any>}
+     */
     async uploadCustomLrc(folderName, lrcText, isEnhanced = false) {
         try {
             const res = await fetch(`${this.apiBase}/api/local-music/upload-custom-lrc`, {
@@ -242,6 +274,7 @@ export class LocalMusicManager {
     /**
      * 删除本地单曲
      */
+    /** @param {string} folderName @returns {Promise<any>} */
     async deleteLocalSong(folderName) {
         try {
             const res = await fetch(`${this.apiBase}/api/local-music/delete`, {
@@ -266,6 +299,7 @@ export class LocalMusicManager {
     /**
      * 解析文件名作为降级备用
      */
+    /** @param {string} filename @returns {any} */
     _parseMetadataFromFilename(filename) {
         const clean = filename.replace(/\.[^/.]+$/, '').trim();
         let artist = '未知歌手';
@@ -273,12 +307,12 @@ export class LocalMusicManager {
 
         if (clean.includes(' - ')) {
             const parts = clean.split(' - ');
-            artist = parts[0].trim();
+            artist = (/** @type {string} */ (parts[0])).trim();
             title = parts.slice(1).join(' - ').trim();
         } else if (clean.includes('_')) {
             const parts = clean.split('_');
             if (parts.length >= 2 && !clean.startsWith('obj_')) {
-                artist = parts[0].trim();
+                artist = (/** @type {string} */ (parts[0])).trim();
                 title = parts.slice(1).join(' ').trim();
             }
         }
@@ -291,6 +325,8 @@ export class LocalMusicManager {
 
     /**
      * 听歌识曲与元数据识别
+     * @param {any} audioFile
+     * @param {any} [uploadResult] 上传结果（含 shazam 声学识别字段）
      */
     async _recognizeAudioMetadata(audioFile, uploadResult = null) {
         logInfo('localMusicManager', '[LocalMusicManager] _recognizeAudioMetadata received uploadResult:', uploadResult ? JSON.stringify(uploadResult.shazam) : 'null');
@@ -347,9 +383,13 @@ export class LocalMusicManager {
     }
 
     /**
-     * 全源歌词检索与聚合
+     * 全源歌词检索与聚合。
+     * @param {any} meta
+     * @param {LyricFetchers} fetchers 各源取词函数字典（缺某个源就跳过该源）
+     * @returns {Promise<any>}
      */
     async _searchAllLyricSources(meta, fetchers) {
+        /** @type {any[]} */
         const results = [];
         const { title, artist } = meta;
 
@@ -427,7 +467,9 @@ export class LocalMusicManager {
         return [];
     }
 
-    async _saveSongToIndexedDB(song) {
+    /* 历史存根：IndexedDB 落盘路线已废弃（改走 /api/local-music/*），故入参不再使用 */
+    /** @param {any} _song @returns {Promise<any>} */
+    async _saveSongToIndexedDB(_song) {
         return true;
     }
 }

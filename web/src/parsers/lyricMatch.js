@@ -13,6 +13,7 @@
 /** 归一化一行：去掉装饰符/空白/标点、全角转半角、拉丁转小写。
  *  各平台对同一句的写法差异基本都在这些上（酷狗 KRC 带 ^ $ \ 装饰、
  *  网易译名有空格差异），不归一直接比会把同句判成不同句。 */
+/** @param {any} text @returns {string} */
 export function normalizeLyricLine(text) {
     if (typeof text !== 'string') return '';
     return text
@@ -29,12 +30,13 @@ export function normalizeLyricLine(text) {
  *  （parseLrc/parseYrc/mergeLyrics 契约），这里只认 `text`/`words` —— 当前词每行
  *  归一成空串 → 覆盖率恒 0% → 永不替换（端到端探针实测《晴天》kugou KRC 命中
  *  42 行逐字但 coverage 0%）。补上 original 兜底。 */
+/** @param {any} line @returns {string} */
 function lineText(line) {
     if (!line) return '';
     if (typeof line.text === 'string' && line.text) return line.text;
     if (typeof line.original === 'string' && line.original) return line.original;
     if (Array.isArray(line.words) && line.words.length) {
-        return line.words.map(w => (w && (w.word ?? w.text ?? w.c)) || '').join('');
+        return /** @type {any[]} */ (line.words).map(w => (w && (w.word ?? w.text ?? w.c)) || '').join('');
     }
     return '';
 }
@@ -43,6 +45,7 @@ function lineText(line) {
  * 有界编辑距离相似度（0~1）。
  * 超过 maxLen*0.5 的距离直接早退——判"像不像"不需要精确到第 30 个编辑。
  */
+/** @param {string} a @param {string} b @returns {number} */
 export function lineSimilarity(a, b) {
     const s = normalizeLyricLine(a), t = normalizeLyricLine(b);
     if (!s && !t) return 1;
@@ -69,6 +72,7 @@ export function lineSimilarity(a, b) {
 
 /** 这份歌词是不是「真·逐字」——合成出来的不算（约束 17：有 words ≠ 有真实逐字）。
  *  刻意不 import wordTiming.js，避免 parsers 内部互相牵连；判据保持一字不差。 */
+/** @param {any[]} lines @returns {boolean} */
 export function hasRealWordTiming(lines) {
     if (!Array.isArray(lines)) return false;
     return lines.some(l => {
@@ -84,6 +88,7 @@ export function hasRealWordTiming(lines) {
  *  它们既不该拉低匹配率，也不该算进分母。 */
 const CREDIT_RE = /(作词|作曲|编曲|制作人|出品人|出品|发行|版权|录音|混音|母带|和声|吉他|贝斯|钢琴|弦乐|弦编|缩混|助理|监制|经纪|唱片|工作室|厂牌|OP|SP|Lyricist|Composer|Arrang|Producer|Program|Mixing|Mixed|Recording|Master|Engineer|Studio|Bass|Guitar|Piano|Strings|Violin|Cello|Choir|©|℗)/i;
 
+/** @param {string} text @returns {boolean} */
 function isCreditLine(text) {
     return CREDIT_RE.test(text);
 }
@@ -99,6 +104,12 @@ function isCreditLine(text) {
  * ★ 为什么仍然是「顺序保持」：不做乱序匹配，歌词只多一段重复副歌不会变成高分，
  *   而两首歌的歌词打乱顺序也不会被误判成同一首。
  */
+/**
+ * @param {any} a 字符串或字符串数组（本文件两种调用都有）
+ * @param {any} b
+ * @param {number} threshold
+ * @returns {number} 匹配长度
+ */
 function lcsMatched(a, b, threshold) {
     const n = a.length, m = b.length;
     if (!n || !m) return 0;
@@ -106,19 +117,22 @@ function lcsMatched(a, b, threshold) {
     let cur = new Int32Array(m + 1);
     for (let i = 1; i <= n; i++) {
         for (let j = 1; j <= m; j++) {
-            const skip = prev[j] > cur[j - 1] ? prev[j] : cur[j - 1];
+            const up = /** @type {number} */ (prev[j]);
+            const left = /** @type {number} */ (cur[j - 1]);
+            const skip = up > left ? up : left;
             const take = a[i - 1] === b[j - 1] ? 1
                 : (Math.abs(a[i - 1].length - b[j - 1].length) / Math.max(a[i - 1].length, b[j - 1].length) > 0.5
                     ? -1 : (lineSimilarity(a[i - 1], b[j - 1]) >= threshold ? 1 : -1));
-            cur[j] = Math.max(skip, take > 0 ? prev[j - 1] + 1 : -1);
+            cur[j] = Math.max(skip, take > 0 ? (/** @type {number} */ (prev[j - 1])) + 1 : -1);
         }
         const tmp = prev; prev = cur; cur = tmp;
         cur.fill(0);
     }
-    return prev[m];
+    return /** @type {number} */ (prev[m]);
 }
 
 /** 字符级顺序 LCS 长度（两行滚动数组）。判定「同一首歌」用这个，不用按行比。 */
+/** @param {string} a @param {string} b @returns {number} */
 function charLcsLength(a, b) {
     const n = a.length, m = b.length;
     if (!n || !m) return 0;
@@ -127,13 +141,15 @@ function charLcsLength(a, b) {
     for (let i = 1; i <= n; i++) {
         const ca = a.charCodeAt(i - 1);
         for (let j = 1; j <= m; j++) {
+            const up2 = /** @type {number} */ (prev[j]);
+            const left2 = /** @type {number} */ (cur[j - 1]);
             cur[j] = ca === b.charCodeAt(j - 1)
-                ? prev[j - 1] + 1
-                : (prev[j] >= cur[j - 1] ? prev[j] : cur[j - 1]);
+                ? (/** @type {number} */ (prev[j - 1])) + 1
+                : (up2 >= left2 ? up2 : left2);
         }
         const tmp = prev; prev = cur; cur = tmp;
     }
-    return prev[m];
+    return /** @type {number} */ (prev[m]);
 }
 
 /**
@@ -146,15 +162,15 @@ function charLcsLength(a, b) {
  * @param {Array<Object>} current  当前在用的（行级）歌词
  * @param {Array<Object>} candidate 候选（逐字）歌词
  * @param {{perLineThreshold?:number}} [opts]
- * @returns {{rate:number, matched:number, total:number, perLine:number}}
+ * @returns {{rate:number, coverage:number, matched:number, total:number, perLine:number}}
  *          perLine 是**按位置**比的均值，只作诊断/测试用，判定一律用 rate
  */
 export function lyricMatchRate(current, candidate, opts = {}) {
-    const perLineThreshold = Number.isFinite(opts.perLineThreshold) ? opts.perLineThreshold : 0.82;
+    const perLineThreshold = Number.isFinite(opts.perLineThreshold) ? Number(opts.perLineThreshold) : 0.82;
     const rawA = (Array.isArray(current) ? current : []).map(lineText).filter(t => normalizeLyricLine(t));
     const rawB = (Array.isArray(candidate) ? candidate : []).map(lineText).filter(t => normalizeLyricLine(t));
     const total = Math.max(rawA.length, rawB.length);
-    if (!total) return { rate: 0, matched: 0, total: 0, perLine: 0 };
+    if (!total) return { rate: 0, coverage: 0, matched: 0, total: 0, perLine: 0 };
 
     const a = rawA.filter(t => !isCreditLine(t));
     const b = rawB.filter(t => !isCreditLine(t));
@@ -165,7 +181,7 @@ export function lyricMatchRate(current, candidate, opts = {}) {
 
     const shared = Math.min(rawA.length, rawB.length);
     let sum = 0;
-    for (let i = 0; i < shared; i++) sum += lineSimilarity(rawA[i], rawB[i]);
+    for (let i = 0; i < shared; i++) sum += lineSimilarity(/** @type {string} */ (rawA[i]), /** @type {string} */ (rawB[i]));
 
     const matched = lcsMatched(useA, useB, perLineThreshold);
     /* ★ 真正的判据在字流上，不在「行」上：各平台分行习惯天生不同
@@ -181,7 +197,6 @@ export function lyricMatchRate(current, candidate, opts = {}) {
        而各平台分行习惯本来就不同（同一句酷狗拆两行、网易一行），实测一首歌
        kugou 67% / tencent 86% 都被 rate 挡掉，可它对当前歌词的覆盖率其实是够的。
        保留 rate 作诊断口径，别再拿它当唯一判据。 */
-    const cur = useA.length || 1;
     return {
         rate: denom ? matched / denom : 0,
         coverage: streamA.length ? Math.min(1, charMatched / streamA.length) : 0,

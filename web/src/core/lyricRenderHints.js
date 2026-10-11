@@ -15,9 +15,14 @@ const MICRO_LINE_DURATION_THRESHOLD_MS = 100;
 const SHORT_LINE_DURATION_THRESHOLD_MS = 180;
 const MICRO_LINE_RENDER_FLOOR_MS = 67;
 
+/** @type {(v:number, lo:number, hi:number) => number} */
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** 行内最后一个词的结束时间（无字词时退回行尾） */
+/**
+ * 行内最后一个词的结束时间（无字词时退回行尾）。
+ * @param {any} line
+ * @returns {number}
+ */
 const lastWordEndMs = (line) => {
   const ws = line.words;
   const last = ws && ws.length > 0 ? ws[ws.length - 1] : null;
@@ -48,15 +53,25 @@ export function getLineTransitionTiming(rawDurationMs, mode, reveal) {
   };
 }
 
+/** @param {number} rawDurationMs @returns {string} */
 const getTimingClass = (rawDurationMs) => {
   if (rawDurationMs < MICRO_LINE_DURATION_THRESHOLD_MS) return 'micro';
   if (rawDurationMs < SHORT_LINE_DURATION_THRESHOLD_MS) return 'short';
   return 'normal';
 };
 
+/** @param {string} cls @returns {string} */
 const timingClassToTransitionMode = (cls) => (cls === 'micro' ? 'none' : cls === 'short' ? 'fast' : 'normal');
+/** @param {string} cls @returns {string} */
 const timingClassToRevealMode = (cls) => (cls === 'micro' ? 'instant' : cls === 'short' ? 'fast' : 'normal');
 
+/**
+ * @param {any} line
+ * @param {number} rawDurationMs
+ * @param {string} transitionMode
+ * @param {string} revealMode
+ * @returns {number}
+ */
 const buildRenderEndTime = (line, rawDurationMs, transitionMode, revealMode) => {
   if (transitionMode === 'none') {
     return Math.max(line.end, line.start + MICRO_LINE_RENDER_FLOOR_MS);
@@ -71,8 +86,8 @@ const buildRenderEndTime = (line, rawDurationMs, transitionMode, revealMode) => 
 
 /**
  * ★ 主入口：构建一行的渲染提示
- * @param {Object} line { start, end, words? }（ms；兼容 startTime/endTime 字段）
- * @returns {Object} { rawDuration, timingClass, renderEndTime, lineTransitionMode, wordRevealMode }
+ * @param {any} line { start, end, words? }（ms；兼容 startTime/endTime 字段）
+ * @returns {{rawDuration:number, timingClass:string, renderEndTime:number, lineTransitionMode:string, wordRevealMode:string}}
  */
 export function buildLineRenderHints(line) {
   const start = (typeof line.start === 'number' ? line.start : line.startTime) || 0;
@@ -90,7 +105,11 @@ export function buildLineRenderHints(line) {
   };
 }
 
-/** 整批标注（幂等：已带 renderHints 且一致则原样返回，标记 changed） */
+/**
+ * 整批标注（幂等：已带 renderHints 且一致则原样返回，标记 changed）。
+ * @param {any[]} [lines]
+ * @returns {any[]}
+ */
 export function annotateLyricLines(lines = []) {
   let changed = false;
   const next = lines.map((line) => {
@@ -108,13 +127,21 @@ export function annotateLyricLines(lines = []) {
   return next;
 }
 
-/** 取一行渲染提示（缺省即现场构建） */
+/**
+ * 取一行渲染提示（缺省即现场构建）。
+ * @param {any} line
+ * @returns {any}
+ */
 export function getLineRenderHints(line) {
   if (!line) return null;
   return line.renderHints || buildLineRenderHints(line);
 }
 
-/** 该行可视化器最晚可保留在屏上的时刻 */
+/**
+ * 该行可视化器最晚可保留在屏上的时刻。
+ * @param {any} line
+ * @returns {number|undefined}
+ */
 export function getLineRenderEndTime(line) {
   return getLineRenderHints(line)?.renderEndTime ?? (typeof line.end === 'number' ? line.end : line.endTime);
 }

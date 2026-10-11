@@ -8,6 +8,7 @@
 
 /** 一行的起点（毫秒）。歌词行统一用 start；缺失时返回 null 而不是 0，
  *  否则"没有时间的行"会被当成第 0 毫秒，循环会锁死在开头。 */
+/** @param {any} line @returns {number|null} 取不到有效起点时 null */
 export function lineStartMs(line) {
     if (!line) return null;
     const v = Number(line.start);
@@ -21,8 +22,14 @@ export function lineStartMs(line) {
  * 因为最后一行没有下界时不循环比循环到歌曲结尾更符合"单句循环"的直觉。
  * @returns {{start:number,end:number}|null}
  */
+/**
+ * @param {any[]} lyrics
+ * @param {any} index 允许 null/undefined/''（表示"没有行号"，须挡掉）
+ * @param {{fallbackMs?: number}} [opts]
+ * @returns {{start:number, end:number}|null}
+ */
 export function lineRangeMs(lyrics, index, opts = {}) {
-    const fallbackMs = Number.isFinite(opts.fallbackMs) ? opts.fallbackMs : 6000;
+    const fallbackMs = Number.isFinite(opts.fallbackMs) ? Number(opts.fallbackMs) : 6000;
     if (!Array.isArray(lyrics) || !lyrics.length) return null;
     /* ★ null / undefined / '' 必须显式挡掉：Number(null) === 0 是合法的，
        不挡的话"拿不到行号"会静默变成"循环第 0 行"——用户点不到却一直在循环开头。 */
@@ -55,6 +62,13 @@ export function lineRangeMs(lyrics, index, opts = {}) {
  */
 export const TAIL_SKEW_MS = 1500;
 
+/**
+ * @param {number} currentMs
+ * @param {number} startMs
+ * @param {number} endMs
+ * @param {number} [skewMs]
+ * @returns {boolean}
+ */
 export function shouldRewind(currentMs, startMs, endMs, skewMs = TAIL_SKEW_MS) {
     if (!Number.isFinite(currentMs) || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
     if (endMs <= startMs) return false;                      /* 退化区间：绝不循环，否则会死锁 */
@@ -64,6 +78,12 @@ export function shouldRewind(currentMs, startMs, endMs, skewMs = TAIL_SKEW_MS) {
 
 /** 用户手动 seek 之后循环要不要取消：落在区间外就取消，
  *  否则用户永远拖不出去（"进度条打不过循环"是最容易被当成 bug 的观感）。 */
+/**
+ * @param {number} currentMs
+ * @param {number} startMs
+ * @param {number} endMs
+ * @returns {boolean}
+ */
 export function seekCancelsLoop(currentMs, startMs, endMs) {
     if (!Number.isFinite(currentMs)) return false;
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return true;

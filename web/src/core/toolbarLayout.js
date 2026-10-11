@@ -67,38 +67,54 @@ export const TOOLBAR_BARS = ['top'];
 const CONTROLS_BY_BAR = TOOLBAR_CONTROLS.reduce((acc, c) => {
     (acc[c.bar] || (acc[c.bar] = [])).push(c);
     return acc;
-}, {});
+}, /** @type {Record<string, any[]>} */ ({}));
 
+/** @param {string} bar @returns {any[]} */
 export function controlsOfBar(bar) {
     return (CONTROLS_BY_BAR[bar] || []).slice();
 }
 
 /** 某条工具栏的默认 id 顺序 */
+/** @param {string} bar @returns {string[]} */
 export function defaultOrder(bar) {
     return controlsOfBar(bar).map(c => c.id);
 }
 
+/**
+ * @param {string} bar
+ * @param {string} id
+ * @returns {boolean}
+ */
 export function isRemovable(bar, id) {
     const c = (CONTROLS_BY_BAR[bar] || []).find(x => x.id === id);
     return !!c && c.removable !== false;
 }
 
+/**
+ * @param {string} bar
+ * @param {string} id
+ * @returns {boolean}
+ */
 export function isRegistered(bar, id) {
     return (CONTROLS_BY_BAR[bar] || []).some(x => x.id === id);
 }
 
+/** @param {string} bar @returns {any} */
 export function defaultLayout(bar) {
     return { order: defaultOrder(bar), hidden: [] };
 }
 
+/** @param {any} v @returns {boolean} */
 function isPlainObject(v) {
     return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
+/** @param {any} v @returns {string[]} */
 function idList(v) {
     return Array.isArray(v) ? v.filter(x => typeof x === 'string' && x) : [];
 }
 
+/** @param {any[]} list @returns {string[]} */
 function dedupe(list) {
     const seen = new Set();
     const out = [];
@@ -116,9 +132,16 @@ function dedupe(list) {
  * 要能容忍（按默认位置补回来，未来版本新增按钮时老配置不会把它挤到最后）、
  * 整体坏掉（null / 字符串 / 数字 / 数组）一律退回默认，且绝不抛。
  */
+/**
+ * @param {string} bar
+ * @param {any} raw
+ * @returns {any}
+ */
 export function sanitizeLayout(bar, raw) {
     const known = defaultOrder(bar);
+    /** @type {string[]} */
     let order = [];
+    /** @type {string[]} */
     let hidden = [];
     if (isPlainObject(raw)) {
         /* 丢掉未知 id 与重复项：未知项可能来自旧版本删掉的按钮 */
@@ -140,7 +163,9 @@ export function sanitizeLayout(bar, raw) {
 }
 
 /** 读整份偏好 → { bars: { top: layout, … } }。缺 bar / 多 bar 都不抛。 */
+/** @param {any} raw @returns {any} */
 export function normalizePref(raw) {
+    /** @type {Record<string, any>} */
     const bars = {};
     const src = isPlainObject(raw) && isPlainObject(raw.bars) ? raw.bars : {};
     for (const bar of TOOLBAR_BARS) bars[bar] = sanitizeLayout(bar, src[bar]);
@@ -148,8 +173,10 @@ export function normalizePref(raw) {
 }
 
 /** 写回偏好：与默认完全一致的 bar 整个不落盘，好让「恢复默认」= 删键 */
+/** @param {any} barsByLayout @returns {any} */
 export function buildPref(barsByLayout) {
     const src = isPlainObject(barsByLayout) ? barsByLayout : {};
+    /** @type {Record<string, any>} */
     const bars = {};
     for (const bar of TOOLBAR_BARS) {
         const layout = sanitizeLayout(bar, src[bar]);
@@ -160,6 +187,7 @@ export function buildPref(barsByLayout) {
         : null;
 }
 
+/** @param {any} a @param {any} b @returns {boolean} */
 export function layoutEqual(a, b) {
     const x = a || {};
     const y = b || {};
@@ -171,11 +199,13 @@ export function layoutEqual(a, b) {
         && bx.length === by.length && bx.every((v, i) => v === by[i]);
 }
 
+/** @param {any} layout @returns {string[]} */
 export function visibleIds(layout) {
     const l = sanitizeLayoutLoose(layout);
-    return l.order.filter(id => !l.hidden.includes(id));
+    return /** @type {string[]} */ (l.order).filter(id => !/** @type {string[]} */ (l.hidden).includes(id));
 }
 
+/** @param {any} layout @returns {string[]} */
 export function hiddenIds(layout) {
     const l = sanitizeLayoutLoose(layout);
     return l.hidden.slice();
@@ -183,6 +213,7 @@ export function hiddenIds(layout) {
 
 /* 内部：visibleIds/hiddenIds 也会被测试直接喂半成品布局，走一遍 sanitize 的
    order 收敛即可，但不必按 bar 查登记表（调用方只给了 layout） */
+/** @param {any} layout @returns {any} */
 function sanitizeLayoutLoose(layout) {
     if (!isPlainObject(layout)) return { order: [], hidden: [] };
     const order = dedupe(idList(layout.order));
@@ -211,11 +242,18 @@ export function moveId(layout, id, delta) {
 }
 
 /** 显示/隐藏一个控件；非 removable 的 id 直接原样返回（不抛） */
+/**
+ * @param {any} layout
+ * @param {string} id
+ * @param {boolean} hide
+ * @param {boolean} [removable]
+ * @returns {any}
+ */
 export function setHidden(layout, id, hide, removable = true) {
     const l = sanitizeLayoutLoose(layout);
     if (!l.order.includes(id)) return { order: l.order, hidden: l.hidden };
     if (hide && !removable) return { order: l.order, hidden: l.hidden };
-    const hidden = l.hidden.filter(x => x !== id);
+    const hidden = /** @type {string[]} */ (l.hidden).filter(x => x !== id);
     if (hide) hidden.push(id);
     return { order: l.order, hidden };
 }
@@ -231,6 +269,7 @@ export function setHidden(layout, id, hide, removable = true) {
 export function resolveChildIds(bar, layout, presentIds) {
     const l = sanitizeLayout(bar, layout);
     const present = dedupe(idList(presentIds));
+    /** @type {string[]} */
     const managed = [];
     for (const id of l.order) {
         if (isRegistered(bar, id) && present.includes(id)) managed.push(id);

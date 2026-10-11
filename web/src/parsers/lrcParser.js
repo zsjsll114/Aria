@@ -1,4 +1,10 @@
 /** parsers/lrcParser.js — LRC 歌词解析 */
+
+/**
+ * 过滤 QQ 音乐的元数据标签行与翻译版权声明。
+ * @param {string} lrcText
+ * @returns {string}
+ */
 export function cleanQQMusicMetadata(lrcText) {
     if (!lrcText) return lrcText;
     const lines = lrcText.split('\n');
@@ -14,6 +20,10 @@ export function cleanQQMusicMetadata(lrcText) {
     return cleanedLines.join('\n');
 }
 
+/**
+ * @param {string} lrcText
+ * @returns {Array<any>}
+ */
 export function parseLrc(lrcText) {
     if (!lrcText || typeof lrcText !== 'string') return [];
     const lines = lrcText.replace(/\r\n/g, '\n').split('\n');
@@ -27,8 +37,8 @@ export function parseLrc(lrcText) {
         const timeTags = [];
         let lastTagEnd = 0;
         while ((match = tagRegex.exec(line)) !== null) {
-            const min = parseInt(match[1]);
-            const sec = parseInt(match[2]);
+            const min = parseInt(/** @type {string} */ (match[1]));
+                    const sec = parseInt(/** @type {string} */ (match[2]));
             const msStr = match[3];
             let ms = 0;
             if (msStr) {

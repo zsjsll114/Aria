@@ -34,7 +34,8 @@ export const SETTINGS_NAV = [
 /** 当前界面语言（AriaI18n 未加载时默认中文） */
 function navLang() {
   try {
-    return (typeof globalThis !== 'undefined' && globalThis.AriaI18n) ? globalThis.AriaI18n.getLanguage() : 'zh-CN';
+    const g = /** @type {any} */ (globalThis);
+    return (typeof globalThis !== 'undefined' && g.AriaI18n) ? g.AriaI18n.getLanguage() : 'zh-CN';
   } catch (e) { return 'zh-CN'; }
 }
 const navIsEn = () => navLang() === 'en-US';
@@ -68,7 +69,7 @@ export function renderSettingsNav(container) {
      ★ nav 过滤条件 = 节名/组名匹配 OR 该节深搜命中 > 0（否则深搜命中的节
      会被节名过滤藏掉，用户永远点不到），命中节挂计数徽章，点击跳转后滚到
      首个命中行。 */
-  const input = container.querySelector('#settingsNavSearch');
+  const input = /** @type {HTMLInputElement|null} */ (container.querySelector('#settingsNavSearch'));
   const groups = container.querySelectorAll('.settings-nav-group');
   input?.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
@@ -76,12 +77,12 @@ export function renderSettingsNav(container) {
     const deep = q.length >= 2;
 
     /* 搜索时锚点让位：过滤结果与锚点是两套高亮，同时在侧栏会互相打架 */
-    container.querySelectorAll('.settings-nav-anchors').forEach(r => { r.style.display = q ? 'none' : ''; });
+    /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.settings-nav-anchors')).forEach(r => { r.style.display = q ? 'none' : ''; });
 
     /* 先跑深搜（nav 过滤要用命中数） */
     const secHits = new Map();
     if (typeof document !== 'undefined') {
-      document.querySelectorAll('.settings-section').forEach(sec => {
+      /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.settings-section')).forEach(sec => {
         let n = 0;
         sec.querySelectorAll('.setting-label, .setting-desc, .settings-group-title').forEach(l => {
           const hit = deep && l.textContent.toLowerCase().includes(q);
@@ -96,22 +97,22 @@ export function renderSettingsNav(container) {
       const g = SETTINGS_NAV[gi];
       if (!g) return;
       let any = false;
-      gEl.querySelectorAll('.settings-tab').forEach((bEl, ii) => {
+      /** @type {NodeListOf<HTMLElement>} */ (gEl.querySelectorAll('.settings-tab')).forEach((bEl, ii) => {
         const it = g.items[ii];
         const nameHit = !q || !it || it.label.toLowerCase().includes(q) || g.group.toLowerCase().includes(q);
-        const deepHit = deep && (secHits.get(it.tab) || 0) > 0;
+        const deepHit = deep && !!it && (secHits.get(it.tab) || 0) > 0;
         const hit = nameHit || deepHit;
         bEl.style.display = hit ? '' : 'none';
         if (hit) any = true;
         /* 命中计数徽章 */
-        const n = deepHit ? secHits.get(it.tab) : 0;
+        const n = deepHit && it ? secHits.get(it.tab) : 0;
         let badge = bEl.querySelector('.nav-hit-badge');
         if (n > 0) {
           if (!badge) { badge = document.createElement('span'); badge.className = 'nav-hit-badge'; bEl.appendChild(badge); }
           badge.textContent = String(n);
         } else if (badge) badge.remove();
       });
-      const title = gEl.querySelector('.settings-nav-group-title');
+      const title = /** @type {HTMLElement|null} */ (gEl.querySelector('.settings-nav-group-title'));
       if (title) title.style.display = any ? '' : 'none';
     });
   });
@@ -154,7 +155,7 @@ export function refreshSectionAnchors() {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'settings-nav-anchor' + (i === 0 ? ' active' : '');
-    chip.textContent = x.title.textContent.trim();
+    chip.textContent = ((x.title && x.title.textContent) || '').trim();
     chip.__anchorTarget = x.group;   /* 滚动跟随时要用（见下方 scroll 监听） */
     chip.addEventListener('click', () => {
       /* ★ 用 scrollIntoView 而不是"自己算 scrollTop"（初版就是栽在这）：

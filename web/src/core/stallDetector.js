@@ -24,7 +24,9 @@ import { getActiveAudio, registerAudioListener } from './dualDeck.js';
 const STALL_CHECK_MS = 8000;
 const STALLED_CONFIRM_MS = 6000;
 
+/** @type {any} */
 let _audio = null;
+/** @type {any} */
 let _onStall = null;
 
 /* ★ Automix Phase 1（方案 §2）：swap 后监听已由 registerAudioListener 搬运表
@@ -68,7 +70,10 @@ export function stopStallCheck() {
     if (state.stallTimer) { clearTimeout(state.stallTimer); state.stallTimer = null; }
 }
 
-/** 供上层（如淡出/错误恢复）显式设置缓冲态 */
+/**
+ * 供上层（如淡出/错误恢复）显式设置缓冲态。
+ * @param {boolean} buffering
+ */
 export function setBuffering(buffering) {
     state.isBuffering = buffering;
 }
@@ -88,9 +93,13 @@ export function initStallDetector(audio, onStall) {
        生产路径 registerAudioListener 会挂到 deckA（= 同一个 audio 元素），
        兜底挂载会与它重复吗？——不会：生产时 deckA 已 init，走不到兜底。
        但 node 测试里 dualDeck 未 init，只有兜底挂载生效，行为与旧版一致。 */
+    /**
+     * @param {string} type
+     * @param {Function} fn
+     */
     const bind = (type, fn) => {
         if (getActiveAudio()) registerAudioListener(type, fn);
-        else audio.addEventListener(type, fn);
+        else audio.addEventListener(/** @type {any} */ (type), /** @type {any} */ (fn));
     };
 
     /* 网络停滞：浏览器停止下载数据（常见于网络不稳定） */

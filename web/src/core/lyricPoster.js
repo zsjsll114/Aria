@@ -59,8 +59,13 @@ export const POSTER_FRAMES = [
 
 export const POSTER_DEFAULT_FRAME = 'square';
 
+/**
+ * 取帧参数；未知 id 回落到默认帧（默认帧必在表里）。
+ * @param {string} [id]
+ * @returns {Record<string, any>}
+ */
 export function posterFrameFor(id) {
-	return POSTER_FRAMES.find(f => f.id === id) || POSTER_FRAMES.find(f => f.id === POSTER_DEFAULT_FRAME);
+	return /** @type {any} */ (POSTER_FRAMES.find(f => f.id === id) || POSTER_FRAMES.find(f => f.id === POSTER_DEFAULT_FRAME));
 }
 
 /**
@@ -71,6 +76,7 @@ export const FULL_BLEED_MODES = new Set([
     'cover', 'pv', 'tempera', 'tunnel', 'dimension', 'letterpress', 'neon', 'jizura',
 ]);
 
+/** @param {string} [mode] @returns {boolean} */
 export function isFullBleedMode(mode) {
 	return FULL_BLEED_MODES.has(String(mode || ''));
 }
@@ -98,6 +104,15 @@ export function captureIsRenderable(probe) {
 /* ============================ 纯函数：几何 ============================ */
 
 /** 等比「内嵌」：既放得下，又不变形。 */
+/**
+ * @param {number} iw
+ * @param {number} ih
+ * @param {number} bx
+ * @param {number} by
+ * @param {number} bw
+ * @param {number} bh
+ * @returns {{x:number, y:number, w:number, h:number}}
+ */
 export function containRect(iw, ih, bx, by, bw, bh) {
 	const w = Math.max(1, Number(iw) || 1);
 	const h = Math.max(1, Number(ih) || 1);
@@ -108,6 +123,15 @@ export function containRect(iw, ih, bx, by, bw, bh) {
 }
 
 /** 等比「铺满」（多余部分居中裁掉），用于背景铺底与主体裁切。 */
+/**
+ * @param {number} iw
+ * @param {number} ih
+ * @param {number} bx
+ * @param {number} by
+ * @param {number} bw
+ * @param {number} bh
+ * @returns {{x:number, y:number, w:number, h:number}}
+ */
 export function coverRect2(iw, ih, bx, by, bw, bh) {
 	const w = Math.max(1, Number(iw) || 1);
 	const h = Math.max(1, Number(ih) || 1);
@@ -118,7 +142,14 @@ export function coverRect2(iw, ih, bx, by, bw, bh) {
 }
 
 /** 由帧参数算信息栏里那些文字的几何（native 与 overlay 共用）。 */
-function infoGeometry(frame, W, H, infoY) {
+/**
+ * @param {{cover:number, padX:number, infoH:number, [k:string]:any}} frame 帧定义（含 cover/padX/infoH）
+ * @param {number} W
+ * @param {number} _H 画布高度：几何全由 frame.cover/padX/infoH 推出，不读 H
+ * @param {number} infoY
+ * @returns {PosterInfoGeometry}
+ */
+function infoGeometry(frame, W, _H, infoY) {
 	const cover = frame.cover;
 	const padX = frame.padX;
 	const titleSize = Math.round(cover * 0.42);
@@ -141,11 +172,49 @@ function infoGeometry(frame, W, H, infoY) {
 }
 
 /**
+ * 信息栏内文字的几何（`infoGeometry` 的产出）。
+ * @typedef {object} PosterInfoGeometry
+ * @property {number} y 信息栏顶边
+ * @property {number} h 信息栏高
+ * @property {number} padX 左右内边距
+ * @property {number} cover 封面缩略图边长
+ * @property {number} coverX
+ * @property {number} coverY
+ * @property {number} textX 文字块左边
+ * @property {number} titleY
+ * @property {number} artistY
+ * @property {number} footY 水印行基线
+ * @property {number} titleSize
+ * @property {number} artistSize
+ * @property {number} footSize
+ * @property {number} logoSize
+ * @property {number} textUnits 标题折行可用的显示宽度
+ */
+
+/**
+ * 海报几何（`layoutFor` 的产出）—— 「版式」这件事的唯一真相。
+ * @typedef {object} PosterLayout
+ * @property {string} frameId
+ * @property {number} W 画布宽（CSS px）
+ * @property {number} H 画布高（CSS px）
+ * @property {boolean} hasBackdrop
+ * @property {boolean} infoOverlay
+ * @property {number} radius
+ * @property {boolean} fullBleed
+ * @property {{x:number, y:number, w:number, h:number}} heroRect 主体绘制矩形
+ * @property {{x:number, y:number, w:number, h:number}|null} backdropRect
+ * @property {number} viewW
+ * @property {number} viewH
+ * @property {PosterInfoGeometry} info
+ */
+
+/**
  * 算出整张海报的几何 —— 「版式」这件事的唯一真相（纯函数，可单测）。
  * @param {string} frameId
  * @param {number} viewW 捕获画面宽（CSS px）
  * @param {number} viewH 捕获画面高（CSS px）
  * @param {string} [mode] 当前视图模式（决定铺满还是内嵌，见 `FULL_BLEED_MODES`）
+ * @returns {PosterLayout}
  */
 export function layoutFor(frameId, viewW, viewH, mode) {
 	const f = posterFrameFor(frameId);
@@ -158,6 +227,7 @@ export function layoutFor(frameId, viewW, viewH, mode) {
 		/* 原画幅：信息栏外挂在画面**下方**，所以画布高 = 画面高 + 信息栏高 */
 		const infoH = Math.max(72, Math.min(f.infoH, Math.round(vh * 0.4)));
 		const H = vh + infoH;
+		/** @type {any} */
 		const base = { ...f, infoH };
 		return {
 			frameId: 'native', W: vw, H, hasBackdrop: false, infoOverlay: false, radius: 0,
@@ -171,6 +241,7 @@ export function layoutFor(frameId, viewW, viewH, mode) {
 	const W = f.w;
 	const H = f.h;
 	const infoH = Math.min(f.infoH, Math.round(H * 0.26));
+	/** @type {any} */
 	const base = { ...f, infoH };
 	/* 主体可用区 = 整幅减掉信息栏。全屏类模式直接铺满整幅（信息栏叠上去）。 */
 	const availH = H - infoH;
@@ -187,6 +258,7 @@ export function layoutFor(frameId, viewW, viewH, mode) {
 }
 
 /** 海报文件名后缀用的帧标签。 */
+/** @param {string} frameId @returns {string} */
 export function frameTag(frameId) {
 	const f = posterFrameFor(frameId);
 	return f.id === 'story' ? '9x16' : (f.id === 'square' ? '1x1' : 'full');
@@ -196,10 +268,12 @@ export function frameTag(frameId) {
 
 const RE_WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
 
+/** @param {string} ch @returns {number} */
 export function charWidth(ch) {
 	return RE_WIDE.test(ch) ? 2 : 1;
 }
 
+/** @param {string} s @returns {number} */
 export function displayWidth(s) {
 	let n = 0;
 	for (const ch of String(s == null ? '' : s)) n += charWidth(ch);
@@ -207,6 +281,11 @@ export function displayWidth(s) {
 }
 
 /** 按显示宽度折行（标题太长时用）。至少返回一项。 */
+/**
+ * @param {string} text
+ * @param {number} maxUnits
+ * @returns {string[]}
+ */
 export function wrapDisplay(text, maxUnits) {
 	const max = Math.max(1, Math.floor(Number(maxUnits)) || 1);
 	const out = [];
@@ -236,17 +315,18 @@ export function wrapDisplay(text, maxUnits) {
 	return out.length ? out : [''];
 }
 
+/** @param {string} c @returns {any} */
 export function parseColor(c) {
 	if (typeof c !== 'string') return null;
 	const s = c.trim();
 	let m = /^#([0-9a-f]{3})$/i.exec(s);
 	if (m) {
-		const [r, g, b] = m[1].split('').map(x => parseInt(x + x, 16));
+		const [r, g, b] = (/** @type {string} */ (m[1])).split('').map(x => parseInt(x + x, 16));
 		return { r, g, b };
 	}
 	m = /^#([0-9a-f]{6})$/i.exec(s);
 	if (m) {
-		const v = parseInt(m[1], 16);
+		const v = parseInt(/** @type {string} */ (m[1]), 16);
 		return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
 	}
 	m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(s);
@@ -260,8 +340,10 @@ export function parseColor(c) {
 	return null;
 }
 
+/** @param {number} n @returns {number} */
 function clamp255(n) { return Math.max(0, Math.min(255, Math.round(n))); }
 
+/** @param {string} c @param {number} a @returns {string} */
 export function withAlpha(c, a) {
 	const p = parseColor(c);
 	if (!p) return c;
@@ -269,21 +351,34 @@ export function withAlpha(c, a) {
 	return `rgba(${p.r},${p.g},${p.b},${alpha})`;
 }
 
+/**
+ * @param {string} c1
+ * @param {string} c2
+ * @param {number} t 0~1
+ * @returns {string}
+ */
 export function mixColor(c1, c2, t) {
 	const k = Math.max(0, Math.min(1, Number(t)));
 	const a = parseColor(c1) || { r: 232, g: 190, b: 106 };
 	const b = parseColor(c2) || { r: 0, g: 0, b: 0 };
-	return '#' + ['r', 'g', 'b'].map(key => clamp255(a[key] + (b[key] - a[key]) * k))
+	return '#' + ['r', 'g', 'b'].map(key => { const pa = /** @type {Record<string, number>} */ (a); const pb = /** @type {Record<string, number>} */ (b); return clamp255((/** @type {number} */ (pa[key])) + ((/** @type {number} */ (pb[key])) - (/** @type {number} */ (pa[key]))) * k); })
 		.map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
+/** @param {string} c @returns {number} */
 export function luminance(c) {
 	const p = parseColor(c);
 	if (!p) return 0;
+	/** @param {number} v */
 	const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
 	return 0.2126 * f(p.r) + 0.7152 * f(p.g) + 0.0722 * f(p.b);
 }
 
+/**
+ * @param {any} s
+ * @param {number} [max]
+ * @returns {string}
+ */
 export function safeFileToken(s, max = 40) {
 	return String(s == null ? '' : s)
 		/* eslint-disable-next-line no-control-regex */
@@ -293,6 +388,12 @@ export function safeFileToken(s, max = 40) {
 		.slice(0, max);
 }
 
+/**
+ * @param {any} song
+ * @param {string} frameId
+ * @param {string} [ext]
+ * @returns {string}
+ */
 export function posterFileName(song, frameId, ext = 'png') {
 	const s = song || {};
 	const title = safeFileToken(s.title || s.name || s.song) || 'Aria';
@@ -305,6 +406,15 @@ export function posterFileName(song, frameId, ext = 'png') {
 
 /* ============================ 绘制 ============================ */
 
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x
+ * @param {number} y
+ * @param {number} w
+ * @param {number} h
+ * @param {number} r
+ * @returns {void}
+ */
 function roundRectPath(ctx, x, y, w, h, r) {
 	const rr = Math.max(0, Math.min(r, w / 2, h / 2));
 	if (typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(x, y, w, h, rr); return; }
@@ -318,6 +428,12 @@ function roundRectPath(ctx, x, y, w, h, r) {
 }
 
 /** 取图像真实尺寸（canvas / img / ImageBitmap 通用）。 */
+/**
+ * @param {any} img
+ * @param {number} fallbackW
+ * @param {number} fallbackH
+ * @returns {{w:number, h:number}}
+ */
 function srcSize(img, fallbackW, fallbackH) {
 	return {
 		w: Math.max(1, Number(img.width || img.naturalWidth) || fallbackW || 1),
@@ -326,14 +442,25 @@ function srcSize(img, fallbackW, fallbackH) {
 }
 
 /**
+ * 海报上的歌曲信息（字段随数据源而异，取到哪个用哪个）。
+ * @typedef {object} PosterSong
+ * @property {string} [title]
+ * @property {string} [name]
+ * @property {string} [song]
+ * @property {string} [artist]
+ * @property {string} [singer]
+ * @property {string} [album]
+ */
+
+/**
  * 画一张海报。坐标一律是逻辑像素；DPR 由调用方在外层 `ctx.scale()`。
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} opts
- * @param {object} opts.layout  来自 `layoutFor`
+ * @param {PosterLayout} [opts.layout]  来自 `layoutFor`
  * @param {CanvasImageSource} opts.view  捕获到的**真实画面**（必需）
- * @param {CanvasImageSource} [opts.cover]
+ * @param {(CanvasImageSource & {width?:number, height?:number})} [opts.cover]
  * @param {CanvasImageSource} [opts.logo]  右下角水印用的应用图标
- * @param {object} [opts.song]
+ * @param {PosterSong} [opts.song]
  * @param {string} [opts.accent]
  * @param {string} [opts.footer]
  * @param {string} [opts.badge]
@@ -548,12 +675,19 @@ export function drawPoster(ctx, opts) {
 
 /* ============================ 浏览器：加载位图 / 合成 / 保存 ============================ */
 
+/**
+ * @param {string} src
+ * @param {boolean} [crossOrigin]
+ * @param {number} [timeoutMs]
+ * @returns {Promise<any>}
+ */
 export function imageFromSource(src, crossOrigin = false, timeoutMs = 8000) {
 	return new Promise((resolve) => {
 		if (typeof Image === 'undefined' || typeof src !== 'string' || !src) { resolve(null); return; }
 		let done = false;
 		const img = new Image();
 		if (crossOrigin) img.crossOrigin = 'anonymous';
+		/** @param {any} v */
 		const finish = (v) => { if (!done) { done = true; resolve(v); } };
 		img.onload = () => finish(img.naturalWidth > 0 ? img : null);
 		img.onerror = () => finish(null);
@@ -563,6 +697,11 @@ export function imageFromSource(src, crossOrigin = false, timeoutMs = 8000) {
 }
 
 /** 加载封面，保证不污染画布：远程图一律先走同源代理。 */
+/**
+ * @param {string} rawUrl
+ * @param {number} [timeoutMs]
+ * @returns {Promise<any>}
+ */
 export async function loadCoverImage(rawUrl, timeoutMs = 6000) {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
 	if (!url) return null;
@@ -575,6 +714,7 @@ export async function loadCoverImage(rawUrl, timeoutMs = 6000) {
 	return null;
 }
 
+/** @type {Promise<any>|null} */
 let _logoPromise = null;
 /** 应用图标（水印用）。进程内只加载一次 —— 每张海报都重新 new Image 会白等一轮。 */
 export function loadLogoImage(url = POSTER_LOGO_URL) {
@@ -583,6 +723,12 @@ export function loadLogoImage(url = POSTER_LOGO_URL) {
 	return _logoPromise;
 }
 
+/**
+ * @param {HTMLCanvasElement} canvas
+ * @param {string} [type]
+ * @param {number} [quality]
+ * @returns {Promise<Blob|null>}
+ */
 function canvasToBlob(canvas, type = 'image/png', quality) {
 	return new Promise((resolve, reject) => {
 		try { canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob 返回空'))), type, quality); }
@@ -593,6 +739,11 @@ function canvasToBlob(canvas, type = 'image/png', quality) {
 /* 封面 / Logo 都是**跨调用可复用**的资源，海报一张接一张生成时不该重复下网络。 */
 const _imgCache = new Map();
 
+/**
+ * @param {string} key
+ * @param {() => any} loader
+ * @returns {Promise<any>}
+ */
 async function cached(key, loader) {
 	if (_imgCache.has(key)) return _imgCache.get(key);
 	const p = loader();
@@ -603,13 +754,29 @@ async function cached(key, loader) {
 export function clearPosterImageCache() { _imgCache.clear(); _logoPromise = null; }
 
 /**
+ * `composePoster` 的入参（全部标可选；`view` 的存在性由函数内守卫校验）。
+ * @typedef {object} PosterComposeOpts
+ * @property {'native'|'square'|'story'} [frame]
+ * @property {(HTMLCanvasElement|HTMLImageElement) & {naturalWidth?:number, naturalHeight?:number}} [view] 由 `domSnapshot.snapshotElement` 得来的真实画面
+ * @property {string} [mode] 当前视图模式（决定铺满 / 内嵌，见 `FULL_BLEED_MODES`）
+ * @property {number} [dpr=2]
+ * @property {CanvasImageSource} [cover]
+ * @property {string} [coverUrl]
+ * @property {number} [coverTimeoutMs]
+ * @property {CanvasImageSource} [logo]
+ * @property {string} [mime]
+ * @property {number} [quality]
+ * @property {string} [accent]
+ * @property {string} [footer]
+ * @property {string} [badge]
+ * @property {string} [fontFamily]
+ * @property {PosterSong} [song]
+ */
+
+/**
  * 合成海报。
- * @param {object} opts
- * @param {'native'|'square'|'story'} [opts.frame]
- * @param {HTMLCanvasElement|HTMLImageElement} opts.view 由 `domSnapshot.snapshotElement` 得来的真实画面
- * @param {string} [opts.mode] 当前视图模式（决定铺满 / 内嵌，见 `FULL_BLEED_MODES`）
- * @param {number} [opts.dpr=2]
- * @returns {Promise<{blob:Blob, canvas:HTMLCanvasElement, frame:object, layout:object, info:object}>}
+ * @param {PosterComposeOpts} opts
+ * @returns {Promise<{blob:Blob|null, canvas:HTMLCanvasElement, frame:object, layout:PosterLayout, info:object, coverLoaded:boolean, logoLoaded:boolean}>}
  */
 export async function composePoster(opts) {
 	if (typeof document === 'undefined') throw new Error('composePoster 需要浏览器环境');
@@ -630,7 +797,7 @@ export async function composePoster(opts) {
 
 	const cover = o.cover !== undefined
 		? o.cover
-		: await cached(`cover:${o.coverUrl || ''}`, () => loadCoverImage(o.coverUrl, o.coverTimeoutMs));
+		: await cached(`cover:${o.coverUrl || ''}`, () => loadCoverImage(o.coverUrl || '', o.coverTimeoutMs));
 	const logo = o.logo !== undefined ? o.logo : await cached('logo', () => loadLogoImage());
 	const info = drawPoster(ctx, Object.assign({}, o, { layout, cover: cover || null, logo: logo || null, view: o.view }));
 	const blob = await canvasToBlob(canvas, o.mime || 'image/png', o.quality);
@@ -638,6 +805,11 @@ export async function composePoster(opts) {
 }
 
 /** 存到本地（`<a download>`，Tauri / 浏览器都稳）。 */
+/**
+ * @param {Blob} blob
+ * @param {string} filename
+ * @returns {Promise<boolean>}
+ */
 export async function saveBlob(blob, filename) {
 	if (typeof document === 'undefined' || !blob) return false;
 	const url = URL.createObjectURL(blob);

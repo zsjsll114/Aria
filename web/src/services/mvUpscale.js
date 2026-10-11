@@ -47,6 +47,7 @@ uniform sampler2D u_tex;
 void main(){ o = vec4(texture(u_tex, v_uv).rgb, 1.0); }`;
 
 /** 缓存能力探测结果（探测本身要建一次 context，别每帧做） */
+/** @type {boolean|null} */
 let _supportCache = null;
 
 /** WebGL2 + 浮点渲染是否可用（决定画质档，不影响能不能跑） */
@@ -60,13 +61,19 @@ export function isUpscaleSupported() {
         _supportCache = !!gl.getExtension('EXT_color_buffer_float');
         const lose = gl.getExtension('WEBGL_lose_context');
         if (lose) lose.loseContext();
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('mvUpscale', e);
         _supportCache = false;
     }
     return _supportCache;
 }
 
+/**
+ * @param {any} gl
+ * @param {number} type
+ * @param {string} src
+ * @returns {any}
+ */
 function compile(gl, type, src) {
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
@@ -79,6 +86,11 @@ function compile(gl, type, src) {
     return s;
 }
 
+/**
+ * @param {any} gl
+ * @param {string} fsSrc
+ * @returns {any}
+ */
 function makeProgram(gl, fsSrc) {
     const p = gl.createProgram();
     const vs = compile(gl, gl.VERTEX_SHADER, VS);
@@ -104,17 +116,21 @@ function makeProgram(gl, fsSrc) {
  * @returns {null | {render:Function, dispose:Function, info:Object}}
  */
 export function createUpscaler(canvas, tier = 'S') {
-    const tierSpec = A4K_TIERS[tier] || A4K_TIERS[Object.keys(A4K_TIERS)[0]];
+    const tiers = /** @type {Record<string, any>} */ (A4K_TIERS);
+    const tierSpec = /** @type {any} */ (tiers[tier]) || tiers[/** @type {string} */ (Object.keys(tiers)[0])];
     const passes = tierSpec.passes;
     const finalTex = tierSpec.final;
-    let gl = null;
+    /* 类型标为非空（初值用断言），下面的 `if (!gl) return null` 保证后续运行时非空，
+       否则闭包（render/dispose）里每一处 gl.xxx 都会被判「可能为 null」。 */
+    /** @type {WebGL2RenderingContext} */
+    let gl = /** @type {any} */ (null);
     try {
-        gl = canvas.getContext('webgl2', {
+        gl = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2', {
             alpha: false, antialias: false, depth: false, stencil: false,
             premultipliedAlpha: false, preserveDrawingBuffer: false,
             powerPreference: 'high-performance',
-        });
-    } catch (e) { logCatch('mvUpscale', e); }
+        }));
+    } catch (/** @type {any} */ e) { logCatch('mvUpscale', e); }
     if (!gl) return null;
 
     const floatOk = !!gl.getExtension('EXT_color_buffer_float');
@@ -132,14 +148,20 @@ export function createUpscaler(canvas, tier = 'S') {
 
     const info = { tier, float: floatOk, passes: passes.length + 1, texCount: 0, midSize: '', frames: 0, lastMs: 0, avgMs: 0 };
 
-    let programs = null;
-    let uniforms = null;
+    /* 同 gl：try 块内赋值、catch 里 return null，故声明为非空（初值断言），
+       否则 render 闭包里的 programs[i] / uniforms[i] 会被判「可能为 null」。 */
+    /** @type {Array<{spec:any, prog:any}>} */
+    let programs = /** @type {any} */ (null);
+    /** @type {any[]} */
+    let uniforms = /** @type {any} */ (null);
+    /** @type {any} */
     let blitProg = null;
+    /** @type {any} */
     let vao = null;
     try {
-        programs = passes.map(p => ({ spec: p, prog: makeProgram(gl, p.frag) }));
+        programs = /** @type {any[]} */ (passes).map(p => ({ spec: p, prog: makeProgram(gl, p.frag) }));
         /* 每个 pass 的输入 sampler / size / pt 位置只查一次 */
-        uniforms = programs.map(({ spec, prog }) => spec.inputs.map(g => ({
+        uniforms = programs.map(({ spec, prog }) => /** @type {any[]} */ (spec.inputs).map(g => ({
             tex: gl.getUniformLocation(prog, `u_tex${g}`),
             size: gl.getUniformLocation(prog, `u_size${g}`),
             pt: gl.getUniformLocation(prog, `u_pt${g}`),
@@ -148,11 +170,17 @@ export function createUpscaler(canvas, tier = 'S') {
         })));
         blitProg = makeProgram(gl, BLIT_FS);
         vao = gl.createVertexArray();
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('mvUpscale', '[MV] Anime4K shader 初始化失败: ' + e.message);
         return null;
     }
 
+    /**
+     * @param {number} w
+     * @param {number} h
+     * @param {boolean} isSource
+     * @returns {any}
+     */
     function newTexture(w, h, isSource) {
         const t = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, t);
@@ -167,6 +195,11 @@ export function createUpscaler(canvas, tier = 'S') {
     }
 
     /** 按渲染图算出每个纹理的尺寸（源尺寸变了就整体重算） */
+    /**
+     * @param {number} srcW
+     * @param {number} srcH
+     * @returns {any}
+     */
     function computeSizes(srcW, srcH) {
         sizeOf.clear();
         sizeOf.set(A4K_SOURCE_TEX, { w: srcW, h: srcH });
@@ -179,6 +212,11 @@ export function createUpscaler(canvas, tier = 'S') {
         }
     }
 
+    /**
+     * @param {number} srcW
+     * @param {number} srcH
+     * @returns {any}
+     */
     function allocate(srcW, srcH) {
         for (const t of textures.values()) gl.deleteTexture(t);
         for (const f of fbos.values()) gl.deleteFramebuffer(f);
@@ -213,12 +251,18 @@ export function createUpscaler(canvas, tier = 'S') {
      * @param {HTMLVideoElement} video 已 readyState>=2 的源
      * @returns {boolean} false = 调用方应回退到普通 video 显示
      */
+    /**
+     * @param {any} video
+     * @param {number} srcW
+     * @param {number} srcH
+     * @returns {any}
+     */
     function render(video, srcW, srcH) {
         if (disposed || gl.isContextLost()) return false;
         if (!srcW || !srcH || !video) return false;
         if (allocated.w !== srcW || allocated.h !== srcH) {
             try { allocate(srcW, srcH); }
-            catch (e) { logWarn('mvUpscale', '[MV] 纹理分配失败: ' + e.message); return false; }
+            catch (/** @type {any} */ e) { logWarn('mvUpscale', '[MV] 纹理分配失败: ' + e.message); return false; }
         }
         const t0 = performance.now();
 
@@ -226,7 +270,7 @@ export function createUpscaler(canvas, tier = 'S') {
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
         try {
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, video);
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             /* 跨源且无 CORS 头会走到这里 —— 调用方应回退 */
             logCatch('mvUpscale', e);
             return false;
@@ -239,12 +283,12 @@ export function createUpscaler(canvas, tier = 'S') {
         gl.disable(gl.DEPTH_TEST);
 
         for (let i = 0; i < programs.length; i++) {
-            const { spec, prog } = programs[i];
+            const { spec, prog } = /** @type {any} */ (programs[i]);
             const s = sizeOf.get(spec.out);
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbos.get(spec.out));
             gl.viewport(0, 0, s.w, s.h);
             gl.useProgram(prog);
-            uniforms[i].forEach((u, k) => {
+            /** @type {any[]} */ (uniforms[i]).forEach((u, k) => {
                 const ts = sizeOf.get(u.g);
                 gl.activeTexture(gl.TEXTURE0 + k);
                 gl.bindTexture(gl.TEXTURE_2D, textures.get(u.g));
@@ -291,7 +335,7 @@ export function createUpscaler(canvas, tier = 'S') {
             if (vao) gl.deleteVertexArray(vao);
             const lose = gl.getExtension('WEBGL_lose_context');
             if (lose) lose.loseContext();
-        } catch (e) { logCatch('mvUpscale', e); }
+        } catch (/** @type {any} */ e) { logCatch('mvUpscale', e); }
         logInfo('mvUpscale', `[MV] 画质增强已释放（渲染 ${frames} 帧，均 ${avgMs.toFixed(2)}ms）`);
     }
 

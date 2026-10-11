@@ -4,17 +4,28 @@
  * 各模块通过 eventBus.on() 订阅、eventBus.emit() 发布
  */
 
+/** @type {Map<string, Set<(...args: any[]) => void>>} */
 const listeners = new Map();
 
 export const eventBus = {
-    /** 订阅事件，返回取消订阅函数 */
+    /**
+     * 订阅事件，返回取消订阅函数。
+     * @param {string} event
+     * @param {(...args: any[]) => void} handler
+     * @returns {() => void}
+     */
     on(event, handler) {
         if (!listeners.has(event)) listeners.set(event, new Set());
-        listeners.get(event).add(handler);
+        listeners.get(event)?.add(handler);
         return () => listeners.get(event)?.delete(handler);
     },
 
-    /** 订阅一次（触发后自动取消） */
+    /**
+     * 订阅一次（触发后自动取消）。
+     * @param {string} event
+     * @param {(...args: any[]) => void} handler
+     * @returns {() => void}
+     */
     once(event, handler) {
         const unsub = this.on(event, (...args) => {
             unsub();
@@ -23,13 +34,21 @@ export const eventBus = {
         return unsub;
     },
 
-    /** 发布事件 */
+    /**
+     * 发布事件。
+     * @param {string} event
+     * @param {...any} args
+     */
     emit(event, ...args) {
         const handlers = listeners.get(event);
         if (handlers) handlers.forEach(h => h(...args));
     },
 
-    /** 取消订阅 */
+    /**
+     * 取消订阅。
+     * @param {string} event
+     * @param {(...args: any[]) => void} handler
+     */
     off(event, handler) {
         listeners.get(event)?.delete(handler);
     },

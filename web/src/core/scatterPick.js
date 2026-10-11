@@ -14,6 +14,7 @@
 const TAIL_NOISE_RE = /[\s\-—_·]*[（([【]?\s*(live|remix|伴奏|纯音乐|instrumental|acoustic|unplugged|ver\.?|version|demo|cover|翻唱|重制|remaster(ed)?|feat\.?[^）)\]】]*|ft\.?[^）)\]】]*)\s*[）)\]】]?\s*$/gi;
 
 /** 归一化歌名：削尾部修饰 + 去掉所有标点空白 + 小写 */
+/** @param {string} title @returns {string} */
 export function coreTitle(title) {
     let s = String(title == null ? '' : title);
     /* 反复削：`歌曲 (Live) (Remix)` 要削两次 */
@@ -27,6 +28,7 @@ export function coreTitle(title) {
 }
 
 /** 歌手的归一化键（歌手字段名在不同音源不一致：artist / singer / artists） */
+/** @param {any} track @returns {string} */
 export function artistKey(track) {
     if (!track) return '';
     let a = track.artist || track.singer || track.artists || track.artistName || '';
@@ -35,12 +37,18 @@ export function artistKey(track) {
 }
 
 /** 专辑键（同上，字段名不统一） */
+/** @param {any} track @returns {string} */
 export function albumKey(track) {
     if (!track) return '';
     return String(track.album || track.albumName || track.albumname || '').trim().toLowerCase();
 }
 
 /** 经典 Levenshtein（迭代 + 两行滚动；歌名很短，不需要更花的算法） */
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 export function editDistance(a, b) {
     const s = String(a || ''), t = String(b || '');
     if (s === t) return 0;
@@ -64,6 +72,11 @@ export function editDistance(a, b) {
  * 两个核心歌名是否「像同一首」（编辑距离 ≤ 长度的 20%，至少容 1）。
  * 只对**长度接近**的短串生效，避免「abc」和「abd」这种误伤。
  */
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
 export function similarTitle(a, b) {
     if (!a || !b) return false;
     if (a === b) return true;
@@ -82,7 +95,7 @@ export function similarTitle(a, b) {
  *   ② 全是同歌手：过滤掉「核心歌名相同 / 编辑距离近 / 同专辑」（用户要的次约束）；
  *   ③ 仍为空（例如整个队列就是同一首歌的不同版本）：放手，允许偶尔相邻。
  *
- * @param {Array} playlist 播放队列
+ * @param {Array<any>} playlist 播放队列
  * @param {number} currentIndex 当前曲索引
  * @param {() => number} [rand] 随机源（测试可注入）
  * @returns {number} 选中的索引（队列长度 ≤1 时原样返回 currentIndex）
@@ -118,5 +131,5 @@ export function pickScatteredIndex(playlist, currentIndex, rand = Math.random) {
 
     const r = Number(rand());
     const k = Math.min(pool.length - 1, Math.max(0, Math.floor((Number.isFinite(r) ? r : 0) * pool.length)));
-    return pool[k];
+    return /** @type {any} */ (pool[k]);
 }

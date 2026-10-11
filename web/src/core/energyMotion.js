@@ -34,6 +34,10 @@ export const ENERGY_DEFAULTS = {
     bins: LOW_BIN_COUNT,
 };
 
+/**
+ * @param {number} v
+ * @returns {number} 落在 [0,1]
+ */
 function clamp01(v) {
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
@@ -59,7 +63,12 @@ export function lowEnergyFromFreqData(freq, bins = LOW_BIN_COUNT) {
     return clamp01((sum / n) / 255);
 }
 
-/** 把 0~1 的能量映射成缩放倍率（永远落在 [1, 1.02] 内） */
+/**
+ * 把 0~1 的能量映射成缩放倍率（永远落在 [1, 1.02] 内）。
+ * @param {number} level
+ * @param {object} [opts]
+ * @returns {number}
+ */
 export function scaleFromLevel(level, opts) {
     const o = Object.assign({}, ENERGY_DEFAULTS, opts || {});
     const max = Math.min(Number(o.maxScale) || ENERGY_MAX_SCALE_CAP, ENERGY_MAX_SCALE_CAP);
@@ -72,13 +81,15 @@ export function scaleFromLevel(level, opts) {
  * 能量包络器（有状态）。时间由调用方注入（`update(level, nowMs)`），
  * 所以可以在单测里精确推进时间，不依赖 rAF/Date.now。
  */
+/** @param {object} [opts] */
 export function createEnergyMotion(opts) {
     const o = Object.assign({}, ENERGY_DEFAULTS, opts || {});
     o.maxScale = Math.min(Number(o.maxScale) || ENERGY_MAX_SCALE_CAP, ENERGY_MAX_SCALE_CAP);
     o.minScale = Number(o.minScale) || 1;
 
     let value = 0;
-    let lastT = null;
+    /** @type {number|null} */
+let lastT = null;
 
     function reset() {
         value = 0;

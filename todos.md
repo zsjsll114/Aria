@@ -382,9 +382,9 @@
 
 ### 22. 一条共享 rAF 闸 + 帧脏检查 + 后台停帧 · 成本 M · 
 - **为什么先做这个**：这是本次调研唯一直接命中「虚拟机 <10fps」的项。我们现在有
-  **4 条互相独立的常驻绘制循环**（`core/pvEngine/PVEngine.js:585`、
-  `core/pvEngine/PVBackground.js:153-169`、`core/visualizers/DimensionVisualizer.js:147`、
-  `core/visualizers/NeonVisualizer.js:468`，另有 `core/previewEngine.js` 一条），且**全仓只有
+  **3 条互相独立的常驻绘制循环**（`core/pvEngine/PVEngine.js:585`、
+  `core/pvEngine/PVBackground.js:153-169`、`core/visualizers/DimensionVisualizer.js:147`，
+  另有 `core/previewEngine.js` 一条），且**全仓只有
   `app/70-audio-engine.js` 监听 `visibilitychange`**（2026-09-25 复扫：`grep -rl visibilitychange web/src`
   只命中这一个文件）——暂停或切走后 PV 仍在满帧绘制。
 - **它的做法（已核实）**：`src/utils/frameRateLimiter.ts:194-195` 直接 monkey-patch

@@ -70,6 +70,11 @@ const RATIO_RE = /^\d{1,2}:[1-9]\d?$/;
  * 归一化只做「数字字符串 → 数字」这一件事：设置面板的滑块写进 modeSettings 的
  * 往往是 '12' 而非 12，不归一化会把真实用户配置当非法值拒掉。
  */
+/**
+ * @param {any} spec
+ * @param {any} raw
+ * @returns {{ok:boolean, value?:any, code?:string, expect?:any}}
+ */
 export function validateValue(spec, raw) {
     if (spec === undefined || spec === null) return { ok: false, code: 'unknown-field' };
     switch (spec.type) {
@@ -138,9 +143,13 @@ export function validateValue(spec, raw) {
 }
 
 const tBool = () => ({ type: 'bool' });
+/** @type {(min:number, max:number) => any} */
 const tInt = (min, max) => ({ type: 'int', min, max });
+/** @type {(min:number, max:number) => any} */
 const tNum = (min, max) => ({ type: 'number', min, max });
+/** @type {(...values: any[]) => any} */
 const tEnum = (...values) => ({ type: 'enum', values });
+/** @type {(opts?: any) => any} */
 const tColor = (opts) => ({ type: 'color', ...(opts || {}) });
 const tFont = () => ({ type: 'font' });
 /* ★ 标识符类型：给"键名由上游定义、集合会随版本增删"的字段用（风格键/情绪键）。
@@ -266,6 +275,7 @@ const RE_SHADOW_CHARS = /^[a-zA-Z0-9#%.,()\s-]+$/;
  * 令牌值会写进 `style.setProperty()`，含 `;` / `{}` 能"跑出声明"开新规则；
  * `url(` / `expression(` / `javascript:` 是外部加载与脚本执行面。
  */
+/** @param {any} v @returns {string|boolean} 非法时 false，合法时清洗后的值 */
 export function tokenValueSafe(v) {
     const s = typeof v === 'number' ? String(v) : v;
     if (typeof s !== 'string') return false;
@@ -278,11 +288,17 @@ export function tokenValueSafe(v) {
     return true;
 }
 
+/**
+ * @param {any} kind
+ * @param {any} raw
+ * @returns {any}
+ */
 function checkTokenValue(kind, raw) {
     if (!tokenValueSafe(raw)) {
         return { ok: false, code: 'unsafe-token', expect: '不含 ; { } \\ url() expression() 的安全值' };
     }
     const s = String(raw).trim();
+    /** @param {any} expect */
     const bad = (expect) => ({ ok: false, code: 'bad-token-value', expect });
     if (kind === 'length') return RE_LENGTH.test(s) ? { ok: true, value: s } : bad('长度值，如 28px / 0 / 0.8rem');
     if (kind === 'percent') return RE_PERCENT.test(s) ? { ok: true, value: s } : bad('百分比，如 100% / 180%');
@@ -488,6 +504,7 @@ const FORBIDDEN_SET = new Set(FORBIDDEN_KEYS.map(f => String(f.key).toLowerCase(
 const SENSITIVE_WORD_RE = /(?:^|[^a-z])(token|cookie|secret|password|passwd|credential|q36|musicu|authorization)(?:[^a-z]|$)/;
 
 /** 这个键名是否命中敏感名单（大小写不敏感，含子串命中 token/cookie/secret/password 这一类） */
+/** @param {string} name @returns {boolean} */
 export function isForbiddenKey(name) {
     const s = String(name == null ? '' : name).trim().toLowerCase();
     if (!s) return false;
@@ -497,6 +514,7 @@ export function isForbiddenKey(name) {
 
 /* ---------- canonical JSON + base64url + FNV ---------- */
 
+/** @param {string} str @returns {number[]} */
 function utf8Encode(str) {
     const out = [];
     for (let i = 0; i < str.length; i++) {
@@ -516,15 +534,17 @@ function utf8Encode(str) {
     return out;
 }
 
+/** @param {number[]} bytes @returns {string|null} */
 function utf8Decode(bytes) {
     let out = '';
     for (let i = 0; i < bytes.length;) {
-        const b = bytes[i++];
+        const b = /** @type {number} */ (bytes[i++]);
+        /* 续字节的界内性由 UTF-8 前缀位保证（本函数只解码 utf8Encode 自己产出的序列） */
         let cp;
         if (b < 0x80) cp = b;
-        else if (b < 0xE0) cp = ((b & 31) << 6) | (bytes[i++] & 63);
-        else if (b < 0xF0) cp = ((b & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
-        else cp = ((b & 7) << 18) | ((bytes[i++] & 63) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63);
+        else if (b < 0xE0) cp = ((b & 31) << 6) | (/** @type {number} */ (bytes[i++]) & 63);
+        else if (b < 0xF0) cp = ((b & 15) << 12) | ((/** @type {number} */ (bytes[i++]) & 63) << 6) | (/** @type {number} */ (bytes[i++]) & 63);
+        else cp = ((b & 7) << 18) | ((/** @type {number} */ (bytes[i++]) & 63) << 12) | ((/** @type {number} */ (bytes[i++]) & 63) << 6) | (/** @type {number} */ (bytes[i++]) & 63);
         if (cp > 0x10FFFF) return null;
         if (cp < 0x10000) out += String.fromCharCode(cp);
         else {
@@ -537,37 +557,45 @@ function utf8Decode(bytes) {
 
 const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
+/** 字母表取字符：下标恒为 `& 63` 的结果（0~63），必然界内；集中在此断言一次 */
+/** @param {number} i @returns {string} */
+function b64At(i) { return /** @type {string} */ (B64_ALPHABET[i]); }
+
 /** Uint8Array / number[] → base64url（无填充）。自己实现是为了在 Node 测试里也不依赖 btoa。 */
+/** @param {number[]} bytes @returns {string} */
 export function base64urlEncode(bytes) {
     let out = '';
     let i = 0;
     for (; i + 2 < bytes.length; i += 3) {
-        const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-        out += B64_ALPHABET[(n >> 18) & 63] + B64_ALPHABET[(n >> 12) & 63]
-            + B64_ALPHABET[(n >> 6) & 63] + B64_ALPHABET[n & 63];
+        const n = (/** @type {number} */ (bytes[i]) << 16) | (/** @type {number} */ (bytes[i + 1]) << 8) | /** @type {number} */ (bytes[i + 2]);
+        out += b64At((n >> 18) & 63) + b64At((n >> 12) & 63)
+            + b64At((n >> 6) & 63) + b64At(n & 63);
     }
     const rest = bytes.length - i;
     if (rest === 1) {
-        const n = bytes[i] << 16;
-        out += B64_ALPHABET[(n >> 18) & 63] + B64_ALPHABET[(n >> 12) & 63];
+        const n = /** @type {number} */ (bytes[i]) << 16;
+        out += b64At((n >> 18) & 63) + b64At((n >> 12) & 63);
     } else if (rest === 2) {
-        const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
-        out += B64_ALPHABET[(n >> 18) & 63] + B64_ALPHABET[(n >> 12) & 63] + B64_ALPHABET[(n >> 6) & 63];
+        const n = (/** @type {number} */ (bytes[i]) << 16) | (/** @type {number} */ (bytes[i + 1]) << 8);
+        out += b64At((n >> 18) & 63) + b64At((n >> 12) & 63) + b64At((n >> 6) & 63);
     }
     return out;
 }
 
 /** base64url → number[]；遇到字母表外的字符即判非法（不做「宽容跳过」）。 */
+/** @param {string} text @returns {number[]|null} */
 export function base64urlDecode(text) {
     const clean = String(text).replace(/=+$/, '');
     if (!clean) return [];
+    /** @type {Record<string, number>} */
     const rev = {};
-    for (let i = 0; i < B64_ALPHABET.length; i++) rev[B64_ALPHABET[i]] = i;
+    for (let i = 0; i < B64_ALPHABET.length; i++) rev[b64At(i)] = i;
+    /** @type {number[]} */
     const out = [];
     let acc = 0;
     let bits = 0;
     for (let i = 0; i < clean.length; i++) {
-        const v = rev[clean[i]];
+        const v = rev[/** @type {string} */ (clean[i])];
         if (v === undefined) return null;
         acc = (acc << 6) | v;
         bits += 6;
@@ -580,17 +608,19 @@ export function base64urlDecode(text) {
 }
 
 /** FNV-1a 32 位；只用于抓复制截断/串错字符，不是签名。 */
+/** @param {string} str @returns {string} 8 位十六进制 */
 export function checksum32(str) {
     let h = 0x811c9dc5;
     const bytes = utf8Encode(str);
     for (let i = 0; i < bytes.length; i++) {
-        h ^= bytes[i];
+        h ^= /** @type {number} */ (bytes[i]);
         h = Math.imul(h, 0x01000193) >>> 0;
     }
     return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 /** 键排序 + 无空白的 JSON。校验和要稳定，序列化就不能依赖对象的插入顺序。 */
+/** @param {any} value @returns {string} */
 export function canonicalJSON(value) {
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return '[' + value.map(canonicalJSON).join(',') + ']';
@@ -605,6 +635,12 @@ export function canonicalJSON(value) {
 
 /* ---------- 收集（编码侧） ---------- */
 
+/**
+ * @param {any} source
+ * @param {any} fields
+ * @param {any} target
+ * @returns {number}
+ */
 function pickInto(source, fields, target) {
     if (!source || typeof source !== 'object') return 0;
     let n = 0;
@@ -620,7 +656,7 @@ function pickInto(source, fields, target) {
  * 从 appSettings（+ 当前视图模式）收集一份配方。
  * 只读 SCHEMA 点名的路径 → 敏感键在结构上就进不来。
  * 空组不写键，这样「只改了背景」的配方不会带一堆默认值把朋友的其他设置冲掉。
- * @param {Object} settings appSettings
+ * @param {any} settings appSettings
  * @param {string} [mode] 当前视图模式（不在 VIEW_MODES 里则不写 mode）
  * @param {string[]} [modes] 要收集哪几个模式的版式偏好。
  *   **默认全收**：「保存当前所有视觉参数」就该把用户调过的每个模式都带上，
@@ -628,8 +664,9 @@ function pickInto(source, fields, target) {
  */
 export function collectRecipe(settings, mode, modes) {
     const s = (settings && typeof settings === 'object') ? settings : {};
+    /** @type {Record<string, any>} */
     const recipe = { sv: SCHEMA_VERSION };
-    if (VIEW_MODES.indexOf(mode) >= 0) recipe.mode = mode;
+    if (VIEW_MODES.indexOf(mode || '') >= 0) recipe.mode = mode;
 
     const lyrics = {};
     if (pickInto(s.lyrics, LYRICS_FIELDS, lyrics)) recipe.lyrics = lyrics;
@@ -643,9 +680,11 @@ export function collectRecipe(settings, mode, modes) {
     {
         const stored = s.interface && isPlainObject(s.interface.appearanceTokens) ? s.interface.appearanceTokens : null;
         if (stored) {
+            /** @type {Record<string, any>} */
             const tk = {};
             for (const k of Object.keys(stored)) {
-                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, k) ? TOKEN_FIELDS[k] : null;
+                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, k)
+                    ? /** @type {Record<string, any>} */ (TOKEN_FIELDS)[k] : null;
                 if (!kind) continue;
                 const r = checkTokenValue(kind, stored[k]);
                 if (r.ok) tk[k] = r.value;
@@ -657,12 +696,15 @@ export function collectRecipe(settings, mode, modes) {
     const wanted = (Array.isArray(modes) && modes.length ? modes : VIEW_MODES).filter(m => VIEW_MODES.indexOf(m) >= 0);
     const ms = (s.modeSettings && typeof s.modeSettings === 'object') ? s.modeSettings : null;
     if (ms) {
+        /** @type {Record<string, any>} */
         const out = {};
         for (const m of wanted) {
-            const list = MODE_FIELDS_BY_MODE[m];
+            const list = /** @type {Record<string, any>} */ (MODE_FIELDS_BY_MODE)[m];
             if (!list) continue;
+            /** @type {Record<string, any>} */
             const fields = {};
-            for (const key of list) fields[key] = MODE_FIELD_POOL[key];
+            for (const key of list) fields[key] = /** @type {Record<string, any>} */ (MODE_FIELD_POOL)[key];
+            /** @type {Record<string, any>} */
             const one = {};
             if (pickInto(ms[m], fields, one)) out[m] = one;
         }
@@ -673,20 +715,44 @@ export function collectRecipe(settings, mode, modes) {
 
 /* ---------- 校验（解码侧） ---------- */
 
+/**
+ * @param {RecipeErrorItem[]} errors
+ * @param {string} path
+ * @param {string} [code]
+ * @param {any} [expect]
+ * @param {any} [got]
+ */
 function fail(errors, path, code, expect, got) {
     errors.push({ path, code, expect: expect || '', got: got === undefined ? '' : String(got).slice(0, 40) });
 }
 
 /** 输入必须是「对象字面量」形状，不能是数组/Date/函数这类带原型的活对象 */
+/** @param {any} v @returns {boolean} */
 function isPlainObject(v) {
     return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
+ * 配方校验的错误项。
+ * @typedef {object} RecipeErrorItem
+ * @property {string} path
+ * @property {string|undefined} [code] fail() 的 code 可选；调用点确实会把 undefined 写进去
+ * @property {string} [expect]
+ * @property {*} [got]
+ */
+
+/**
+ * 带错误码与明细的 Error（供上层按 code 分支）。
+ * @typedef {Error & {code?: string, errors?: RecipeErrorItem[]|undefined}} RecipeCodedError
+ */
+
+/**
  * 严格校验一份配方：任何未知键 / 敏感键 / 非法值都会产出错误项。
- * @returns {{ok:true, recipe:Object}|{ok:false, errors:Array}}
+ * @param {*} input
+ * @returns {{ok:boolean, recipe?:Record<string,any>, errors?:RecipeErrorItem[]}}
  */
 export function validateRecipe(input) {
+    /** @type {RecipeErrorItem[]} */
     const errors = [];
     if (!isPlainObject(input)) {
         fail(errors, '$', 'bad-shape', '一个 JSON 对象', Array.isArray(input) ? 'array' : typeof input);
@@ -708,6 +774,7 @@ export function validateRecipe(input) {
         fail(errors, 'sv', 'schema-version-mismatch', '本版本支持 sv=' + SCHEMA_VERSION, sv);
     }
 
+    /** @type {Record<string, any>} */
     const out = { sv: SCHEMA_VERSION };
 
     if (input.mode !== undefined) {
@@ -717,6 +784,7 @@ export function validateRecipe(input) {
     }
 
     /* 三个平铺命名空间 */
+    /** @type {Array<[string, Record<string, any>]>} */
     const spaces = [
         ['lyrics', LYRICS_FIELDS],
         ['background', BACKGROUND_FIELDS],
@@ -726,6 +794,7 @@ export function validateRecipe(input) {
         if (input[name] === undefined) continue;
         const src = input[name];
         if (!isPlainObject(src)) { fail(errors, name, 'bad-shape', '一个对象', typeof src); continue; }
+        /** @type {Record<string, any>} */
         const target = {};
         for (const key of Object.keys(src)) {
             if (!Object.prototype.hasOwnProperty.call(fields, key)) {
@@ -745,6 +814,7 @@ export function validateRecipe(input) {
         const src = input.modeSettings;
         if (!isPlainObject(src)) fail(errors, 'modeSettings', 'bad-shape', '一个对象', typeof src);
         else {
+            /** @type {Record<string, any>} */
             const target = {};
             for (const modeKey of Object.keys(src)) {
                 if (VIEW_MODES.indexOf(modeKey) < 0) {
@@ -756,16 +826,17 @@ export function validateRecipe(input) {
                     fail(errors, 'modeSettings.' + modeKey, 'bad-shape', '一个对象', typeof inner);
                     continue;
                 }
-                const list = MODE_FIELDS_BY_MODE[modeKey] || [];
+                const list = /** @type {Record<string, any>} */ (MODE_FIELDS_BY_MODE)[modeKey] || [];
+                /** @type {Record<string, any>} */
                 const one = {};
                 for (const key of Object.keys(inner)) {
-                    if (list.indexOf(key) < 0 || !MODE_FIELD_POOL[key]) {
+                    if (list.indexOf(key) < 0 || !/** @type {Record<string, any>} */ (MODE_FIELD_POOL)[key]) {
                         fail(errors, 'modeSettings.' + modeKey + '.' + key,
                             isForbiddenKey(key) ? 'forbidden-key' : 'unknown-field',
                             isForbiddenKey(key) ? '不允许出现' : '该模式的版式参数名', key);
                         continue;
                     }
-                    const r = validateValue(MODE_FIELD_POOL[key], inner[key]);
+                    const r = validateValue(/** @type {Record<string, any>} */ (MODE_FIELD_POOL)[key], inner[key]);
                     if (r.ok) one[key] = r.value;
                     else fail(errors, 'modeSettings.' + modeKey + '.' + key, r.code, r.expect, inner[key]);
                 }
@@ -782,9 +853,11 @@ export function validateRecipe(input) {
         const src = input.tokens;
         if (!isPlainObject(src)) fail(errors, 'tokens', 'bad-shape', '一个对象', typeof src);
         else {
+            /** @type {Record<string, any>} */
             const target = {};
             for (const key of Object.keys(src)) {
-                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, key) ? TOKEN_FIELDS[key] : null;
+                const kind = Object.prototype.hasOwnProperty.call(TOKEN_FIELDS, key)
+                    ? /** @type {Record<string, any>} */ (TOKEN_FIELDS)[key] : null;
                 if (!kind) {
                     fail(errors, 'tokens.' + key, 'token-not-allowed',
                         '本段只收没有其它写入者的令牌；主题色走 interface.themeColor', key);
@@ -807,10 +880,11 @@ export function validateRecipe(input) {
 /* ---------- 编解码 ---------- */
 
 /** 配方 → 分享码。 */
+/** @param {any} recipe @returns {string} */
 export function encodeRecipe(recipe) {
     const v = validateRecipe(recipe);
     if (!v.ok) {
-        const e = new Error('配方不合法：' + v.errors.map(x => x.path + '(' + x.code + ')').join(', '));
+        const e = /** @type {RecipeCodedError} */ (new Error('配方不合法：' + (v.errors || []).map(x => x.path + '(' + x.code + ')').join(', ')));
         e.code = 'invalid-recipe';
         e.errors = v.errors;
         throw e;
@@ -818,7 +892,7 @@ export function encodeRecipe(recipe) {
     const json = canonicalJSON(v.recipe);
     const code = CODE_PREFIX + SCHEMA_VERSION + '.' + base64urlEncode(utf8Encode(json)) + '.' + checksum32(json);
     if (code.length > MAX_CODE_CHARS) {
-        const e = new Error('配方过大（' + code.length + ' 字符 > ' + MAX_CODE_CHARS + '）');
+        const e = /** @type {RecipeCodedError} */ (new Error('配方过大（' + code.length + ' 字符 > ' + MAX_CODE_CHARS + '）'));
         e.code = 'too-large';
         throw e;
     }
@@ -860,9 +934,10 @@ export const ERROR_TEXT = {
 /**
  * 分享码 → 配方。**只返回结果，绝不写任何东西**（写入是调用方在 ok 之后做的事）。
  * @param {string} code
- * @returns {{ok:true, recipe:Object}|{ok:false, errors:Array<{path,code,expect,got}>}}
+ * @returns {{ok:boolean, recipe?:Record<string,any>, errors?:RecipeErrorItem[]}}
  */
 export function decodeRecipe(code) {
+    /** @type {RecipeErrorItem[]} */
     const errors = [];
     const raw = String(code == null ? '' : code).replace(/[\r\n\t ]+/g, '');
     if (!raw) {
@@ -881,7 +956,12 @@ export function decodeRecipe(code) {
         if (raw.indexOf(CODE_PREFIX) === 0) {
             let i = CODE_PREFIX.length;
             let digits = '';
-            while (i < raw.length && raw[i] >= '0' && raw[i] <= '9') { digits += raw[i]; i++; }
+            while (i < raw.length) {
+                const ch = /** @type {string} */ (raw[i]);
+                if (ch < '0' || ch > '9') break;
+                digits += ch;
+                i++;
+            }
             if (digits && raw[i] === '.') {
                 fail(errors, '$', 'version-prefix-mismatch', '需要 v' + SCHEMA_VERSION + ' 的分享码', 'v' + digits);
                 return { ok: false, errors };
@@ -960,15 +1040,15 @@ const MODE_TO_BACKGROUND = {
  * 把配方写进 settings（就地改），返回统计供 UI 播报。
  * 不做任何「智能合并」：配方里有的键就覆盖，没有的键保持原样——
  * 「只存了背景」的配方不该动用户的字号。
- * @param {Object} settings appSettings（调用方负责随后 saveSettings + 重绘）
- * @param {Object} recipe validateRecipe 通过后的配方
+ * @param {any} settings appSettings（调用方负责随后 saveSettings + 重绘）
+ * @param {any} recipe validateRecipe 通过后的配方
  * @param {string} [activeMode] 应用后真正处于视觉模式；缺省取 recipe.mode。
  *   该模式的分模式参数会回写全局（见上表说明）。
  */
 export function applyRecipeToSettings(settings, recipe, activeMode) {
     const v = validateRecipe(recipe);
     if (!v.ok) return { ok: false, errors: v.errors, counts: {}, mode: null };
-    const r = v.recipe;
+    const r = /** @type {Record<string,any>} */ (v.recipe || {});
     const s = settings;
     const counts = {};
     if (!s || typeof s !== 'object') return { ok: false, errors: [{ path: '$', code: 'bad-shape' }], counts, mode: null };
@@ -1010,7 +1090,7 @@ export function applyRecipeToSettings(settings, recipe, activeMode) {
     }
 
     /* 优先级归一：当前模式的版式偏好 > 全局配方值（与 190 运行时的判定一致） */
-    const active = VIEW_MODES.indexOf(activeMode) >= 0 ? activeMode : r.mode;
+    const active = VIEW_MODES.indexOf(activeMode || '') >= 0 ? activeMode : r.mode;
     const ms = active && isPlainObject(s.modeSettings) ? s.modeSettings[active] : null;
     let shadowed = 0;
     if (isPlainObject(ms)) {
@@ -1023,6 +1103,11 @@ export function applyRecipeToSettings(settings, recipe, activeMode) {
 }
 
 /** 把 ms[src] 抄到 dst[map[src]]；只在 src 存在时动。返回覆盖条数。 */
+/**
+ * @param {any} dst
+ * @param {any} ms
+ * @param {any} map
+ */
 function shadowInto(dst, ms, map) {
     if (!isPlainObject(dst)) return 0;
     let n = 0;
@@ -1039,9 +1124,11 @@ function shadowInto(dst, ms, map) {
 /* ---------- 配方摘要（UI 里「这份配方会改什么」） ---------- */
 
 /** 数一数配方各组的条目数，供列表与确认弹窗展示。 */
+/** @param {any} recipe @returns {any} */
 export function summarizeRecipe(recipe) {
     const v = validateRecipe(recipe);
     const r = v.ok ? v.recipe : (isPlainObject(recipe) ? recipe : {});
+    /** @type {Record<string, number>} */
     const groups = {};
     for (const g of RECIPE_GROUPS) groups[g.key] = 0;
     if (r.mode) groups.mode = 1;
@@ -1055,7 +1142,7 @@ export function summarizeRecipe(recipe) {
         }
         groups.modeSettings = n;
     }
-    const total = Object.keys(groups).reduce((a, k) => a + groups[k], 0);
+    const total = Object.keys(groups).reduce((a, k) => a + (/** @type {number} */ (groups[k])), 0);
     return { groups, total, modes: isPlainObject(r.modeSettings) ? Object.keys(r.modeSettings) : [] };
 }
 
@@ -1065,6 +1152,7 @@ export function summarizeRecipe(recipe) {
  * 清洗预设名：去控制字符与尖括号花括号、折叠空白、截断。
  * 渲染侧仍必须 esc()（约束 8）——这里是「不让脏名字进存储」，不是「让 UI 省掉转义」。
  */
+/** @param {string} input @returns {string} */
 export function sanitizeRecipeName(input) {
     let s = String(input == null ? '' : input);
     s = s.replace(/[\u0000-\u001f\u007f]/g, ' ');
@@ -1075,6 +1163,11 @@ export function sanitizeRecipeName(input) {
 }
 
 /** 生成预设 id（可注入 now/rand 以便测试稳定） */
+/**
+ * @param {number} [now]
+ * @param {() => number} [rand]
+ * @returns {string}
+ */
 export function newPresetId(now, rand) {
     const t = (typeof now === 'number' ? now : Date.now()).toString(36);
     const r = Math.floor((typeof rand === 'number' ? rand : Math.random()) * 1296).toString(36).padStart(2, '0');
@@ -1083,7 +1176,9 @@ export function newPresetId(now, rand) {
 
 /**
  * 新增/覆盖预设（同名 = 覆盖，符合用户「保存到我的配方」的直觉）。
- * @returns {{list:Array, action:'added'|'overwritten'|'rejected', reason?:string}}
+ * @param {any[]} list
+ * @param {any} preset
+ * @returns {{list:any[], action:'added'|'overwritten'|'rejected', reason?:string}}
  */
 export function upsertPreset(list, preset) {
     if (!isPlainObject(preset)) return { list: Array.isArray(list) ? list : [], action: 'rejected', reason: 'bad-shape' };
@@ -1112,7 +1207,13 @@ export function upsertPreset(list, preset) {
     return { list: items, action: 'added' };
 }
 
-/** 重命名（目标名已存在则拒绝，避免悄悄合并两份配方） */
+/**
+ * 重命名（目标名已存在则拒绝，避免悄悄合并两份配方）。
+ * @param {any[]} list
+ * @param {string} id
+ * @param {string} nextName
+ * @returns {{list:any[], action:string, reason?:string}}
+ */
 export function renamePreset(list, id, nextName) {
     const items = (Array.isArray(list) ? list : []).slice();
     const i = items.findIndex(p => p && p.id === id);
@@ -1125,6 +1226,7 @@ export function renamePreset(list, id, nextName) {
 }
 
 /** 删除 */
+/** @param {any[]} list @param {string} id @returns {{list:any[], action:string, reason?:string}} */
 export function removePreset(list, id) {
     const items = (Array.isArray(list) ? list : []);
     const next = items.filter(p => p && p.id !== id);
@@ -1135,6 +1237,7 @@ export function removePreset(list, id) {
  * 从 appSettings 里读出的清单做一次防御性归一化：
  * 存储文件是用户可直接编辑的（user_config.json），坏条目要能安静丢掉而不是让面板崩。
  */
+/** @param {any} raw @returns {any[]} */
 export function normalizePresetList(raw) {
     const out = [];
     const usedNames = new Set();
@@ -1194,6 +1297,11 @@ const MOD_AUTHOR_MAX = 40;
 const MOD_DESC_MAX = 160;
 
 /** mod 的展示字段是外部输入：去控制字符 + 限长（与预设名同一套处理） */
+/**
+ * @param {any} v
+ * @param {number} max
+ * @returns {string}
+ */
 function cleanModText(v, max) {
     if (typeof v !== 'string') return '';
     return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
@@ -1201,9 +1309,10 @@ function cleanModText(v, max) {
 
 /**
  * 解析一份 mod 文件文本。
- * @returns {{ok:true, recipe:Object, meta:{name:string,author:string,description:string}}
- *          |{ok:false, errors:Array}}
+ * @returns {{ok:boolean, recipe?:Record<string,any>, errors?:RecipeErrorItem[],
+ *            meta?:{name:string,author:string,description:string}}}
  */
+/** @param {string} text @returns {any} */
 export function parseThemeMod(text) {
     if (typeof text !== 'string' || !text.trim()) {
         return { ok: false, errors: [{ path: '$', code: 'empty-text', expect: '一个 JSON 文件的内容', got: '' }] };
@@ -1221,7 +1330,8 @@ export function parseThemeMod(text) {
     let raw = parsed;
     let meta = { name: '', author: '', description: '' };
     if (isPlainObject(parsed) && parsed[THEME_MOD_KIND] !== undefined) {
-        const errors = [];
+        /** @type {RecipeErrorItem[]} */
+    const errors = [];
         if (parsed[THEME_MOD_KIND] !== THEME_MOD_VERSION) {
             return { ok: false, errors: [{ path: THEME_MOD_KIND, code: 'bad-mod-version', expect: '本版本支持 ' + THEME_MOD_VERSION, got: String(parsed[THEME_MOD_KIND]) }] };
         }
@@ -1245,15 +1355,21 @@ export function parseThemeMod(text) {
 }
 
 /** 配方 → mod 文件文本（导出用）。产物可直接被 parseThemeMod 读回（往返有测试钉住）。 */
+/**
+ * @param {any} recipe
+ * @param {any} [meta]
+ * @returns {string}
+ */
 export function serializeThemeMod(recipe, meta) {
     const v = validateRecipe(recipe);
     if (!v.ok) {
-        const e = new Error('配方不合法，无法导出为 mod 文件');
+        const e = /** @type {RecipeCodedError} */ (new Error('配方不合法，无法导出为 mod 文件'));
         e.code = 'invalid-recipe';
         e.errors = v.errors;
         throw e;
     }
     const m = meta || {};
+    /** @type {Record<string, any>} */
     const out = {};
     out[THEME_MOD_KIND] = THEME_MOD_VERSION;
     const name = cleanModText(m.name, MAX_NAME_CHARS);

@@ -61,7 +61,9 @@ export const UNAVAILABLE = {
  */
 export const SHELL_PROBE_RETRY = { attempts: 2, delayMs: 300 };
 
+/** @type {any} */
 let _probe = null;          /* Promise<{available, reason, detail}> | null —— 缓存 */
+/** @type {any} */
 let _coreRef = null;        /* 上次成功解析到的 core 对象 */
 let _warnedMissing = false; /* 「没壳」只提示一次，避免网页版每次轮询都刷屏 */
 
@@ -79,7 +81,7 @@ function resolveCore() {
             _coreRef = core;
             return core;
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch(TAG, e);
     }
     return null;
@@ -94,12 +96,13 @@ function resolveCore() {
  * @throws {Error} 无外壳 / 超时 / 后端 Err（错误消息原文保留，含设备的真实原因）
  */
 export async function call(cmd, args, timeoutMs) {
-    const core = resolveCore();
+    const core = /** @type {any} */ (resolveCore());
     if (!core) throw new Error(UNAVAILABLE.NO_SHELL);
     const budget = timeoutMs || CALL_TIMEOUT_MS;
     /* 超时用 race 而不是 AbortSignal：Tauri 的 invoke 不吃 signal，
        这里只是保证**调用方**不会被永久挂住（底层命令仍在跑完，它自己的
        状态最终会被下一次 snapshot 看见）。 */
+    /** @type {any} */
     let timer = null;
     try {
         return await Promise.race([
@@ -136,7 +139,8 @@ export function probe() {
             return { available: false, reason: UNAVAILABLE.NO_SHELL };
         }
         try {
-            const st = await call(CMD.STATUS, {}, 2500);
+            /** @type {{available?:boolean, mode?:string, sampleFormat?:string, reason?:string}|null} */
+            const st = /** @type {any} */ (await call(CMD.STATUS, {}, 2500));
             if (st && st.available) {
                 return {
                     available: true,
@@ -150,7 +154,7 @@ export function probe() {
                 reason: UNAVAILABLE.ERROR,
                 detail: (st && st.reason) || '',
             };
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             /* ACL 未放行时 Tauri 会 reject 一个 "not allowed" 类错误。
                与「没壳」区分开：前者是配置问题，值得写进日志。 */
             logWarn(TAG, 'native_audio_status failed:', String(e && e.message || e));
@@ -186,11 +190,15 @@ export const checkExclusive = (deviceId, sampleRate) =>
     call(CMD.CHECK_EXCLUSIVE, { deviceId: deviceId || null, sampleRate: sampleRate || 0 }, CHECK_TIMEOUT_MS);
 
 /** 加载一首。发完即返回（加载结果由 20Hz snapshot 发现，见 native_audio.rs 文件头） */
+/** @type {(src: string, autoplay?: boolean) => any} */
 export const load = (src, autoplay) => call(CMD.LOAD, { src, autoplay: !!autoplay });
 export const play = () => call(CMD.PLAY);
 export const pause = () => call(CMD.PAUSE);
+/** @type {(sec: number) => any} */
 export const seek = (sec) => call(CMD.SEEK, { sec });
+/** @type {(gain: number) => any} */
 export const setVolume = (gain) => call(CMD.SET_VOLUME, { volume: gain });
+/** @type {(enabled: boolean, gainsDb: any) => any} */
 export const setEq = (enabled, gainsDb) => call(CMD.SET_EQ, { eq: { enabled: !!enabled, gainsDb } });
 
 /**
@@ -210,6 +218,7 @@ export const setSpatial = (s) => call(CMD.SET_SPATIAL, {
         stageLevel: String(s.stageLevel || 'light'),
     },
 });
+/** @type {(deviceId: string, exclusive?: boolean) => any} */
 export const setOutput = (deviceId, exclusive) =>
     call(CMD.SET_OUTPUT, { output: { deviceId: deviceId || null, exclusive: !!exclusive } });
 

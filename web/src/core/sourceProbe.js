@@ -32,18 +32,31 @@ export const SOURCE_PROBES = [
 export const DEFAULT_TIMEOUT_MS = 3000;
 
 /**
+ * 探测目标（见 `SOURCE_PROBES`）。
+ * @typedef {object} SourceProbeItem
+ * @property {string} id
+ * @property {string} label
+ * @property {string} url
+ * @property {boolean} [sameOrigin]
+ * @property {boolean} [publicNet]
+ * @property {number} [timeoutMs]
+ */
+
+/**
  * 探测一个目标。
- * @param {object} item 探测项（见 SOURCE_PROBES）
+ * @param {SourceProbeItem} item 探测项（见 SOURCE_PROBES）
  * @param {number} [timeoutMs]
  * @returns {Promise<{id:string,label:string,ok:boolean,ms:number|null,status:number|null,info:string}>}
  */
 export async function probeOne(item, timeoutMs) {
     const t = (Number.isFinite(item && item.timeoutMs) ? item.timeoutMs : timeoutMs);
     const limit = Number.isFinite(t) ? t : DEFAULT_TIMEOUT_MS;
+    /** @type {any} */
     const out = { id: item.id, label: item.label, ok: false, ms: null, status: null, info: '' };
     if (typeof fetch !== 'function') { out.info = 'no-fetch'; return out; }
 
     const ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    /** @type {any} */
     let timer = null;
     if (ctrl) timer = setTimeout(() => { try { ctrl.abort(); } catch { /* 忽略 */ } }, limit);
 
@@ -53,7 +66,9 @@ export async function probeOne(item, timeoutMs) {
             method: 'GET',
             mode: item.sameOrigin ? 'cors' : 'no-cors',
             cache: 'no-store',
-            signal: ctrl ? ctrl.signal : undefined,
+            /* 无 AbortController 时让 signal「缺席」而不是「显式 undefined」：
+               exactOptionalPropertyTypes 下二者不同，且 fetch 对缺席与 undefined 行为一致 */
+            ...(ctrl ? { signal: ctrl.signal } : {}),
         });
         out.ms = Math.round(nowMs() - t0);
         out.ok = true;
@@ -67,7 +82,7 @@ export async function probeOne(item, timeoutMs) {
         } else if (res.type === 'opaque') {
             out.info = 'opaque-ok';
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         out.ms = Math.round(nowMs() - t0);
         out.ok = false;
         const name = (e && e.name) || '';
@@ -80,9 +95,9 @@ export async function probeOne(item, timeoutMs) {
 
 /**
  * 并发探测全部目标（快的那几个不会等慢的）。
- * @param {Array} [items]
+ * @param {Array<any>} [items]
  * @param {number} [timeoutMs]
- * @returns {Promise<Array>}
+ * @returns {Promise<Array<any>>}
  */
 export async function probeAll(items, timeoutMs) {
     const list = Array.isArray(items) && items.length ? items : SOURCE_PROBES;
@@ -90,6 +105,7 @@ export async function probeAll(items, timeoutMs) {
 }
 
 /** 把 `/api/selfhost/status` 的 JSON 压成一句人话（不读到的字段不编）。 */
+/** @param {any} data 自建服务的 JSON 响应 */
 function summarizeSelfHost(data) {
     if (!data || typeof data !== 'object') return '';
     const keys = ['qq', 'kugou', 'netease', 'qishui'];

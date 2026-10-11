@@ -4,11 +4,15 @@
  * 在 10-config-state.js 的 DOMContentLoaded 中调用 initDom() 初始化，其他模块通过 import { dom } 使用
  */
 
+/** 60+ 个 DOM 引用按名字挂载在这里，形状由 initDom() 决定，故用字典类型。 */
+/** @type {Record<string, any>} */
 export const dom = {};
 
 /** 初始化所有 DOM 引用（在 DOMContentLoaded 后调用） */
 export function initDom() {
+    /** @type {(id: string) => HTMLElement|null} */
     const get = (id) => document.getElementById(id);
+    /** @type {(sel: string) => NodeListOf<Element>} */
     const qsa = (sel) => document.querySelectorAll(sel);
 
     // 音频元素

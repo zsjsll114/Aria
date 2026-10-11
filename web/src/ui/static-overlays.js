@@ -83,7 +83,9 @@ export const STATIC_MODAL_CLASS = 'aria-static-modal';
  */
 export function adoptStaticOverlays(doc) {
     const d = doc || (typeof document !== 'undefined' ? document : null);
+    /** @type {string[]} */
     const adopted = [];
+    /** @type {string[]} */
     const missing = [];
     let labelled = 0;
     if (!d || typeof d.querySelector !== 'function') {

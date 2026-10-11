@@ -22,9 +22,14 @@
  * ============================================================ */
 const RING_LIMIT = 400;
 const MSG_LIMIT = 240;
+/** @type {any[]} */
 const ring = [];
 let ringSeq = 0;
 
+/**
+ * @param {any} a
+ * @returns {string}
+ */
 function stringifyArg(a) {
     if (a instanceof Error) return a.message;
     if (typeof a === 'object' && a !== null) {
@@ -33,6 +38,11 @@ function stringifyArg(a) {
     return String(a);
 }
 
+/**
+ * @param {string} level
+ * @param {string} tag
+ * @param {any[]} args
+ */
 function pushRecord(level, tag, args) {
     let msg;
     try {

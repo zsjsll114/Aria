@@ -45,7 +45,7 @@ export function assignGlobal(key, value) {
     const rec = registry.get(key);
     if (rec) {
         try {
-            const caller = new Error().stack.split('\n')[2] || '';
+            const caller = (new Error().stack || '').split('\n')[2] || '';
             const file = /([\w-]+\.js)/.exec(caller)?.[1] || 'unknown';
             if (!rec.writers.includes(file)) {
                 rec.writers.push(file);
@@ -55,7 +55,7 @@ export function assignGlobal(key, value) {
             }
         } catch (e) { /* 堆栈不可用时跳过记录 */ }
     }
-    globalThis[key] = value;
+    /** @type {any} */ (globalThis)[key] = value;
     return value;
 }
 
@@ -69,7 +69,7 @@ export function auditGlobals({ strict = false } = {}) {
     let typeMismatch = 0;
     let multiWrite = 0;
     for (const [key, rec] of registry) {
-        const v = globalThis[key];
+        const v = /** @type {any} */ (globalThis)[key];
         if (v === undefined) {
             missing++;
             const msg = `[globalRegistry] 未定义键 ${key} (owner=${rec.owner})`;
@@ -97,13 +97,14 @@ export function auditGlobals({ strict = false } = {}) {
 
 /** 返回注册表快照（DevTools / 调试） */
 export function listGlobals() {
+    /** @type {Record<string, any>} */
     const out = {};
     for (const [key, rec] of registry) {
         out[key] = {
             owner: rec.owner,
-            type: rec.type === 'autodetect' ? typeof globalThis[key] : rec.type,
+            type: rec.type === 'autodetect' ? typeof /** @type {any} */ (globalThis)[key] : rec.type,
             writers: rec.writers,
-            defined: globalThis[key] !== undefined,
+            defined: /** @type {any} */ (globalThis)[key] !== undefined,
         };
     }
     return out;

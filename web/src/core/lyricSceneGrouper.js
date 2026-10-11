@@ -9,9 +9,11 @@
  * 段落类型 classify：chorus / break / outro / breath / lift / verse，供上层排版微调节奏。
  */
 
+/** @type {(v:number, lo:number, hi:number) => number} */
 const clampVal = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /** 行开始时间（ms）：兼容 start / time 字段 */
+/** @param {any} line @returns {number} */
 export const lineStartOf = (line) => {
   if (!line) return 0;
   if (line.start !== undefined) return Number(line.start) || 0;
@@ -20,6 +22,7 @@ export const lineStartOf = (line) => {
 };
 
 /** 行结束时间（ms）：end 优先，否则 start + duration，兜底 3s */
+/** @param {any} line @returns {number} */
 export const lineEndOf = (line) => {
   if (!line) return 3000;
   if (line.end !== undefined) return Math.max(Number(line.end) || 0, lineStartOf(line));
@@ -29,6 +32,12 @@ export const lineEndOf = (line) => {
 };
 
 /** 视觉尾端：不越过下一行开始（上游参考项目 renderEndTime），重叠行至少等于自身结束 */
+/**
+ * @param {any} line
+ * @param {number} index
+ * @param {any[]} lines
+ * @returns {number}
+ */
 const renderEndOf = (line, index, lines) => {
   const e = lineEndOf(line);
   const next = lines[index + 1];
@@ -38,6 +47,7 @@ const renderEndOf = (line, index, lines) => {
 };
 
 /** 提取行内段落标记：[(Chorus)] / (副歌) / (间奏) 等，或歌词对象自带 flag */
+/** @param {any} line @returns {string} */
 const tagOf = (line) => {
   if (!line) return '';
   if (line.flag && String(line.flag).trim()) return String(line.flag).trim().toLowerCase();
@@ -45,23 +55,31 @@ const tagOf = (line) => {
   const text = String(line.original || line.text || '');
   const m = text.match(/[\(（\[]\s*([^\)）\]]+)\s*[\)）\]]/);
   if (m) {
-    const t = m[1].trim().toLowerCase();
+    const t = (/** @type {string} */ (m[1])).trim().toLowerCase();
     return /chorus|副歌|hook|间奏|bridge|break|主歌|verse|前奏|intro|尾声|outro|尾奏/i.test(t) ? t : '';
   }
   return '';
 };
 
+/** @param {number[]} values @returns {number} */
 const median = (values) => {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const hi = /** @type {number} */ (sorted[mid]);
+  return sorted.length % 2 === 0 ? (/** @type {number} */ (sorted[mid - 1]) + hi) / 2 : hi;
 };
 
 /** 行间间隙（s），重叠行按 0 */
+/**
+ * @param {any} prev
+ * @param {any} next
+ * @returns {number}
+ */
 const gapSecondsOf = (prev, next) => Math.max(0, (lineStartOf(next) - lineEndOf(prev)) / 1000);
 
 /** 自适应段落间隙阈值（s）：median(正间隙)×2.5，钳制 1.25~3.5 */
+/** @param {any[]} lines @returns {number} */
 export function resolveGapThreshold(lines) {
   const gaps = [];
   for (let i = 1; i < lines.length; i++) {
@@ -72,6 +90,12 @@ export function resolveGapThreshold(lines) {
 }
 
 /** 段落类型（上游参考项目 classifyParagraph）：chorus/break/outro/breath/lift/verse */
+/**
+ * @param {any[]} lines
+ * @param {number} index
+ * @param {number} total
+ * @returns {string}
+ */
 export function classifyScene(lines, index, total) {
   const tags = lines.map(tagOf).join(' ');
   if (/chorus|副歌|hook|chorus/i.test(tags)) return 'chorus';
@@ -97,6 +121,7 @@ export function classifyScene(lines, index, total) {
 
 /** 超大段落拆分：>8 行 或 总跨度 >18s → 在行间最大间隙处切
  *  ★ 原 >6 行即拆：PV 用户反馈句子被切太碎、上游参考项目 长句更连贯，放宽到 8 行 */
+/** @param {any[]} lines @returns {any[]} */
 function splitOversizedDraft(lines) {
   const output = [];
   let remaining = lines;
@@ -108,7 +133,7 @@ function splitOversizedDraft(lines) {
       candidates.push({ index: i, gap: gapSecondsOf(remaining[i - 1], remaining[i]) });
     }
     candidates.sort((a, b) => b.gap - a.gap);
-    const raw = candidates.length ? candidates[0].index : Math.min(4, remaining.length - 1);
+    const raw = candidates.length ? (/** @type {{index:number}} */ (candidates[0])).index : Math.min(4, remaining.length - 1);
     const splitIndex = Math.max(1, raw);
     output.push(remaining.slice(0, splitIndex));
     remaining = remaining.slice(splitIndex);
@@ -119,11 +144,12 @@ function splitOversizedDraft(lines) {
 
 /**
  * ★ 主入口：把歌词行划为「镜组/场景」列表
- * @param {Array} lines 歌词行对象（start/end 或 time/duration + original/text）
+ * @param {Array<any>} lines 歌词行对象（start/end 或 time/duration + original/text）
  * @param {Object} [opts]
  * @param {number} [opts.maxLines=4] 每组最多行数（上游参考项目 4；蒙德里安传 2 快节奏）
  * @param {number} [opts.maxSpanSec=6.5] 每组时间跨度上限（秒）
- * @returns {Array<{lines:Array, kind:string, start:number, end:number, boundary:string}>}
+ * @param {number} [opts.gapThresholdSec] 段落间隙阈值（秒）；缺省按歌词自适应
+ * @returns {Array<{lines:Array<any>, kind:string, start:number, end:number, boundary:string}>}
  */
 export function buildSceneGroups(lines = [], opts = {}) {
   if (!Array.isArray(lines) || lines.length === 0) return [];
@@ -134,8 +160,9 @@ export function buildSceneGroups(lines = [], opts = {}) {
 
   // 1. 段落 draft：间隙阈值 / 段落标记变化 → 边界
   const drafts = [];
+  /** @type {any[]} */
   let current = [];
-  lines.forEach((line, i) => {
+  /** @type {any[]} */ (lines).forEach((line, i) => {
     const prev = lines[i - 1];
     const gapSec = prev ? gapSecondsOf(prev, line) : 0;
     const tag = tagOf(line);
@@ -151,11 +178,13 @@ export function buildSceneGroups(lines = [], opts = {}) {
   if (current.length > 0) drafts.push(...splitOversizedDraft(current));
 
   // 2. 段内镜组：≤maxLines 行且跨度 ≤maxSpanMs
+  /** @type {any[]} */
   const scenes = [];
   drafts.forEach((draft) => {
+    /** @type {any[]} */
     let group = [];
     let groupStart = 0;
-    draft.forEach((line, i) => {
+    /** @type {any[]} */ (draft).forEach((line, i) => {
       if (group.length === 0) {
         group = [line];
         groupStart = lineStartOf(line);

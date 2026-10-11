@@ -48,14 +48,16 @@ const RE_PREAMP = /Preamp\s*:\s*(-?[\d.]+)\s*dB/i;
  *   skipped = 解析到但类型不支持（LP/HP/BP 等无增益项）而被丢弃的条数
  */
 export function parseAutoEqPeq(text) {
+    /** @type {{preampDb:number|null, filters:Array<{type:string,fc:number,gainDb:number,q:number}>, skipped:number}} */
     const out = { preampDb: null, filters: [], skipped: 0 };
     if (!text || typeof text !== 'string') return out;
 
     const pm = RE_PREAMP.exec(text);
-    if (pm) out.preampDb = parseFloat(pm[1]);
+    if (pm) out.preampDb = parseFloat(/** @type {string} */ (pm[1]));
 
+    /** @type {(rawType:any, fc:number, gainDb:number, q:number) => void} */
     const pushFilter = (rawType, fc, gainDb, q) => {
-        const type = TYPE_MAP[String(rawType).trim().toUpperCase()];
+        const type = /** @type {Record<string, string>} */ (TYPE_MAP)[String(rawType).trim().toUpperCase()];
         if (!type) { out.skipped++; return; }
         if (!isFinite(fc) || fc <= 0 || !isFinite(gainDb)) { out.skipped++; return; }
         out.filters.push({
@@ -69,13 +71,13 @@ export function parseAutoEqPeq(text) {
     RE_FILTER.lastIndex = 0;
     let m;
     while ((m = RE_FILTER.exec(text)) !== null) {
-        if (m[1].toUpperCase() !== 'ON') { continue; }   /* OFF 的滤波器直接不采 */
-        pushFilter(m[2], parseFloat(m[3]), parseFloat(m[4]), m[5] ? parseFloat(m[5]) : NaN);
+        if ((/** @type {string} */ (m[1])).toUpperCase() !== 'ON') { continue; }   /* OFF 的滤波器直接不采 */
+        pushFilter(/** @type {string} */ (m[2]), parseFloat(/** @type {string} */ (m[3])), parseFloat(/** @type {string} */ (m[4])), m[5] ? parseFloat(m[5]) : NaN);
     }
 
     RE_FILTER_ALT.lastIndex = 0;
     while ((m = RE_FILTER_ALT.exec(text)) !== null) {
-        pushFilter(m[1], parseFloat(m[2]), parseFloat(m[3]), m[4] ? parseFloat(m[4]) : NaN);
+        pushFilter(/** @type {string} */ (m[1]), parseFloat(/** @type {string} */ (m[2])), parseFloat(/** @type {string} */ (m[3])), m[4] ? parseFloat(m[4]) : NaN);
     }
 
     return out;
@@ -84,6 +86,14 @@ export function parseAutoEqPeq(text) {
 /**
  * RBJ Audio EQ Cookbook 双二阶系数（与 Web Audio BiquadFilterNode 同源）。
  * @returns {{b0:number,b1:number,b2:number,a0:number,a1:number,a2:number}}
+ */
+/**
+ * @param {string} type
+ * @param {number} fc
+ * @param {number} gainDb
+ * @param {number} q
+ * @param {number} fs
+ * @returns {any}
  */
 function _biquad(type, fc, gainDb, q, fs) {
     const A = Math.pow(10, gainDb / 40);
@@ -123,6 +133,12 @@ function _biquad(type, fc, gainDb, q, fs) {
 }
 
 /** 单个滤波器在频点 f 的幅频响应（dB） */
+/**
+ * @param {any} filt
+ * @param {number} f
+ * @param {number} fs
+ * @returns {number}
+ */
 function _responseDb(filt, f, fs) {
     const { b0, b1, b2, a0, a1, a2 } = _biquad(filt.type, filt.fc, filt.gainDb, filt.q, fs);
     const w = 2 * Math.PI * f / fs;
@@ -138,7 +154,7 @@ function _responseDb(filt, f, fs) {
 
 /**
  * 把解析结果在给定频点上采样，得到各段增益（整数，clamp ±12）。
- * @param {{filters:Array}} parsed
+ * @param {{filters:Array<any>}} parsed
  * @param {number[]} bands  固定频点数组（Hz）
  * @returns {number[]}
  */

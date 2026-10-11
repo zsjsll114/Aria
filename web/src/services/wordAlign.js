@@ -32,6 +32,7 @@ const YIELD_EVERY_LINES = 6;
 const nextTick = () => new Promise(r => setTimeout(r, 0));
 
 /** FNV-1a 32 位；只要稳定、快，不需要密码学强度 */
+/** @param {string} s @returns {string} */
 function hash32(s) {
     let h = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) {
@@ -45,6 +46,7 @@ function hash32(s) {
  * 歌词签名：文本 + 行级时间戳一起进哈希。
  * 时间戳必须参与——换源后文本相同但行起点不同，对齐结果也就不同。
  */
+/** @param {any[]} lines @returns {string} */
 export function lyricSignature(lines) {
     if (!Array.isArray(lines) || !lines.length) return 'empty';
     const acc = lines.map(l => `${Math.round(Number(l.start) || 0)}|${String(l.text != null ? l.text : (l.original || ''))}`).join('\u0001');
@@ -52,6 +54,7 @@ export function lyricSignature(lines) {
 }
 
 /** 缓存键 = 歌曲身份 + 歌词签名 */
+/** @param {any} song @param {any[]} lines @returns {string} */
 export function wordAlignKey(song, lines) {
     let base = 'unknown';
     try { base = songKeyOf(song || {}) || 'unknown'; } catch (e) { logCatch('wordAlign', e); }
@@ -59,6 +62,7 @@ export function wordAlignKey(song, lines) {
 }
 
 /** 有没有需要对齐的行（即存在被摊平出来的合成逐字） */
+/** @param {any[]} lines @returns {boolean} */
 export function needsAlign(lines) {
     return Array.isArray(lines) && lines.some(l => isSyntheticWordLine(l));
 }
@@ -72,9 +76,9 @@ export function needsAlign(lines) {
  *   于是 547ms 级的误差被写进用户下载的 .lrc、并被当成节奏喂给 AI 打 ★/◆ 权重
  *   （AGENTS 约束 17 的护栏正是为了挡这件事）。
  *   渲染侧不受影响：buildWordsInto 只看 words 存不存在，照样逐字动。
- * @param {Array<Object>} lines
- * @param {Array<Array<{text,start,end}>|null>} wordsByLine 与 lines 等长，null 表示该行没结果
- * @returns {Array<Object>} 新数组，不改入参
+ * @param {Array<any>} lines
+ * @param {Array<Array<{text:string, start:number, end:number}>|null>} wordsByLine 与 lines 等长，null 表示该行没结果
+ * @returns {Array<any>} 新数组，不改入参
  */
 export function applyAlignment(lines, wordsByLine) {
     if (!Array.isArray(lines)) return lines;
@@ -107,7 +111,7 @@ export function decimateBox(src, ratio) {
         const a = Math.floor(i * ratio);
         const b = Math.max(a + 1, Math.floor((i + 1) * ratio));
         let acc = 0, cnt = 0;
-        for (let j = a; j < b && j < src.length; j++) { acc += src[j]; cnt++; }
+        for (let j = a; j < b && j < src.length; j++) { acc += /** @type {number} */ (src[j]); cnt++; }
         out[i] = cnt ? acc / cnt : 0;
     }
     return out;
@@ -124,7 +128,8 @@ export async function decodeOnsetEnvelope(audioUrl, opts = {}) {
     if (typeof window === 'undefined' || !window.AudioContext && !window.webkitAudioContext) return null;
     const isStale = typeof opts.isStale === 'function' ? opts.isStale : () => false;
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    let ctx = null;
+    /** @type {any} */
+let ctx = null;
     try {
         const resp = await fetch(audioUrl, ctl ? { signal: ctl.signal } : undefined);
         if (!resp.ok) { logInfo('wordAlign', `音频取回失败 ${resp.status}`); return null; }
@@ -154,6 +159,12 @@ export async function decodeOnsetEnvelope(audioUrl, opts = {}) {
  * 对整份歌词逐行对齐（纯计算，不碰网络）。
  * 每若干行让出一帧，避免几分钟的歌把主线程占死。
  */
+/**
+ * @param {any[]} lines
+ * @param {any} envelope
+ * @param {{isStale?: Function, [k:string]:any}} [opts]
+ * @returns {Promise<any>}
+ */
 export async function alignAllLines(lines, envelope, opts = {}) {
     const isStale = typeof opts.isStale === 'function' ? opts.isStale : () => false;
     const out = [];
@@ -166,7 +177,8 @@ export async function alignAllLines(lines, envelope, opts = {}) {
         if (!text.trim() || end <= start) { out.push(null); continue; }
         const tokens = tokenizeForKaraoke(text);
         if (!tokens.length) { out.push(null); continue; }
-        let words = null;
+        /** @type {any} */
+let words = null;
         try { words = alignLine({ tokens, envelope, lineStartMs: start, lineEndMs: end }); } catch (e) { logCatch('wordAlign', e); }
         out.push(words && words.length === tokens.length ? words : null);
         if (i % YIELD_EVERY_LINES === YIELD_EVERY_LINES - 1) await nextTick();
@@ -194,11 +206,12 @@ export async function alignLyrics({ lines, audioUrl, song, isStale }) {
         return { lines: applyAlignment(lines, cached.wordsByLine), fromCache: true, aligned: cached.wordsByLine.filter(Boolean).length };
     }
 
-    const envelope = await decodeOnsetEnvelope(audioUrl, { isStale });
+    /* isStale 未传时让键「缺席」而非显式 undefined（exactOptionalPropertyTypes） */
+    const envelope = await decodeOnsetEnvelope(audioUrl, isStale ? { isStale } : {});
     if (!envelope || !envelope.values.length) return null;
     if (typeof isStale === 'function' && isStale()) return null;
 
-    const wordsByLine = await alignAllLines(lines, envelope, { isStale });
+    const wordsByLine = await alignAllLines(lines, envelope, isStale ? { isStale } : {});
     if (!wordsByLine) return null;
 
     /* 只缓存有意义的结果：整份都没给出信息时不写，省得把退化结果钉死在缓存里 */

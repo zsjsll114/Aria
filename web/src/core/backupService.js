@@ -16,7 +16,7 @@ export const BACKUP_SCHEMA = 1;
 
 /**
  * 构造备份包。
- * @param {{favorites?:Array, playlists?:Array, settings?:object, eq?:object,
+ * @param {{favorites?:Array<any>, playlists?:Array<any>, settings?:object, eq?:object,
  *          offsets?:object}} input
  * @param {number} [now]
  */
@@ -38,16 +38,31 @@ export function buildBackup(input, now = Date.now()) {
 
 /** 备份文件名（本地时间，可排序） */
 export function backupFilename(date = new Date()) {
+    /** @param {number} n */
     const p = (n) => String(n).padStart(2, '0');
     return `aria-backup-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}.json`;
 }
 
 /**
+ * 备份摘要（字段随 kind 而异，只有对应 kind 的字段会被填）。
+ * @typedef {object} BackupSummary
+ * @property {number} [count]
+ * @property {number|null} [schema]
+ * @property {number|null} [exportedAt]
+ * @property {number} [favorites]
+ * @property {number} [playlists]
+ * @property {boolean} [hasSettings]
+ * @property {boolean} [hasEq]
+ * @property {boolean} [hasOffsets]
+ */
+
+/**
  * 校验并识别备份内容。
  * @param {any} raw 已 JSON.parse 的对象
- * @returns {{ok:boolean, kind:'full'|'favorites'|'playlists'|'unknown', summary:object}}
+ * @returns {{ok:boolean, kind:'full'|'favorites'|'playlists'|'unknown', summary:BackupSummary}}
  */
 export function validateBackup(raw) {
+    /** @type {{ok:boolean, kind:'full'|'favorites'|'playlists'|'unknown', summary:BackupSummary}} */
     const bad = { ok: false, kind: 'unknown', summary: {} };
     if (raw === null || typeof raw !== 'object') return bad;
 
@@ -80,7 +95,11 @@ export function validateBackup(raw) {
     };
 }
 
-/** 摘要文案（UI 提示用；纯函数便于单测） */
+/**
+ * 摘要文案（UI 提示用；纯函数便于单测）。
+ * @param {any} v 任意备份对象（内部先 validateBackup）
+ * @returns {string}
+ */
 export function describeBackup(v) {
     const r = validateBackup(v);
     if (!r.ok) return '';

@@ -21,7 +21,7 @@
   - **穿行 Dimension**：浮空层叠的三维歌词
   - **活字 Letterpress**：印刷压印隐喻，纸色随段落情绪
   - **字面 Jizura**：日系文字 PV 引擎（JIZURA 移植，MIT）
-  - 霓虹 Neon 引擎代码保留（`NeonVisualizer.js`）但已从样式选择器下线；长卷 Scroll 已于 2026-10-05 整体删除
+  - 霓虹 Neon 已于 2026-10-11 整体退役（不可达的 `NeonVisualizer.js` 删除、`neon.css` 从 `index.html` 摘链留档）；长卷 Scroll 已于 2026-10-05 整体删除
 - 手机遥控器（`--lan` 模式下手机浏览器访问 `/remote.html`，经 `/api/remote/*` 总线远程控制播放）
 - 听歌识曲（Node sidecar 调用 Shazam 指纹识别；Shazam 失败时回退到 Vosk 语音转写 + 歌词反查）
 - 本地音乐管理（上传、结构化落盘、Enhanced LRC 逐字歌词生成）
@@ -892,7 +892,12 @@ ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计
 
 ## 21. 歌词视觉大版本批次（2026-09-16 ~ 09-19）
 
-### 21.1 新增视觉模式：霓虹 Neon Sign（`web/src/core/visualizers/NeonVisualizer.js` + `styles/neon.css`）
+### 21.1 新增视觉模式：霓虹 Neon Sign（已退役）
+
+> 2026-10-11：该模式早已从样式选择器下线，本轮删除了不可达的引擎代码
+> `web/src/core/visualizers/NeonVisualizer.js`，并把 `styles/neon.css` 从 `index.html` 摘链留档。
+> 以下为模式的设计记录（历史存档，读时注意代码已不在）。
+
 
 - **隐喻**：深夜街角灯牌——未唱的字是熄灭灯管（单线轮廓），唱到逐字「通电」（电流闪烁 → 灯色内芯 + 辉光），段落情绪定灯色（`NEON_BY_KIND`）与功率（`--neon-halo` 四档）。
 - **单线灯管渲染（关键技巧）**：`-webkit-text-stroke` 是沿字形轮廓的双侧描边（每笔画内外各一线，像空心美术字）——**`paint-order: stroke fill`** 让粗 stroke 垫底、fill（舞台底色）盖掉其内半 → 只剩沿字形外扩的环形单线；fill 用底色让字形本体隐入夜色。不支持 paint-order 的旧内核无害回退双轮廓。
@@ -1042,7 +1047,7 @@ ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计
 ### 22.1 工程治理（门禁化）
 
 - **状态单一来源**：`infrastructure/state.js` 成为全局状态唯一存储；`infrastructure/globalBridge.js` 把 59 个历史 `globalThis` 键降级为 state 的读写访问器；`core/globalRegistry.js` 做全局键登记审计。ESLint 门禁 B（`no-restricted-syntax` 棘轮）封死 `globalThis.x = ...` 新增（2026-09-25 已存在的 30 个分片进白名单，只减不增）。
-- **影子层封存**：9 个「从入口不可达」的影子模块（如 `core/audioPlayer.js`、`services/favoritesService.js`）用 `no-restricted-imports` 门禁 A 禁止 import，配套复扫工具 `scripts/audits/module-reachability.mjs`。
+- **影子层封存**：4 个「从入口不可达」的影子模块（`core/audioPlayer.js`、`services/favoritesService.js`、`services/playlistService.js`、`services/fontService.js`）用 `no-restricted-imports` 门禁 A 禁止 import，配套复扫工具 `scripts/audits/module-reachability.mjs`。全仓不可达即这 4 个（2026-10-11 实测 306 模块 / 不可达 4）。
 - **HTML 转义门禁**：自定义 ESLint 规则 `aria/no-unescaped-html`（error 级），模板插值必须走 `esc()`（`utils/formatters.js` 唯一转义入口），配套规则测试。
 - **catch 收口**：`no-empty` 收紧到 error（`allowEmptyCatch:false`），129 处静默 catch 全部改 `logCatch(tag, e)`（`services/log.js` 为全库唯一 console 出口，400 条有界环形缓冲 + 5s 去重）。
 - **测试登记门禁**：`scripts/audits/test-registry.mjs` 强制每个 `tests/**/test_*` 文件在 ci.yml 跑到（历史上真漏过 15 个）。另有 motion / i18n / resolve-instrumentation 三道棘轮。

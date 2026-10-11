@@ -62,16 +62,21 @@ export function ensureDeckSource(el) {
         const rec = { source, gain };
         _deckSources.set(el, rec);
         return rec;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('eq', e);
         return null;
     }
 }
 
+/** @type {any} */
 let _audio = null;
+/** @type {any} */
 let _onPlayError = null;   /* CORS 回退后恢复播放失败时回调（活实现是 handleAudioPlayError） */
+/** @type {any} */
 let _onChanged = null;     /* 预设高亮需要刷新（不重建滑块） */
+/** @type {any} */
 let _onBandChanged = null; /* 单个频段数值文本刷新 */
+/** @type {any} */
 let _onPresetApplied = null; /* 换预设后需要整面板重建（频段 + 高亮） */
 
 /**
@@ -99,7 +104,9 @@ export function getEqAudioContext() {
    「UI 在播、进度在走、完全没声音」。这里监听 statechange 自动 resume；
    另外在下一次用户手势时兜底补一次（Web Audio 要求 resume 落在手势内，
    无手势时自动 resume 可能被拒或永远 pending）。 */
+/** @type {any} */
 let _ctxGuardBound = null;
+/** @param {any} ctx @returns {void} */
 function _installCtxGuard(ctx) {
     if (!ctx || _ctxGuardBound === ctx || typeof ctx.addEventListener !== 'function') return;
     _ctxGuardBound = ctx;
@@ -107,7 +114,7 @@ function _installCtxGuard(ctx) {
         const st = ctx.state;
         if (st === 'suspended' || st === 'interrupted') {
             logWarn('eq', `AudioContext → ${st}（设备/会话变化），尝试自动恢复`);
-            try { ctx.resume().catch(() => {}); } catch (e) { logCatch('eq', e); }
+            try { ctx.resume().catch(() => {}); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         }
     });
 }
@@ -118,7 +125,7 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
     const _kickCtx = () => {
         const ctx = state.audioCtx;
         if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
-            try { ctx.resume().catch(() => {}); } catch (e) { logCatch('eq', e); }
+            try { ctx.resume().catch(() => {}); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         }
     };
     document.addEventListener('pointerdown', _kickCtx, true);
@@ -133,17 +140,18 @@ export function getEqAudioSnapshot() {
     const decks = [];
     for (const [el, rec] of _deckSources) {
         let g = NaN;
-        try { g = rec && rec.gain ? rec.gain.gain.value : NaN; } catch (e) { logCatch('eq', e); }
+        try { g = rec && rec.gain ? rec.gain.gain.value : NaN; } catch (/** @type {any} */ e) { logCatch('eq', e); }
         const id = (el && el.__nativeDeck) ? 'nativeDeck' : ((el && el.id) || '?');
         decks.push(`${id}=${Number.isFinite(g) ? g.toFixed(3) : '—'}`);
     }
     let sinkId = '';
-    try { sinkId = (ctx && 'sinkId' in ctx) ? String(ctx.sinkId) : ''; } catch (e) { logCatch('eq', e); }
+    try { sinkId = (ctx && 'sinkId' in ctx) ? String(ctx.sinkId) : ''; } catch (/** @type {any} */ e) { logCatch('eq', e); }
+    /** @type {number[]|null} */
     let channelGains = null;
     if (state.chGains) {
         try {
             channelGains = ['ll', 'lr', 'rl', 'rr'].map(k => Number(state.chGains[k].gain.value.toFixed(4)));
-        } catch (e) { logCatch('eq', e); }
+        } catch (/** @type {any} */ e) { logCatch('eq', e); }
     }
     return {
         inited: !!state.eqInited,
@@ -190,7 +198,7 @@ function _ensurePassthrough() {
         state.eqDeckGain = null;
         _passthrough = true;
         logWarn('eq', '音效图不可用：音频已改走直连旁通（保声音优先，音效暂不生效）');
-    } catch (e) { logCatch('eq', e); }
+    } catch (/** @type {any} */ e) { logCatch('eq', e); }
 }
 
 /* 拆掉 Web Audio 的「下游」处理图（EQ 段 / 汇流总线 / 空间 / 压缩 / 分析）。
@@ -232,8 +240,8 @@ export function eqGraphBuiltOnce() {
 
 export function cleanupEqAudioGraph() {
     if (state.eqFilterNodes.length > 0) {
-        state.eqFilterNodes.forEach((node) => {
-            try { node.disconnect(); } catch (e) { logCatch('eq', e); }
+        /** @type {any[]} */ (state.eqFilterNodes).forEach((node) => {
+            try { node.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         });
         state.eqFilterNodes = [];
     }
@@ -241,18 +249,19 @@ export function cleanupEqAudioGraph() {
        gain 值复位为 1 —— 上一轮 automix 交叉会把旧 A 的 gain 落成 0，
        若那条记录被复用（影子元素轮换回主 deck）就会把活跃 deck 掐成静音。 */
     for (const rec of _deckSources.values()) {
-        try { rec.gain.disconnect(); } catch (e) { logCatch('eq', e); }
-        try { rec.gain.gain.cancelScheduledValues(0); rec.gain.gain.value = 1; } catch (e) { logCatch('eq', e); }
+        try { rec.gain.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
+        try { rec.gain.gain.cancelScheduledValues(0); rec.gain.gain.value = 1; } catch (/** @type {any} */ e) { logCatch('eq', e); }
     }
     if (state.eqDeckGain) {
-        try { state.eqDeckGain.disconnect(); } catch (e) { logCatch('eq', e); }
+        try { state.eqDeckGain.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
     }
     if (state.eqMixBus) {
-        try { state.eqMixBus.disconnect(); } catch (e) { logCatch('eq', e); }
+        try { state.eqMixBus.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         state.eqMixBus = null;
     }
     /* ★ 空间处理节点图（空间音频 + 虚拟声场）一并断开（ctx.close() 会释放资源，
        这里只清引用，防止下次 initEqAudioGraph 复用已关闭 ctx 的节点） */
+    /** @param {any} v @returns {any[]} */
     const spread = (v) => (Array.isArray(v) ? v : []);
     const spatialNodes = [
         state.spatialIn, state.spatialOut, state.spatialSplit, state.spatialMerger,
@@ -269,7 +278,7 @@ export function cleanupEqAudioGraph() {
         ...(state.chGains ? [state.chGains.ll, state.chGains.lr, state.chGains.rl, state.chGains.rr] : []),
     ];
     for (const n of spatialNodes) {
-        if (n) { try { n.disconnect(); } catch (e) { logCatch('eq', e); } }
+        if (n) { try { n.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); } }
     }
     for (const k of ['spatialIn', 'spatialOut', 'spatialSplit', 'spatialMerger',
         'spatialDryGains', 'spatialWetGains', 'spatialConvL', 'spatialConvR', 'spatialIrName',
@@ -290,7 +299,7 @@ export function cleanupEqAudioGraph() {
     try {
         const A = globalThis.Aria;
         if (A && typeof A.__audioOutputReapply === 'function') A.__audioOutputReapply();
-    } catch (e) { logCatch('eq', e); }
+    } catch (/** @type {any} */ e) { logCatch('eq', e); }
 }
 
 /* ============================================================
@@ -314,6 +323,11 @@ export function cleanupEqAudioGraph() {
  * ============================================================ */
 
 /** 把生成的 IR（Float32Array，48k）做成 ConvolverNode 可用的 AudioBuffer。 */
+/**
+ * @param {any} ctx
+ * @param {any} samples
+ * @returns {any}
+ */
 function _irBuffer(ctx, samples) {
     const resampled = resampleLinear(samples, IR_SAMPLE_RATE, ctx.sampleRate);
     const buf = ctx.createBuffer(1, Math.max(1, resampled.length), ctx.sampleRate);
@@ -376,7 +390,7 @@ function _buildSpatialGraph(inputNode) {
         if (state.spatialLevel == null) state.spatialLevel = SPATIAL_DEFAULT;
         inputNode.connect(inNode);
         return out;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('eq', '空间音频节点搭建失败，已旁通：', e && e.message ? e.message : e);
         return inputNode;
     }
@@ -401,7 +415,8 @@ export function applySpatialAudio(on, level, irName) {
     }
     const t = ctx.currentTime;
     const k = STAGE_SMOOTH;
-    const setP = (param, v) => { try { param.setTargetAtTime(v, t, k); } catch (e) { logCatch('eq', e); } };
+    /** @type {(param: any, v: number) => void} */
+    const setP = (param, v) => { try { param.setTargetAtTime(v, t, k); } catch (/** @type {any} */ e) { logCatch('eq', e); } };
     state.spatialOn = !!on;
     state.spatialLevel = level;
 
@@ -414,7 +429,7 @@ export function applySpatialAudio(on, level, irName) {
             state.spatialConvL.buffer = _irBuffer(ctx, pair.left);
             state.spatialConvR.buffer = _irBuffer(ctx, pair.right);
             state.spatialIrName = wanted;
-        } catch (e) {
+        } catch (/** @type {any} */ e) {
             logWarn('eq', 'HRTF IR 装载失败：', e && e.message ? e.message : e);
         }
     }
@@ -521,7 +536,7 @@ function _buildStageGraph(inputNode) {
         if (state.stageLevel == null) state.stageLevel = STAGE_DEFAULT;
         inputNode.connect(inNode);
         return out;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('eq', '虚拟声场节点搭建失败，已旁通：', e && e.message ? e.message : e);
         return inputNode;
     }
@@ -540,7 +555,8 @@ export function applyVirtualStage(on, level) {
     if (!ctx || !state.stageIn) { state.stageOn = !!on; state.stageLevel = level; return; }
     const t = ctx.currentTime;
     const k = STAGE_SMOOTH;
-    const setP = (param, v) => { try { param.setTargetAtTime(v, t, k); } catch (e) { logCatch('eq', e); } };
+    /** @type {(param: any, v: number) => void} */
+    const setP = (param, v) => { try { param.setTargetAtTime(v, t, k); } catch (/** @type {any} */ e) { logCatch('eq', e); } };
     state.stageOn = !!on;
     state.stageLevel = level;
 
@@ -554,7 +570,7 @@ export function applyVirtualStage(on, level) {
     const tune = stageTuningFor(level);
     const haasOn = on && tune.haasMs > 0 && tune.haasMix > 0;
     for (const n of (state.stageSDelay || [])) {
-        if (haasOn) { try { n.delayTime.setTargetAtTime(tune.haasMs / 1000, t, k); } catch (e) { logCatch('eq', e); } }
+        if (haasOn) { try { n.delayTime.setTargetAtTime(tune.haasMs / 1000, t, k); } catch (/** @type {any} */ e) { logCatch('eq', e); } }
     }
     for (const n of (state.stageSGainHaas || [])) setP(n.gain, haasOn ? tune.haasMix : 0);
     logInfo('eq', `virtual stage -> ${on ? level : 'off'} (a=${a.toFixed(3)}, b=${b.toFixed(3)}, haas=${haasOn ? tune.haasMs : 0}ms)`);
@@ -592,6 +608,7 @@ export const CHANNEL_MODES = {
 export const CHANNEL_MODES_ORDER = ['stereo', 'mono', 'left', 'right', 'swap'];
 export const CHANNEL_DEFAULT = 'stereo';
 
+/** @param {any} inputNode @returns {any} */
 function _buildChannelMatrix(inputNode) {
     const ctx = state.audioCtx;
     try {
@@ -622,7 +639,7 @@ function _buildChannelMatrix(inputNode) {
         if (state.channelMode == null) state.channelMode = CHANNEL_DEFAULT;
         inputNode.connect(inNode);
         return out;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logWarn('eq', '输出声道矩阵搭建失败，已旁通：', e && e.message ? e.message : e);
         return inputNode;
     }
@@ -633,14 +650,15 @@ function _buildChannelMatrix(inputNode) {
  * @param {string} mode 'stereo' | 'mono' | 'left' | 'right' | 'swap'
  */
 export function applyChannelMode(mode) {
-    const m = CHANNEL_MODES[mode] ? mode : CHANNEL_DEFAULT;
+    const m = /** @type {Record<string, any>} */ (CHANNEL_MODES)[mode] ? mode : CHANNEL_DEFAULT;
     state.channelMode = m;
     const ctx = state.audioCtx;
     if (!ctx || !state.chGains) return;
-    const g = CHANNEL_MODES[m];
+    const g = /** @type {Record<string, any>} */ (CHANNEL_MODES)[m];
     const t = ctx.currentTime;
     const k = STAGE_SMOOTH;
-    const set = (n, v) => { try { n.gain.setTargetAtTime(v, t, k); } catch (e) { logCatch('eq', e); } };
+    /** @type {(n: any, v: number) => void} */
+    const set = (n, v) => { try { n.gain.setTargetAtTime(v, t, k); } catch (/** @type {any} */ e) { logCatch('eq', e); } };
     set(state.chGains.ll, g.ll);
     set(state.chGains.lr, g.lr);
     set(state.chGains.rl, g.rl);
@@ -688,7 +706,7 @@ export async function ensureAudioGraph(reason = '') {
         const ok = await initEqAudioGraph();
         if (!ok) logWarn('eq', `需要音频图才能生效的处理（${reason || '未注明'}）未能建图`);
         return !!ok;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         logCatch('eq', e);
         return false;
     }
@@ -735,7 +753,7 @@ export async function initEqAudioGraph() {
         if (!reloadOk) {
             /* CORS 不支持，回退：移除 crossOrigin，重新加载 */
             _audio.crossOrigin = null;
-            await new Promise((resolve) => {
+            await /** @type {Promise<void>} */ (new Promise((resolve) => {
                 const onRestore = () => {
                     _audio.removeEventListener('canplay', onRestore);
                     resolve();
@@ -744,7 +762,7 @@ export async function initEqAudioGraph() {
                 _audio.src = currentSrc;
                 _audio.load();
                 setTimeout(resolve, 3000);
-            });
+            }));
             _audio.currentTime = savedTime;
             if (wasPlaying) _audio.play().catch(() => { if (_onPlayError) _onPlayError(); });
             state.eqInitFailed = true;
@@ -775,7 +793,7 @@ export async function initEqAudioGraph() {
         state.eqMixBus = state.audioCtx.createGain();
         /* 复用时先断 source 的旧下游再改接新 deckGain（source 只连自己的 deckGain，
            disconnect 无副作用；不断的话旧 deckGain 废弃后会留一条悬挂连接，每次 init 累积）。 */
-        try { state.eqSourceNode.disconnect(); } catch (e) { logCatch('eq', e); }
+        try { state.eqSourceNode.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         state.eqSourceNode.connect(state.eqDeckGain);
         state.eqDeckGain.connect(state.eqMixBus);
         _deckSources.set(_audio, { source: state.eqSourceNode, gain: state.eqDeckGain });
@@ -783,8 +801,8 @@ export async function initEqAudioGraph() {
            不重连的话，重开音效后影子 deck 会连在已废的旧 mixBus 上（交叉时没声音）。 */
         for (const [el, rec] of _deckSources) {
             if (el === _audio || !rec || !rec.gain) continue;
-            try { rec.gain.disconnect(); } catch (e) { logCatch('eq', e); }
-            try { rec.gain.connect(state.eqMixBus); } catch (e) { logCatch('eq', e); }
+            try { rec.gain.disconnect(); } catch (/** @type {any} */ e) { logCatch('eq', e); }
+            try { rec.gain.connect(state.eqMixBus); } catch (/** @type {any} */ e) { logCatch('eq', e); }
         }
         state.eqFilterNodes = EQ_BANDS.map((freq, i) => {
             const f = state.audioCtx.createBiquadFilter();
@@ -864,10 +882,10 @@ export async function initEqAudioGraph() {
         try {
             const A = globalThis.Aria;
             if (A && typeof A.__audioOutputReapply === 'function') A.__audioOutputReapply();
-        } catch (e) { logCatch('eq', e); }
+        } catch (/** @type {any} */ e) { logCatch('eq', e); }
 
         return true;
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
         logError('eq', '初始化均衡器失败:', err);
         /* ★ InvalidStateError = 该元素已绑定到**另一个**（多半是已关闭的）AudioContext
            ⇒ 元素永久哑，本进程内怎么修都出不来声。明确喊出来，别让用户猜。 */
@@ -888,7 +906,7 @@ export function saveEqSettings() {
             gains: state.eqGains,
             preset: state.eqActivePreset,
         }));
-    } catch (e) { logCatch('eq', e); }
+    } catch (/** @type {any} */ e) { logCatch('eq', e); }
 }
 
 export function loadEqSettings() {
@@ -900,25 +918,27 @@ export function loadEqSettings() {
             state.eqGains = data.gains;
             state.eqActivePreset = data.preset || '自定义';
         }
-    } catch (e) { logCatch('eq', e); }
+    } catch (/** @type {any} */ e) { logCatch('eq', e); }
 }
 
 /** 用户自定义预设表（分享码导入的预设也落在这里） */
 export function getCustomEqs() {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_EQ_KEY) || '{}'); } catch (e) { return {}; }
+    try { return JSON.parse(localStorage.getItem(CUSTOM_EQ_KEY) || '{}'); } catch (/** @type {any} */ e) { return {}; }
 }
 
+/** @param {string} name @returns {any} */
 export function saveEqPreset(name) {
     if (!name) return;
     const customs = getCustomEqs();
     customs[name] = { gains: (state.eqGains || []).slice(), preset: state.eqActivePreset || '自定义' };
-    try { localStorage.setItem(CUSTOM_EQ_KEY, JSON.stringify(customs)); } catch (e) { logCatch('eq', e); }
+    try { localStorage.setItem(CUSTOM_EQ_KEY, JSON.stringify(customs)); } catch (/** @type {any} */ e) { logCatch('eq', e); }
     state.eqActivePreset = name;
     saveEqSettings();
     if (_onChanged) _onChanged();
 }
 
 /* 应用增益值到滤波器节点 */
+/** @param {any[]} gains @returns {void} */
 export function applyEqGains(gains) {
     state.eqGains = gains.slice();
     if (state.eqInited) {
@@ -932,8 +952,9 @@ export function applyEqGains(gains) {
 }
 
 /* 应用预设（内置 EQ_PRESETS + 用户自定义预设） */
+/** @param {string} name @returns {boolean} 是否命中预设 */
 export function applyEqPreset(name) {
-    const preset = EQ_PRESETS[name] || getCustomEqs()[name];
+    const preset = /** @type {Record<string, any>} */ (EQ_PRESETS)[name] || getCustomEqs()[name];
     if (!preset) return false;
     state.eqActivePreset = name;
     applyEqGains(Array.isArray(preset) ? preset : (preset.gains || []));
@@ -942,6 +963,7 @@ export function applyEqPreset(name) {
 }
 
 /* 单个频段改变：只刷新值文本与预设高亮，不重建滑块（否则拖拽会被自己的重渲染打断） */
+/** @param {number} idx @param {any} val 允许字符串（滑杆/输入框）@returns {void} */
 export function setEqBand(idx, val) {
     state.eqGains[idx] = parseInt(val);
     state.eqActivePreset = '自定义';

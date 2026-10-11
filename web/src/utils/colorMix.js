@@ -6,16 +6,21 @@
 
 // src/components/visualizer/colorMix.ts
 // Shared color helpers for visualizer renderers.
+/** @type {(value:number, min:number, max:number) => number} */
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+/** @type {(from:number, to:number, amount:number) => number} */
 const mix = (from, to, amount) => from + (to - from) * amount;
 const FALLBACK_RGB = { r: 255, g: 255, b: 255 };
 
+/** @type {(value:any) => boolean} */
 const isFiniteChannel = (value) => Number.isFinite(value);
 
+/** @type {(channels:any, alpha:number) => string} */
 const formatRgba = (channels, alpha) => (
     `rgba(${Math.round(clamp(channels.r, 0, 255))}, ${Math.round(clamp(channels.g, 0, 255))}, ${Math.round(clamp(channels.b, 0, 255))}, ${alpha})`
 );
 
+/** @type {(color:any, alpha:number) => string} */
 export const colorWithAlpha = (color, alpha) => {
     const normalizedAlpha = clamp(alpha, 0, 1);
     const normalizedColor = typeof color === 'string' ? color.trim() : '';
@@ -25,13 +30,13 @@ export const colorWithAlpha = (color, alpha) => {
 
     if (normalizedColor.startsWith('#')) {
         const hex = normalizedColor.slice(1);
+        /** @type {(value:string) => number} */
         const parse = (value) => Number.parseInt(value, 16);
 
         if (/^[0-9a-fA-F]{3}$/.test(hex)) {
-            const r = parse(hex[0] + hex[0]);
-            const g = parse(hex[1] + hex[1]);
-            const b = parse(hex[2] + hex[2]);
-            return formatRgba({ r, g, b }, normalizedAlpha);
+            /* 正则已保证长度为 3 且字符集合法，三位必然存在 */
+            const c = /** @type {[string, string, string]} */ ([hex[0], hex[1], hex[2]]);
+            return formatRgba({ r: parse(c[0] + c[0]), g: parse(c[1] + c[1]), b: parse(c[2] + c[2]) }, normalizedAlpha);
         }
 
         if (/^[0-9a-fA-F]{6}$/.test(hex)) {
@@ -46,7 +51,7 @@ export const colorWithAlpha = (color, alpha) => {
 
     const rgbMatch = normalizedColor.match(/^rgba?\(([^)]+)\)$/);
     if (rgbMatch) {
-        const [r, g, b] = rgbMatch[1].split(',').slice(0, 3).map(part => Number.parseFloat(part.trim()));
+        const [r, g, b] = (/** @type {string} */ (rgbMatch[1])).split(',').slice(0, 3).map(part => Number.parseFloat(part.trim()));
         if ([r, g, b].every(isFiniteChannel)) {
             return formatRgba({ r, g, b }, normalizedAlpha);
         }
@@ -56,6 +61,7 @@ export const colorWithAlpha = (color, alpha) => {
     return normalizedColor;
 };
 
+/** @type {(color:any) => any} */
 export const parseColorChannels = (color) => {
     const normalizedColor = typeof color === 'string' ? color.trim() : '';
     if (!normalizedColor) {
@@ -64,13 +70,16 @@ export const parseColorChannels = (color) => {
 
     if (normalizedColor.startsWith('#')) {
         const hex = normalizedColor.slice(1);
+        /** @type {(value:string) => number} */
         const parse = (value) => Number.parseInt(value, 16);
 
         if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+            /* 正则已保证长度为 3 且字符集合法 */
+            const c = /** @type {[string, string, string]} */ ([hex[0], hex[1], hex[2]]);
             return {
-                r: parse(hex[0] + hex[0]),
-                g: parse(hex[1] + hex[1]),
-                b: parse(hex[2] + hex[2]),
+                r: parse(c[0] + c[0]),
+                g: parse(c[1] + c[1]),
+                b: parse(c[2] + c[2]),
             };
         }
 
@@ -85,7 +94,7 @@ export const parseColorChannels = (color) => {
 
     const rgbMatch = normalizedColor.match(/^rgba?\(([^)]+)\)$/);
     if (rgbMatch) {
-        const [r, g, b] = rgbMatch[1].split(',').slice(0, 3).map(part => Number.parseFloat(part.trim()));
+        const [r, g, b] = (/** @type {string} */ (rgbMatch[1])).split(',').slice(0, 3).map(part => Number.parseFloat(part.trim()));
         if ([r, g, b].every(isFiniteChannel)) {
             return { r, g, b };
         }
@@ -94,6 +103,7 @@ export const parseColorChannels = (color) => {
     return null;
 };
 
+/** @type {(from:any, to:any, amount:number, alpha?:number) => string} */
 export const mixColors = (from, to, amount, alpha = 1) => {
     const normalizedAmount = clamp(amount, 0, 1);
     const fromChannels = parseColorChannels(from);

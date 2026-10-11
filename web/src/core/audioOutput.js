@@ -95,7 +95,7 @@ export function resolveSinkTarget(audioCtx, element) {
 /**
  * 错误归类 → 给 UI 挑文案用。不返回文案本身：core 层不做翻译，
  * 文案与 STATIC_PHRASE_MAP 的对应留在 app 层。
- * @param {unknown} e
+ * @param {{name?:string}|null|undefined} e
  * @returns {'permission'|'notfound'|'abort'|'unknown'}
  */
 export function describeSinkError(e) {

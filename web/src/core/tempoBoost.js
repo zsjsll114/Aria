@@ -41,8 +41,11 @@ export const TEMPO_BOOST_DEFAULTS = { enabled: true, key: 'x', factor: 2, maxRat
 /** 长按播放按钮判定为「加速」而非「点击播放/暂停」的阈值 */
 export const TEMPO_BOOST_HOLD_MS = 400;
 
+/** @type {any} */
 let _setRate = null;
+/** @type {any} */
 let _readRate = null;
+/** @type {any} */
 let _env = null;
 let _installed = false;
 
@@ -52,12 +55,18 @@ let _active = false;
 let _baseRate = 1;
 let _appliedRate = 0;
 let _startedAt = 0;
+/** @type {any} */
 let _watchdog = null;
 
 function now() {
     return Date.now();
 }
 
+/**
+ * @param {any} v
+ * @param {number} fallback
+ * @returns {number}
+ */
 function num(v, fallback) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
@@ -89,6 +98,11 @@ export function tempoBoostPrefs() {
 }
 
 /** 叠加规则的唯一计算口（测试与 UI 提示共用） */
+/**
+ * @param {number} baseRate
+ * @param {any} prefs
+ * @returns {number}
+ */
 export function boostedRateFor(baseRate, prefs) {
     const p = prefs || tempoBoostPrefs();
     const base = num(baseRate, 1);
@@ -107,6 +121,7 @@ function readRate() {
     }
 }
 
+/** @param {number} rate @returns {boolean} 是否真的写下去了 */
 function writeRate(rate) {
     if (typeof _setRate !== 'function') return false;
     try {
@@ -135,6 +150,11 @@ export function tempoBoostInfo() {
     };
 }
 
+/**
+ * @param {string} kind
+ * @param {string} [reason]
+ * @returns {void}
+ */
 function emit(kind, reason) {
     const snap = Object.assign({ kind, reason: reason || '' }, tempoBoostInfo());
     _listeners.forEach(fn => {
@@ -213,6 +233,7 @@ export function engageTempoBoost(source) {
 }
 
 /** 退出加速并写回基准倍速（内部使用；对外走 release/forceRelease） */
+/** @param {string} [reason] @returns {boolean} 是否真的停了一次 */
 function stopBoost(reason) {
     _sources.clear();
     stopWatchdog();
@@ -254,6 +275,7 @@ export function forceReleaseTempoBoost(reason) {
 
 /* ---------------- 事件适配（env 可注入，方便 Node 侧做失焦路径回归） ---------------- */
 
+/** @param {any} target @returns {boolean} */
 function isTypingTarget(target) {
     const tag = target && target.tagName ? String(target.tagName).toUpperCase() : '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
@@ -262,6 +284,7 @@ function isTypingTarget(target) {
 
 /** 键名比对忽略大小写：CapsLock / 按住 Shift 时 e.key 会变成大写，别因此失灵
    （与 285-bilingual-cycle 的 HOTKEY 比对同一口径） */
+/** @param {any} a @param {any} b @returns {boolean} */
 function sameKey(a, b) {
     return typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 }
@@ -286,6 +309,7 @@ function isNowPlayingTakeover() {
     }
 }
 
+/** @param {any} e @returns {void} */
 function onKeyDown(e) {
     const key = e && e.key;
     /* repeat：一直按着不叠加，倍速稳定在 boost 值（放这儿只挡连发） */
@@ -299,6 +323,7 @@ function onKeyDown(e) {
     engageTempoBoost('key');
 }
 
+/** @param {any} e @returns {void} */
 function onKeyUp(e) {
     if (!_active || !_sources.has('key')) return;
     const key = e && e.key;
@@ -336,8 +361,17 @@ function onTrackChanged() {
     forceReleaseTempoBoost('trackchange');
 }
 
+/**
+ * 挂一个监听并返回解除函数；target 不可用时返回 null（调用方据此跳过登记）。
+ * ★ 返回 null 而不是空函数：空函数恒为真，会被 `if (un)` 当有效解除函数推进
+ *   `_audioBoundDirect`，是一处静默的逻辑瑕疵。
+ * @param {any} target
+ * @param {string} type
+ * @param {Function} fn
+ * @returns {Function|null}
+ */
 function bind(target, type, fn) {
-    if (!target || typeof target.addEventListener !== 'function') return () => {};
+    if (!target || typeof target.addEventListener !== 'function') return null;
     target.addEventListener(type, fn);
     return () => {
         if (typeof target.removeEventListener === 'function') target.removeEventListener(type, fn);
@@ -361,12 +395,14 @@ function resolveAudio() {
 
 /* 四个 audio 事件是「切歌必复位」的恢复路径，属于常驻监听：
    dualDeck 在场时登记进搬运表（swap 成对搬运），否则直挂注入元素（原行为）。 */
+/** @type {Array<[string, Function]>} */
 const AUDIO_BINDINGS = [
     ['pause', () => onAudioPause()],
     ['emptied', () => onTrackChanged()],
     ['loadstart', () => onTrackChanged()],
     ['loadedmetadata', () => onTrackChanged()],
 ];
+/** @type {any[]} */
 const _audioBoundDirect = [];   /* 测试/降级路径直挂的 [target,type,fn]，卸载时逐个摘 */
 
 function bindAudioEvents() {
@@ -396,7 +432,7 @@ function unbindAudioEvents() {
 
 /**
  * 装配一次（重复调用只更新注入依赖，不会挂两份监听）。
- * @param {{setRate:(r:number)=>void, readRate:()=>number, audio?:any, env?:{window:any,document:any,audio:any}}} deps
+ * @param {{setRate?:(r:number)=>void, readRate?:()=>number, audio?:any, env?:{window:any,document:any,audio:any}}} [deps]
  * @returns {() => void} 卸载
  */
 export function installTempoBoost(deps = {}) {
@@ -421,7 +457,7 @@ export function installTempoBoost(deps = {}) {
     return () => {
         _installed = false;
         forceReleaseTempoBoost('uninstall');
-        unbinds.forEach(fn => { try { fn(); } catch (e) { logCatch('tempoBoost', e); } });
+        unbinds.forEach(fn => { try { if (fn) fn(); } catch (e) { logCatch('tempoBoost', e); } });
         unbindAudioEvents();
         stopWatchdog();
         _sources.clear();

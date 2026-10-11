@@ -14,7 +14,8 @@
  * 3. HTML 插值必须转义：自定义规则 aria/no-unescaped-html（实现见
  *    scripts/eslint-rules/），拦「模板里有标签 + ${} 插的是文本数据」。
  *    转义唯一入口是 utils/formatters.js 的 escapeHtml（别名 esc）。
- * 4. 影子层封存：9 个「从入口不可达」的未接线模块禁止被 import（见门禁 A）。
+ * 4. 影子层封存：门禁 A 禁止存活模块 import「从入口不可达」的未接线模块
+ *    （2026-10-11 实测全仓不可达 4 个，即本名单的全部）。
  *    复扫工具 scripts/audits/module-reachability.mjs。
  * 5. 状态单一来源：性能分档等配置只在 config/ 里定义一份；
  *    裸全局键的写入面用棘轮白名单锁死（见门禁 B）。
@@ -178,7 +179,8 @@ export default [
      * 解冻流程（stallDetector / fadeController / shortcutManager / equalizer 已走完）：
      * 先由 infrastructure/globalBridge.js 收口 state 与 globalThis 双写 → 以分片活实现为准
      * 重新抽取 core 模块（旧快照缺活实现后来补的修复，别直接接线）→ 从本名单移除 →
-     * 补 tests/js 行为测试并进 CI → 跑 4 套 playwright + 浏览器实测。剩余 4 个，复扫
+     * 补 tests/js 行为测试并进 CI → 跑 4 套 playwright + 浏览器实测。
+ * 本名单即全仓不可达的全部（2026-10-11 实测 306 模块 / 不可达 4）。复扫
      * `node scripts/audits/module-reachability.mjs`。 */
     {
         files: ['web/src/**/*.js'],

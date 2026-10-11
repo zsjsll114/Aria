@@ -5,14 +5,13 @@
  *   （folia 作者方案：文字测量 + 二维搜索 + 情绪词典，确定性输出）
  */
 import { state } from '../infrastructure/state.js';
-import { dom } from '../infrastructure/dom.js';
 import { eventBus, EVENTS } from '../infrastructure/eventBus.js';
 import { AI_PROVIDERS } from '../config/constants.js';
 import { hasRealWordTiming, realWordsOf } from '../parsers/wordTiming.js'; // 逐字兜底后区分真实/合成节拍
 import { aiCacheGet, aiCacheSet } from '../services/aiCache.js';
 import { applyAITheme } from './themeEngine.js';
 import { t } from './i18n.js';
-import { cleanApiBase, buildGeminiUrl, extractGeminiText, GEMINI_DEFAULT_BASE, GEMINI_DEFAULT_MODEL } from '../services/aiClient.js';
+import { cleanApiBase, buildGeminiUrl, GEMINI_DEFAULT_BASE, GEMINI_DEFAULT_MODEL } from '../services/aiClient.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 
 /** 获取歌词纯文本（从 state.lyrics 数组中提取）
@@ -25,9 +24,14 @@ export function getLyricsTextForAI() {
         ? state.fullChorusSegments
         : ((state.currentChorusSegments && state.currentChorusSegments.length > 0) ? state.currentChorusSegments : []);
 
+    /**
+     * @param {number} lineStartSec
+     * @param {number} lineEndSec
+     * @returns {boolean}
+     */
     const isLineInChorus = (lineStartSec, lineEndSec) => {
         if (!chorusList || chorusList.length === 0) return false;
-        return chorusList.some(seg => {
+        return /** @type {any[]} */ (chorusList).some(seg => {
             const s = seg.start;
             const e = seg.end;
             return (lineStartSec >= s && lineStartSec <= e) || (lineEndSec >= s && lineEndSec <= e) || (lineStartSec <= s && lineEndSec >= e);
@@ -50,13 +54,13 @@ export function getLyricsTextForAI() {
             if (realWords) {
                 text = '';
                 for (let j = 0; j < realWords.length; j++) {
-                    const w = realWords[j];
+                    const w = /** @type {any} */ (realWords[j]);
                     const isLatin = !/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u309f\u30a0-\u30ff]/u.test(w.text) && /^[\p{L}\p{M}\p{N}\s\p{P}\p{S}]+$/u.test(w.text) && /[\p{L}]/u.test(w.text);
                     if (isLatin && j > 0) text += ' ';
                     text += w.text;
                 }
-                lineStart = realWords[0].start;
-                lineEnd = realWords[realWords.length - 1].end;
+                lineStart = (/** @type {any} */ (realWords[0])).start;
+                            lineEnd = (/** @type {any} */ (realWords[realWords.length - 1])).end;
                 duration = lineEnd - lineStart;
             } else if (l.original) {
                 text = l.original;
@@ -94,19 +98,33 @@ export function getLyricsTextForAI() {
 
 /** 根据 provider 构建 AI 请求的 URL、headers 和 body（唯一实现；
  *  200-settings-panel.js 曾有一份本地副本，已改为复用本导出） */
+/**
+ * @param {string} provider
+ * @param {string} apiKey
+ * @param {string} apiBase
+ * @param {string} model
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @param {boolean} stream
+ * @param {boolean} isReasoningModel
+ * @param {boolean} [useProxy]
+ * @returns {any}
+ */
 export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, userPrompt, stream, isReasoningModel, useProxy = true) {
     /* ★ 模型原生最大输出 Token：按「provider + 模型名」回落模型上限，
        Gemini 3.5 Flash Lite / 3.5 Flash 放开到 65536，其余 8192。
        注意用「回退默认后的最终模型名」（mdl）判断，与调用方传空 model 时行为一致 */
-    function modelMaxOutput(mdl) {
+    /** @param {string} mdl @returns {number} */
+function modelMaxOutput(mdl) {
         return (provider === 'gemini' && /(3\.5[-_]?|flash[-_]?lite)/.test(mdl)) ? 65536 : 8192;
     }
-    const providerCfg = AI_PROVIDERS[provider] || AI_PROVIDERS.openai;
+    const providerCfg = /** @type {Record<string, any>} */ (AI_PROVIDERS)[provider] || AI_PROVIDERS.openai;
     if (provider === 'gemini') {
         const base = cleanApiBase(apiBase || GEMINI_DEFAULT_BASE, useProxy);
         const mdl = (model || GEMINI_DEFAULT_MODEL).trim();
         const action = stream ? 'streamGenerateContent' : 'generateContent';
         const url = buildGeminiUrl({ apiBase: base, model: mdl, apiKey, action, stream });
+        /** @type {{maxOutputTokens:number, thinkingConfig?:any, temperature?:number}} */
         const genConfig = { maxOutputTokens: modelMaxOutput(mdl) };
         /* ★ Gemini 思考模型（2.5+）支持 thinkingConfig，且不设 temperature 避免报错 */
         if (isReasoningModel) {
@@ -114,6 +132,7 @@ export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, u
         } else {
             genConfig.temperature = 0.7;
         }
+        /** @type {{contents: any[], generationConfig: any, systemInstruction?: any}} */
         const body = {
             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
             generationConfig: genConfig
@@ -124,6 +143,7 @@ export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, u
         /* ★ 自建反代令牌（可选）：appSettings.ai.proxyToken 经 x-proxy-token 头携带，
            供 Cloudflare 反代（docs/cf-gemini-auth-worker.js）做 Token 鉴权防滥用 */
         const proxyToken = (globalThis.appSettings && globalThis.appSettings.ai && globalThis.appSettings.ai.proxyToken || '').trim();
+        /** @type {Record<string, string>} */
         const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
         if (proxyToken) headers['x-proxy-token'] = proxyToken;
         return { url, headers, body: JSON.stringify(body) };
@@ -131,6 +151,7 @@ export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, u
         let base = (apiBase || providerCfg.defaultBase).replace(/\/+$/, '');
         const mdl = model || providerCfg.defaultModel;
         const url = `${base}/chat/completions`;
+        /** @type {{model:any, messages:any[], stream:boolean, max_tokens:number, temperature?:number}} */
         const body = {
             model: mdl,
             messages: [
@@ -146,6 +167,11 @@ export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, u
 }
 
 /** 从流式响应的 chunk 中提取文本 */
+/**
+ * @param {string} provider
+ * @param {any} chunk
+ * @returns {{text:string, finishReason:string|null}}
+ */
 export function extractAIStreamChunk(provider, chunk) {
     if (provider === 'gemini') {
         if (chunk.candidates && chunk.candidates[0]) {
@@ -168,11 +194,16 @@ export function extractAIStreamChunk(provider, chunk) {
 }
 
 /** 从非流式响应中提取文本 */
+/**
+ * @param {string} provider
+ * @param {any} data
+ * @returns {string}
+ */
 export function extractAIResponseText(provider, data) {
     if (provider === 'gemini') {
         const candidate = data.candidates && data.candidates[0];
         if (candidate && candidate.content && candidate.content.parts) {
-            return candidate.content.parts.map(p => p.text || '').join('');
+            return /** @type {any[]} */ (candidate.content.parts).map(p => p.text || '').join('');
         }
         return '';
     } else {
@@ -230,7 +261,7 @@ export async function analyzeSongWithAI(songTitle, artist, lyricsText, forceRefr
     const userPrompt = `请分析这首歌：《${songTitle}》- ${artist}。歌词片段：\n${lyricsText || '(无歌词)'}`;
 
     const provider = ai.provider || 'openai';
-    const providerCfg = AI_PROVIDERS[provider] || AI_PROVIDERS.openai;
+    const providerCfg = /** @type {Record<string, any>} */ (AI_PROVIDERS)[provider] || AI_PROVIDERS.openai;
     const model = ai.model || providerCfg.defaultModel;
     const isReasoningModel = /nemotron|o1|o3|deepseek-r1|reasoning|think/i.test(model);
 
@@ -279,7 +310,7 @@ export async function analyzeSongWithAI(songTitle, artist, lyricsText, forceRefr
 
         /* 流式读取 SSE */
         let content = '';
-        const reader = response.body.getReader();
+        const reader = /** @type {any} */ (response.body).getReader();
         const decoder = new TextDecoder();
         let buffer = '';
         let chunkCount = 0;
@@ -303,7 +334,7 @@ export async function analyzeSongWithAI(songTitle, artist, lyricsText, forceRefr
                         chunkCount++;
                         _feedProgress();
                     }
-                } catch (e) { logWarn('aiAnalyzer', 'SSE chunk 解析失败:', e); }
+                } catch (/** @type {any} */ e) { logWarn('aiAnalyzer', 'SSE chunk 解析失败:', e); }
             }
         }
 
@@ -332,7 +363,7 @@ export async function analyzeSongWithAI(songTitle, artist, lyricsText, forceRefr
         logInfo('aiAnalyzer', 'AI 分析成功:', cacheKey, themeObj);
         return themeObj;
 
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
         clearTimeout(timeoutId);
         if (typeof document !== 'undefined') {
             const p = document.getElementById('aiStatusPanel');
@@ -375,8 +406,8 @@ export async function triggerAiAnalysisIfNeeded() {
  *   folia 作者方案：文字测量 + 二维搜索，效果与稳定性远好于让 LLM 猜），
  *   因此本提示词只要求情绪主题与情感词，输出量小、几乎不会截断。
  *
- * @param {Object} [opts]
- * @param {string} [opts.chorusInfo] 额外注入的高潮时间轴提示片段（构建方在外部拼好）
+ * @param {any} [opts]
+ *   `opts.chorusInfo`：额外注入的高潮时间轴提示片段（构建方在外部拼好）
  */
 export function buildSystemPrompt(opts = {}) {
     const chorusInfo = (opts && opts.chorusInfo) ? opts.chorusInfo : '';
@@ -428,6 +459,8 @@ export function buildSystemPrompt(opts = {}) {
  * 程序化生成取代：分页/对齐/换行走「文字测量 + 二维搜索」，情绪能量由
  * 词典投票 + 副歌区间/BPM 调制——无需 LLM，且 group_indices 与隧道引擎
  * 词块精确对齐（同一分词管线），效果远好于让模型猜索引。
+ * @param {any} [opts]
+ * @returns {string}
  */
 export function buildEmotionSystemPrompt(opts = {}) {
     const chorusInfo = (opts && opts.chorusInfo) ? opts.chorusInfo : '';

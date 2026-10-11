@@ -29,6 +29,7 @@ const VOL_FINE_STEP = 1;
 const VOL_REPEAT_DELAY_MS = 400;
 const VOL_REPEAT_INTERVAL_MS = 70;
 
+/** @type {any} */
 let _volHold = null;   /* { timer, interval, dir, step, ctx } */
 
 /** 停止长按重复（松键 / 窗口失焦 / 切歌时调用）。 */
@@ -39,6 +40,11 @@ export function stopVolumeHold() {
     _volHold = null;
 }
 
+/**
+ * @param {number} dir
+ * @param {any} ctx
+ * @param {number} step
+ */
 function nudgeVolume(dir, ctx, step) {
     const cur = state.volume || 0;
     const next = Math.max(0, Math.min(100, cur + dir * step));
@@ -47,8 +53,14 @@ function nudgeVolume(dir, ctx, step) {
     showVolume(next);
 }
 
+/**
+ * @param {number} dir
+ * @param {any} ctx
+ * @param {number} step
+ */
 function startVolumeHold(dir, ctx, step) {
     stopVolumeHold();
+    /** @type {any} */
     const hold = { timer: null, interval: null, dir, step, ctx };
     _volHold = hold;
     hold.timer = setTimeout(() => {
@@ -63,6 +75,7 @@ function startVolumeHold(dir, ctx, step) {
 /* 松键即停。绑定在 window 上（键盘事件在 document 也冒泡到 window）。
    node 测试环境无 window，guard 掉即可。 */
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    /** @param {KeyboardEvent} e */
     const onUp = (e) => {
         const sc = (state.appSettings && state.appSettings.shortcuts) || {};
         if (e && (e.key === sc.volumeUp || e.key === sc.volumeDown)) stopVolumeHold();
@@ -74,8 +87,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 /**
  * 处理非导航模式下的用户快捷键。
  * @param {KeyboardEvent} event
- * @param {{inInput: boolean, audio: HTMLAudioElement, playBtn: Element, prevBtn: Element,
- *          nextBtn: Element, favoriteBtn: Element, moreBtn: Element,
+ * @param {{inInput: boolean, audio: HTMLAudioElement, playBtn: HTMLElement, prevBtn: HTMLElement,
+ *          nextBtn: HTMLElement, favoriteBtn: HTMLElement, moreBtn: HTMLElement,
  *          updateVolume: (percent: number) => void}} ctx
  * @returns {boolean} true = 本次按键已被消费（调用方应直接 return，不再走后续逻辑）
  */
@@ -132,7 +145,7 @@ export function handleShortcutKeys(event, ctx) {
     } else if (key === sc.toggleLyrics) {
         if (inInput) return true;
         event.preventDefault();
-        const lc = typeof document !== 'undefined' ? document.querySelector('.lyrics-container') : null;
+        const lc = typeof document !== 'undefined' ? /** @type {HTMLElement|null} */ (document.querySelector('.lyrics-container')) : null;
         if (lc) lc.style.display = (lc.style.display === 'none' ? '' : 'none');
     } else if (key === sc.more) {
         if (inInput) return true;
@@ -144,6 +157,11 @@ export function handleShortcutKeys(event, ctx) {
     return true;
 }
 
+/**
+ * @param {any} ctx
+ * @param {any} settings
+ * @param {number} direction
+ */
 function seekBy(ctx, settings, direction) {
     const audio = ctx.audio;
     if (!audio || !audio.duration) return;

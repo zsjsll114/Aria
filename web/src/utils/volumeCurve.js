@@ -21,17 +21,29 @@ const DB_MIN = -60;   // 最低可分辨档位（静音上一档）
 const DB_MAX = 0;     // 满量程
 
 /** 手柄位置（0~100）→ 分贝值（-60~0），dB 均匀步进 */
+/**
+ * @param {number} pct 0~100
+ * @returns {number} -60~0
+ */
 export function volumePercentToDb(pct) {
     const p = Math.max(0, Math.min(100, Number(pct) || 0));
     return DB_MIN + (DB_MAX - DB_MIN) * (p / 100);
 }
 
 /** 分贝值 → 声压幅值（0~1），即 <audio>.volume 的物理值 */
+/**
+ * @param {number} db
+ * @returns {number} 0~1
+ */
 export function dbToGain(db) {
     return Math.pow(10, db / 20);
 }
 
 /** 手柄位置（0~100）→ <audio>.volume（0~1） */
+/**
+ * @param {number} pct 0~100
+ * @returns {number} 0~1
+ */
 export function volumePercentToGain(pct) {
     const p = Math.max(0, Math.min(100, Number(pct) || 0));
     if (p <= 0) return 0;
@@ -39,6 +51,10 @@ export function volumePercentToGain(pct) {
 }
 
 /** 声压幅值（0~1）→ 手柄位置（0~100）（指数逆运算回调，用于 UI 同步） */
+/**
+ * @param {number} gain 0~1
+ * @returns {number} 0~100
+ */
 export function gainToVolumePercent(gain) {
     const g = Math.max(0, Math.min(1, Number(gain) || 0));
     if (g <= 0) return 0;
@@ -48,6 +64,10 @@ export function gainToVolumePercent(gain) {
 }
 
 /** 声压幅值 → 分贝（供 tooltip/aria 展示，用户公式①一致性） */
+/**
+ * @param {number} gain 0~1
+ * @returns {number} dB
+ */
 export function gainToDb(gain) {
     const g = Math.max(0, Math.min(1, Number(gain) || 0));
     if (g <= 0) return DB_MIN;
@@ -55,6 +75,10 @@ export function gainToDb(gain) {
 }
 
 /** 手柄位置（0~100）→ 实际声压百分比（用户公式②：percentage = 10^(db/20)*100） */
+/**
+ * @param {number} pct 0~100
+ * @returns {number} 0~100
+ */
 export function volumePercentToPercent(pct) {
     return dbToGain(volumePercentToDb(pct)) * 100;
 }

@@ -40,6 +40,7 @@ const DROP_RE = /[\s\u3000\p{P}\p{S}\p{M}]/u;
  * 供高亮把命中区间换算回原串。
  * @returns {{n: string, at: number[], wid: number[]}}
  */
+/** @param {string} text @returns {{n: string, at: number[], wid: number[]}} */
 export function normParts(text) {
     const s = String(text == null ? '' : text);
     const kept = [];
@@ -51,7 +52,7 @@ export function normParts(text) {
         /* normalize 只对非法 form 抛错，对孤立代理项是安全的，这里不需要 try */
         const norm = ch.normalize('NFKC').toLowerCase();
         for (let k = 0; k < norm.length; k++) {
-            const c = norm[k];
+            const c = /** @type {string} */ (norm[k]);
             if (DROP_RE.test(c)) continue;
             kept.push(c);
             at.push(i);
@@ -63,11 +64,13 @@ export function normParts(text) {
 }
 
 /** 归一化文本（只留可匹配字符，小写、NFKC） */
+/** @param {string} text @returns {string} */
 export function normText(text) {
     return normParts(text).n;
 }
 
 /** 查询串 → 词元数组（空白分词 + 归一，丢空串） */
+/** @param {string} query @returns {string[]} */
 export function normalizeTerms(query) {
     return String(query == null ? '' : query)
         .split(/\s+/)
@@ -75,7 +78,13 @@ export function normalizeTerms(query) {
         .filter(Boolean);
 }
 
+/**
+ * @param {string} n
+ * @param {string} term
+ * @returns {any[]|null}
+ */
 function allRangesOf(n, term) {
+    /** @type {any[]} */
     const spans = [];
     if (!term || !n) return spans;
     let from = 0;
@@ -90,6 +99,12 @@ function allRangesOf(n, term) {
 }
 
 /** 归一坐标区间 → 原文坐标区间（相邻/重叠的合并，避免输出 <mark></mark> 碎片） */
+/**
+ * @param {any} at
+ * @param {any} wid
+ * @param {any[]} spans
+ * @returns {any[]|null}
+ */
 function toSourceRanges(at, wid, spans) {
     if (!spans.length) return null;
     const raw = [];
@@ -105,11 +120,17 @@ function toSourceRanges(at, wid, spans) {
 }
 
 /** 词元在归一串上的全部出现位置；任一词元缺席即 null（多词 AND） */
+/**
+ * @param {string} n
+ * @param {string[]} terms
+ * @returns {any[]|null}
+ */
 function spansOfTerms(n, terms) {
+    /** @type {any[]} */
     let spans = [];
     for (const t of terms) {
         const hit = allRangesOf(n, t);
-        if (!hit.length) return null;
+        if (!hit || !hit.length) return null;
         spans = spans.concat(hit);
     }
     return spans.length ? spans : null;
@@ -119,9 +140,9 @@ function spansOfTerms(n, terms) {
  * 一行是否命中：所有词元都在同一行（原文轨或译文轨）内出现。
  * 归一形优先用调用方给的（文档里已存 q），只有命中的那一行才回算原文下标映射。
  * @param {string} text 展示用原文
- * @param {string} [norm] text 的归一形（缺省时现算）
+ * @param {string|undefined} norm text 的归一形（缺省时现算）
  * @param {string[]} terms 归一后的词元
- * @param {Object} [alt] 备用轨 { text }（如译文）
+ * @param {{text?:string, n?:string}|null} [alt] 备用轨 { text }（如译文；无备轨时传 null）
  * @returns {{track:string, ranges:number[][]}|null}
  */
 export function matchLine(text, norm, terms, alt) {
@@ -147,6 +168,7 @@ export function matchLine(text, norm, terms, alt) {
 /* ---------- 文档结构 ---------- */
 
 /** 与 120-search-results 的 makeSongKey 同一套口径（额外兼容 mid/hash），保证跨来源同歌同键 */
+/** @param {any} song @returns {string} */
 export function songKeyOf(song) {
     if (!song) return '';
     const src = song.source || '';
@@ -160,10 +182,12 @@ export function songKeyOf(song) {
     return 'local:' + (song.url || song.file || song.path || song.title || '');
 }
 
+/** @param {any} song @returns {string} */
 export function titleOf(song) {
     return String((song && (song.title || song.song || song.name)) || '').trim();
 }
 
+/** @param {any} song @returns {string} */
 export function artistOf(song) {
     const a = song && (song.artist || song.singer || song.artists);
     if (Array.isArray(a)) return a.map(x => (x && (x.name || x.title)) || x).join(' / ');
@@ -171,16 +195,18 @@ export function artistOf(song) {
 }
 
 /** 歌词行 → 展示文本：优先整行文本，逐字行退化为拼接词元 */
+/** @param {any} line @returns {string} */
 export function lineTextOf(line) {
     if (!line) return '';
     const direct = line.original || line.text || line.lyric || '';
     if (String(direct).trim()) return String(direct).trim();
     if (Array.isArray(line.words) && line.words.length) {
-        return line.words.map(w => (w && (w.text != null ? w.text : w.word)) || '').join('').trim();
+        return /** @type {any[]} */ (line.words).map(w => (w && (w.text != null ? w.text : w.word)) || '').join('').trim();
     }
     return '';
 }
 
+/** @param {string} s @returns {number} */
 function hash32(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) {
@@ -191,6 +217,7 @@ function hash32(s) {
 }
 
 /** 歌词内容签名：行数 + 全文摘要（同一首歌换歌词源/重取到更完整版时用于判定变更） */
+/** @param {any[]} lines @returns {string} */
 export function sigOf(lines) {
     const list = Array.isArray(lines) ? lines : [];
     let acc = '';
@@ -199,6 +226,7 @@ export function sigOf(lines) {
 }
 
 /** 合并后的歌词行（renderLyrics 的产物）或 parse 结果数组 → 索引行 */
+/** @param {any[]} lyricLines @returns {any[]} */
 export function toIndexLines(lyricLines) {
     const list = Array.isArray(lyricLines) ? lyricLines : [];
     const out = [];
@@ -215,11 +243,12 @@ export function toIndexLines(lyricLines) {
     return out;
 }
 
+/** @param {any[]} scopes @returns {any[]} */
 export function sortScopes(scopes) {
     const seen = new Set();
     const list = [];
     for (const s of (scopes || [])) {
-        if (!s || !SCOPE_WEIGHT[s] || seen.has(s)) continue;
+        if (!s || !/** @type {Record<string, number>} */ (SCOPE_WEIGHT)[s] || seen.has(s)) continue;
         seen.add(s);
         list.push(s);
     }
@@ -227,10 +256,11 @@ export function sortScopes(scopes) {
     return list;
 }
 
+/** @param {any[]} scopes @returns {number} */
 export function weightOf(scopes) {
     let w = 0;
     for (const s of (scopes || [])) {
-        const v = SCOPE_WEIGHT[s];
+        const v = /** @type {Record<string, number>} */ (SCOPE_WEIGHT)[s];
         if (v && v > w) w = v;
     }
     return w;
@@ -239,6 +269,13 @@ export function weightOf(scopes) {
 /**
  * 建一篇文档。lines 为「歌词行对象数组」（mergeLyrics 产物形状），内部自行归一。
  * @returns {Object|null} 无有效歌词行时返回 null（调用方决定是否记 empty）
+ */
+/**
+ * @param {any} song
+ * @param {any[]} lines
+ * @param {any[]} scopes
+ * @param {any} [extra]
+ * @returns {any}
  */
 export function buildDoc(song, lines, scopes, extra = {}) {
     const idxLines = toIndexLines(lines);
@@ -265,6 +302,12 @@ export function buildDoc(song, lines, scopes, extra = {}) {
 }
 
 /** 取词失败/确实没歌词也记一条，避免每轮都重新发请求 */
+/**
+ * @param {any} song
+ * @param {any[]} scopes
+ * @param {string} [reason]
+ * @returns {any}
+ */
 export function buildEmptyDoc(song, scopes, reason) {
     const key = songKeyOf(song);
     if (!key) return null;
@@ -292,8 +335,8 @@ export function buildEmptyDoc(song, scopes, reason) {
 
 /**
  * 四路来源 → 去重后的期望集合（同一首歌在多来源只留一条，scopes 合并）。
- * @param {{scope:string, items:Object[]}[]} lists
- * @returns {{key:string, song:Object, scopes:string[], weight:number}[]} 按权重降序
+ * @param {{scope:string, items:Object[], lines?:any[]}[]} lists
+ * @returns {{key:string, song:Object, scopes:string[], weight:number, lines:any[]|null}[]} 按权重降序
  */
 export function mergeDesired(lists) {
     const map = new Map();
@@ -315,6 +358,7 @@ export function mergeDesired(lists) {
             map.set(key, { key, song, scopes, weight: weightOf(scopes), lines: Array.isArray(grp.lines) ? grp.lines : null });
         }
     }
+    /** @type {any[]} */
     const out = [];
     map.forEach(v => out.push(v));
     out.sort((a, b) => b.weight - a.weight || String(a.key).localeCompare(String(b.key)));
@@ -326,7 +370,13 @@ export function mergeDesired(lists) {
  * put   : 歌词已在手上（当前歌），直接落库
  * fetch : 需要取词（收藏/歌单/最近），调用方按空闲批次消费
  * prune : 已从所有来源消失
- * @param {{forceRefetch?:boolean, now?:number, maxDocs?:number, haveCount?:number, emptyRetryMs?:number} = {}} opts
+ * @param {{forceRefetch?:boolean, now?:number, maxDocs?:number, haveCount?:number, emptyRetryMs?:number}} [opts]
+ */
+/**
+ * @param {any[]} desired
+ * @param {any[]} have
+ * @param {{[k:string]:any}} [opts]
+ * @returns {any}
  */
 export function planSync(desired, have, opts = {}) {
     const now = opts.now || Date.now();
@@ -376,8 +426,9 @@ export function planSync(desired, have, opts = {}) {
         fetch.push(entry);
     }
 
+    /** @type {string[]} */
     const prune = [];
-    haveMap.forEach((doc, key) => { if (!want.has(key)) prune.push(key); });
+    haveMap.forEach((_doc, key) => { if (!want.has(key)) prune.push(key); });
     return { put, fetch, prune, cooling, skipped };
 }
 
@@ -385,12 +436,13 @@ export function planSync(desired, have, opts = {}) {
 
 /**
  * @param {string} query 用户输入的一句歌词
- * @param {Object[]} docs 文档数组
+ * @param {any[]} docs 文档数组
  * @param {{limit?:number, perSong?:number, keys?:string[]|null}} [opts]
  * @returns {{rows:Object[], total:number, songs:number, scanned:number}}
  */
 export function searchLyric(query, docs, opts = {}) {
     const terms = normalizeTerms(query);
+    /** @type {any} */
     const res = { rows: [], total: 0, songs: 0, scanned: 0 };
     if (!terms.length || !Array.isArray(docs)) return res;
     const limit = opts.limit || DEFAULT_LIMIT;
@@ -451,6 +503,7 @@ export function searchLyric(query, docs, opts = {}) {
 
 /* ---------- 存储 ---------- */
 
+/** @param {any} req @returns {Promise<any>} */
 function reqDone(req) {
     return new Promise((resolve, reject) => {
         req.onsuccess = () => resolve(req.result);
@@ -459,7 +512,8 @@ function reqDone(req) {
 }
 
 function createIdbAdapter() {
-    let dbPromise = null;
+    /** @type {Promise<any>|null} */
+let dbPromise = null;
     const open = async () => {
         if (!dbPromise) {
             dbPromise = new Promise((resolve, reject) => {
@@ -477,6 +531,11 @@ function createIdbAdapter() {
         }
         return dbPromise;
     };
+    /**
+     * @param {string} mode
+     * @param {(s: any) => any} fn
+     * @returns {Promise<any>}
+     */
     const tx = async (mode, fn) => {
         const db = await open();
         const t = db.transaction(DOC_STORE, mode);
@@ -490,12 +549,15 @@ function createIdbAdapter() {
     return {
         async ping() { await open(); return true; },
         async all() { const db = await open(); return (await reqDone(db.transaction(DOC_STORE, 'readonly').objectStore(DOC_STORE).getAll())) || []; },
+        /** @param {any[]} docs */
         async putMany(docs) { await tx('readwrite', s => { for (const d of docs) s.put(d); }); },
+        /** @param {any[]} keys */
         async delMany(keys) { await tx('readwrite', s => { for (const k of keys) s.delete(k); }); },
         async clear() { await tx('readwrite', s => { s.clear(); }); },
     };
 }
 
+/** @type {any} */
 let _store = null;
 let _cache = new Map();
 let _loaded = false;
@@ -507,6 +569,7 @@ function activeStore() {
 }
 
 /** 注入存储实现（测试用内存 store；浏览器侧不要调用） */
+/** @param {any} store */
 export function useStore(store) {
     _store = store || null;
     _cache = new Map();
@@ -519,7 +582,7 @@ export function loadError() { return _loadError; }
 
 /** 存储是否可用（IDB 被隐私模式禁用时给出明确状态而不是假装空库） */
 export async function probeStore() {
-    try { await activeStore().ping(); return true; } catch (e) { _loadError = (e && e.message) || 'unavailable'; return false; }
+    try { await activeStore().ping(); return true; } catch (/** @type {any} */ e) { _loadError = (e && e.message) || 'unavailable'; return false; }
 }
 
 /** 全量载入内存缓存：查询是同步热路径，不能每敲一个字开一次事务 */
@@ -531,7 +594,7 @@ export async function loadIndex() {
         _loaded = true;
         _loadError = '';
         return _cache.size;
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         _loaded = false;
         _loadError = (e && e.message) || 'unavailable';
         return 0;
@@ -539,17 +602,20 @@ export async function loadIndex() {
 }
 
 export function getCachedDocs() {
+    /** @type {any[]} */
     const out = [];
     _cache.forEach(d => out.push(d));
     return out;
 }
 
+/** @param {string} key @returns {Promise<any>} */
 export function getDoc(key) {
     return _cache.get(key) || null;
 }
 
 export function cachedCount() { return _cache.size; }
 
+/** @param {any[]} docs @returns {Promise<any>} */
 export async function putDocs(docs) {
     const list = (docs || []).filter(Boolean);
     if (!list.length) return 0;
@@ -558,6 +624,7 @@ export async function putDocs(docs) {
     return list.length;
 }
 
+/** @param {string[]} keys @returns {Promise<any>} */
 export async function removeDocs(keys) {
     const list = (keys || []).filter(Boolean);
     if (!list.length) return 0;
@@ -573,6 +640,11 @@ export async function clearIndex() {
 }
 
 /** 同步查询（走内存缓存），返回 searchLyric 的形状 */
+/**
+ * @param {string} query
+ * @param {{[k:string]:any}} [opts]
+ * @returns {any}
+ */
 export function search(query, opts = {}) {
     return searchLyric(query, getCachedDocs(), opts);
 }
@@ -588,7 +660,7 @@ export function indexStats() {
         if (d.empty) empty++;
         lines += (d.n || 0);
         if ((d.at || 0) > newest) newest = d.at;
-        for (const s of (d.scopes || [])) if (byScope[s] !== undefined) byScope[s]++;
+        for (const s of (d.scopes || [])) { const bs = /** @type {Record<string, number>} */ (byScope)[s]; if (bs !== undefined) /** @type {Record<string, number>} */ (byScope)[s] = bs + 1; }
     });
     return { docs: _cache.size, lines, empty, byScope, newest, loaded: _loaded, error: _loadError };
 }

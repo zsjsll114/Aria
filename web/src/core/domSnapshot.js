@@ -62,6 +62,7 @@ export const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP//
 const _canvasSnapshots = [];
 
 /** 注册一个快照提供者；返回注销函数。 */
+/** @param {(canvas: HTMLCanvasElement) => string|null} provider */
 export function registerCanvasSnapshot(provider) {
 	if (typeof provider !== 'function') return () => {};
 	_canvasSnapshots.push(provider);
@@ -72,12 +73,13 @@ export function registerCanvasSnapshot(provider) {
 }
 
 /** 依次问每个提供者要快照；谁先给出非空结果就用谁。 */
+/** @param {any} canvas @returns {any} */
 export function snapshotCanvas(canvas) {
 	for (const p of _canvasSnapshots) {
 		try {
 			const url = p(canvas);
 			if (typeof url === 'string' && url.length > 64) return url;
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 	return null;
 }
@@ -86,8 +88,9 @@ export function snapshotCanvas(canvas) {
 
 /**
  * 把 computedStyle 里白名单属性拼成一段 cssText。
- * @param {CSSStyleDeclaration|object} cs 任何有 getPropertyValue 的对象（测试可传桩）
+ * @param {CSSStyleDeclaration|{getPropertyValue:(prop:string)=>string}} cs 任何有 getPropertyValue 的对象（测试可传桩）
  * @param {string[]} [props]
+ * @param {{keepPosition?:boolean}} [opts] 保留 position 原值（根节点用，避免包含块错位）
  * @returns {string}
  */
 export function cssTextFromComputed(cs, props = INLINE_PROPS, opts = {}) {
@@ -126,12 +129,25 @@ export function cssTextFromComputed(cs, props = INLINE_PROPS, opts = {}) {
 }
 
 /** 画布尺寸 → 输出尺寸。scale=2 时输出 2 倍，SVG 仍按 CSS 尺寸布局 ⇒ 文字是矢量放大的。 */
+/**
+ * @param {number} w
+ * @param {number} h
+ * @param {number} [scale]
+ * @returns {{w:number, h:number, scale:number}}
+ */
 export function outputSize(w, h, scale) {
 	const s = Math.max(1, Math.min(4, Number(scale) || 1));
 	return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)), scale: s };
 }
 
 /** 用 viewBox 放大：SVG 的外框是 W*s，但内部按 W 布局。 */
+/**
+ * @param {string} innerXml
+ * @param {number} cssW
+ * @param {number} cssH
+ * @param {number} [scale]
+ * @returns {string}
+ */
 export function svgShell(innerXml, cssW, cssH, scale) {
 	const o = outputSize(cssW, cssH, scale);
 	return `<svg xmlns="http://www.w3.org/2000/svg" width="${o.w}" height="${o.h}" `
@@ -156,10 +172,20 @@ export function svgShell(innerXml, cssW, cssH, scale) {
  * ★ 两遍走：先全部读完，再统一写回。否则给父元素写了 `position:relative` 之后再读
  *   子元素，读到的是"被我们改过之后"的值，整棵树会一层层歪掉。
  */
+/**
+ * @param {any} src
+ * @param {any} clone
+ * @param {any} out 采集上下文（count/plan/hidden/debugEls/onlyRoot/keepSet/trackSrc…）
+ * @param {Set<any>} hiddenSet
+ * @param {any} rootRef
+ * @param {any} gcs getComputedStyle 或测试替身
+ * @returns {void}
+ */
 function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 	out.count++;
+	/** @type {any} */
 	let cs = null;
-	try { cs = (gcs || getComputedStyle)(clone); } catch (e) { logCatch('domSnapshot', e); }
+	try { cs = (gcs || getComputedStyle)(clone); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	let hidden = hiddenSet.has(src);
 	/* ★★ 白名单式裁剪：只保留 `onlyRoot` 子树 + 它的祖先链 + **负 z-index 的装饰背景层**，
 	   其余一律隐藏。比"列一串要隐藏的选择器"可靠得多 —— 弹窗、引导、浮动面板、
@@ -175,7 +201,7 @@ function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 				const z = Number.parseInt(cs.getPropertyValue('z-index'), 10);
 				const pos = String(cs.getPropertyValue('position') || '').trim();
 				isDecor = Number.isFinite(z) && z < 0 && (pos === 'fixed' || pos === 'absolute');
-			} catch (e) { logCatch('domSnapshot', e); }
+			} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 			/* ★★ `opts.alsoKeep`：**画面的一部分、但挂在 body 上**的浮动层。
 			   白名单裁剪只认 `.player-container` 子树，于是「飞入模式的背景图形场」
 			   （`#view-flyin-wireframes`，`document.body.appendChild`）整层被切掉 ——
@@ -189,7 +215,7 @@ function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 		try {
 			/* 隐藏与否必须看**源元素**：克隆体在 iframe 里，祖先链不同，display 可能不一样 */
 			hidden = String(getComputedStyle(src).getPropertyValue('display') || '').trim() === 'none';
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 	/* ★ 几何对账（诊断用，`opts.debug` 打开时生效）：把「源元素」与「克隆体」成对记下，
 	   布局落定后逐对读 `getBoundingClientRect()` 比对 —— 这是定位「海报主体塌黑 / 画面错位」
@@ -219,11 +245,11 @@ function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 	}
 	if (out.trackSrc && src === out.trackSrc) out.trackClone = clone;
 	let css = '';
-	try { css = cssTextFromComputed(cs, INLINE_PROPS, { keepPosition: src === rootRef }); } catch (e) { logCatch('domSnapshot', e); }
+	try { css = cssTextFromComputed(cs, INLINE_PROPS, { keepPosition: src === rootRef }); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	/* 泄漏哨兵：源里是 fixed 定位且可见的元素。它们在 SVG 里"无处安放"，一个都不该留着。 */
 	try {
 		if (String(getComputedStyle(src).getPropertyValue('position') || '').trim() === 'fixed') out.fixed.push(src);
-	} catch (e) { logCatch('domSnapshot', e); }
+	} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	out.plan.push([clone, css]);
 	const sk = src.children;
 	const ck = clone.children;
@@ -233,6 +259,11 @@ function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 }
 
 /** 在源树上把要隐藏的元素先找出来（用 Element 引用，绕开"clone 已无 id"的问题）。 */
+/**
+ * @param {any} root
+ * @param {string[]} selectors
+ * @returns {Set<any>}
+ */
 export function collectHidden(root, selectors) {
 	const set = new Set();
 	if (!root || !Array.isArray(selectors)) return set;
@@ -250,6 +281,11 @@ export function collectHidden(root, selectors) {
  *   它的子元素仍然"不在 `.player-container` 里"，会被当场隐藏 ——
  *   结果是一个空壳层，等于没保留。
  */
+/**
+ * @param {any} root
+ * @param {string[]} selectors
+ * @returns {Set<any>}
+ */
 export function collectSubtrees(root, selectors) {
 	const set = new Set();
 	if (!root || !Array.isArray(selectors)) return set;
@@ -258,7 +294,7 @@ export function collectSubtrees(root, selectors) {
 		try { list = root.querySelectorAll(sel); } catch { continue; }
 		for (const el of list) {
 			set.add(el);
-			try { el.querySelectorAll('*').forEach((e) => set.add(e)); } catch { /* 忽略 */ }
+			try { /** @type {any[]} */ (el.querySelectorAll('*')).forEach((e) => set.add(e)); } catch { /* 忽略 */ }
 		}
 	}
 	return set;
@@ -270,6 +306,7 @@ export function collectSubtrees(root, selectors) {
  *   `background-image: url(https://…)`。SVG 作为独立图片加载时**不会去联网取外部资源**，
  *   相对 URL 也解析不了；跨域的还会污染画布。必须全部换成 dataURL。
  */
+/** @param {any} cloneRoot @returns {Promise<any>} {bgReplaced, bgFailed} */
 async function _inlineBackgroundImages(cloneRoot) {
 	const nodes = cloneRoot.querySelectorAll('[style*="url("]');
 	const cache = new Map();
@@ -305,6 +342,7 @@ const _dataUrlCache = new Map();
 
 export function clearDataUrlCache() { _dataUrlCache.clear(); }
 
+/** @param {string} raw @returns {Promise<string|null>} */
 async function _fetchAsDataUrl(raw) {
 	if (_dataUrlCache.has(raw)) return _dataUrlCache.get(raw);
 	let fetchUrl = raw;
@@ -332,7 +370,7 @@ async function _fetchAsDataUrl(raw) {
 		const out = (du && du.length > 64) ? du : null;
 		_dataUrlCache.set(raw, out);
 		return out;
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		_failedUrls.push(String(raw).slice(0, 120));
 		logCatch('domSnapshot', e);
 		_dataUrlCache.set(raw, null);
@@ -341,6 +379,12 @@ async function _fetchAsDataUrl(raw) {
 }
 
 /** 把大图缩到长边 `maxEdge` 再重编码；失败返回 null（调用方退回原图）。 */
+/**
+ * @param {any} blob
+ * @param {number} maxEdge
+ * @param {number} [quality]
+ * @returns {Promise<any>}
+ */
 async function _shrinkToDataUrl(blob, maxEdge, quality) {
 	try {
 		const bmp = await createImageBitmap(blob);
@@ -356,12 +400,13 @@ async function _shrinkToDataUrl(blob, maxEdge, quality) {
 		try { bmp.close(); } catch { /* 老浏览器没有 close */ }
 		/* ★ 不能无条件转 JPEG：原图可能是带透明的 PNG，拍平会变成黑块。 */
 		return _encodeCanvasBest(c, quality);
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch('domSnapshot', e);
 		return null;
 	}
 }
 
+/** @type {string[]} */
 const _failedUrls = [];
 
 /**
@@ -371,6 +416,7 @@ const _failedUrls = [];
  *   每张海报都为它们走一遍网络抓取 + base64 内联，是「生成一张 10 秒」的主要来源。
  *   被隐藏的节点反正看不见，跳过它们只是省时间，产物一模一样。
  */
+/** @param {any} el @param {any} scope @returns {boolean} */
 function _inScope(el, scope) {
 	return !scope || scope === el || scope.contains(el);
 }
@@ -379,12 +425,19 @@ function _inScope(el, scope) {
  * 判断画布四角是否不透明。不透明 ⇒ 是整屏背景层，可以走 JPEG；
  * 有透明 ⇒ 是叠加层，必须保留 alpha（JPEG 会把透明处拍成黑块）。
  */
+/**
+ * @param {any} ctx
+ * @param {number} w
+ * @param {number} h
+ * @returns {boolean}
+ */
 function _cornersOpaque(ctx, w, h) {
 	try {
 		const px = ctx.getImageData(0, 0, w, h).data;
-		const at = (x, y) => px[(y * w + x) * 4 + 3];
+		/** @type {(x:number, y:number) => number} */
+	const at = (x, y) => /** @type {number} */ (px[(y * w + x) * 4 + 3]);
 		const m = Math.max(1, Math.round(Math.min(w, h) * 0.06));
-		for (const [x, y] of [[m, m], [w - 1 - m, m], [m, h - 1 - m], [w - 1 - m, h - 1 - m]]) {
+		for (const [x, y] of /** @type {[number, number][]} */ ([[m, m], [w - 1 - m, m], [m, h - 1 - m], [w - 1 - m, h - 1 - m]])) {
 			if (at(x, y) < 250) return false;
 		}
 		return true;
@@ -401,6 +454,11 @@ function _cornersOpaque(ctx, w, h) {
  *   · 不透明 → JPEG：噪点型画面（网点/粒子）体积能掉一个量级；
  *   · 有透明 → WebP（**带 alpha**，Chromium/WebView2 都支持）：比 PNG 小得多又不丢透明。
  *   只有两者都失败才回退 PNG。
+ */
+/**
+ * @param {any} c
+ * @param {number} [quality]
+ * @returns {string|null} 编码结果过短时视为失败，返回 null
  */
 function _encodeCanvasBest(c, quality) {
 	const cx = c.getContext('2d');
@@ -426,6 +484,12 @@ function _encodeCanvasBest(c, quality) {
  *   （提供者给的那份 dataURL 才是唯一有效像素）。
  * @returns {Promise<string|null>} 失败返回 null（调用方保留原图）
  */
+/**
+ * @param {string} url
+ * @param {number} maxEdge
+ * @param {number} [quality]
+ * @returns {Promise<any>}
+ */
 async function _reencodeImageDataUrl(url, maxEdge, quality) {
 	try {
 		const img = await _loadSvgImage(url, 4000);
@@ -440,12 +504,18 @@ async function _reencodeImageDataUrl(url, maxEdge, quality) {
 		if (!cx) return null;
 		cx.drawImage(img, 0, 0, w, h);
 		return _encodeCanvasBest(c, quality);
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch('domSnapshot', e);
 		return null;
 	}
 }
 
+/**
+ * @param {any} srcRoot
+ * @param {any} cloneRoot
+ * @param {any} scope
+ * @returns {Promise<any>} {canvases, ok, blank}
+ */
 async function _replaceCanvases(srcRoot, cloneRoot, scope) {
 	const s = srcRoot.querySelectorAll('canvas');
 	const c = cloneRoot.querySelectorAll('canvas');
@@ -458,7 +528,7 @@ async function _replaceCanvases(srcRoot, cloneRoot, scope) {
 		let url = snapshotCanvas(s[i]);
 		const fromProvider = !!url;
 		if (!url) {
-			try { url = s[i].toDataURL('image/png'); } catch (e) { logCatch('domSnapshot', e); }
+			try { url = s[i].toDataURL('image/png'); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		}
 		/* 大画布先重编码再内联：见 `_reencodeImageDataUrl` 的说明（这是 10 秒的元凶）。 */
 		if (typeof url === 'string' && url.length > 1_200_000) {
@@ -475,23 +545,29 @@ async function _replaceCanvases(srcRoot, cloneRoot, scope) {
 			try {
 				const t = document.createElement('canvas');
 				t.width = 8; t.height = 8;
-				const tx = t.getContext('2d');
+				const tx = /** @type {CanvasRenderingContext2D} */ (t.getContext('2d'));
 				tx.drawImage(s[i], 0, 0, 8, 8);
 				const d = tx.getImageData(0, 0, 8, 8).data;
 				let any = false;
-				for (let k = 3; k < d.length; k += 4) { if (d[k] > 6) { any = true; break; } }
+				for (let k = 3; k < d.length; k += 4) { if (/** @type {number} */ (d[k]) > 6) { any = true; break; } }
 				if (!any) usable = false;
 			} catch { /* 读不了就按可用处理：宁可当可用，也别把有内容的画布误判成空白 */ }
 		}
 		if (usable) ok++; else blank++;
 		const img = document.createElement('img');
 		img.setAttribute('style', c[i].getAttribute('style') || '');
-		img.setAttribute('src', usable ? url : TRANSPARENT_PIXEL);
+		img.setAttribute('src', usable ? (url || '') : TRANSPARENT_PIXEL);
 		c[i].parentNode.replaceChild(img, c[i]);
 	}
 	return { canvases: n, ok, blank };
 }
 
+/**
+ * @param {any} srcRoot
+ * @param {any} cloneRoot
+ * @param {any} scope
+ * @returns {Promise<any>} {images, inlined, failed}
+ */
 async function _inlineImages(srcRoot, cloneRoot, scope) {
 	const s = srcRoot.querySelectorAll('img');
 	const c = cloneRoot.querySelectorAll('img');
@@ -520,6 +596,11 @@ async function _inlineImages(srcRoot, cloneRoot, scope) {
  *   负 z-index 的 fixed 元素是**装饰背景层**（`.blur-background` z=-2 / `.color-overlay` z=-1 /
  *   `.mv-background` z=-2）—— 那本来就是画面的一部分，靠 z 号一刀切开，比维护白名单可靠。
  */
+/**
+ * @param {any[]} list
+ * @param {number} [limit]
+ * @returns {string[]}
+ */
 function _describeFixedLeaks(list, limit = 12) {
 	const out = [];
 	for (const el of list) {
@@ -535,7 +616,7 @@ function _describeFixedLeaks(list, limit = 12) {
 			out.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${cls ? '.' + cls : ''}`
 				+ ` ${Math.round(r.width)}x${Math.round(r.height)}`);
 			if (out.length >= limit) break;
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 	return out;
 }
@@ -556,13 +637,15 @@ function _describeFixedLeaks(list, limit = 12) {
  *   海报主体于是整块塌黑，只剩一条错位的背景竖带。
  *   摘 id/class 本身只是为了产物干净，**与布局无关**，所以放到最后统一做。
  */
+/** @param {any} root @returns {void} */
 function _stripIdentifiers(root) {
+	/** @param {any} el */
 	const strip = (el) => {
 		try {
 			el.removeAttribute('id');
 			el.removeAttribute('class');
 			el.removeAttribute('data-index');
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	};
 	strip(root);
 	let list;
@@ -577,7 +660,13 @@ const BOX_PROPS = [
 	'overflow', 'overflow-y', 'margin-top', 'margin-bottom', 'padding-top', 'padding-bottom',
 	'padding-left', 'padding-right', 'gap', 'box-sizing', 'transform', 'top', 'left',
 ];
+/**
+ * @param {any} el
+ * @param {any} gcs
+ * @returns {Record<string,string>}
+ */
 function _readBox(el, gcs) {
+	/** @type {Record<string,string>} */
 	const out = {};
 	try {
 		const cs = (gcs || getComputedStyle)(el);
@@ -593,12 +682,19 @@ function _readBox(el, gcs) {
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 
+/** @param {any} el @returns {string} */
 function _attrText(el) {
 	try {
 		return [...el.attributes].map(a => ` ${a.name}="${String(a.value).replace(/"/g, '&quot;')}"`).join('');
 	} catch { return ''; }
 }
 
+/**
+ * 等 iframe 里所有样式表就绪（或超时）。
+ * @param {Document} doc
+ * @param {number} [timeoutMs=3000]
+ * @returns {Promise<void>}
+ */
 function _waitFrameStyles(doc, timeoutMs = 3000) {
 	const links = [...doc.querySelectorAll('link[rel="stylesheet"]')];
 	if (!links.length) return Promise.resolve();
@@ -632,6 +728,12 @@ function _waitFrameStyles(doc, timeoutMs = 3000) {
  *
  * @returns {Promise<{frame:HTMLIFrameElement, win:Window, doc:Document}|null>}
  */
+/**
+ * @param {any} clone
+ * @param {number} cssW
+ * @param {number} cssH
+ * @returns {Promise<any>}
+ */
 async function _stageInFrame(clone, cssW, cssH) {
 	try {
 		const frame = document.createElement('iframe');
@@ -645,7 +747,7 @@ async function _stageInFrame(clone, cssW, cssH) {
 		if (!doc || !win) { frame.remove(); return null; }
 		/* base 用本页 URL —— iframe 里相对路径（字体/图片）要靠它解析。
 		   属性值一律按 HTML 属性转义，不用模板插值直接拼。 */
-		const baseHref = String(location.href).replace(/[&<>"]/g, (c) => HTML_ESCAPE[c]);
+		const baseHref = String(location.href).replace(/[&<>"]/g, (c) => /** @type {string} */ (/** @type {Record<string,string>} */ (HTML_ESCAPE)[c]));
 		doc.open();
 		doc.write('<!doctype html><html' + _attrText(document.documentElement) + '>'
 			+ '<head><base href="' + baseHref + '"></head>'
@@ -653,7 +755,7 @@ async function _stageInFrame(clone, cssW, cssH) {
 		doc.close();
 		/* 把页面上的样式整份搬过去（link 同源，走缓存，很快） */
 		for (const node of document.querySelectorAll('link[rel="stylesheet"], style')) {
-			try { doc.head.appendChild(node.cloneNode(true)); } catch (e) { logCatch('domSnapshot', e); }
+			try { doc.head.appendChild(node.cloneNode(true)); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		}
 		/* ★★★ 冻结过渡 —— 这条是「类加对了、画面还是空白」的根因。
 		   `getComputedStyle` 读的是**此刻**的值，而 CSS transition 会让「刚加上的类」
@@ -668,7 +770,7 @@ async function _stageInFrame(clone, cssW, cssH) {
 			const freeze = doc.createElement('style');
 			freeze.textContent = '*,*::before,*::after{transition:none !important;transition-delay:0s !important;}';
 			doc.head.appendChild(freeze);
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		doc.body.appendChild(clone);
 		await _waitFrameStyles(doc, 3000);
 		/* 让布局与字体落定 */
@@ -689,17 +791,23 @@ async function _stageInFrame(clone, cssW, cssH) {
 		   所有「选择器匹配该行且声明了 opacity」的规则，按特异性+顺序排出真正的赢家；
 		     同时打印 `doc.getAnimations()` 的数量。脚本骨架见 scratch/_clone_after_stage.py。 */
 		return { frame, win, doc };
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch('domSnapshot', e);
 		return null;
 	}
 }
 
+/**
+ * @param {string} url
+ * @param {number} [timeoutMs]
+ * @returns {Promise<any>}
+ */
 function _loadSvgImage(url, timeoutMs = 8000) {
 	return new Promise((resolve) => {
 		let done = false;
 		const img = new Image();
-		const finish = (v) => { if (!done) { done = true; resolve(v); } };
+		/** @param {any} v */
+	const finish = (v) => { if (!done) { done = true; resolve(v); } };
 		img.onload = () => finish(img.naturalWidth > 0 ? img : null);
 		img.onerror = () => finish(null);
 		setTimeout(() => finish(null), timeoutMs);
@@ -719,6 +827,9 @@ function _loadSvgImage(url, timeoutMs = 8000) {
  *                                     （用于验收「拍照时 hover 有没有被带进去」）
  * @param {string} [opts.onlyWithin]  只保留这个选择器命中的子树（+祖先链 +负 z 背景层），
  *                                    其余全部隐藏。海报场景必用：弹窗/引导/浮动件会被一刀切掉。
+ * @param {(clone:Node, root:Element) => number} [opts.onStaged] 起照前对**克隆体**的最后布景钩子
+ * @param {string[]} [opts.alsoKeep]  白名单之外的「画面层」选择器（挂在 body 上但属于画面的子树）
+ * @param {boolean} [opts.debug]      收集调试元素列表（`stats.debugEls`）
  * @returns {Promise<{canvas:HTMLCanvasElement, dataURL:string, width:number, height:number,
  *   cssWidth:number, cssHeight:number, stats:object}|null>} 失败返回 null
  */
@@ -729,7 +840,9 @@ export async function snapshotElement(root, opts = {}) {
 	if (!cssW || !cssH) { logWarn('domSnapshot', '目标元素尺寸为 0，放弃快照'); return null; }
 
 	_failedUrls.length = 0;
-	const clone = root.cloneNode(true);
+	const clone = /** @type {Element} */ (root.cloneNode(true));
+	/** stats 是边扫描边填的临时统计袋（plan/fixed 为配对数组，末尾会置 undefined 释放） */
+	/** @type {any} */
 	const stats = { count: 0, hidden: 0, plan: [], fixed: [], trackSrc: opts.trackElement || null };
 	if (opts.debug) stats.debugEls = [];
 	if (opts.onlyWithin) {
@@ -743,7 +856,7 @@ export async function snapshotElement(root, opts = {}) {
 			/* ★ 白名单根没找到 = 整条裁剪规则静默失效（全页数千节点全部逐节点内联样式，
 			   SVG 5MB、生成十秒，且**不报错**）。这种状态必须留痕，否则只能靠人肉发现变慢。 */
 			if (!r) logWarn('domSnapshot', `onlyWithin "${opts.onlyWithin}" 没找到任何元素 —— 白名单裁剪失效，本次快照会包含整页`);
-		} catch (e) { logCatch('domSnapshot', e); }
+		} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 	/* 白名单之外的「画面层」：挂在 body 上但属于画面（飞入的图形场等），见 `_plan` 的说明 */
 	if (Array.isArray(opts.alsoKeep) && opts.alsoKeep.length) stats.keepSet = collectSubtrees(root, opts.alsoKeep);
@@ -765,7 +878,7 @@ export async function snapshotElement(root, opts = {}) {
 	try {
 		clone.setAttribute('style', `${clone.getAttribute('style') || ''}`
 			+ `width:${cssW}px;height:${cssH}px;margin:0;`);
-	} catch (e) { logCatch('domSnapshot', e); }
+	} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 
 	/* ★★ 起照前的最后一道「布景」钩子 —— 必须在 `_plan` **读 computed 之前**执行，
 	   因为 `_plan` 是「读一次、写一次」的：一旦读过，值就被内联冻死了。
@@ -775,15 +888,15 @@ export async function snapshotElement(root, opts = {}) {
 	   两帧之间时，这些类不齐 ⇒ 海报里整行 `opacity:0;visibility:hidden`，一片空白。
 	   在这里补齐，等价于「把这一行放到它唱完那一刻的样子」。 */
 	if (typeof opts.onStaged === 'function') {
-		try { stats.stagedApplied = opts.onStaged(clone, root) || 0; } catch (e) { logCatch('domSnapshot', e); }
+		try { stats.stagedApplied = opts.onStaged(clone, root) || 0; } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 
 	try {
 		stats.gcs = gcs;
-		_plan(root, clone, stats, collectHidden(root, opts.hide), root, gcs);
+		_plan(root, clone, stats, collectHidden(root, opts.hide || []), root, gcs);
 		for (const [el, css] of stats.plan) {
 			if (!css) continue;
-			try { el.setAttribute('style', css); } catch (e) { logCatch('domSnapshot', e); }
+			try { el.setAttribute('style', css); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		}
 		stats.plan = undefined;
 		stats.keepSet = undefined;
@@ -808,12 +921,12 @@ export async function snapshotElement(root, opts = {}) {
 						s: [Math.round(a.left), Math.round(a.top), Math.round(a.width), Math.round(a.height)],
 						k: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)],
 						bg, op,
-						sc: _readBox(srcEl),
+						sc: _readBox(srcEl, undefined),
 						kc: _readBox(cloneEl, gcs),
 						pw, pk, hid,
 						st: String(cloneEl.getAttribute('style') || '').slice(0, 400),
 					});
-				} catch (e) { logCatch('domSnapshot', e); }
+				} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 			}
 			stats.debug = list;
 		}
@@ -837,14 +950,14 @@ export async function snapshotElement(root, opts = {}) {
 					backgroundColor: tcs.getPropertyValue('background-color'),
 					filter: tcs.getPropertyValue('filter'),
 				};
-			} catch (e) { logCatch('domSnapshot', e); }
+			} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		}
 		stats.trackSrc = undefined;
 		stats.trackClone = undefined;
 		stats.keepSet = undefined;
 		/* 根节点尺寸已在读样式**之前**钉死（见上）—— 这里不再重复设置：
 		   写回阶段用的是 computed 值，其中 width/height/margin 已经是钉死后的正确值。 */
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logCatch('domSnapshot', e);
 	}
 
@@ -877,7 +990,7 @@ export async function snapshotElement(root, opts = {}) {
 		stats.fixed = undefined;
 
 		let xml;
-		try { xml = new XMLSerializer().serializeToString(clone); } catch (e) { logCatch('domSnapshot', e); return null; }
+		try { xml = new XMLSerializer().serializeToString(clone); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); return null; }
 
 		const scale = Math.max(1, Math.min(4, Number(opts.scale) || 2));
 		const svg = svgShell(xml, cssW, cssH, scale);
@@ -894,18 +1007,18 @@ export async function snapshotElement(root, opts = {}) {
 		ctx.drawImage(img, 0, 0, o.w, o.h);
 
 		let dataURL;
-		try { dataURL = canvas.toDataURL('image/png'); } catch (e) {
+		try { dataURL = canvas.toDataURL('image/png'); } catch (/** @type {any} */ e) {
 			/* 被污染 —— 说明有跨域资源没走代理。返回 canvas 无用，直接判失败。 */
 			logWarn('domSnapshot', '画布被污染（有跨域资源没走代理）:', e && e.message ? e.message : e);
 			return null;
 		}
 		return { canvas, dataURL, width: o.w, height: o.h, cssWidth: cssW, cssHeight: cssH, stats };
-	} catch (e) {
+	} catch (/** @type {any} */ e) {
 		logWarn('domSnapshot', '快照过程中出错：', e && e.message ? e.message : e);
 		return null;
 	} finally {
 		/* 暂存区必须无条件撤掉 */
-		try { staged.frame.remove(); } catch (e) { logCatch('domSnapshot', e); }
+		try { staged.frame.remove(); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	}
 }
 
@@ -934,6 +1047,11 @@ export function cropCanvas(src, rect) {
 /**
  * 采样一张画布，返回「不透明像素占比」与「亮度标准差」。
  * 用于验收：标准差接近 0 说明是纯色（没画上东西）。
+ */
+/**
+ * @param {any} canvas
+ * @param {number} [step]
+ * @returns {any}
  */
 export function measureCanvas(canvas, step = 7) {
 	if (!canvas) return { opaqueRatio: 0, sd: 0, mean: 0 };

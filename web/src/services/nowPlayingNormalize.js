@@ -8,7 +8,12 @@
  *  - 通用 JSON：song/name、singer/author、picUrl/image
  * ============================================================ */
 
-/* 按键序取首个非空字符串（数值转字符串；数组取首元素，元素为对象时取其 name/value/title/artist） */
+/**
+ * 按键序取首个非空字符串（数值转字符串；数组取首元素，元素为对象时取其 name/value/title/artist）。
+ * @param {any} obj
+ * @param {string[]} keys
+ * @returns {string}
+ */
 function firstStr(obj, keys) {
     for (const k of keys) {
         const v = obj[k];
@@ -27,7 +32,12 @@ function firstStr(obj, keys) {
     return '';
 }
 
-/* 按键序取首个可解析为数值的字段（兼容字符串数字） */
+/**
+ * 按键序取首个可解析为数值的字段（兼容字符串数字）。
+ * @param {any} obj
+ * @param {string[]} keys
+ * @returns {number}
+ */
 function firstNum(obj, keys) {
     for (const k of keys) {
         const v = obj[k];
@@ -47,6 +57,7 @@ export function normalizeNowPlayingPayload(raw) {
     /* 层次合并：平铺 → data 包裹 → song/track 子对象，后层覆盖前层同名键，
        兼容 {data:{song:{...}}} / {data:{track:{...}}} / 顶层 song/track 各类形态 */
     const nodes = [raw];
+    /** @param {any} o */
     const push = (o) => { if (o && typeof o === 'object') nodes.push(o); };
     push(raw.data);
     push(raw.song);
@@ -69,6 +80,7 @@ export function normalizeNowPlayingPayload(raw) {
     const playerNode = (raw.player && typeof raw.player === 'object') ? raw.player
         : (raw.data && raw.data.player && typeof raw.data.player === 'object') ? raw.data.player
             : null;
+    /** @param {any} v */
     const pOk = (v) => v === true || v === 'true';
     /* 「正在播放」判定：
        ① 显式正键：isPlaying / is_playing / playing / state|playState='playing'；
@@ -111,7 +123,11 @@ export function normalizeNowPlayingPayload(raw) {
     };
 }
 
-/** 曲目身份键：跨负载做“切歌”判等用（一律小写，忽略空白） */
+/**
+ * 曲目身份键：跨负载做“切歌”判等用（一律小写，忽略空白）。
+ * @param {any} info
+ * @returns {string}
+ */
 export function nowPlayingKey(info) {
     return `${(info.title || '').trim().toLowerCase()}|${(info.artist || '').trim().toLowerCase()}`;
 }
