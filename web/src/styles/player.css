@@ -21,24 +21,33 @@
             position: relative;
             z-index: 10;
             margin: 0 auto 20px;
-            padding: 12px 24px 14px;
-            background: rgba(30, 30, 35, 0.75);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            padding: 10px 18px 11px;
+            background: rgba(14, 16, 22, 0.44);
+            backdrop-filter: blur(26px) saturate(175%);
+            -webkit-backdrop-filter: blur(26px) saturate(175%);
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12);
             flex-shrink: 0;
             animation: bottomBarIn 0.4s var(--e-enter);
             /* 三栏布局 */
             flex-direction: row;
             align-items: center;
             justify-content: space-between;
-            gap: 20px;
-            /* 浮空圆角矩形：不填满宽度，居中 */
-            width: fit-content;
+            gap: 14px;
+            /* 浮空圆角矩形：定宽上限足够容纳展开按钮行，避免动画期溢出跳变 */
+            width: min(940px, calc(100% - 40px));
             max-width: calc(100% - 40px);
             min-width: 0;
+            transition: width var(--d-layer) var(--e-enter-soft),
+                        min-width var(--d-layer) var(--e-enter-soft),
+                        max-width var(--d-layer) var(--e-enter-soft),
+                        padding var(--d-layer) var(--e-enter-soft),
+                        gap var(--d-layer) var(--e-enter-soft),
+                        border-radius var(--d-layer) var(--e-enter-soft),
+                        background var(--d-base) var(--e-enter-soft),
+                        border-color var(--d-base) var(--e-enter-soft),
+                        box-shadow var(--d-base) var(--e-enter-soft);
         }
 
         @keyframes bottomBarIn {
@@ -50,10 +59,25 @@
         .bottom-song-card {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             flex: 0 0 auto;
-            min-width: 180px;
-            max-width: 240px;
+            width: 180px;
+            min-width: 148px;
+            max-width: 204px;
+            min-height: 0;
+            max-height: 56px;
+            overflow: hidden;
+            transform: translateX(0) scale(1);
+            opacity: 1;
+            transition: width var(--d-layer) var(--e-enter-soft),
+                        min-width var(--d-layer) var(--e-enter-soft),
+                        max-width var(--d-layer) var(--e-enter-soft),
+                        min-height var(--d-layer) var(--e-enter-soft),
+                        max-height var(--d-layer) var(--e-enter-soft),
+                        opacity var(--d-base) var(--e-enter-soft) 85ms,
+                        transform var(--d-base) var(--e-enter-soft) 85ms,
+                        margin var(--d-layer) var(--e-enter-soft),
+                        padding var(--d-layer) var(--e-enter-soft);
         }
 
         .bottom-song-cover {
@@ -105,21 +129,35 @@
 
         .play-source-badge {
             flex: 0 0 auto;
-            max-width: 118px;
-            padding: 1px 7px;
+            width: 22px;
+            height: 22px;
+            padding: 2px;
+            align-items: center;
+            justify-content: center;
             font-family: inherit;
             font-size: 9.5px;
-            line-height: 1.55;
+            line-height: 1;
             font-weight: 600;
-            color: rgba(255, 255, 255, .72);
-            background: rgba(255, 255, 255, .1);
-            border: 1px solid rgba(255, 255, 255, .18);
-            border-radius: 999px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            color: rgba(255, 255, 255, .82);
+            background: rgba(255, 255, 255, .09);
+            border: 1px solid rgba(255, 255, 255, .15);
+            border-radius: 7px;
             cursor: pointer;
+            box-sizing: border-box;
             /* 刻意不用 backdrop-filter：常驻元素，纯 CPU 设备上每帧都要重新做高斯模糊 */
+        }
+
+        .play-source-badge:not([hidden]) {
+            display: inline-flex;
+        }
+
+        .play-source-badge .ps-platform-icon {
+            width: 15px;
+            height: 15px;
+            display: block;
+            border-radius: 3px;
+            object-fit: contain;
+            pointer-events: none;
         }
 
         .play-source-badge:hover {
@@ -127,11 +165,15 @@
             color: #fff;
         }
 
-        /* 走公网/跨源兜底时提示性染色（用户最关心的正是这个状态） */
+        .play-source-badge.is-pending {
+            opacity: 0.62;
+        }
+
+        /* 走公网/跨源兜底或失败时微妙提示框线（纯 icon 不展示文字） */
         .play-source-badge.is-fallback {
             color: rgba(255, 208, 128, .95);
-            border-color: rgba(255, 208, 128, .34);
-            background: rgba(255, 170, 60, .14);
+            border-color: rgba(255, 208, 128, .38);
+            background: rgba(255, 170, 60, .12);
         }
 
         .play-source-badge[hidden] { display: none; }
@@ -139,74 +181,133 @@
         /* 中间控制区域 */
         .bottom-center-area {
             flex: 1;
-            max-width: 600px;
+            min-width: 0;
+            max-width: 620px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
+            transition: gap var(--d-layer) var(--e-enter-soft);
         }
 
-        /* 右侧占位 */
+        /* 右侧占位：视觉平衡左侧歌曲卡，窄屏/过渡期优先收缩让位中心控件区 */
         .bottom-right-spacer {
-            flex: 0 0 auto;
-            min-width: 180px;
-            max-width: 240px;
+            flex: 0 1 92px;
+            min-width: 0;
+            max-width: 112px;
+            transition: flex-basis var(--d-layer) var(--e-enter-soft),
+                        width var(--d-layer) var(--e-enter-soft),
+                        min-width var(--d-layer) var(--e-enter-soft),
+                        max-width var(--d-layer) var(--e-enter-soft),
+                        opacity var(--d-fast) var(--e-enter-soft);
         }
 
         /* 底部进度条区域 */
         .bottom-progress-area {
             display: flex;
             align-items: center;
-            gap: 14px;
-            margin-bottom: 10px;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 0;
+            transition: gap var(--d-layer) var(--e-enter-soft);
         }
 
         .bottom-progress-track {
             flex: 1;
-            height: 5px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 3px;
+            min-width: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 999px;
             position: relative;
             cursor: pointer;
-            transition: height 0.2s ease;
+            transition: height var(--d-fast) var(--e-enter-soft),
+                        background var(--d-fast) var(--e-enter-soft);
         }
 
         .bottom-progress-track:hover {
-            height: 7px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.24);
         }
 
         .bottom-progress-bar {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.9));
-            border-radius: 3px;
+            background: #ffffff;
+            border-radius: 999px;
             position: relative;
             z-index: 1;
             transition: width 0.08s linear;
         }
 
-        /* 时间显示（当前时间在上，总时间在下） */
+        .bottom-progress-bar::after {
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: #fff;
+            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+            transform: translateY(-50%) scale(0);
+            opacity: 0;
+            transition: transform var(--d-fast) var(--e-enter-soft),
+                        opacity var(--d-fast) var(--e-enter-soft);
+        }
+
+        .bottom-progress-track:hover .bottom-progress-bar::after {
+            transform: translateY(-50%) scale(1);
+            opacity: 1;
+        }
+
+        /* 时间显示（单行紧凑 tabular-nums） */
         .bottom-time-display {
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            line-height: 1.2;
+            flex-direction: row;
+            align-items: baseline;
+            justify-content: flex-end;
+            line-height: 1;
             font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
             user-select: none;
-            min-width: 44px;
-            padding-right: 16px;
-            margin-right: 16px;
+            min-width: 0;
+            max-width: 76px;
+            white-space: nowrap;
+            overflow: hidden;
+            flex-shrink: 0;
+            padding-right: 0;
+            margin-right: 0;
+            opacity: 1;
+            transition: max-width var(--d-layer) var(--e-enter-soft),
+                        opacity var(--d-fast) var(--e-enter-soft) 90ms;
         }
 
         .bottom-current-time {
-            font-size: 13px;
-            font-weight: 700;
-            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .bottom-current-time::after {
+            content: '/';
+            margin: 0 4px;
+            font-weight: 400;
+            opacity: 0.36;
         }
 
         .bottom-total-time {
             font-size: 11px;
-            color: rgba(255, 255, 255, 0.45);
+            color: rgba(255, 255, 255, 0.48);
+        }
+
+        /* 底部控制行非线性折叠容器（CSS Grid 1fr <-> 0fr） */
+        .bottom-controls-collapse {
+            display: grid;
+            grid-template-rows: 1fr;
+            grid-template-columns: minmax(0, 1fr);
+            justify-items: center;
+            opacity: 1;
+            transition: grid-template-rows var(--d-layer) var(--e-enter-soft),
+                        opacity var(--d-base) var(--e-enter-soft) 80ms;
         }
 
         /* 控制按钮行 */
@@ -214,7 +315,18 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            flex-wrap: nowrap;
+            gap: 6px;
+            min-height: 0;
+            transform: translateY(0) scale(1);
+            transform-origin: center top;
+            opacity: 1;
+            transition: transform var(--d-base) var(--e-enter-soft) 85ms,
+                        opacity var(--d-base) var(--e-enter-soft) 85ms;
+        }
+
+        .bottom-controls-row > * {
+            flex-shrink: 0;
         }
 
         /* 底部按钮基础样式 */
@@ -222,6 +334,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
             gap: 4px;
             background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -262,6 +375,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
             width: 48px;
             height: 48px;
             background: #fff;
@@ -291,3 +405,215 @@
             text-align: left;
         }
 
+
+        /* ========== 底部控制栏精修与非线性折叠 ========== */
+        .bottom-btn {
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            transition: background var(--d-fast) var(--e-enter-soft),
+                        color var(--d-fast) var(--e-enter-soft),
+                        border-color var(--d-fast) var(--e-enter-soft),
+                        transform var(--d-fast) var(--e-enter-soft);
+        }
+
+        .bottom-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+
+        .bottom-btn:active {
+            transform: scale(0.95);
+        }
+
+        .bottom-play-btn {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35),
+                        0 0 0 1px rgba(255, 255, 255, 0.14);
+            transition: background var(--d-fast) var(--e-enter-soft),
+                        box-shadow var(--d-fast) var(--e-enter-soft),
+                        transform var(--d-fast) var(--e-enter-soft);
+        }
+
+        .bottom-play-btn:hover {
+            box-shadow: 0 6px 20px rgba(var(--aria-accent-rgb, 255, 255, 255), 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.24);
+            transform: scale(1.05);
+        }
+
+        .bottom-collapse-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.68);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: background var(--d-fast) var(--e-enter-soft),
+                        color var(--d-fast) var(--e-enter-soft),
+                        border-color var(--d-fast) var(--e-enter-soft),
+                        width var(--d-layer) var(--e-enter-soft),
+                        height var(--d-layer) var(--e-enter-soft),
+                        border-radius var(--d-layer) var(--e-enter-soft),
+                        opacity var(--d-fast) var(--e-enter-soft),
+                        transform var(--d-fast) var(--e-enter-soft);
+        }
+
+        .bottom-collapse-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.22);
+        }
+
+        .bottom-collapse-btn svg {
+            transition: transform var(--d-layer) var(--e-enter-soft);
+        }
+
+        /* 仅在折叠/展开过渡动画瞬间裁剪外层栅格轨道，不改变内部按钮行排版宽度，避免按钮挤压或跳变；
+           静止展开时恢复 overflow: visible 避免截断上方弹出菜单 */
+        .bottom-control-bar.is-bar-animating .bottom-controls-collapse {
+            overflow: hidden;
+        }
+
+        /* 折叠态：仅保留可交互的胶囊进度条 + 极简展开箭头，隐藏歌曲卡、时间标签与所有控制按钮 */
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed {
+            width: min(380px, calc(100% - 48px)) !important;
+            max-width: min(420px, calc(100% - 40px)) !important;
+            min-width: min(260px, calc(100% - 48px)) !important;
+            min-height: 0;
+            padding: 7px 10px 7px 14px !important;
+            gap: 8px !important;
+            border-radius: 999px !important;
+            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+            transition: width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        min-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        max-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        padding var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        gap var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        border-radius var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        background var(--d-base) var(--e-enter-soft),
+                        border-color var(--d-base) var(--e-enter-soft),
+                        box-shadow var(--d-base) var(--e-enter-soft);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-song-card {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transform: translateX(-6px) scale(0.96);
+            transition: width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        min-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        max-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        min-height var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        max-height var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity var(--d-instant) var(--e-enter-soft),
+                        transform var(--d-fast) var(--e-enter-soft),
+                        margin var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        padding var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        visibility 0s linear var(--d-fast);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-right-spacer {
+            flex: 0 0 0px !important;
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            margin: 0 !important;
+            opacity: 0;
+            pointer-events: none;
+            transition: flex-basis var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        min-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        max-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity var(--d-instant) var(--e-enter-soft);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-center-area {
+            max-width: none;
+            gap: 0;
+            transition: gap var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-progress-area {
+            gap: 0;
+            margin: 0;
+            transition: gap var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-progress-track {
+            height: 5px;
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-progress-track:hover {
+            height: 7px;
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-time-display {
+            max-width: 0 !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: max-width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity var(--d-instant) var(--e-enter-soft),
+                        visibility 0s linear var(--d-fast);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-controls-collapse {
+            grid-template-rows: 0fr;
+            opacity: 0;
+            overflow: hidden;
+            pointer-events: none;
+            transition: grid-template-rows var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity var(--d-instant) var(--e-enter-soft);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-controls-collapse > .bottom-controls-row {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transform: translateY(-4px) scale(0.95);
+            transition: transform var(--d-fast) var(--e-enter-soft),
+                        opacity var(--d-instant) var(--e-enter-soft),
+                        visibility 0s linear var(--d-fast);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-collapse-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            border-color: transparent;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.56);
+            transition: background var(--d-fast) var(--e-enter-soft),
+                        color var(--d-fast) var(--e-enter-soft),
+                        border-color var(--d-fast) var(--e-enter-soft),
+                        width var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        height var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        border-radius var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity var(--d-fast) var(--e-enter-soft),
+                        transform var(--d-fast) var(--e-enter-soft);
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-collapse-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+        }
+
+        html#ariaRoot .player-container .bottom-control-bar.is-collapsed .bottom-collapse-btn svg {
+            transform: rotate(180deg);
+            transition: transform var(--d-layer) cubic-bezier(0.4, 0, 0.2, 1);
+        }

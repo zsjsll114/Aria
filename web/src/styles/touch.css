@@ -39,8 +39,9 @@
                 min-height: 40px;
             }
             .mobile-page-toggle {
-                width: 44px;
-                height: 44px;
+                width: auto;
+                min-width: 80px;
+                height: 40px;
             }
             /* 滑杆轨道加高触控热区（视觉条高度不变，热区上下扩展） */
             .progress-track,

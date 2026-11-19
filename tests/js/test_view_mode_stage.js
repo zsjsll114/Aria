@@ -26,7 +26,7 @@ const MV_CSS = read('mv.css');
 
 /** 用整屏 absolute 舞台盖住默认布局的全屏模式（wordcloud 不在此列：它用
  *  相对定位 + z-index 把播放列浮在上层，本来就不盖） */
-const STAGE_MODES = ['pv', 'tempera', 'dimension', 'tunnel', 'letterpress', 'neon', 'jizura'];
+const STAGE_MODES = ['pv', 'tempera', 'dimension', 'tunnel', 'letterpress', 'neon', 'jizura', 'prism', 'astrolabe', 'vitrail', 'focalcut'];
 
 /** 舞台类名 → 模式名（这些模式的底由 mv.css 直接改成 transparent） */
 const STAGE_TO_MODE = {

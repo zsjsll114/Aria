@@ -18,6 +18,25 @@ LOCAL_MUSIC_DIR = os.path.join(BASE_DIR, 'local_music')
 # 确保 local_music 目录存在
 os.makedirs(LOCAL_MUSIC_DIR, exist_ok=True)
 
+# 测试/隔离实例可通过环境变量重定向用户持久化数据，避免覆盖真实 user_config.json 等配置
+_USER_DATA_DIR_OVERRIDE = os.environ.get('ARIA_USER_DATA_DIR', '').strip()
+if _USER_DATA_DIR_OVERRIDE:
+    USER_DATA_DIR = os.path.abspath(_USER_DATA_DIR_OVERRIDE)
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+else:
+    USER_DATA_DIR = ''
+
+def _resolve_user_file(env_name, isolated_name, default_rel_path):
+    explicit = os.environ.get(env_name, '').strip()
+    if explicit:
+        parent = os.path.dirname(os.path.abspath(explicit))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        return os.path.abspath(explicit)
+    if USER_DATA_DIR:
+        return os.path.join(USER_DATA_DIR, isolated_name)
+    return os.path.join(BASE_DIR, *default_rel_path)
+
 def sanitize_filename(name):
     """移除 Windows / Linux 文件名非法字符"""
     if not name or not name.strip():
@@ -526,7 +545,7 @@ def handle_delete_font(data_dict):
     return {'success': True}
 
 # ==================== 用户全量配置持久化 (user_config.json) ====================
-USER_CONFIG_FILE = os.path.join(BASE_DIR, 'user_config.json')
+USER_CONFIG_FILE = _resolve_user_file('ARIA_USER_CONFIG_FILE', 'user_config.json', ('user_config.json',))
 
 def load_user_config():
     """读取本地 user_config.json 配置文件，若不存在则自动初始化创建"""
@@ -576,7 +595,7 @@ def save_user_config(config_dict):
 
 
 # ==================== AI 凭据独立保险文件 (cache/ai_credentials.json) ====================
-AI_CREDENTIALS_FILE = os.path.join(BASE_DIR, 'cache', 'ai_credentials.json')
+AI_CREDENTIALS_FILE = _resolve_user_file('ARIA_AI_CREDENTIALS_FILE', 'ai_credentials.json', ('cache', 'ai_credentials.json'))
 
 
 def _load_ai_credentials():
@@ -664,7 +683,7 @@ def _restore_ai_credentials(config):
                         target[key] = conf[key]
 
 # ==================== 听歌识曲本地化缓存 (isrc -> 本地化歌名, 持久化到 recognize_cache.json) ====================
-RECOGNIZE_CACHE_FILE = os.path.join(BASE_DIR, 'recognize_cache.json')
+RECOGNIZE_CACHE_FILE = _resolve_user_file('ARIA_RECOGNIZE_CACHE_FILE', 'recognize_cache.json', ('recognize_cache.json',))
 
 def load_recognize_cache():
     """读取本地 recognize_cache.json（isrc -> {title, artist, platform, id, ...}），不存在则返回空对象"""
@@ -692,7 +711,7 @@ def save_recognize_cache(cache_dict):
     return {'success': True, 'count': len(cleaned)}
 
 # ==================== 在线音频临时短时缓存 (防 QQ 音乐 URL 失效 / 单曲轮转) ====================
-AUDIO_CACHE_DIR = os.path.join(BASE_DIR, 'cache', 'audio')
+AUDIO_CACHE_DIR = os.path.join(USER_DATA_DIR, 'audio_cache') if USER_DATA_DIR else os.path.join(BASE_DIR, 'cache', 'audio')
 os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 # 未晋升的 .tmp 残留超时（崩溃/中断下载留下的僵尸文件，超时直接清理）
 AUDIO_TMP_STALE_HOURS = 1

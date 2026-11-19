@@ -115,15 +115,8 @@ test('能力表：QQ / 网易 / 酷狗 三源都有热词与联想词', () => {
     for (const s of ['tencent', 'netease', 'kugou']) {
         assert.equal(hotSupported(s), true, s + ' 应有热词');
         assert.equal(suggestSupported(s), true, s + ' 应有联想词');
-        assert.equal(effectiveSource(s, { qishui: 'netease' }), s, '自身有能力就不该借别的源');
+        assert.equal(effectiveSource(s, {}), s, '自身有能力就不该借别的源');
     }
-});
-
-test('能力表：汽水没有这两条接口 → 回退网易（宁可给通用建议也不留空白）', () => {
-    const FALLBACK = { qishui: 'netease' };
-    assert.equal(effectiveSource('qishui', FALLBACK), 'netease');
-    assert.equal(hotSupported('qishui'), true, '经网易回退后算"可用"');
-    assert.equal(suggestSupported('qishui'), true, '经网易回退后算"可用"');
 });
 
 test('能力表：未知 / 本地 等非法源 → 不支持，也不冒充回退', () => {

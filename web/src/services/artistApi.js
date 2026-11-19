@@ -14,7 +14,6 @@
  *   酷狗    ✔ /search?type=author             /artist/detail     ?id=
  *                                             /artist/audios     ?id=&sort=hot&pagesize=(≤300)
  *                                             /artist/albums     ?id=&sort=hot&pagesize=(≤60)
- *   汽水    ✗ 适配层未暴露 artist 路由         ✗（同上，vendor 有 getArtist 但未挂路由）
  *
  * 作品条数实测上限（2026-10-03，周杰伦）：QQ hotsong 60 / 专辑 43；
  * 网易 /artist/songs 200 / 专辑 44；酷狗 audios 300 / 专辑 49。
@@ -120,7 +119,7 @@ function fmtCount(n) {
 
 /* ---------------- 歌手搜索 ---------------- */
 
-/** 该源是否支持「按关键词搜歌手」。QQ 的 getSearchByKey 实测不出歌手分组，汽水未暴露路由。 */
+/** 该源是否支持「按关键词搜歌手」。QQ 的 getSearchByKey 实测不出歌手分组。 */
 /** @param {string} source @returns {boolean} */
 export function artistSearchSupported(source) {
     const k = selfhostKeyOf(source);
@@ -399,7 +398,6 @@ export async function fetchArtist(artist, opts = {}) {
             year: String(al.publish_date || '').slice(0, 4),
         }));
     } else {
-        /* 汽水：vendor 有 getArtist/listArtistTracks，但 scripts/qishui-server.mjs 未挂路由 */
         result.empty = true;
         return result;
     }

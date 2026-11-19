@@ -137,7 +137,7 @@ def main():
         # —— 4. 点得动：点第 3 颗（松雨）→ --theme-color 变、active 落在这颗上 ——
         clicked = page.evaluate("""async () => {
             const t = await import('/src/config/themePalette.js');
-            const row = document.querySelector('.appearance-global-section .setting-color-row[data-var="themeColor"]');
+            const row = document.querySelector('.setting-color-row[data-var="themeColor"]');
             const target = t.ACCENT_PRESETS[2].hex;
             const sw = row.querySelector(`.color-swatch[data-color="${target}"]`);
             if (!sw) return { err: 'swatch not found for ' + target };

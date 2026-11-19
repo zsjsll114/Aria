@@ -19,14 +19,20 @@
 
 import { snapshotElement, cropCanvas, registerCanvasSnapshot, measureCanvas } from '../core/domSnapshot.js';
 import { showCtxMenu } from './80-context-menu.js';
+import { openOverlay } from '../ui/overlay.js';
 import { offerReveal } from '../core/revealPath.js';
+import { escapeHtml as esc } from '../utils/formatters.js';
+import { getLanguage, translatePhrase } from '../core/i18n.js';
 import {
-	composePoster, saveBlob, posterFileName,
-	POSTER_FRAMES, POSTER_DEFAULT_FRAME, posterFrameFor, captureIsRenderable,
+	composePoster, composeStudioPoster, saveBlob, posterFileName,
+	POSTER_FRAMES, POSTER_STUDIO_FRAMES, POSTER_STYLES,
+	POSTER_DEFAULT_FRAME, posterFrameFor, captureIsRenderable,
 } from '../core/lyricPoster.js';
 import { logInfo, logWarn, logCatch } from '../services/log.js';
 
 const TAG = 'lyricPoster';
+const tx = (s) => translatePhrase(s);
+const MAX_STUDIO_LINES = 6;
 
 /** 视图模式 → 海报角标短名（与样式选择器显示名一致） */
 const MODE_LABEL = {
@@ -34,12 +40,17 @@ const MODE_LABEL = {
 	lyrics: '歌词',
 	flyin: '飞白',
 	wordcloud: '词云',
-	pv: '诗镜',
+	pv: '诗境',
 	tempera: '版画',
 	tunnel: '格律',
 	dimension: '穿行',
+	jizura: '字缀',
 	letterpress: '活字',
 	neon: '霓虹',
+	prism: '棱镜',
+	astrolabe: '画册',
+	vitrail: '琉璃龛',
+	focalcut: '镜幕',
 };
 
 /**
@@ -55,7 +66,7 @@ const HIDE_SELECTORS = [
 	/* 添加到歌单 / 收藏那颗小按钮也很出戏，一起摘掉（只摘海报克隆体，不动真 DOM） */
 	'#addToPlaylistBtn', '#favoriteBtn', '.favorite-btn',
 	'#mobilePageToggle', '.mobile-lyric-preview', '.mobile-page-toggle',
-	'.lyric-offset-control', '.song-source-badge-slot',
+	'.lyric-offset-control', '.song-source-badge-slot', '.lyrics-empty-state',
 	'.audio-rec-body', '.audio-rec-panel', '.sleep-timer-panel',
 	'.settings-panel', '.eq-panel', '.view-mode-cards', '.music-drawer',
 	'.source-status-list', '.storage-panel', '.storage-panel-host',
@@ -73,6 +84,8 @@ const HIDE_SELECTORS = [
 	'#playlistManagerToggle', '.plm-toggle', '#plmPanel', '.plm-panel', '#plmMask', '.plm-mask',
 	/* AI 状态气泡也是 fixed 悬浮件，海报上不需要 */
 	'#aiStatusPanel', '.ai-status-panel',
+	/* 海报工坊浮层本身（重新抓取画面时必须从克隆体隐藏） */
+	'#lyricPosterOverlay', '.lp-studio-overlay',
 ];
 
 /* ★★ 白名单之外的「画面层」：它们挂在 `document.body` 上，不属于 `.player-container`，
@@ -103,19 +116,74 @@ const VISUAL_LAYERS = [
  *   自定义属性驱动的，只要字拿到 `.active` 就会生效 —— 这正是"飞入的角度与错落"。
  * @returns {number} 补齐的节点数（诊断用）
  */
-function stageForMode(cloneEl) {
+function stageForMode(cloneEl, targetLineIndex) {
 	if (!cloneEl) return 0;
+	let n = 0;
+	/* view-cover 克隆体隐藏空白封面占位层并微调左栏重心，避免controls-area隐藏后下半截留空 */
+	const pcClone = cloneEl.querySelector('.player-container');
+	if (pcClone && pcClone.classList.contains('view-cover')) {
+		for (const cov of pcClone.querySelectorAll('.cover-area .song-cover')) {
+			const hasSrc = Boolean(cov.getAttribute('src'));
+			const op = Number(cov.style.opacity === '' ? 1 : cov.style.opacity);
+			if (!hasSrc || op < 0.05) {
+				cov.style.setProperty('display', 'none', 'important');
+				n++;
+			}
+		}
+		const ctrlWrap = pcClone.querySelector('.player-controls-wrapper');
+		if (ctrlWrap) {
+			ctrlWrap.style.setProperty('justify-content', 'center', 'important');
+			ctrlWrap.style.setProperty('gap', '14px', 'important');
+		}
+	}
+
+	const allLrc = Array.isArray(globalThis.lyrics) ? globalThis.lyrics : [];
+	const targetIdx = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && targetLineIndex < allLrc.length)
+		? targetLineIndex
+		: Number(globalThis.activeLineIndex);
+	const targetObj = (Number.isInteger(targetIdx) && targetIdx >= 0 && allLrc[targetIdx]) ? allLrc[targetIdx] : null;
+	const transAreas = Array.from(cloneEl.querySelectorAll('.flyin-translation-area, .tunnel-translation-area'));
+	for (const transArea of transAreas) {
+		try {
+			if (targetObj) {
+				const lyCfg = (globalThis.appSettings && globalThis.appSettings.lyrics) || {};
+				const showTrans = lyCfg.showTranslation !== false;
+				const showRoma = lyCfg.showRomaji !== false;
+				const tEl = transArea.querySelector('#flyinTranslation, .flyin-translation-text');
+				const rEl = transArea.querySelector('#flyinRomaji, .flyin-romaji-text');
+				const rawT = String(targetObj.translation || '').trim();
+				const rawR = String(targetObj.romaji || '').trim();
+				if (tEl) tEl.textContent = (showTrans && rawT && rawT !== '//') ? rawT : '';
+				if (rEl) rEl.textContent = (showRoma && rawR) ? rawR : '';
+			}
+			if ((transArea.textContent || '').trim()) {
+				transArea.style.setProperty('bottom', '28px', 'important');
+				transArea.style.setProperty('text-shadow', '0 2px 10px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.65)', 'important');
+				if (transArea.style.opacity) transArea.style.opacity = '';
+				if (transArea.style.visibility) transArea.style.visibility = '';
+				n++;
+			}
+		} catch (e) { logCatch(TAG, e); }
+	}
+
 	const lines = Array.from(cloneEl.querySelectorAll('.line'));
-	if (!lines.length) return 0;
-	let line = lines.find((l) => l.classList.contains('active'));
+	if (!lines.length) return n;
+	let line = null;
+	if (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && targetLineIndex < lines.length) {
+		for (const l of lines) l.classList.remove('active');
+		line = lines[targetLineIndex];
+		line.classList.add('active');
+	} else {
+		line = lines.find((l) => l.classList.contains('active'));
+	}
 	if (!line) {
 		/* 没人在唱（暂停/空闲）：退回"当前行"，再退回第一行 —— 总比整张空白强 */
 		const idx = Number(globalThis.activeLineIndex);
 		line = lines[Number.isFinite(idx) && idx >= 0 && idx < lines.length ? idx : 0];
-		if (!line) return 0;
+		if (!line) return n;
 		line.classList.add('active');
 	}
-	let n = 1;
+	n++;
 	/* ★ 2026-10-06 起**所有模式**都补到"整行已唱完"（此前只补飞入）。
 	   用户报的「导出只显示一半」就是这个：逐字高亮是按播放进度铺的 ——
 	   `.word-highlight` 用 mask + `--reveal` 百分比只显示到当前唱到的那一帧，
@@ -164,11 +232,15 @@ function stageForMode(cloneEl) {
  *   这里给 PV（SonnetEngine）与凝彩（TemperaPixiRuntime）各挂一个提供者。
  */
 let _providersReady = false;
+let _stageSonnetFn = null;
+let _stageTemperaFn = null;
+
 async function ensureCanvasProviders() {
 	if (_providersReady) return;
 	_providersReady = true;
 	try {
 		const sonnet = await import('../core/visualizers/sonnet/sonnetMode.js');
+		if (typeof sonnet.stageSonnetForPoster === 'function') _stageSonnetFn = sonnet.stageSonnetForPoster;
 		registerCanvasSnapshot((cv) => {
 			const eng = typeof sonnet.getSonnetEngine === 'function' ? sonnet.getSonnetEngine() : null;
 			const app = eng && eng.app;
@@ -181,12 +253,25 @@ async function ensureCanvasProviders() {
 	} catch (e) { logCatch(TAG, e); }
 	try {
 		const tempera = await import('../core/visualizers/tempera/temperaMode.js');
+		if (typeof tempera.stageTemperaForPoster === 'function') _stageTemperaFn = tempera.stageTemperaForPoster;
 		registerCanvasSnapshot((cv) => {
 			const rt = typeof tempera.getTemperaRuntime === 'function' ? tempera.getTemperaRuntime() : null;
 			const app = rt && rt.app;
 			if (!app || !app.canvas || app.canvas !== cv || !app.renderer) return null;
 			try {
 				app.renderer.render(app.stage);
+				return cv.toDataURL('image/png');
+			} catch (e) { logCatch(TAG, e); return null; }
+		});
+	} catch (e) { logCatch(TAG, e); }
+	try {
+		registerCanvasSnapshot((cv) => {
+			const vm = typeof globalThis !== 'undefined' ? globalThis.mainVisManager : null;
+			const inst = vm && vm.activeInstance;
+			if (!inst || inst._destroyed || !inst._canvas || inst._canvas !== cv) return null;
+			if (typeof inst._renderCurrentFrame !== 'function') return null;
+			try {
+				inst._renderCurrentFrame(typeof performance !== 'undefined' ? performance.now() : 0);
 				return cv.toDataURL('image/png');
 			} catch (e) { logCatch(TAG, e); return null; }
 		});
@@ -205,7 +290,7 @@ function hint(msg) {
 
 function currentAccent() {
 	try {
-		const v = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim();
+		const v = getComputedStyle(document.documentElement).getPropertyValue('--aria-accent').trim();
 		if (v) return v;
 	} catch (e) { logCatch(TAG, e); }
 	const p = (typeof window !== 'undefined' && window.coverPalette) || null;
@@ -225,9 +310,23 @@ function currentSong() {
 
 function currentCoverUrl(song) {
 	if (song && song.cover) return song.cover;
-	const el = (typeof document !== 'undefined')
-		? (document.getElementById('songCover') || document.getElementById('bottomSongCover'))
-		: null;
+	if (typeof document === 'undefined') return '';
+	const c1 = document.getElementById('songCover');
+	const c2 = document.getElementById('songCover2');
+	const isVisible = (node) => {
+		if (!node || !(node.currentSrc || node.src)) return false;
+		if (node.style && node.style.opacity === '0') return false;
+		try {
+			return Number(getComputedStyle(node).opacity) > 0.05;
+		} catch (e) {
+			logCatch(TAG, e);
+			return true;
+		}
+	};
+	const el = (isVisible(c1) ? c1 : (isVisible(c2) ? c2 : null))
+		|| document.getElementById('bottomSongCover')
+		|| c1
+		|| c2;
 	return el ? (el.currentSrc || el.src || '') : '';
 }
 
@@ -236,7 +335,7 @@ function modeKey() {
 }
 
 function modeBadge() {
-	return MODE_LABEL[modeKey()] || modeKey();
+	return tx(MODE_LABEL[modeKey()] || modeKey());
 }
 
 function today() {
@@ -263,6 +362,7 @@ let _lastCaptureStats = null;
 function contentRectOf(pc) {
 	const pr = pc.getBoundingClientRect();
 	const stage = { x: pr.left, y: pr.top, w: pr.width, h: pr.height };
+	if (pc.classList.contains('view-cover')) return stage;
 	const la = pc.querySelector('.lyrics-area-wrapper');
 	if (!la) return stage;
 	let cs;
@@ -299,19 +399,30 @@ function contentRectOf(pc) {
  *   `stageForPoster()` 返回的闭包会在下一帧按真实播放时间重画（标志位 + 强制帧）。
  * 没有实现该方法的模式（PV/凝彩…）原样抓帧，行为不变。
  */
-function stageCanvasForPoster() {
+function stageCanvasForPoster(targetLineIndex) {
 	try {
+		const mode = modeKey();
+		if (mode === 'pv' && typeof _stageSonnetFn === 'function') {
+			return _stageSonnetFn(targetLineIndex) || null;
+		}
+		if (mode === 'tempera' && typeof _stageTemperaFn === 'function') {
+			return _stageTemperaFn(targetLineIndex) || null;
+		}
+		if (mode === 'tunnel') {
+			const te = globalThis.Aria && globalThis.Aria.__tunnelEngine;
+			if (te && typeof te.stageForPoster === 'function') return te.stageForPoster(targetLineIndex) || null;
+		}
 		const vm = globalThis.mainVisManager;
 		const inst = vm && vm.activeInstance;
 		if (!inst || typeof inst.stageForPoster !== 'function') return null;
-		return inst.stageForPoster() || null;
+		return inst.stageForPoster(targetLineIndex) || null;
 	} catch (e) {
 		logCatch(TAG, e);
 		return null;
 	}
 }
 
-export async function captureView(scaleOverride) {
+export async function captureView(scaleOverride, targetLineIndex) {
 	if (typeof document === 'undefined') return null;
 	await ensureCanvasProviders();
 	const pc = document.querySelector('.player-container');
@@ -326,7 +437,7 @@ export async function captureView(scaleOverride) {
 	const cssH = body.clientHeight || Math.round(br.height);
 	const scale = Math.max(1, Math.min(3, Number(scaleOverride) || 1.6));
 
-	const unstage = stageCanvasForPoster();
+	const unstage = stageCanvasForPoster(targetLineIndex);
 	let snap = null;
 	try {
 		snap = await snapshotElement(body, {
@@ -341,7 +452,7 @@ export async function captureView(scaleOverride) {
 		   只按 `.player-container` 裁会把它们整层切掉 —— 见 VISUAL_LAYERS 注释。 */
 		alsoKeep: VISUAL_LAYERS,
 		/* ★ 起照前给克隆体补上"唱完那一刻"的类（飞入模式否则整行不可见）—— 见 stageForMode */
-		onStaged: stageForMode,
+		onStaged: (cloneEl) => stageForMode(cloneEl, targetLineIndex),
 		});
 	} finally {
 		/* ★ 无论抓帧成功与否都要还原：失败时把画面留在补帧上，用户会看到"卡住的一帧" */
@@ -395,11 +506,24 @@ function visibleLyricNodes() {
 	const pc = typeof document !== 'undefined' ? document.querySelector('.player-container') : null;
 	if (!pc) return 0;
 	let n = 0;
-	for (const el of pc.querySelectorAll('.line')) {
+	/* DOM 歌词行、活字(.lp-line)、格律(.tunnel-view-container)、穿行(.dim-line)、默认封面曲名 */
+	for (const el of pc.querySelectorAll('.line, .lp-line, .dim-line, .tunnel-stage-layer')) {
 		const text = el.textContent;
 		if (!text || !text.trim()) continue;
 		if (inDisplayNoneSubtree(el, pc)) continue;
 		n++;
+	}
+	if (n === 0 && pc.classList.contains('view-tunnel')) {
+		const tun = pc.querySelector('.tunnel-view-container');
+		if (tun && !inDisplayNoneSubtree(tun, pc) && (tun.textContent || '').trim()) n++;
+	}
+	if (n === 0 && pc.classList.contains('view-letterpress')) {
+		const lp = pc.querySelector('.lp-stage');
+		if (lp && !inDisplayNoneSubtree(lp, pc) && (lp.textContent || '').trim()) n++;
+	}
+	if (n === 0 && (pc.classList.contains('view-cover') || pc.classList.contains('view-lyrics'))) {
+		const song = currentSong();
+		if (song && song.title) n++;
 	}
 	return n;
 }
@@ -500,8 +624,9 @@ export async function generatePoster(frameId) {
 			frame: frame.id,
 			view,
 			/* ★ 模式决定「铺满」还是「内嵌」——见 lyricPoster 的 FULL_BLEED_MODES。
-			   传错的后果就是用户投诉的那条：「穿行海报不应该在毛玻璃框里面显示」。 */
+			   方图/竖图走 fit:'safe' 确保完整歌词句不被左右裁切。 */
 			mode: modeKey(),
+			fit: frame.id === 'native' ? 'cover' : 'safe',
 			song,
 			accent: currentAccent(),
 			footer: `Aria · ${today()}`,
@@ -566,11 +691,552 @@ function wireBottomMoreItem() {
 	item.addEventListener('click', (ev) => {
 		ev.stopPropagation();
 		try { document.getElementById('moreSubmenu')?.classList.remove('open'); } catch (e) { logCatch(TAG, e); }
-		try {
-			const r = item.getBoundingClientRect();
-			showPosterMenu(Math.round(r.left), Math.round(r.top - 6));
-		} catch (e) { logCatch(TAG, e); }
+		openPosterStudio().catch((e) => logCatch(TAG, e));
 	});
+}
+
+/* ============================ 交互式海报工坊 ============================ */
+
+let _studioSession = null;
+
+function isEnglishUi() {
+	try { return getLanguage() === 'en-US'; } catch (e) { logCatch(TAG, e); return false; }
+}
+
+function collectSongLyrics() {
+	const raw = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.lyrics))
+		? globalThis.lyrics
+		: [];
+	const activeIdx = Number(typeof globalThis !== 'undefined' ? globalThis.activeLineIndex : -1);
+	const out = [];
+	let defaultIdx = -1;
+	for (let i = 0; i < raw.length; i++) {
+		const item = raw[i];
+		const orig = String(item?.original ?? item?.text ?? '').trim();
+		if (!orig) continue;
+		const tr = String(item?.translation ?? '').trim();
+		const isCurrent = i === activeIdx;
+		if (isCurrent && defaultIdx < 0) defaultIdx = out.length;
+		out.push({
+			orig,
+			trans: tr && tr !== '//' ? tr : '',
+			isCurrent,
+		});
+	}
+	if (defaultIdx < 0 && out.length) defaultIdx = 0;
+	return { lines: out, defaultIdx };
+}
+
+function resolveCurrentFontFamily() {
+	try {
+		const ff = getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim();
+		if (ff) return ff;
+	} catch (e) { logCatch(TAG, e); }
+	return '';
+}
+
+async function captureLiveStage(targetLineIndex) {
+	try {
+		const ready = await waitForCaptureReady();
+		if (!captureIsRenderable({ lyricNodes: ready.chars, canvases: ready.canvases })) {
+			return null;
+		}
+		let view = await captureView(undefined, targetLineIndex);
+		if (!view) return null;
+		let stats = _lastCaptureStats || {};
+		if ((stats.blankCanvases || 0) > 0) {
+			await new Promise((r) => {
+				if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(() => r()));
+				else setTimeout(r, 64);
+			});
+			const retry = await captureView(undefined, targetLineIndex);
+			if (retry) view = retry;
+		}
+		const m = measureCanvas(view);
+		if (m.sd < 2 && m.opaqueRatio < 0.02) return null;
+		return view;
+	} catch (e) {
+		logCatch(TAG, e);
+		return null;
+	}
+}
+
+export async function openPosterStudio() {
+	if (typeof document === 'undefined') return false;
+	const song = currentSong();
+	if (!song || !song.title) {
+		hint(tx('请先播放一首歌'));
+		return false;
+	}
+
+	if (_studioSession && typeof _studioSession.close === 'function') {
+		try { _studioSession.close(); } catch (e) { logCatch(TAG, e); }
+		_studioSession = null;
+	}
+
+	/* 先于遮罩弹出抓一帧真舞台，首帧预览立刻完整就位 */
+	const initialView = await captureLiveStage();
+	const { lines: allLines, defaultIdx } = collectSongLyrics();
+
+	const state = {
+		style: initialView ? 'stage' : 'vinyl',
+		frame: POSTER_DEFAULT_FRAME,
+		fit: 'safe',
+		tone: 'dark',
+		showTranslation: true,
+		showBadge: true,
+		selectedIndices: defaultIdx >= 0 ? [defaultIdx] : [],
+		view: initialView,
+		capturing: false,
+		exporting: false,
+	};
+
+	const overlay = document.createElement('div');
+	overlay.id = 'lyricPosterOverlay';
+	overlay.className = 'search-overlay lp-studio-overlay';
+
+	const shell = document.createElement('div');
+	shell.className = 'search-modal lp-studio-modal';
+	overlay.appendChild(shell);
+	document.body.appendChild(overlay);
+
+	let renderSeq = 0;
+	let disposed = false;
+
+	const selectedEntries = () => {
+		const sorted = [...state.selectedIndices].sort((a, b) => a - b);
+		return sorted
+			.map((idx) => allLines[idx])
+			.filter(Boolean)
+			.map((x) => ({ original: x.orig, translation: x.trans }));
+	};
+
+	const studioOpts = (dpr, skipBlob) => ({
+		style: state.style,
+		frame: state.frame,
+		fit: state.frame === 'native' ? 'cover' : state.fit,
+		tone: state.tone,
+		view: state.view,
+		song,
+		accent: currentAccent(),
+		footer: `Aria · ${today()}`,
+		badge: modeBadge(),
+		coverUrl: currentCoverUrl(song),
+		lines: selectedEntries(),
+		showTranslation: state.showTranslation,
+		showBadge: state.showBadge,
+		mode: modeKey(),
+		fontFamily: resolveCurrentFontFamily(),
+		dpr,
+		skipBlob,
+	});
+
+	const songSub = song.artist ? `${song.title} · ${song.artist}` : song.title;
+
+	const renderControlsMarkup = () => {
+		const isStage = state.style === 'stage';
+		const isEditorial = state.style === 'editorial';
+		const isNative = state.frame === 'native';
+
+		const styleCards = POSTER_STYLES.map((st) => {
+			const active = state.style === st.id ? ' active' : '';
+			const label = st.id === 'stage' ? `${tx(st.label)} · ${modeBadge()}` : tx(st.label);
+			return `<button type="button" class="lp-style-card${active}" data-lp-style="${esc(st.id)}" aria-pressed="${state.style === st.id ? 'true' : 'false'}">
+				<span class="lp-style-name">${esc(label)}</span>
+				<span class="lp-style-desc">${esc(tx(st.hint))}</span>
+			</button>`;
+		}).join('');
+
+		const framePills = POSTER_STUDIO_FRAMES.map((fr) => {
+			const active = state.frame === fr.id ? ' active' : '';
+			const ratioMap = { square: '1:1', portrait: '3:4', story: '9:16', native: '' };
+			const sub = ratioMap[fr.id] ? `<span class="lp-pill-sub">${esc(ratioMap[fr.id])}</span>` : '';
+			return `<button type="button" class="lp-pill${active}" data-lp-frame="${esc(fr.id)}" title="${esc(tx(fr.hint))}" aria-pressed="${state.frame === fr.id ? 'true' : 'false'}">${esc(tx(fr.label))}${sub}</button>`;
+		}).join('');
+
+		const countText = isEnglishUi()
+			? `${state.selectedIndices.length} / ${MAX_STUDIO_LINES} selected`
+			: `已选 ${state.selectedIndices.length} / ${MAX_STUDIO_LINES} 句`;
+
+		const lineItems = allLines.length
+			? allLines.map((item, idx) => {
+				const selected = state.selectedIndices.includes(idx);
+				const cls = `lp-line-item${selected ? ' selected' : ''}${item.isCurrent ? ' is-current' : ''}`;
+				const transHtml = item.trans ? `<span class="lp-line-trans">${esc(item.trans)}</span>` : '';
+				return `<button type="button" class="${cls}" data-lp-line="${idx}" aria-pressed="${selected ? 'true' : 'false'}">
+					<span class="lp-line-check" aria-hidden="true">${selected ? '✓' : ''}</span>
+					<span class="lp-line-text">
+						<span class="lp-line-orig">${esc(item.orig)}</span>
+						${transHtml}
+					</span>
+				</button>`;
+			}).join('')
+			: `<div class="lp-empty-lines">${esc(tx('当前歌曲暂无歌词，仅展示歌曲封面与元数据'))}</div>`;
+
+		const fitSection = isStage && !isNative ? `
+			<div class="lp-section">
+				<div class="lp-section-head">
+					<span class="lp-section-label">${esc(tx('画面适配'))}</span>
+					<span class="lp-section-hint">${esc(tx('完整保留可避免长句被左右裁切'))}</span>
+				</div>
+				<div class="lp-pill-row">
+					<button type="button" class="lp-pill${state.fit === 'safe' ? ' active' : ''}" data-lp-fit="safe">${esc(tx('完整保留'))}</button>
+					<button type="button" class="lp-pill${state.fit === 'cover' ? ' active' : ''}" data-lp-fit="cover">${esc(tx('裁切铺满'))}</button>
+				</div>
+			</div>` : '';
+
+		const toneSection = isEditorial ? `
+			<div class="lp-section">
+				<div class="lp-section-head">
+					<span class="lp-section-label">${esc(tx('纸面色调'))}</span>
+				</div>
+				<div class="lp-pill-row">
+					<button type="button" class="lp-pill${state.tone === 'dark' ? ' active' : ''}" data-lp-tone="dark">${esc(tx('深色夜笺'))}</button>
+					<button type="button" class="lp-pill${state.tone === 'light' ? ' active' : ''}" data-lp-tone="light">${esc(tx('浅色纸笺'))}</button>
+				</div>
+			</div>` : '';
+
+		const linesHint = isStage
+			? tx('点击句行切换当前画面定格句；切至其他风格可多句选摘')
+			: countText;
+
+		return `
+			<div class="lp-controls-scroll">
+				<div class="lp-section">
+					<div class="lp-section-head">
+						<span class="lp-section-label">${esc(tx('海报风格'))}</span>
+					</div>
+					<div class="lp-style-grid">${styleCards}</div>
+				</div>
+				<div class="lp-section">
+					<div class="lp-section-head">
+						<span class="lp-section-label">${esc(tx('画幅比例'))}</span>
+					</div>
+					<div class="lp-pill-row">${framePills}</div>
+				</div>
+				${fitSection}
+				${toneSection}
+				<div class="lp-section">
+					<div class="lp-option-bar">
+						<label class="lp-toggle-chip">
+							<input type="checkbox" id="lpShowTransChk"${state.showTranslation ? ' checked' : ''}>
+							<span>${esc(tx('显示译文'))}</span>
+						</label>
+						<label class="lp-toggle-chip">
+							<input type="checkbox" id="lpShowBadgeChk"${state.showBadge ? ' checked' : ''}>
+							<span>${esc(tx('显示模式角标'))}</span>
+						</label>
+						<button type="button" class="lp-mini-btn" id="lpRecaptureBtn">${esc(tx('重新抓取画面'))}</button>
+					</div>
+				</div>
+				<div class="lp-section">
+					<div class="lp-section-head">
+						<span class="lp-section-label">${esc(tx('挑选金句歌词'))}</span>
+						<span class="lp-section-hint">${esc(linesHint)}</span>
+					</div>
+					${allLines.length ? `<div class="lp-option-bar"><button type="button" class="lp-mini-btn" id="lpSelectCurrentBtn">${esc(tx('仅选当前句'))}</button></div>` : ''}
+					<div class="lp-line-list" id="lpLineList">${lineItems}</div>
+				</div>
+			</div>
+			<div class="lp-studio-footer">
+				<button type="button" class="lp-btn" id="lpCopyBtn">${esc(tx('复制图片'))}</button>
+				<button type="button" class="lp-btn primary" id="lpSaveBtn">${esc(tx('保存高清 PNG'))}</button>
+			</div>`;
+	};
+
+	const renderShellMarkup = () => `
+			<div class="lp-studio-header">
+				<div class="lp-studio-title-wrap">
+					<h2 class="lp-studio-title" id="lpStudioTitle">${esc(tx('歌词海报工坊'))}</h2>
+					<span class="lp-studio-subtitle">${esc(songSub)}</span>
+				</div>
+				<button type="button" class="search-close" id="lpCloseBtn" aria-label="${esc(tx('关闭'))}" title="${esc(tx('关闭'))}">
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				</button>
+			</div>
+			<div class="lp-studio-body">
+				<div class="lp-preview-stage">
+					<div class="lp-preview-canvas-wrap">
+						<canvas class="lp-preview-canvas" id="lpPreviewCanvas"></canvas>
+						<div class="lp-preview-status" id="lpPreviewStatus">${esc(tx('正在渲染…'))}</div>
+					</div>
+					<div class="lp-preview-meta" id="lpPreviewMeta">${state.view ? '' : esc(tx('当前画面暂无快照，已使用封面底图生成'))}</div>
+				</div>
+				<div class="lp-controls-col">${renderControlsMarkup()}</div>
+			</div>`;
+
+	const renderPreview = async () => {
+		if (disposed || !overlay.isConnected) return;
+		const seq = ++renderSeq;
+		const cv = shell.querySelector('#lpPreviewCanvas');
+		const statusEl = shell.querySelector('#lpPreviewStatus');
+		const metaEl = shell.querySelector('#lpPreviewMeta');
+		if (!cv) return;
+		overlay.dataset.lpRendering = '1';
+		cv.classList.add('is-busy');
+		statusEl?.classList.add('visible');
+		const previewDpr = 1.25;
+		try {
+			const res = await composeStudioPoster(studioOpts(previewDpr, true));
+			if (disposed || !overlay.isConnected || seq !== renderSeq) return;
+			const outCv = res.canvas;
+			cv.width = outCv.width;
+			cv.height = outCv.height;
+			const ctx = cv.getContext('2d');
+			if (ctx) {
+				ctx.clearRect(0, 0, cv.width, cv.height);
+				ctx.drawImage(outCv, 0, 0);
+			}
+			const styleMeta = POSTER_STYLES.find((s) => s.id === state.style) || POSTER_STYLES[0];
+			const logW = Math.round(outCv.width / previewDpr);
+			const logH = Math.round(outCv.height / previewDpr);
+			if (metaEl) {
+				const noSnapNote = (!state.view && state.style === 'stage')
+					? ` · ${tx('当前画面暂无快照，已使用封面底图生成')}`
+					: '';
+				metaEl.textContent = `${logW} × ${logH} · ${tx(styleMeta.label)} · ${modeBadge()}${noSnapNote}`;
+			}
+		} catch (e) {
+			logWarn(TAG, '工坊渲染失败：', e && e.message ? e.message : e);
+			if (metaEl && !disposed && seq === renderSeq) {
+				metaEl.textContent = tx('海报渲染失败，请重试');
+			}
+		} finally {
+			if (!disposed && seq === renderSeq) {
+				overlay.dataset.lpRendering = '0';
+				cv.classList.remove('is-busy');
+				statusEl?.classList.remove('visible');
+			}
+		}
+	};
+
+	const runExport = async (kind) => {
+		if (state.exporting || disposed) return;
+		state.exporting = true;
+		const copyBtn = shell.querySelector('#lpCopyBtn');
+		const saveBtn = shell.querySelector('#lpSaveBtn');
+		if (copyBtn) copyBtn.disabled = true;
+		if (saveBtn) saveBtn.disabled = true;
+		const activeBtn = kind === 'copy' ? copyBtn : saveBtn;
+		const prevLabel = activeBtn ? activeBtn.textContent : '';
+		if (activeBtn) activeBtn.textContent = tx('正在生成…');
+		try {
+			const res = await composeStudioPoster(studioOpts(2, false));
+			const blob = res && res.blob;
+			if (!blob) throw new Error('empty poster blob');
+			if (kind === 'copy') {
+				if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+					hint(tx('当前环境不支持直接复制图片，请点击保存'));
+					return;
+				}
+				await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+				hint(tx('海报已复制到剪贴板'));
+			} else {
+				const name = posterFileName(song, state.frame, 'png');
+				const ok = await saveBlob(blob, name);
+				if (!ok) {
+					hint(tx('海报保存失败'));
+					return;
+				}
+				logInfo(TAG, `海报工坊已导出 ${name}（${Math.round((blob.size || 0) / 1024)}KB, style=${state.style}）`);
+				const offered = await offerReveal(name, { title: tx('海报已保存') });
+				if (!offered) hint(tx('海报已保存'));
+			}
+		} catch (e) {
+			logCatch(TAG, e);
+			hint(kind === 'copy' ? tx('海报复制失败') : tx('海报保存失败'));
+		} finally {
+			state.exporting = false;
+			if (!disposed) {
+				const cBtn = shell.querySelector('#lpCopyBtn');
+				const sBtn = shell.querySelector('#lpSaveBtn');
+				if (cBtn) cBtn.disabled = false;
+				if (sBtn) sBtn.disabled = false;
+				if (activeBtn && activeBtn.isConnected) activeBtn.textContent = prevLabel;
+			}
+		}
+	};
+
+	const mountAndBind = () => {
+		const prevListScroll = shell.querySelector('#lpLineList')?.scrollTop || 0;
+		const prevCtrlScroll = shell.querySelector('.lp-controls-scroll')?.scrollTop || 0;
+		const existingCol = shell.querySelector('.lp-controls-col');
+		if (existingCol && shell.querySelector('#lpPreviewCanvas')) {
+			const titleEl = shell.querySelector('#lpStudioTitle');
+			if (titleEl) titleEl.textContent = tx('歌词海报工坊');
+			const closeBtn = shell.querySelector('#lpCloseBtn');
+			if (closeBtn) {
+				const clLabel = tx('关闭');
+				closeBtn.setAttribute('aria-label', clLabel);
+				closeBtn.setAttribute('title', clLabel);
+			}
+			const statusEl = shell.querySelector('#lpPreviewStatus');
+			if (statusEl) statusEl.textContent = tx('正在渲染…');
+			existingCol.innerHTML = renderControlsMarkup();
+		} else {
+			shell.innerHTML = renderShellMarkup();
+			shell.querySelector('#lpCloseBtn')?.addEventListener('click', () => {
+				if (_studioSession) _studioSession.close();
+			});
+		}
+		const listEl = shell.querySelector('#lpLineList');
+		const ctrlEl = shell.querySelector('.lp-controls-scroll');
+		if (listEl && prevListScroll) listEl.scrollTop = prevListScroll;
+		if (ctrlEl && prevCtrlScroll) ctrlEl.scrollTop = prevCtrlScroll;
+
+		shell.querySelectorAll('[data-lp-style]').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				const nextStyle = btn.getAttribute('data-lp-style');
+				if (!nextStyle || nextStyle === state.style) return;
+				state.style = nextStyle;
+				mountAndBind();
+				renderPreview();
+			});
+		});
+
+		shell.querySelectorAll('[data-lp-frame]').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				const nextFrame = btn.getAttribute('data-lp-frame');
+				if (!nextFrame || nextFrame === state.frame) return;
+				state.frame = nextFrame;
+				mountAndBind();
+				renderPreview();
+			});
+		});
+
+		shell.querySelectorAll('[data-lp-fit]').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				const nextFit = btn.getAttribute('data-lp-fit');
+				if (!nextFit || nextFit === state.fit) return;
+				state.fit = nextFit;
+				mountAndBind();
+				renderPreview();
+			});
+		});
+
+		shell.querySelectorAll('[data-lp-tone]').forEach((btn) => {
+			btn.addEventListener('click', () => {
+				const nextTone = btn.getAttribute('data-lp-tone');
+				if (!nextTone || nextTone === state.tone) return;
+				state.tone = nextTone;
+				mountAndBind();
+				renderPreview();
+			});
+		});
+
+		shell.querySelector('#lpShowTransChk')?.addEventListener('change', (ev) => {
+			state.showTranslation = !!ev.target.checked;
+			renderPreview();
+		});
+
+		shell.querySelector('#lpShowBadgeChk')?.addEventListener('change', (ev) => {
+			state.showBadge = !!ev.target.checked;
+			renderPreview();
+		});
+
+		const recaptureForLine = async (lineIdx) => {
+			if (state.capturing || disposed) return;
+			state.capturing = true;
+			overlay.dataset.lpRendering = '1';
+			const statusEl = shell.querySelector('#lpPreviewStatus');
+			statusEl?.classList.add('visible');
+			const prevVis = overlay.style.visibility;
+			overlay.style.visibility = 'hidden';
+			try {
+				await new Promise((r) => {
+					if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(() => r()));
+					else setTimeout(r, 32);
+				});
+				const fresh = await captureLiveStage(lineIdx);
+				if (fresh) state.view = fresh;
+			} finally {
+				overlay.style.visibility = prevVis;
+				state.capturing = false;
+			}
+			mountAndBind();
+			renderPreview();
+		};
+
+		shell.querySelector('#lpRecaptureBtn')?.addEventListener('click', () => {
+			const target = state.selectedIndices.length ? state.selectedIndices[0] : defaultIdx;
+			void recaptureForLine(target);
+		});
+
+		shell.querySelector('#lpSelectCurrentBtn')?.addEventListener('click', () => {
+			state.selectedIndices = defaultIdx >= 0 ? [defaultIdx] : (allLines.length ? [0] : []);
+			mountAndBind();
+			const curBtn = shell.querySelector(`[data-lp-line="${state.selectedIndices[0]}"]`);
+			curBtn?.scrollIntoView({ block: 'nearest' });
+			if (state.style === 'stage' && state.selectedIndices.length) {
+				void recaptureForLine(state.selectedIndices[0]);
+			} else {
+				renderPreview();
+			}
+		});
+
+		shell.querySelector('#lpLineList')?.addEventListener('click', (ev) => {
+			const row = ev.target?.closest?.('[data-lp-line]');
+			if (!row) return;
+			const idx = Number(row.getAttribute('data-lp-line'));
+			if (!Number.isInteger(idx) || idx < 0 || idx >= allLines.length) return;
+			if (state.style === 'stage') {
+				state.selectedIndices = [idx];
+				mountAndBind();
+				void recaptureForLine(idx);
+				return;
+			}
+			const pos = state.selectedIndices.indexOf(idx);
+			if (pos >= 0) {
+				if (state.selectedIndices.length <= 1) {
+					hint(tx('至少保留 1 句歌词'));
+					return;
+				}
+				state.selectedIndices.splice(pos, 1);
+			} else {
+				if (state.selectedIndices.length >= MAX_STUDIO_LINES) {
+					hint(tx('最多选择 6 句歌词'));
+					return;
+				}
+				state.selectedIndices.push(idx);
+			}
+			mountAndBind();
+			renderPreview();
+		});
+
+		shell.querySelector('#lpCopyBtn')?.addEventListener('click', () => { runExport('copy'); });
+		shell.querySelector('#lpSaveBtn')?.addEventListener('click', () => { runExport('save'); });
+	};
+
+	const onLangChange = () => {
+		if (disposed || !overlay.isConnected) return;
+		mountAndBind();
+		renderPreview();
+	};
+	window.addEventListener('aria:languagechange', onLangChange);
+
+	mountAndBind();
+	/* 打开浮层后把默认句滚到可视区，并渲染首帧预览 */
+	if (defaultIdx >= 0) {
+		shell.querySelector(`[data-lp-line="${defaultIdx}"]`)?.scrollIntoView({ block: 'center' });
+	}
+
+	_studioSession = openOverlay(overlay, {
+		shell: '.lp-studio-modal',
+		labelledBy: '#lpStudioTitle',
+		escClose: true,
+		backdropClose: true,
+		removeOnClose: true,
+		onClose: () => {
+			disposed = true;
+			overlay.classList.remove('visible');
+			window.removeEventListener('aria:languagechange', onLangChange);
+			if (_studioSession && _studioSession.el === overlay) _studioSession = null;
+		},
+	});
+	overlay.classList.add('visible');
+
+	renderPreview();
+	return true;
 }
 
 wireBottomMoreItem();
@@ -581,11 +1247,12 @@ try {
 	const A = typeof window !== 'undefined' ? window.Aria : null;
 	if (A) {
 		A.poster = {
-			generate: generatePoster, menuItems: posterMenuItems, frames: POSTER_FRAMES,
+			generate: generatePoster, openStudio: openPosterStudio,
+			menuItems: posterMenuItems, frames: POSTER_FRAMES,
 			captureView, showMenu: showPosterMenu,
 			get lastCaptureStats() { return _lastCaptureStats; },
 		};
 	}
 } catch (e) { logCatch(TAG, e); }
 
-export { POSTER_FRAMES, posterFrameFor, HIDE_SELECTORS };
+export { POSTER_FRAMES, POSTER_STUDIO_FRAMES, POSTER_STYLES, posterFrameFor, HIDE_SELECTORS };

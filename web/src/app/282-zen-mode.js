@@ -24,6 +24,7 @@
 import { saveSettings } from './180-boot-config.js';
 import { esc } from '../utils/formatters.js';
 import { logCatch, logInfo } from '../services/log.js';
+import { registerSettingsGroup, registerSettingsHook } from '../core/settingsRegistry.js';
 
 const TAG = 'zenMode';
 const ZEN_CLASS = 'is-zen';
@@ -243,41 +244,104 @@ function coverShiftReset() {
     cover.style.transform = '';
 }
 
-/* ---------- 专注按钮 FLIP：进入时平移到视口右上角常驻（退出入口），退出回组内 ----------
-   top 组淡出不能压在按钮上（opacity 是合成属性，父级 0 时子级无法恢复——
-   之前「外观隐藏但能点」就是这个），所以 zen.css 改为逐按钮隐藏，按钮本体
-   用 fixed 定位 + FLIP 平移。 */
-const ZEN_BTN_EASE = 'transform 0.65s cubic-bezier(0.22, 1.2, 0.36, 1)';
+/* ---------- 顶栏收缩与专注按钮滑移（FLIP + 容器宽度过渡）----------
+   进入专注时保持 #zenModeBtn 在 .top-action-buttons 内最右，其余按钮隐藏、
+   容器向左收缩成单按钮胶囊；退出时双向滑移与展开恢复原位。
+   不用 position:fixed —— .top-action-buttons 带 backdrop-filter，会建立
+   fixed 包含块把按钮抛到视口外导致无法点回。 */
+const TOP_BAR_WIDTH_TRANSITION = 'width 0.36s cubic-bezier(0.22, 1, 0.36, 1), padding 0.36s cubic-bezier(0.22, 1, 0.36, 1)';
+const ZEN_BTN_SLIDE = 'transform 0.36s cubic-bezier(0.22, 1, 0.36, 1)';
+let _topBarAnimSeq = 0;
+let _topBarAnimTimer = 0;
 
-function zenBtnShiftToCorner() {
-    const btn = doc().getElementById(BTN_ID);
-    if (!btn) return;
-    const r = btn.getBoundingClientRect();
-    btn.style.position = 'fixed';
-    btn.style.left = `${Math.round(r.left)}px`;
-    btn.style.top = `${Math.round(r.top)}px`;
-    btn.style.margin = '0';
-    btn.style.zIndex = '400';
-    const dx = (window.innerWidth - 14 - btn.offsetWidth) - r.left;
-    const dy = 12 - r.top;
-    requestAnimationFrame(() => {
-        btn.style.transition = ZEN_BTN_EASE;
-        btn.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
-    });
+function clearTopBarAnimStyles(bar, btn) {
+    if (_topBarAnimTimer) {
+        clearTimeout(_topBarAnimTimer);
+        _topBarAnimTimer = 0;
+    }
+    if (bar) {
+        bar.style.transition = '';
+        bar.style.width = '';
+        bar.style.boxSizing = '';
+        bar.style.overflow = '';
+        bar.style.justifyContent = '';
+        bar.style.flexWrap = '';
+        bar.style.removeProperty('left');
+    }
+    if (btn) {
+        btn.style.transition = '';
+        btn.style.transform = '';
+    }
 }
 
-function zenBtnShiftReset() {
-    const btn = doc().getElementById(BTN_ID);
-    if (!btn) return;
-    const prevTransform = btn.style.transform;
-    if (!prevTransform) { btn.style.cssText = ''; return; }
-    /* 回组内布局后从旧视觉位置平移回新位置（反向 FLIP） */
-    btn.style.cssText = '';
-    btn.style.transition = ZEN_BTN_EASE;
-    btn.style.transform = prevTransform;
+function captureTopBarMetrics() {
+    const d = doc();
+    const bar = q('.top-action-buttons');
+    const btn = d ? d.getElementById(BTN_ID) : null;
+    if (!bar || !btn) return { bar: null, btn: null, barRect: null, btnRect: null };
+    return {
+        bar,
+        btn,
+        barRect: bar.getBoundingClientRect(),
+        btnRect: btn.getBoundingClientRect(),
+    };
+}
+
+function shouldSkipBarMotion(d) {
+    try {
+        if (d && d.documentElement && d.documentElement.classList.contains('is-software-renderer')) return true;
+        if (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            return true;
+        }
+    } catch (e) { logCatch(TAG, e); }
+    return false;
+}
+
+function animateTopBarTransition(snap, entering) {
+    const { bar, btn, barRect: prevBarRect, btnRect: prevBtnRect } = snap || {};
+    if (!bar || !btn || !prevBarRect || !prevBtnRect) return;
+    if (shouldSkipBarMotion(doc()) || btn.classList.contains('tb-ctl-hidden') || prevBtnRect.width <= 0) return;
+
+    const targetBarRect = bar.getBoundingClientRect();
+    const targetBtnRect = btn.getBoundingClientRect();
+    if (targetBarRect.width <= 0 || targetBtnRect.width <= 0) return;
+    /* 窄屏双行换行时高度变化较大，直接交由 CSS 即时切换，不做单行硬裁切 */
+    if (prevBarRect.height > 62 || targetBarRect.height > 62) return;
+    if (Math.abs(prevBarRect.width - targetBarRect.width) < 1
+        && Math.abs(prevBtnRect.left - targetBtnRect.left) < 1) {
+        return;
+    }
+
+    const seq = ++_topBarAnimSeq;
+    bar.style.transition = 'none';
+    bar.style.boxSizing = 'border-box';
+    bar.style.width = `${Math.round(prevBarRect.width)}px`;
+    bar.style.overflow = 'hidden';
+    bar.style.flexWrap = 'nowrap';
+    if (getComputedStyle(bar).left !== 'auto') {
+        bar.style.setProperty('left', 'auto', 'important');
+    }
+    if (entering) {
+        bar.style.justifyContent = 'flex-end';
+    }
+    const startBtnRect = btn.getBoundingClientRect();
+    const dx = Math.round(prevBtnRect.left - startBtnRect.left);
+    const dy = Math.round(prevBtnRect.top - startBtnRect.top);
+    btn.style.transition = 'none';
+    btn.style.transform = `translate(${dx}px, ${dy}px)`;
+    void bar.offsetWidth;
+
     requestAnimationFrame(() => {
-        btn.style.transition = ZEN_BTN_EASE;
-        btn.style.transform = '';
+        if (seq !== _topBarAnimSeq) return;
+        bar.style.transition = TOP_BAR_WIDTH_TRANSITION;
+        bar.style.width = `${Math.round(targetBarRect.width)}px`;
+        btn.style.transition = ZEN_BTN_SLIDE;
+        btn.style.transform = 'translate(0px, 0px)';
+        _topBarAnimTimer = setTimeout(() => {
+            if (seq !== _topBarAnimSeq) return;
+            clearTopBarAnimStyles(bar, btn);
+        }, 400);
     });
 }
 
@@ -290,13 +354,16 @@ export function enterZen() {
     if (_zen) return true;
     const d = doc();
     if (!d || !d.documentElement) return false;
-    if (!activeScopeTokens(getZenSettings()).length) return false;
+    const cfg = getZenSettings();
+    if (!activeScopeTokens(cfg).length) return false;
     if (hasBlockingModal()) return false;
+    const snap = cfg.scopes.top ? captureTopBarMetrics() : null;
+    if (snap && snap.bar) clearTopBarAnimStyles(snap.bar, snap.btn);
     applyScopeAttr();
     d.documentElement.classList.add(ZEN_CLASS);
     _zen = true;
     coverShiftToCenter();
-    zenBtnShiftToCorner();
+    if (snap && snap.bar) animateTopBarTransition(snap, true);
     syncZenSettingsUI();
     return true;
 }
@@ -305,10 +372,14 @@ export function enterZen() {
 export function exitZen() {
     const d = doc();
     if (!_zen || !d || !d.documentElement) return false;
+    const wasTopContracted = !!(d.documentElement.getAttribute('data-zen-scope') || '').split(/\s+/).includes('top');
+    const snap = wasTopContracted ? captureTopBarMetrics() : null;
+    if (snap && snap.bar) clearTopBarAnimStyles(snap.bar, snap.btn);
+    else clearTopBarAnimStyles(q('.top-action-buttons'), d.getElementById(BTN_ID));
     d.documentElement.classList.remove(ZEN_CLASS);
     _zen = false;
     coverShiftReset();
-    zenBtnShiftReset();
+    if (snap && snap.bar) animateTopBarTransition(snap, false);
     syncZenSettingsUI();
     return true;
 }
@@ -419,11 +490,11 @@ function rowHTML(labelEntry, descEntry, controlHTML) {
     </div>`;
 }
 
-/** 把「专注模式」设置组挂进设置 → 界面；缺容器时静默跳过（不报错、不影响快捷键入口） */
-export function mountZenSettingsUI() {
+/** 把「专注模式」设置组挂进设置 → 歌词；由 settingsRegistry 声明式调用，无 MutationObserver */
+export function mountZenSettingsUI(targetHost) {
     const d = doc();
     if (!d || d.getElementById('zenSettingsGroup')) return;
-    const host = q('[data-section="interface"]') || q('#settingsBody');
+    const host = targetHost || q('[data-section="lyrics"]') || q('[data-section="interface"]');
     if (!host) return;
     try {
         const group = d.createElement('div');
@@ -448,23 +519,32 @@ export function mountZenSettingsUI() {
                 applyScopeAttr();
             });
         });
-        /* 「恢复默认快捷键」会把 shortcuts 整个换成 DEFAULT_SHORTCUTS（不含 zen），
-           此处只负责把按键胶囊刷回真正生效的键位，不改 200 的行为 */
-        d.getElementById('setResetShortcuts')?.addEventListener('click', syncZenSettingsUI);
         bindZenKeyRecorder(group.querySelector('#zenShortcutKey'));
 
-        /* 设置面板每次打开都重刷一遍：bootApp 里 loadSettings() 是 await 之后的事，
-           面板上的值必须以当时生效的配置为准，不能用启动瞬间的快照 */
-        const overlay = d.getElementById('settingsOverlay');
-        if (overlay && typeof MutationObserver !== 'undefined') {
-            new MutationObserver(() => {
-                if (overlay.classList.contains('visible')) syncZenSettingsUI();
-            }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
-        }
         syncZenSettingsUI();
         applyScopeAttr();
     } catch (e) { logCatch(TAG, e); }
 }
+
+registerSettingsGroup('lyrics', {
+    id: 'zen-mode',
+    order: 30,
+    render: (wrapper) => { mountZenSettingsUI(wrapper); },
+    onMount: syncZenSettingsUI,
+    onShow: syncZenSettingsUI,
+});
+
+registerSettingsHook('interface', {
+    id: 'zen-shortcut-reset',
+    order: 40,
+    onMount: (sec) => {
+        const resetBtn = sec?.querySelector('#setResetShortcuts');
+        if (resetBtn && !resetBtn.dataset.zenResetBound) {
+            resetBtn.dataset.zenResetBound = '1';
+            resetBtn.addEventListener('click', syncZenSettingsUI);
+        }
+    },
+});
 
 export function syncZenSettingsUI() {
     const cfg = getZenSettings();
@@ -551,15 +631,10 @@ export function initZenMode() {
     });
 
     applyScopeAttr();
-    /* 专注态下窗口尺寸变化会破坏封面居中/按钮贴角，重算一次 */
+    /* 专注态下窗口尺寸变化会破坏封面居中，重算一次 */
     window.addEventListener('resize', () => {
         if (!_zen) return;
         coverShiftToCenter();
-        const btn = doc().getElementById(BTN_ID);
-        if (btn && btn.style.position === 'fixed') {
-            btn.style.left = `${Math.max(8, window.innerWidth - btn.offsetWidth - 14)}px`;
-            btn.style.top = '12px';
-        }
     });
 }
 

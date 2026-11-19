@@ -117,7 +117,7 @@ jobs:
           python -m unittest tests.python.test_cache_lock
           python -m unittest tests.python.test_kugou_cellphone
           python -m unittest tests.python.test_verify_login
-          python -m unittest tests.python.test_qishui_login
+          python -m unittest tests.python.test_selfhost_lifecycle
 
       - name: Run PV regression tests
         run: |
@@ -147,9 +147,6 @@ jobs:
         run: |
           python tests/test_cover_mode_entries.py
           python tests/test_source_routing.py
-          # 2026-10-03 汽水音乐接入：第 5 个音源按钮 / 自建取链回退 / 设置页第 4 个卡片 /
-          # QRC→KRC 往返。CI 无 _eval/ vendor → 走「明确报错且不静默换源」分支
-          python tests/test_qishui_source.py
           python tests/test_daily_recommend_click.py
           python tests/test_number_stepper.py
           python tests/test_titlebar_contrast.py
@@ -167,3 +164,4 @@ jobs:
           python tests/test_phone_remote.py
           python tests/test_vfx_intensity_ui.py
           python tests/test_zen_mode_ui.py
+          python tests/test_ui_volume_bar_grid_qq.py

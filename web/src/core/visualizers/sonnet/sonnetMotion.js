@@ -34,6 +34,15 @@ export const resolveCubicBezier = (x1, y1, x2, y2, value) => {
 export const easeSonnetInOut = (value) => resolveCubicBezier(0.65, 0, 0.35, 1, value);
 export const easeSonnetEnter = (value) => resolveCubicBezier(0.22, 1, 0.36, 1, value);
 
+/* ★ 2026-10-11 补回（此前批次移植遗漏）：上游 sonnetMotion.ts:45 就排在
+   easeSonnetEnter 之后。它由 `theme.animationIntensity` 决定运动/相机的整体幅度
+   （calm 0.65 / normal 1 / chaotic 1.35），消费点在上游 sonnetShotFrame.ts:79-80
+   与 sonnetPostProcess.ts:48。漏掉后 sonnetPostProcess.js 曾内联一份拷贝绕开，
+   现已改回 import（见该文件）。 */
+export const resolveSonnetAnimationScale = (theme) => (
+    theme.animationIntensity === 'calm' ? 0.65 : theme.animationIntensity === 'chaotic' ? 1.35 : 1
+);
+
 export const easeSonnetExpoOut = (value) => (
     value === 1 ? 1 : 1 - Math.pow(2, -10 * value)
 );

@@ -13,7 +13,7 @@ import { makeSongKey, updateFavoriteBtn } from './120-search-results.js';
 import { applyVolumeOnSongChange, loadPlaylistTrack } from './135-crossfade.js';
 import { fetchAndPlayRandomSong } from './155-random-toast-match.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
-import { pickScatteredIndex } from '../core/scatterPick.js';
+import { computeNextQueueDecision, normalizeQueueTrack } from '../core/playlistQueue.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* ========== 歌曲开播后的统一收尾任务 ========== */
@@ -101,6 +101,11 @@ function loadTrack(index) {
             currentTrackIndex = ((index % playlist.length) + playlist.length) % playlist.length;
             retryCount = 0;  /* 切歌时重置重试计数器 */
             const track = playlist[currentTrackIndex];
+            if (track && (track.folder || track.elrcUrl || track.lrcUrl || track.audioUrl)
+                && typeof window !== 'undefined' && typeof window.playLocalMusicSong === 'function') {
+                window.playLocalMusicSong(track, { closePanel: false });
+                return;
+            }
             /* 代际计数器递增，使上一次的异步回调过期 */
             const gen = ++playbackGeneration;
             /* ★ 本地路径同样取消进行中的 AI 分析（此前只有在线路径取消，2026-09-27） */
@@ -118,7 +123,7 @@ function loadTrack(index) {
             currentSongData = {
                 title: track.title || track.song || track.name,
                 artist: track.artist || track.singer || '未知歌手',
-                cover: '',
+                cover: track.cover || '',
                 source: 'local',
                 id: '',
                 url: track.url
@@ -138,59 +143,55 @@ function loadTrack(index) {
    ★ computeStepTrack（Automix Phase 2 抽取）：「下一首是谁、用什么加载器」
    的纯决策部分单独导出——automix scheduler 用它取「决策后的下一首」做预载
    与交叉分析，不触发任何副作用（currentTrackIndex 突变仍留在 _stepTrack）。 */
-function computeStepTrack(delta) {
-    if (playlist.length === 0) {
-        return { kind: 'random-api' };
-    }
-    if (playMode === 'loop') {
-        return { kind: 'loop-replay', index: currentTrackIndex };
-    }
-    let idx = currentTrackIndex;
-    if (playMode === 'random') {
-        /* ★ 随机散列（2026-10-05，需求 12）：同歌手不相邻；队列里全是同一歌手时
-           退而隔开「核心歌名相同（去 Live/Remix 后缀）/ 编辑距离近 / 同专辑」；
-           约束确实无解（例如整队是同一首歌的多个版本）则允许偶尔相邻。
-           判定是纯函数（core/scatterPick.js），带单测。
-           ★ 只做**纯决策**、不写全局状态 —— computeStepTrack 被 automix 复用做
-           「下一首预载决策」，有副作用会让预载与真实切歌不一致。 */
-        idx = pickScatteredIndex(playlist, currentTrackIndex);
-    } else {
-        idx = (idx + delta + playlist.length) % playlist.length;
-    }
-    const track = playlist[idx];
-    return {
-        kind: (track.source && track.id) ? 'online' : 'local',
-        index: idx,
-        track,
-    };
+function computeStepTrack(delta, opts) {
+    return computeNextQueueDecision({
+        playlist,
+        currentIndex: currentTrackIndex,
+        playMode,
+        delta,
+        reason: (opts && opts.reason) || 'auto',
+        autoPlayNext: !(appSettings && appSettings.playback && appSettings.playback.autoPlayNext === false),
+    });
 }
 
-function _stepTrack(delta) {
-    const next = computeStepTrack(delta);
+function _stepTrack(delta, opts) {
+    const next = computeStepTrack(delta, opts || { reason: 'manual' });
+    if (next.kind === 'stop') {
+        return false;
+    }
     if (next.kind === 'random-api') {
         /* 没有播放队列时，从随机API获取一首 */
         fetchAndPlayRandomSong();
-        return;
+        return true;
     }
-    /* 单曲循环：重新播放当前歌曲 */
-    if (next.kind === 'loop-replay') {
-        loadPlaylistTrack(next.index);
-        return;
+    /* 单曲循环或单曲队列手动切歌：重新播放当前歌曲 */
+    if (next.kind === 'loop-replay' || next.kind === 'replay-current') {
+        if (next.track && (next.track.folder || next.track.elrcUrl || next.track.lrcUrl || next.track.audioUrl)
+            && typeof window !== 'undefined' && typeof window.playLocalMusicSong === 'function') {
+            window.playLocalMusicSong(next.track, { closePanel: false });
+        } else {
+            loadPlaylistTrack(next.index);
+        }
+        return true;
     }
     currentTrackIndex = next.index;
     if (next.kind === 'online') {
         loadPlaylistTrack(next.index);
+    } else if (next.track && (next.track.folder || next.track.elrcUrl || next.track.lrcUrl || next.track.audioUrl)
+        && typeof window !== 'undefined' && typeof window.playLocalMusicSong === 'function') {
+        window.playLocalMusicSong(next.track, { closePanel: false });
     } else {
         loadTrack(next.index);
     }
+    return true;
 }
 
 function nextTrack() {
-            _stepTrack(1);
+            _stepTrack(1, { reason: 'manual' });
         }
 
 function prevTrack() {
-            _stepTrack(-1);
+            _stepTrack(-1, { reason: 'manual' });
         }
 
 /* ========== 文件加载 ========== */
@@ -211,11 +212,13 @@ musicFileInput?.addEventListener('change', (e) => {
             playlist = files.map(f => {
                 const url = URL.createObjectURL(f);
                 blobUrls.add(url);
-                return {
+                return normalizeQueueTrack({
                     url: url,
                     title: f.name.replace(/\.[^/.]+$/, ''),
-                    artist: '本地文件'
-                };
+                    artist: '本地文件',
+                    source: 'local',
+                    isLocal: true
+                }, 'local');
             });
             loadTrack(0);
         });

@@ -17,13 +17,14 @@ import { escapeHtml as esc } from '../utils/formatters.js';
 import { hueOfName } from '../utils/colorUtils.js';
 import { logCatch } from '../services/log.js';
 import { fetchArtist } from '../services/artistApi.js';
-import { getFavorites, toggleFavCore } from './120-search-results.js';
-import { openAddToPlaylist } from './135-crossfade.js';
+import { buildCollectionQueue, enqueueTrack } from '../core/playlistQueue.js';
+import { getFavorites, setHint, toggleFavCore } from './120-search-results.js';
+import { loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
 import { loadOnlineSong } from './175-track-index-online.js';
 
 function el(id) { return document.getElementById(id); }
 
-const SRC_LABEL = { tencent: 'QQ音乐', netease: '网易云音乐', kugou: '酷狗音乐', qishui: '汽水音乐', kuwo: '酷我音乐' };
+const SRC_LABEL = { tencent: 'QQ音乐', netease: '网易云音乐', kugou: '酷狗音乐', kuwo: '酷我音乐' };
 
 /* 与搜索页共用的歌曲键规则（120 的 makeSongKey 同义：source:id） */
 function keyOf(song) {
@@ -250,6 +251,12 @@ function songsHtml(d) {
                 <div class="result-artist">${esc(s.album || '')}</div>
             </div>
             <div class="result-actions">
+                <button class="result-action-btn" data-act="playnext" data-idx="${i}" title="下一首播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                <button class="result-action-btn" data-act="addnow" data-idx="${i}" title="加入当前播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
+                </button>
                 <button class="result-action-btn ${isFav ? 'active-fav' : ''}" data-act="fav" data-idx="${i}" title="${isFav ? '取消收藏' : '收藏'}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
                 </button>
@@ -283,7 +290,44 @@ function songAt(i) {
 
 function playSongAt(i) {
     const s = songAt(i);
-    if (s) loadOnlineSong(s);
+    if (!s) return;
+    const fallbackSrc = (_current && _current.source) || '';
+    loadOnlineSong(s.source ? s : { ...s, source: fallbackSrc });
+}
+
+function playNextSongAt(i) {
+    const s = songAt(i);
+    if (!s) return;
+    const fallbackSrc = (_current && _current.source) || '';
+    if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+        const res = globalThis.Aria.enqueuePlayNextTrack(s, s.source || fallbackSrc);
+        if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+        return;
+    }
+    addSongToNowPlaying(i);
+}
+
+function addSongToNowPlaying(i) {
+    const s = songAt(i);
+    if (!s) return;
+    const fallbackSrc = (_current && _current.source) || '';
+    const res = enqueueTrack(playlist, s, s.source || fallbackSrc);
+    if (typeof setHint === 'function') {
+        if (res.added) setHint('已加入当前播放队列');
+        else if (res.duplicate) setHint('已在当前播放队列中');
+    }
+}
+
+async function playAllArtistSongs() {
+    if (!_data || !_data.songs || !_data.songs.length) return;
+    const fallbackSrc = (_current && _current.source) || '';
+    const q = buildCollectionQueue(_data.songs, 0, fallbackSrc);
+    if (!q.playlist.length) return;
+    playlist = q.playlist;
+    currentTrackIndex = q.currentTrackIndex;
+    await loadPlaylistTrack(currentTrackIndex);
+    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.playlist[currentTrackIndex]);
+    if (typeof setHint === 'function') setHint(`播放全部：${q.playlist.length} 首已加入播放队列`);
 }
 
 function toggleSongFav(i) {
@@ -345,10 +389,12 @@ if (typeof document !== 'undefined') {
             if (isNaN(i)) return;
             if (act.dataset.act === 'fav') toggleSongFav(i);
             else if (act.dataset.act === 'addpl') addSongToPlaylist(i);
+            else if (act.dataset.act === 'playnext') playNextSongAt(i);
+            else if (act.dataset.act === 'addnow') addSongToNowPlaying(i);
             return;
         }
         if (e.target.closest('#artistPlayAllBtn')) {
-            if (_data && _data.songs.length) loadOnlineSong(_data.songs[0]);
+            playAllArtistSongs();
             return;
         }
         const album = e.target.closest('.artist-album');

@@ -194,6 +194,11 @@ export class LetterpressVisualizer extends VisualizerBase {
     this.charEls = [];
     this.giantChars = [];
     this._curLine = null;
+    this._caseW = 0;
+    this._caseH = 0;
+    this._ro = null;
+    this._resizeTimer = 0;
+    this._onWinResize = null;
   }
 
   getModeId() { return 'letterpress'; }
@@ -211,10 +216,15 @@ export class LetterpressVisualizer extends VisualizerBase {
 
   onInit() {
     this.viewContainer.classList.add('lp-stage');
-    /* A/B 双张纸页：交叉淡入淡出，换段时中间不留空白 */
+    /* A/B 双张纸页：交叉淡入淡出，换段时中间不留空白
+       ★ v4：纸页之下铺一面「字盘」——本曲用到的字全部铸成反字铅字排满舞台，
+         唱到哪个字，字盘里对应的那枚就被「拣出」亮起（活字叙事的第一幕） */
     this.viewContainer.innerHTML = `
+      <div class="lp-case" aria-hidden="true"></div>
       <div class="lp-paper lp-paper-a"></div>
       <div class="lp-paper lp-paper-b"></div>`;
+    this._caseEl = this.viewContainer.querySelector('.lp-case');
+    this._caseMap = new Map();
     this.slots = [
       this.viewContainer.querySelector('.lp-paper-a'),
       this.viewContainer.querySelector('.lp-paper-b'),
@@ -239,11 +249,44 @@ export class LetterpressVisualizer extends VisualizerBase {
     };
     document.fonts.addEventListener?.('loadingdone', this._refit);
     document.fonts.ready?.then(this._refit);
+
+    /* ★ 2026-11-19：监听舞台尺寸变化（窗口缩放/最大化/还原），重算背景铅字字盘矩阵与版心适配 */
+    const scheduleResize = () => {
+      if (this._resizeTimer) clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = 0;
+        this.handleResize();
+      }, 90);
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const cr = entry.contentRect;
+          if (cr && cr.width >= 40 && cr.height >= 40) {
+            scheduleResize();
+            break;
+          }
+        }
+      });
+      this._ro.observe(this.viewContainer);
+    }
+    this._onWinResize = () => scheduleResize();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this._onWinResize);
+    }
   }
 
   /* 每张纸页内部结构（一次建好，后续只改内容与 class） */
   buildSlot(slot) {
     slot.innerHTML = `
+      <div class="lp-specks" aria-hidden="true"></div>
+      <div class="lp-marks" aria-hidden="true">
+        <i class="lp-reg lp-reg-tl"></i><i class="lp-reg lp-reg-tr"></i>
+        <i class="lp-reg lp-reg-bl"></i><i class="lp-reg lp-reg-br"></i>
+      </div>
+      <div class="lp-folio" aria-hidden="true"><span class="lp-folio-no"></span><span class="lp-folio-kind"></span></div>
+      <div class="lp-colorbar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="lp-seal" aria-hidden="true"></div>
       <div class="lp-giant"></div>
       <div class="lp-roller"></div>
       <div class="lp-body">
@@ -254,6 +297,102 @@ export class LetterpressVisualizer extends VisualizerBase {
     slot._roller = slot.querySelector('.lp-roller');
     slot._main = slot.querySelector('.lp-main');
     slot._trans = slot.querySelector('.lp-trans');
+    slot._specks = slot.querySelector('.lp-specks');
+    slot._folioNo = slot.querySelector('.lp-folio-no');
+    slot._folioKind = slot.querySelector('.lp-folio-kind');
+    slot._seal = slot.querySelector('.lp-seal');
+  }
+
+  /* 纸面印刷附件：页码 / 段落标签 / 钤印 / 墨点（按段序确定性生成，换页才刷新） */
+  decorateSlot(slot, sec, line) {
+    if (!slot || !slot._folioNo) return;
+    const KIND_LABEL = { chorus: 'CHORUS', lift: 'PRE-CHORUS', verse: 'VERSE', break: 'INTERLUDE', breath: 'BREATH', outro: 'CODA' };
+    slot._folioNo.textContent = 'No.' + String(sec.gi + 1).padStart(2, '0');
+    slot._folioKind.textContent = KIND_LABEL[sec.kind] || 'VERSE';
+    const hero = heroOfLine(line, this.aiData) || String(line.original || line.text || '').trim();
+    slot._seal.textContent = Array.from(hero)[0] || '';
+    /* 墨点：漏墨/飞白的小斑点，6~11 个，位置由 gi 决定 */
+    let s = (sec.gi + 1) * 2654435761 >>> 0;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xffffffff; };
+    const n = 6 + Math.floor(rnd() * 6);
+    let html = '';
+    for (let i = 0; i < n; i++) {
+      const size = (rnd() < 0.8 ? 2 + rnd() * 4 : 8 + rnd() * 10).toFixed(1);
+      html += `<i style="left:${(rnd() * 96 + 2).toFixed(1)}%;top:${(rnd() * 94 + 3).toFixed(1)}%;width:${size}px;height:${size}px;opacity:${(0.10 + rnd() * 0.22).toFixed(2)}"></i>`;
+    }
+    slot._specks.innerHTML = html;
+  }
+
+  /* 字盘：本曲去重后的字铸成反字铅字，按当前舞台尺寸自适应铺满（repeat(N, 1fr) 拖动期零黑边） */
+  buildCase(optW, optH) {
+    const el = this._caseEl;
+    if (!el || !this.viewContainer) return;
+    const w = (optW && optW >= 40) ? optW : (this.viewContainer.clientWidth || 1280);
+    const h = (optH && optH >= 40) ? optH : (this.viewContainer.clientHeight || 720);
+    if (w < 40 || h < 40) return;
+    this._caseW = w;
+    this._caseH = h;
+
+    this._caseMap = new Map();
+    const seen = new Set();
+    const chars = [];
+    for (const ln of (this.lines || [])) {
+      for (const ch of String(ln.original || ln.text || '')) {
+        if (!/[\p{L}\p{N}]/u.test(ch) || seen.has(ch)) continue;
+        seen.add(ch);
+        chars.push(ch);
+        if (chars.length >= 400) break;
+      }
+      if (chars.length >= 400) break;
+    }
+    if (!chars.length) chars.push(...'LETTERPRESS'.split(''));
+
+    const targetCell = Math.max(26, Math.min(58, Math.min(w * 0.036, h * 0.062)));
+    const cols = Math.max(4, Math.round(w / targetCell));
+    const rows = Math.max(4, Math.round(h / targetCell));
+    const effCell = Math.min(w / cols, h / rows);
+    el.style.setProperty('--lp-case-cell', effCell.toFixed(1) + 'px');
+    el.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    el.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    const frag = document.createDocumentFragment();
+    const total = Math.min(cols * rows, 1600);
+    for (let i = 0; i < total; i++) {
+      const ch = chars[(i * 7 + Math.floor(i / cols) * 3) % chars.length];
+      const sp = document.createElement('span');
+      sp.className = 'lp-sort';
+      sp.textContent = ch;
+      frag.appendChild(sp);
+      if (!this._caseMap.has(ch)) this._caseMap.set(ch, []);
+      this._caseMap.get(ch).push(sp);
+    }
+    el.innerHTML = '';
+    el.appendChild(frag);
+  }
+
+  onResize(width, height) {
+    if (!this.viewContainer) return;
+    const w = width || this.viewContainer.clientWidth || 0;
+    const h = height || this.viewContainer.clientHeight || 0;
+    if (w < 40 || h < 40) return;
+    if (Math.abs(w - this._caseW) > 6 || Math.abs(h - this._caseH) > 6) {
+      try { this.buildCase(w, h); } catch (_e) { /* 字盘重排降级忽略 */ }
+    }
+    this._preFit = null;
+    const slot = this.slots && this.slots[this.activeSlot];
+    if (slot && slot._main) {
+      this.fitBody(slot);
+    }
+  }
+
+  /* 唱到某字：字盘里拣出一枚同字铅字（轮流取，避免总亮同一格） */
+  pickSort(ch) {
+    const list = this._caseMap && this._caseMap.get(ch);
+    if (!list || !list.length) return;
+    list._k = ((list._k || 0) + 1) % list.length;
+    const sp = list[list._k];
+    sp.classList.remove('lp-picked');
+    void sp.offsetWidth;
+    sp.classList.add('lp-picked');
   }
 
   onLyricsLoaded() {
@@ -282,6 +421,7 @@ export class LetterpressVisualizer extends VisualizerBase {
     this.currentPage = -1;
     this._preGi = null;        /* 新歌词：预排缓存失效 */
     this._pendingApply = null;
+    try { this.buildCase(); } catch (_e) { /* 字盘是装饰层，失败不影响歌词主体 */ }
   }
 
   onLineChange(activeIdx, line) {
@@ -331,6 +471,7 @@ export class LetterpressVisualizer extends VisualizerBase {
     incoming._giant.textContent = '';
     incoming._main.innerHTML = '';
     incoming._trans.textContent = '';
+    try { this.decorateSlot(incoming, sec, line); } catch (_e) { /* 装饰失败不阻断换页 */ }
     this._renderSlot = incoming;
     const activate = () => {
       /* ★ 防御：真实歌词数据触发 renderLine 异常时，降级为无 fit 的直接显示，
@@ -446,6 +587,12 @@ export class LetterpressVisualizer extends VisualizerBase {
   }
 
   destroy() {
+    if (this._resizeTimer) { clearTimeout(this._resizeTimer); this._resizeTimer = 0; }
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    if (this._onWinResize && typeof window !== 'undefined') {
+      window.removeEventListener('resize', this._onWinResize);
+      this._onWinResize = null;
+    }
     if (this._refit) document.fonts.removeEventListener?.('loadingdone', this._refit);
     super.destroy();
   }
@@ -545,6 +692,9 @@ export class LetterpressVisualizer extends VisualizerBase {
         if (!span.classList.contains('lp-sung')) span.classList.add('lp-sung');
         span.classList.remove('lp-active');
       } else if (timeMs >= s) {
+        if (!span.classList.contains('lp-active') && !span.classList.contains('lp-space')) {
+          this.pickSort(Array.from(span.textContent || '')[0]);
+        }
         span.classList.add('lp-sung', 'lp-active');
       } else {
         span.classList.remove('lp-sung', 'lp-active');
@@ -559,5 +709,41 @@ export class LetterpressVisualizer extends VisualizerBase {
       const lit = Math.floor(p * this.giantChars.length);
       this.giantChars.forEach((ch, i) => ch.classList.toggle('lp-giant-sung', i < lit));
     }
+  }
+
+  /**
+   * 海报抓帧前将活字(letterpress)整句全部上墨显形，避免暂停或句中只亮半句。
+   * @param {number} [targetLineIndex]
+   * @returns {(() => void)|null}
+   */
+  stageForPoster(targetLineIndex) {
+    if (!this.viewContainer) return null;
+    const prevIdx = this._curIdx;
+    const lines = Array.isArray(this.lines) ? this.lines : [];
+    const targetIdx = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && targetLineIndex < lines.length)
+      ? targetLineIndex
+      : -1;
+    if (targetIdx >= 0 && targetIdx !== prevIdx && lines[targetIdx]) {
+      this.onLineChange(targetIdx, lines[targetIdx]);
+    }
+    const charRestore = this.charEls.map((sp) => [sp, sp.classList.contains('lp-sung'), sp.classList.contains('lp-active')]);
+    const giantRestore = this.giantChars.map((ch) => [ch, ch.classList.contains('lp-giant-sung')]);
+    for (const sp of this.charEls) {
+      sp.classList.add('lp-sung');
+      sp.classList.remove('lp-active');
+    }
+    for (const ch of this.giantChars) ch.classList.add('lp-giant-sung');
+    return () => {
+      for (const [sp, wasS, wasA] of charRestore) {
+        sp.classList.toggle('lp-sung', wasS);
+        sp.classList.toggle('lp-active', wasA);
+      }
+      for (const [ch, wasG] of giantRestore) {
+        ch.classList.toggle('lp-giant-sung', wasG);
+      }
+      if (targetIdx >= 0 && prevIdx !== targetIdx && prevIdx >= 0 && lines[prevIdx]) {
+        this.onLineChange(prevIdx, lines[prevIdx]);
+      }
+    };
   }
 }

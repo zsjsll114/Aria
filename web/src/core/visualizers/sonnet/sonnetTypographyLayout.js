@@ -274,9 +274,9 @@ export const resolveSonnetTypographyLayout = ({
             measuredHeight = Math.max(1, columnChars.length) * targetFontSize * 0.9;
         }
 
-        // Safe downscale if it exceeds screen bounds
+        // Safe downscale if it exceeds screen bounds (vertical columns reserve extra headroom for zoom)
         const maxW = width * 0.82;
-        const maxH = height * 0.82;
+        const maxH = height * (vertical ? 0.72 : 0.82);
         let fitScale = 1.0;
         if (measuredWidth > maxW) fitScale = Math.min(fitScale, maxW / measuredWidth);
         if (measuredHeight > maxH) fitScale = Math.min(fitScale, maxH / measuredHeight);
@@ -357,6 +357,39 @@ export const resolveSonnetTypographyLayout = ({
 
         heroBox.enterX = 0;
         heroBox.enterY = height * 0.15;
+
+        // 对非 poster-blocks 的密集镜头做最小位移 AABB 碰撞松弛，防止竖排与横排词块在窄预览窗内叠压
+        if (shotKind !== 'poster-blocks' && boxes.length > 1) {
+            const margin = Math.max(6, baseFontSize * 0.14);
+            for (let iter = 0; iter < 8; iter++) {
+                let moved = false;
+                for (let i = 0; i < boxes.length; i++) {
+                    for (let j = i + 1; j < boxes.length; j++) {
+                        const a = boxes[i];
+                        const b = boxes[j];
+                        const dx = b.x - a.x;
+                        const dy = b.y - a.y;
+                        const overlapX = (a.measuredWidth + b.measuredWidth) / 2 + margin - Math.abs(dx);
+                        const overlapY = (a.measuredHeight + b.measuredHeight) / 2 + margin - Math.abs(dy);
+                        if (overlapX > 0 && overlapY > 0) {
+                            const wA = a === heroBox ? 0.15 : (b === heroBox ? 0.85 : 0.5);
+                            const wB = 1 - wA;
+                            if (overlapX < overlapY) {
+                                const sign = dx >= 0 ? 1 : -1;
+                                a.x -= sign * overlapX * wA;
+                                b.x += sign * overlapX * wB;
+                            } else {
+                                const sign = dy >= 0 ? 1 : -1;
+                                a.y -= sign * overlapY * wA;
+                                b.y += sign * overlapY * wB;
+                            }
+                            moved = true;
+                        }
+                    }
+                }
+                if (!moved) break;
+            }
+        }
 
         const decorations = [];
         if (shotKind !== 'quiet-tableau' && shotKind !== 'poster-blocks') {

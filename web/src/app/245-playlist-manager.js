@@ -9,6 +9,8 @@ import { getFavorites, makeSongKey, toggleFavCore } from './120-search-results.j
 import { setPlayMode } from './75-play-mode.js';
 import { esc } from '../utils/formatters.js';
 import { registerAudioListener } from '../core/dualDeck.js';
+import { enqueuePlayNext, formatQueueTrackDuration } from '../core/playlistQueue.js';
+import { logCatch } from '../services/log.js';
 
 (function () {
   const toggle = document.getElementById('playlistManagerToggle');
@@ -21,9 +23,33 @@ import { registerAudioListener } from '../core/dualDeck.js';
   if (!toggle || !panel) return;
 
   let drag = null;
+  let _clearedUndo = null;
+  let _clearedUndoTimer = null;
+  function clearUndoState() {
+    _clearedUndo = null;
+    if (_clearedUndoTimer) { clearTimeout(_clearedUndoTimer); _clearedUndoTimer = null; }
+  }
   function getPlaylist() { return globalThis.playlist || (globalThis.playlist = []); }
   function isOpen() { return panel.classList.contains('visible'); }
-  function open() { panel.classList.add('visible'); mask.classList.add('visible'); render(); }
+  function scrollToCurrentTrack(smooth = false) {
+    const activeEl = listEl.querySelector('.now-playing-active');
+    if (!activeEl) return false;
+    activeEl.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+    if (smooth) {
+      activeEl.classList.remove('plm-locate-flash');
+      void activeEl.offsetWidth;
+      activeEl.classList.add('plm-locate-flash');
+      setTimeout(() => activeEl.classList.remove('plm-locate-flash'), 900);
+    }
+    return true;
+  }
+  function open() {
+    if (getPlaylist().length > 0) clearUndoState();
+    panel.classList.add('visible');
+    mask.classList.add('visible');
+    render();
+    requestAnimationFrame(() => scrollToCurrentTrack(false));
+  }
   function close() { panel.classList.remove('visible'); mask.classList.remove('visible'); dragCleanup(); }
 
   /* ---- 收藏 ---- */
@@ -39,14 +65,25 @@ import { registerAudioListener } from '../core/dualDeck.js';
   function render() {
     const pl = getPlaylist();
     const cur = typeof globalThis.currentTrackIndex === 'number' ? globalThis.currentTrackIndex : 0;
-    countEl.textContent = pl.length ? `${pl.length} 首` : '0 首';
+    if (pl.length > 0 && cur >= 0 && cur < pl.length) {
+      countEl.textContent = `${cur + 1} / ${pl.length} 首`;
+    } else {
+      countEl.textContent = pl.length ? `${pl.length} 首` : '0 首';
+    }
     clearBtn.style.display = pl.length ? 'inline-flex' : 'none';
-    if (!pl.length) { listEl.innerHTML = '<div class="plm-empty">队列为空</div>'; return; }
+    syncHeaderButtons();
+    if (!pl.length) {
+      listEl.innerHTML = _clearedUndo
+        ? '<div class="plm-empty"><span>队列已清空</span><button type="button" class="plm-undo-btn" id="plmUndoClearBtn">撤销清空</button></div>'
+        : '<div class="plm-empty">队列为空</div>';
+      return;
+    }
     let html = '';
     pl.forEach((t, i) => {
       const active = (i === cur);
       const title = esc((t && (t.title || t.song || t.name)) || '未知歌曲');
       const artist = esc((t && (t.artist || t.singer)) || '未知歌手');
+      const durLabel = formatQueueTrackDuration(t);
       const cover = esc((t && t.cover) || '');
       const fav = isFav(t);
       const n = String(i + 1).padStart(2, '0');
@@ -55,7 +92,7 @@ import { registerAudioListener } from '../core/dualDeck.js';
         <img class="result-cover" src="${cover}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <div class="result-info">
           <div class="result-title">${title}</div>
-          <div class="result-artist">${artist}</div>
+          <div class="result-artist">${artist}${durLabel ? ` <span class="plm-dur">· ${esc(durLabel)}</span>` : ''}</div>
         </div>
         <span class="result-status">${active ? '正在播放' : ''}</span>
         <div class="result-actions">
@@ -213,13 +250,40 @@ import { registerAudioListener } from '../core/dualDeck.js';
     globalThis.__shufflePlayQueue = shuffleQueue;
   }
 
+  function restoreClearedQueue() {
+    if (!_clearedUndo || !Array.isArray(_clearedUndo.list) || !_clearedUndo.list.length) return false;
+    const pl = getPlaylist();
+    const snap = _clearedUndo;
+    clearUndoState();
+    pl.splice(0, pl.length, ...snap.list);
+    globalThis.currentTrackIndex = Math.max(0, Math.min(snap.idx || 0, pl.length - 1));
+    render();
+    requestAnimationFrame(() => scrollToCurrentTrack(false));
+    if (typeof globalThis.showToast === 'function') globalThis.showToast('已恢复播放队列');
+    return true;
+  }
+
   clearBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const doClear = () => { globalThis.playlist.length = 0; globalThis.currentTrackIndex = 0; render(); };
+    const doClear = () => {
+      const pl = getPlaylist();
+      if (pl.length > 0) {
+        clearUndoState();
+        _clearedUndo = { list: pl.map(item => ({ ...item })), idx: Number(globalThis.currentTrackIndex) || 0 };
+        _clearedUndoTimer = setTimeout(() => {
+          clearUndoState();
+          if (isOpen() && getPlaylist().length === 0) render();
+        }, 15000);
+      }
+      globalThis.playlist.length = 0;
+      globalThis.currentTrackIndex = 0;
+      render();
+      if (typeof globalThis.showToast === 'function') globalThis.showToast('已清空播放队列');
+    };
     if (typeof window.showGlassConfirm === 'function') {
       window.showGlassConfirm({
         title: '清空播放队列',
-        desc: '确定要清空当前整个播放队列吗？操作不可撤销。',
+        desc: '确定要清空当前整个播放队列吗？（清空后 15 秒内可撤销）',
         danger: true,
       }).then(ok => { if (ok) doClear(); });
     } else if (window.confirm('清空当前整个播放队列？')) {
@@ -260,17 +324,60 @@ import { registerAudioListener } from '../core/dualDeck.js';
     e.stopPropagation();
     shuffleQueue();
   });
-  const syncShuffleVis = () => { shuffleBtn.style.display = getPlaylist().length >= 2 ? 'inline-flex' : 'none'; };
-  syncShuffleVis();
+  const locateBtn = document.createElement('button');
+  locateBtn.type = 'button';
+  locateBtn.id = 'plmLocate';
+  locateBtn.className = 'plm-locate';
+  locateBtn.title = '定位当前播放曲目';
+  locateBtn.setAttribute('aria-label', '定位当前播放曲目');
+  locateBtn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>';
+  locateBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!scrollToCurrentTrack(true) && typeof globalThis.showToast === 'function') {
+      globalThis.showToast('当前队列为空');
+    }
+  });
+  function syncHeaderButtons() {
+    const len = getPlaylist().length;
+    shuffleBtn.style.display = len >= 2 ? 'inline-flex' : 'none';
+    locateBtn.style.display = len >= 2 ? 'inline-flex' : 'none';
+  }
+  syncHeaderButtons();
   if (headerEl && document.getElementById('plmClear')) {
+    headerEl.insertBefore(locateBtn, refillBtn);
     headerEl.insertBefore(shuffleBtn, document.getElementById('plmClear'));
   }
   /* 队列长度变化时同步显隐（render 是模块内函数，借 play 事件与开面板时机刷新） */
-  panel.addEventListener('transitionend', syncShuffleVis);
-  if (audio) registerAudioListener('play', syncShuffleVis);
+  panel.addEventListener('transitionend', syncHeaderButtons);
+  if (audio) registerAudioListener('play', syncHeaderButtons);
+
+  if (typeof Aria !== 'undefined') {
+    Aria.enqueuePlayNextTrack = function (rawTrack, fallbackSource = '') {
+      const pl = getPlaylist();
+      const curIdx = typeof globalThis.currentTrackIndex === 'number' ? globalThis.currentTrackIndex : 0;
+      const res = enqueuePlayNext(pl, rawTrack, fallbackSource, curIdx);
+      if (Number.isInteger(res.currentIndex)) {
+        globalThis.currentTrackIndex = res.currentIndex;
+      }
+      if (res.added || res.moved) clearUndoState();
+      if (isOpen()) render();
+      syncHeaderButtons();
+      let message = '';
+      if (res.added || res.moved) message = '已设为下一首播放';
+      else if (res.alreadyCurrent) message = '当前正在播放该曲目';
+      else if (res.alreadyNext) message = '已经是下一首了';
+      if (message && typeof globalThis.showToast === 'function') globalThis.showToast(message);
+      return { ...res, message };
+    };
+  }
 
   /* ---- 点击：播放 / 收藏 / 加入歌单 / 删除（拖拽结束不算点击） ---- */
   listEl.addEventListener('click', (e) => {
+    if (e.target.closest('#plmUndoClearBtn')) {
+      e.stopPropagation();
+      restoreClearedQueue();
+      return;
+    }
     if (lastWasDrag) return;
     if (drag && drag.moved) return;
     const pl = getPlaylist();
@@ -305,7 +412,14 @@ import { registerAudioListener } from '../core/dualDeck.js';
     }
     /* data-play 已放到整行根节点：点封面/序号/空白区都能播放 */
     const info = e.target.closest('[data-play]');
-    if (info) { const i = +info.dataset.play; if (i !== cur) loadPlaylistTrack(i); }
+    if (info) {
+      const i = +info.dataset.play;
+      if (i !== cur) loadPlaylistTrack(i);
+      else if (audio && (audio.paused || audio.ended)) {
+        if (audio.ended) audio.currentTime = 0;
+        audio.play().catch((err) => logCatch('playlistManager', err));
+      }
+    }
   });
 
   if (audio) registerAudioListener('play', () => { if (isOpen()) render(); });

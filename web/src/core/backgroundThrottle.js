@@ -33,7 +33,7 @@ export const TIER_NONE = '';
 export const TIER_IDLE = 'idle';
 export const TIER_HIDDEN = 'hidden';
 
-export const BG_THROTTLE_DEFAULTS = { enabled: true, blurGraceMs: 1200, reassertMs: 3000 };
+export const BG_THROTTLE_DEFAULTS = { enabled: true, blurGraceMs: 500, reassertMs: 3000 };
 
 /** 目标表：{id, tier, get, isBusy, pause, resume, skipWhen?} */
 /** @type {any[]} */
@@ -274,7 +274,12 @@ function clearBlurTimer() {
 
 function onVisibility() {
     const doc = _env && _env.document;
-    if (doc && doc.hidden === true) clearBlurTimer();
+    clearBlurTimer();
+    /* ★ 2026-11-19：从后台/最小化切回前台（hidden === false）时立刻清除旧 _occluded，
+       防止 WebView2 / Tauri 恢复可见但未同步派发 window.focus 时永久卡死在 TIER_IDLE。 */
+    if (doc && doc.hidden === false) {
+        _occluded = false;
+    }
     syncBackgroundThrottle('visibilitychange');
 }
 
@@ -297,6 +302,21 @@ function onFocus() {
     clearBlurTimer();
     _occluded = false;
     syncBackgroundThrottle('focus');
+}
+
+function onPageShow() {
+    clearBlurTimer();
+    _occluded = false;
+    syncBackgroundThrottle('pageshow');
+}
+
+function onUserWake() {
+    const doc = _env && _env.document;
+    if (_tier === TIER_NONE && !_occluded) return;
+    if (doc && doc.hidden === true) return;
+    clearBlurTimer();
+    _occluded = false;
+    syncBackgroundThrottle('interaction');
 }
 
 function onPageHide() {
@@ -340,7 +360,10 @@ export function installBackgroundThrottle(deps = {}) {
         bind(_env.document, 'visibilitychange', onVisibility),
         bind(_env.window, 'blur', onBlur),
         bind(_env.window, 'focus', onFocus),
+        bind(_env.window, 'pageshow', onPageShow),
         bind(_env.window, 'pagehide', onPageHide),
+        bind(_env.window, 'pointerdown', onUserWake),
+        bind(_env.window, 'keydown', onUserWake),
     ];
     syncBackgroundThrottle('install');
     if (!deps.silent) {

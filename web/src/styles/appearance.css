@@ -4,7 +4,7 @@
 .appearance-panel.active { display: flex; }
 .appearance-preview { flex: 0 0 50%; max-width: 50%; position: relative; overflow: hidden; background: transparent; border-right: 1px solid rgba(255,255,255,0.08); padding: 12px; box-sizing: border-box; }
 #lyricPreviewContainer { position: absolute; inset: 12px; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
-.appearance-controls { flex: 0 0 50%; max-width: 50%; overflow-y: auto; overflow-x: hidden; padding: 16px 20px 20px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+.appearance-controls { flex: 0 0 50%; max-width: 50%; overflow-y: auto; overflow-x: hidden; padding: 0 20px 20px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
 .appearance-controls::-webkit-scrollbar { width: 6px; }
 .appearance-controls::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
 
@@ -87,11 +87,11 @@
 @keyframes view-flyin-wf-float { 0%,100% { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0.4; } 33% { transform: translate(20px,-15px) rotate(120deg) scale(1.05); opacity: 0.7; } 66% { transform: translate(-15px,10px) rotate(240deg) scale(0.95); opacity: 0.3; } }
 .preview-player:not(.view-flyin) .preview-wireframes { display: none; }
 .preview-player.view-flyin .preview-lyrics-scroll { transform: none !important; transition: none !important; display: flex !important; align-items: center !important; justify-content: center !important; height: 100%; position: absolute; top: 0; left: 0; width: 100%; z-index: 1; }
-.preview-player.view-flyin .preview-line { position: absolute !important; top: 50%; left: 50%; transform: translate(-50%,-50%) !important; width: 92% !important; max-width: 900px; text-align: center !important; opacity: 0 !important; visibility: hidden; pointer-events: none !important; filter: none !important; transition: opacity 0.5s ease, visibility 0s 0.5s !important; }
+.preview-player.view-flyin .preview-line { position: absolute !important; top: 50%; left: 50%; transform: translate(-50%,-50%) !important; width: 94% !important; max-width: 96%; text-align: center !important; opacity: 0 !important; visibility: hidden; pointer-events: none !important; filter: none !important; transition: opacity 0.5s ease, visibility 0s 0.5s !important; }
 .preview-player.view-flyin .preview-line.active { opacity: 1 !important; visibility: visible; transition: opacity 0.5s ease, visibility 0s !important; }
 .preview-player.view-flyin .preview-lrc-translation,
 .preview-player.view-flyin .preview-lrc-romaji { display: none !important; }
-.preview-player.view-flyin .preview-line .preview-lrc-original { font-weight: 700 !important; line-height: 1.3 !important; margin: 0 auto !important; padding: 12px 24px !important; word-break: keep-all !important; overflow-wrap: break-word !important; white-space: normal !important; overflow: hidden !important; }
+.preview-player.view-flyin .preview-line .preview-lrc-original { font-weight: 700 !important; line-height: 1.25 !important; margin: 0 auto !important; padding: 12px 18px !important; word-break: keep-all !important; overflow-wrap: break-word !important; white-space: normal !important; overflow: visible !important; }
 .preview-player.view-flyin .preview-line .preview-words-container { display: flex !important; flex-wrap: wrap !important; justify-content: center !important; align-items: center !important; gap: 0 !important; }
 .preview-player.view-flyin .preview-line:not(.active) .preview-word { opacity: 0 !important; transition: none !important; }
 .preview-player.view-flyin .preview-line.active .preview-word { opacity: 0; transform: translateY(var(--preview-flyin-translateY,14px)) translateX(6px) scale(var(--preview-flyin-scale,0.8)) rotate(-3deg); transition: opacity 0.45s cubic-bezier(0.25,0.46,0.45,0.94), transform 0.45s cubic-bezier(0.25,0.46,0.45,0.94), filter 0.4s ease; }
@@ -157,3 +157,381 @@
    预览是纯显示层，Pixi canvas 不需要接收指针事件——统一掐掉，
    杜绝 canvas 任何形式的指针截获（控件栏自身 pointer-events:auto 不受影响）。 */
 #lyricPreviewContainer canvas { pointer-events: none; }
+
+/* ============================================================
+ * 视觉工坊（Visual Workshop）：顶部单行模式胶囊 + 4 家族宫格浮层 + 3 层收纳
+ * ============================================================ */
+.appearance-controls {
+    position: relative;
+}
+
+/* ★ 毛玻璃背景拆至 ::before 伪元素（不直接在 .ws-header 本身挂 backdrop-filter）：
+   Chromium 下父元素带 backdrop-filter 会形成 Backdrop Root，直接阻断子浮层
+   .ws-mode-popover（含 .ws-family-grid）穿透采样并模糊下方滚动内容。 */
+.ws-header {
+    position: sticky;
+    top: 10px;
+    z-index: 40;
+    margin: 12px 0 14px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: transparent;
+}
+.ws-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: rgba(14, 16, 22, 0.44);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    pointer-events: none;
+}
+.ws-header:has(.ws-mode-popover:not([hidden])) {
+    z-index: 75;
+}
+
+.ws-mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.ws-mode-stepper {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 38px;
+    padding: 3px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.ws-mode-stepper:hover,
+.ws-mode-stepper:has(.ws-mode-trigger[aria-expanded="true"]) {
+    border-color: rgba(var(--aria-accent-rgb), 0.36);
+    background: rgba(255, 255, 255, 0.06);
+}
+.ws-mode-stepper:has(.ws-mode-trigger[aria-expanded="true"]) {
+    box-shadow: 0 0 0 1px rgba(var(--aria-accent-rgb), 0.22), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.ws-mode-nav-btn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease;
+}
+.ws-mode-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    color: #fff;
+}
+.ws-mode-nav-btn:active {
+    transform: scale(0.92);
+}
+
+.ws-mode-trigger {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    margin: 0 2px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.96);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+    text-align: left;
+}
+.ws-mode-trigger:hover,
+.ws-mode-trigger[aria-expanded="true"] {
+    background: rgba(var(--aria-accent-rgb), 0.12);
+}
+
+.ws-mode-family-tag {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(var(--aria-accent-rgb), 0.16);
+    border: 1px solid rgba(var(--aria-accent-rgb), 0.25);
+    color: var(--aria-accent);
+    white-space: nowrap;
+}
+
+.ws-mode-name {
+    flex: 1 1 auto;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: rgba(255, 255, 255, 0.96);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ws-mode-count {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.48);
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
+    transition: color 0.18s ease, background 0.18s ease;
+}
+.ws-mode-trigger:hover .ws-mode-count,
+.ws-mode-trigger[aria-expanded="true"] .ws-mode-count {
+    color: rgba(255, 255, 255, 0.82);
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.vr-settings-slot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+
+.ws-vfx-recipe-btn {
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(255, 255, 255, 0.88);
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.ws-vfx-recipe-btn:hover {
+    border-color: rgba(var(--aria-accent-rgb), 0.42);
+    background: rgba(var(--aria-accent-rgb), 0.12);
+    color: #fff;
+}
+
+.ws-mode-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 60;
+    max-height: min(76vh, 660px);
+    overflow-y: auto;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(14, 16, 22, 0.46);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    scrollbar-width: thin;
+}
+.ws-mode-popover[hidden] {
+    display: none;
+}
+
+.ws-family-group + .ws-family-group {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ws-family-header {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 8px;
+}
+
+.ws-family-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+    gap: 8px;
+}
+
+.appearance-mode-btn.ws-mode-card {
+    flex: none;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgba(255, 255, 255, 0.04);
+    text-align: left;
+    white-space: normal;
+}
+.appearance-mode-btn.ws-mode-card:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+.appearance-mode-btn.ws-mode-card.active {
+    background: rgba(var(--aria-accent-rgb), 0.18);
+    border-color: rgba(var(--aria-accent-rgb), 0.55);
+    color: var(--aria-accent);
+}
+
+.ws-card-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: inherit;
+    line-height: 1.25;
+}
+
+.ws-card-desc {
+    font-size: 11px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.52);
+    line-height: 1.35;
+}
+.appearance-mode-btn.ws-mode-card.active .ws-card-desc {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+/* 3 层收纳（核心 / 进阶 / 独立背景与字体覆写） */
+.ws-tier-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.ws-tier-summary::-webkit-details-marker {
+    display: none;
+}
+.ws-tier-summary::after {
+    content: '▸';
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.48);
+    transition: transform 0.18s ease;
+}
+details.ws-tier[open] > .ws-tier-summary::after {
+    transform: rotate(90deg);
+}
+
+.ws-tier-count {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.ws-tier-body {
+    margin-top: 10px;
+}
+
+.ws-override-badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.65);
+}
+.ws-override-badge.is-overridden {
+    background: rgba(var(--aria-accent-rgb), 0.2);
+    color: var(--aria-accent);
+}
+
+.ws-override-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.ws-override-note {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.4;
+}
+
+.ws-override-reset-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* 性能降级（锚在 #ariaRoot 上） */
+html#ariaRoot.is-software-renderer .ws-header::before,
+html#ariaRoot body.perf-low .ws-header::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    background: rgba(16, 18, 26, 0.94);
+}
+html#ariaRoot.is-software-renderer .ws-mode-popover,
+html#ariaRoot body.perf-low .ws-mode-popover {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    background: rgba(18, 20, 28, 0.98);
+}
+
+@media (max-width: 640px) {
+    .appearance-controls {
+        padding: 0 14px 16px;
+    }
+    .ws-header {
+        top: 8px;
+        margin: 8px 0 12px;
+        padding: 10px 12px;
+    }
+    .ws-mode-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .ws-mode-count {
+        display: none;
+    }
+    .ws-mode-popover {
+        left: 0;
+        right: 0;
+        max-height: 52vh;
+    }
+    .ws-override-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

@@ -103,6 +103,8 @@
         "web/src/core/tunnelEngine/**",
         "web/src/core/previewEngine.js",
         "web/src/core/proceduralLayout.js",
+        /* 从 app/201-settings-ai.js 拆出的旧业务运行时，且直接 import 被排除的 proceduralLayout.js */
+        "web/src/services/aiAnalyzer.js",
         /* 影子模块（module-reachability 已确认「存在但未被接线」）：它们的历史不一致
            由影子层门禁单独跟踪，不是本棘轮该背的债。 */
         "web/src/core/audioPlayer.js",

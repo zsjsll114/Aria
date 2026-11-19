@@ -52,6 +52,7 @@ import './230-touch-gestures.js';
 import './232-nowplaying-follow.js';
 import './240-titlebar.js';
 import './250-desktop-lyrics.js';
+import './256-listen-stats.js';
 import './258-rankings.js';
 import './259-selfhost-favorites.js';
 import './275-play-source.js';
@@ -83,4 +84,5 @@ import './306-energy-motion.js';  /* 能量微动效（需求 19）：低频能�
 import './307-start-fade.js';  /* 起播淡入（需求 18）：点播放/切歌/暂停恢复时 0→设定值，100~300ms */
 import './308-jizura-preload.js';  /* 字面引擎预热：空闲时加载 JIZURA 的 39 个模块，切模式不空等 */
 import './309-jizura-fontpack.js';  /* 字面·日文字体包：把上游字族注册成引擎认的家族名（复用 Aria 字体库持久化） */
+import './310-media-session.js';     /* 系统媒体控制（MediaSession / SMTC / 动态页签标题） */
 import './999-global-audit.js';

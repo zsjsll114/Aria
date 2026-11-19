@@ -11,6 +11,7 @@ import { getFavorites, saveFavorites, setHint, toggleFavorite, updateFavoriteBtn
 import { applyVolumeOnSongChange, loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
 import { loadOnlineSong } from './175-track-index-online.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
+import { buildCollectionQueue, enqueueTrack } from '../core/playlistQueue.js';
 
 favoriteBtn?.addEventListener('click', toggleFavorite);
 
@@ -22,6 +23,7 @@ if (typeof document !== 'undefined') {
 function renderFavoritesList() {
             const favs = getFavorites();
             if (favs.length === 0) {
+                Aria.__clearSongView(favoritesListEl);
                 favoritesListEl.innerHTML = '<div class="empty-hint">还没有收藏的歌曲</div>';
                 favoritesHintEl.textContent = '';
                 return;
@@ -30,8 +32,8 @@ function renderFavoritesList() {
             let html = '';
             /* 播放全部 + 视图切换 */
             html += `
-                <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                    <div class="play-all-btn" id="favPlayAllBtn" style="flex:1;margin-bottom:0;">
+                <div class="rank-list-head">
+                    <div class="play-all-btn" id="favPlayAllBtn">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
                         <span>播放全部（${favs.length}）</span>
                     </div>
@@ -48,6 +50,9 @@ function renderFavoritesList() {
                         <div class="result-artist">${artist} · ${sourceLabel}</div>
                     </div>
                     <div class="result-actions">
+                        <button class="result-action-btn" data-action="playnext" data-idx="${idx}" title="下一首播放">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                        </button>
                         <button class="result-action-btn" data-action="addnow" data-idx="${idx}" title="加入当前播放">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
                         </button>
@@ -64,9 +69,7 @@ function renderFavoritesList() {
                 </div>`;
             });
             favoritesListEl.innerHTML = html;
-            const favHeadEl = favoritesListEl.querySelector('.rank-list-head');
-            if (favHeadEl) favHeadEl.appendChild(Aria.__songViewBtn(favoritesListEl));
-            Aria.__applySongViewTo(favoritesListEl);
+            Aria.__mountSongView(favoritesListEl);
         }
 
 /* 打开/关闭收藏列表（与搜索弹窗一致的弹出动画） */
@@ -109,20 +112,29 @@ function addFavToPlaylist(idx) {
             openAddToPlaylist();
         }
 
+/* 将收藏歌曲设为下一首播放 */
+function playNextFav(idx) {
+            const favs = getFavorites();
+            if (idx < 0 || idx >= favs.length) return;
+            const f = favs[idx];
+            const fb = f.source || (f.mid ? 'tencent' : (f.id ? 'netease' : ''));
+            if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+                const res = globalThis.Aria.enqueuePlayNextTrack(f, fb);
+                if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+                return;
+            }
+            addFavToNowPlaying(idx);
+        }
+
 /* 将收藏歌曲加入当前播放队列 */
 function addFavToNowPlaying(idx) {
             const favs = getFavorites();
             if (idx < 0 || idx >= favs.length) return;
             const f = favs[idx];
-            if (f.source && f.id) {
-                playlist.push({
-                    url: null, title: f.title, artist: f.artist,
-                    cover: f.cover || '', source: f.source, id: f.id, mid: f.mid || ''
-                });
-            } else if (f.url) {
-                playlist.push({
-                    url: f.url, title: f.title, artist: f.artist, cover: f.cover || ''
-                });
+            const res = enqueueTrack(playlist, f, f.source || (f.mid ? 'tencent' : (f.id ? 'netease' : '')));
+            if (typeof setHint === 'function') {
+                if (res.added) setHint('已加入当前播放队列');
+                else if (res.duplicate) setHint('已在当前播放队列中');
             }
         }
 
@@ -131,13 +143,11 @@ async function playEntireFavorites() {
             const favs = getFavorites();
             if (favs.length === 0) return;
             closeFavorites();
-            playlist = favs.map(f => ({
-                url: f.url || null, title: f.title, artist: f.artist,
-                cover: f.cover || '', source: f.source || '', id: f.id || '', mid: f.mid || '',
-                key: f.key || ''
-            }));
-            currentTrackIndex = 0;
-            await loadPlaylistTrack(0);
+            const q = buildCollectionQueue(favs, 0);
+            if (!q.playlist.length) return;
+            playlist = q.playlist;
+            currentTrackIndex = q.currentTrackIndex;
+            await loadPlaylistTrack(currentTrackIndex);
         }
 
 /* 收藏列表点击：播放、删除或加入歌单 */
@@ -156,6 +166,8 @@ favoritesListEl?.addEventListener('click', (e) => {
                 if (isNaN(idx)) return;
                 if (actionBtn.dataset.action === 'addpl') {
                     addFavToPlaylist(idx);
+                } else if (actionBtn.dataset.action === 'playnext') {
+                    playNextFav(idx);
                 } else if (actionBtn.dataset.action === 'addnow') {
                     addFavToNowPlaying(idx);
                 }
@@ -179,11 +191,18 @@ favoritesListEl?.addEventListener('click', (e) => {
             const idx = parseInt(item.dataset.idx);
             const favs = getFavorites();
             if (isNaN(idx) || !favs[idx]) return;
-            playFromFavorite(favs[idx]);
+            const q = buildCollectionQueue(favs, idx);
+            if (q.playlist.length) {
+                playlist = q.playlist;
+                currentTrackIndex = q.currentTrackIndex;
+                playFromFavorite(q.playlist[currentTrackIndex], { skipPlaylistUpdate: true });
+            } else {
+                playFromFavorite(favs[idx]);
+            }
         });
 
 /* 从收藏播放：在线歌曲重新请求接口，本地歌曲直接用记录的url */
-async function playFromFavorite(fav) {
+async function playFromFavorite(fav, opts) {
             closeFavorites();
             favoritesHintEl.textContent = `加载中: ${fav.title}`;
             /* ★ 推断有效音源：老收藏/跨源播放可能没记录 source，缺省按 mid 推断，
@@ -191,16 +210,26 @@ async function playFromFavorite(fav) {
                使 fetchLyricWithFallback 优先用 songInfo.source，而非易被预加载并发改写的
                模块级 currentSource —— 这是收藏点歌偶发「有音无词」的根因。 */
             const effSource = fav.source || (fav.mid ? 'tencent' : (fav.id ? 'netease' : ''));
-            if (effSource && fav.id) {
+            if (effSource && effSource !== 'local' && (fav.id || fav.mid || fav.hash)) {
                 /* 在线歌曲：复用 loadOnlineSong 流程，构造 songInfo */
-                const songInfo = { id: fav.id, mid: fav.mid || '', song: fav.title, singer: fav.artist, cover: fav.cover, source: effSource };
+                const songInfo = {
+                    id: fav.id || fav.hash || fav.mid || '',
+                    mid: fav.mid || '',
+                    hash: fav.hash || '',
+                    song: fav.title || fav.song || '',
+                    singer: fav.artist || fav.singer || '',
+                    cover: fav.cover || '',
+                    source: effSource
+                };
                 currentSource = effSource;
-                await loadOnlineSong(songInfo, true);
+                await loadOnlineSong(songInfo, Boolean(opts && opts.skipPlaylistUpdate));
                 favoritesHintEl.textContent = '';
             } else if (fav.url) {
                 /* 本地文件（url 为 blob，刷新后失效，作容错处理） */
-                playlist = [{ url: fav.url, title: fav.title, artist: fav.artist }];
-                currentTrackIndex = 0;
+                if (!opts || !opts.skipPlaylistUpdate) {
+                    playlist = [{ url: fav.url, title: fav.title, artist: fav.artist, isLocal: true, source: 'local' }];
+                    currentTrackIndex = 0;
+                }
                 audio.pause();
                 audio.removeAttribute('src');
                 audio.src = getStreamCachedAudioUrl(fav.url, fav.mid || fav.id || fav.title);

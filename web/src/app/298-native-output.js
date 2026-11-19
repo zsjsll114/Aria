@@ -47,8 +47,10 @@ import { crossfaderPhase, abortCrossfade } from '../core/automix/crossfader.js';
 import { setActiveAudio } from './20-lyrics-render.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { logInfo, logWarn, logCatch } from '../services/log.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 
 const TAG = 'nativeOutput';
+let _nativeAvailable = false;
 
 /** 开关偏好（'1' = 用户希望用独占）。★ 不进 user_config.json，理由见文件头 5 */
 const EXCLUSIVE_KEY = 'aria_native_audio_exclusive';
@@ -434,7 +436,8 @@ function showRow(visible) {
 
 function bindToggleClick() {
     const btn = typeof document !== 'undefined' ? document.getElementById('setNativeExclusive') : null;
-    if (!btn) return;
+    if (!btn || btn.dataset.nativeBound === '1') return;
+    btn.dataset.nativeBound = '1';
     btn.addEventListener('click', () => {
         if (_busy) return;
         const want = !_active;
@@ -467,11 +470,18 @@ function notifyOutputUI() {
 
 /* ============================ 启动 ============================ */
 
+function syncAudioTabExclusiveUI() {
+    bindToggleClick();
+    showRow(_nativeAvailable);
+    syncToggle();
+}
+
 try {
     bindToggleClick();
     void (async () => {
         const res = await bridge.probe();
-        showRow(!!res.available);
+        _nativeAvailable = !!res.available;
+        showRow(_nativeAvailable);
         syncToggle();
         if (!res.available) return;
         /* 偏好为开 → 自动恢复。**必须先过体检**：否则一台「驱动不消费缓冲」的
@@ -506,6 +516,13 @@ if (Aria) {
         savedDevice: () => readDevice(),
     });
 }
+
+registerSettingsHook('audio', {
+    id: 'native-output',
+    order: 20,
+    onMount: syncAudioTabExclusiveUI,
+    onShow: syncAudioTabExclusiveUI,
+});
 
 export { enableExclusive, disableExclusive, listNativeDevices, selectNativeDevice };
 export const __test = { readPref, writePref, exclusiveWanted, currentVolumePercent };

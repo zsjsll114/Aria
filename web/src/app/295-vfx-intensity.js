@@ -20,6 +20,7 @@
  * 否则启动时按滑杆写死一遍 vfx，自动检测出来的档位就被顶掉了。
  * ============================================================ */
 import { applyPerformanceProfile, getPerformanceSettings, saveSettings } from './180-boot-config.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 import { applyAllSettings } from './190-settings-fontsize.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { logCatch } from '../services/log.js';
@@ -115,12 +116,19 @@ function bind() {
     syncIntensityUI();
 }
 
-/* 静态 DOM，deferred 模块执行时已解析到位，直接在导入期绑定 + 首次同步 */
+/* 静态/动态 DOM：模块加载期若 DOM 已在则立即绑定；动态渲染后通过 settingsRegistry 触发 onMount/onShow */
 try {
     bind();
 } catch (e) {
     logCatch(TAG, e);
 }
+
+registerSettingsHook('performance', {
+    id: 'vfx-intensity',
+    order: 10,
+    onMount: bind,
+    onShow: syncIntensityUI,
+});
 
 const A = (typeof globalThis !== 'undefined' && globalThis.Aria) || null;
 if (A) {

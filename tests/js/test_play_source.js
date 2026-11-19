@@ -311,3 +311,25 @@ test('songIdentityKey：身份全缺返回空串（调用方按"不可比较"处
     assert.equal(songIdentityKey({ title: '泪海' }, 'kugou'), 'kugou:泪海:');
     assert.equal(songIdentityKey({ title: '泪海' }, undefined), ':泪海:');
 });
+
+test('describeBadge().platformKey：准确返回图标角标所需的规范平台键', () => {
+    beginResolveTrace('tencent:99');
+    assert.equal(describeBadge().platformKey, 'qq');
+
+    for (const [channel, url, expected] of [
+        ['selfhostQQ', 'https://stream.qqmusic.qq.com/a.flac', 'qq'],
+        ['qqResolve', 'https://stream.qqmusic.qq.com/a.mp3', 'qq'],
+        ['vkeys', 'https://stream.qqmusic.qq.com/a.mp3', 'qq'],
+        ['selfhostNetease', 'https://m7.music.126.net/a.mp3', 'netease'],
+        ['byfuns', 'https://m7.music.126.net/a.mp3', 'netease'],
+        ['selfhostKugou', 'https://fs.kugou.com/a.mp3', 'kugou'],
+        ['kugou', 'https://fs.kugou.com/a.mp3', 'kugou'],
+        ['kuwo', 'https://other.kuwo.cn/a.mp3', 'kuwo'],
+        ['crossKuwo', 'https://other.kuwo.cn/a.mp3', 'kuwo'],
+        ['local', 'blob:http://localhost:8001/local', 'local'],
+    ]) {
+        beginResolveTrace(`${expected}:1`);
+        recordResolveHit(channel, url, 'flac');
+        assert.equal(describeBadge().platformKey, expected, channel);
+    }
+});

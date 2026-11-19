@@ -10,6 +10,7 @@ import { makeSongKey, setHint } from './120-search-results.js';
 import { addToPlaylist, addToPlaylistListEl, deletePlaylist, generatePlaylistId, getPlaylists, importConfirmBtn, importHintEl, importPlaylistOverlay, importProgressFill, importProgressText, importProgressWrap, importUrlInput, playEntirePlaylist, playLocalMusicSong, playlistsListEl, removeFromPlaylist, renderAddToPlaylistList, renderLocalMusicDetail, renderNowPlayingDetail, renderPlaylistDetail, renderPlaylistsView, savePlaylists, togglePlaylistSongFav } from './130-playlists.js';
 import { closePlaylists, loadPlaylistTrack, openAddToPlaylist } from './135-crossfade.js';
 import { extractNeteaseId, extractQQId, getPlaylistSource, resolveShortLink } from './140-playlist-ui-events.js';
+import { buildCollectionQueue, enqueueTrack } from '../core/playlistQueue.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 
 /* 网易云歌单分页获取的 token：本仓库不含凭证，请到 https://apicx.asia 免费注册后在下方自填 */
@@ -263,7 +264,7 @@ async function fetchPlaylistTracks(url) {
         }
 
 /* 跨音源匹配的尝试顺序（需求 6）：先原来源，再其它音源里找**可用版本** */
-const IMPORT_SOURCE_ORDER = ['netease', 'qq', 'kugou', 'qishui'];
+const IMPORT_SOURCE_ORDER = ['netease', 'qq', 'kugou'];
 
 /** 在**单个**音源里搜一首，返回 { ...歌曲, quality } 或 null。quality: exact|title|loose */
 async function searchOneSource(title, artist, searchSource) {
@@ -305,7 +306,7 @@ async function searchOneSource(title, artist, searchSource) {
    两个刻意的收紧：
      ① 其它音源**只收** exact/title 两级命中 —— 原来源允许"取第一个"（用户选的来源，
         差一点也认），但换个平台还把第一条硬塞进来，等于凭空造出一首错歌；
-     ② 顺序固定（netease → qq → kugou → qishui，原来源优先），保证同一份歌单
+     ② 顺序固定（netease → qq → kugou，原来源优先），保证同一份歌单
         每次导入结果一致（否则"同一个链接导两次不一样"没法解释）。 */
 async function searchSingleTrack(title, artist, preferredSource) {
             const order = [preferredSource, ...IMPORT_SOURCE_ORDER.filter(s => s !== preferredSource)];
@@ -509,6 +510,19 @@ playlistsListEl?.addEventListener('click', async (e) => {
                 if (currentPlaylistId) removeFromPlaylist(currentPlaylistId, parseInt(delSong.dataset.delSong));
                 return;
             }
+            /* 下一首播放 */
+            const playNextPlBtn = e.target.closest('[data-action="playnext-pl"]');
+            if (playNextPlBtn) {
+                e.stopPropagation();
+                const sidx = parseInt(playNextPlBtn.dataset.sidx);
+                const playlists = getPlaylists();
+                const pl = playlists.find(p => p.id === currentPlaylistId);
+                if (pl && pl.songs[sidx] && typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+                    const res = globalThis.Aria.enqueuePlayNextTrack(pl.songs[sidx]);
+                    if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+                }
+                return;
+            }
             /* 加入当前播放 */
             const addNowPlBtn = e.target.closest('[data-action="addnow-pl"]');
             if (addNowPlBtn) {
@@ -517,11 +531,11 @@ playlistsListEl?.addEventListener('click', async (e) => {
                 const playlists = getPlaylists();
                 const pl = playlists.find(p => p.id === currentPlaylistId);
                 if (pl && pl.songs[sidx]) {
-                    const s = pl.songs[sidx];
-                    playlist.push({
-                        url: null, title: s.title, artist: s.artist,
-                        cover: s.cover || '', source: s.source, id: s.id, mid: s.mid || ''
-                    });
+                    const res = enqueueTrack(playlist, pl.songs[sidx]);
+                    if (typeof setHint === 'function') {
+                        if (res.added) setHint('已加入当前播放队列');
+                        else if (res.duplicate) setHint('已在当前播放队列中');
+                    }
                 }
                 return;
             }
@@ -605,16 +619,41 @@ playlistsListEl?.addEventListener('click', async (e) => {
             const playAllLocal = e.target.closest('#playAllLocalBtn');
             if (playAllLocal) {
                 if (localSongsCache.length > 0) {
-                    playlist = localSongsCache.map(s => ({
-                        url: s.audioUrl,
-                        title: s.title,
-                        artist: s.artist,
-                        cover: s.coverUrl,
-                        source: 'local',
-                        key: `local:${s.folder}`
-                    }));
-                    currentTrackIndex = 0;
-                    await playLocalMusicSong(localSongsCache[0]);
+                    const q = buildCollectionQueue(localSongsCache, 0, 'local');
+                    if (q.playlist.length) {
+                        playlist = q.playlist;
+                        currentTrackIndex = q.currentTrackIndex;
+                        await playLocalMusicSong(playlist[currentTrackIndex]);
+                    }
+                }
+                return;
+            }
+
+            /* 本地音乐：下一首播放 */
+            const playNextLocalBtn = e.target.closest('[data-action="playnext-local"]');
+            if (playNextLocalBtn) {
+                e.stopPropagation();
+                const lidx = parseInt(playNextLocalBtn.dataset.idx);
+                const song = localSongsCache[lidx];
+                if (song && typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+                    const res = globalThis.Aria.enqueuePlayNextTrack(song, 'local');
+                    if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+                }
+                return;
+            }
+
+            /* 本地音乐：加入当前播放队列 */
+            const addNowLocalBtn = e.target.closest('[data-action="addnow-local"]');
+            if (addNowLocalBtn) {
+                e.stopPropagation();
+                const lidx = parseInt(addNowLocalBtn.dataset.idx);
+                const song = localSongsCache[lidx];
+                if (song) {
+                    const res = enqueueTrack(playlist, song, 'local');
+                    if (typeof setHint === 'function') {
+                        if (res.added) setHint('已加入当前播放队列');
+                        else if (res.duplicate) setHint('已在当前播放队列中');
+                    }
                 }
                 return;
             }
@@ -663,14 +702,21 @@ playlistsListEl?.addEventListener('click', async (e) => {
                 return;
             }
 
-            /* 本地音乐：单曲点击播放 */
+            /* 本地音乐：单曲点击播放（B 类合集：整份本地音乐入队并从点击索引起播） */
             const localSongItem = e.target.closest('.result-item[data-local-idx]');
             if (localSongItem && playlistViewMode === 'detail' && currentPlaylistId === '__local_music__') {
                 const idx = parseInt(localSongItem.dataset.localIdx);
                 const song = localSongsCache[idx];
                 logInfo('playlistImport', '[LocalMusic] 点击播放本地歌曲:', idx, song ? song.title : 'null');
                 if (song) {
-                    await playLocalMusicSong(song);
+                    const q = buildCollectionQueue(localSongsCache, idx, 'local');
+                    if (q.playlist.length) {
+                        playlist = q.playlist;
+                        currentTrackIndex = q.currentTrackIndex;
+                        await playLocalMusicSong(playlist[currentTrackIndex]);
+                    } else {
+                        await playLocalMusicSong(song);
+                    }
                 }
                 return;
             }
@@ -697,12 +743,11 @@ playlistsListEl?.addEventListener('click', async (e) => {
                     const pl = playlists.find(p => p.id === currentPlaylistId);
                     if (pl) {
                         /* 设置播放队列为当前歌单 */
-                        playlist = pl.songs.map(s => ({
-                            url: null, title: s.title || s.song || s.name, artist: s.artist,
-                            cover: s.cover, source: s.source, id: s.id, mid: s.mid, key: s.key
-                        }));
-                        currentTrackIndex = idx;
-                        await loadPlaylistTrack(idx);
+                        const q = buildCollectionQueue(pl.songs, idx);
+                        if (!q.playlist.length) return;
+                        playlist = q.playlist;
+                        currentTrackIndex = q.currentTrackIndex;
+                        await loadPlaylistTrack(currentTrackIndex);
                         closePlaylists();
                     }
                 }

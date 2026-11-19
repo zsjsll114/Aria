@@ -17,6 +17,8 @@ import { hashSonnetSeed } from './sonnetRandom.js';
 import { buildSonnetStaffView } from './sonnetStaffView.js';
 import { buildSonnetTextFixedGeo } from './sonnetTextFixedGeo.js';
 import { resolveSonnetCameraTrackingGlyphs } from './sonnetCameraTracking.js';
+/* ★ 2026-10-11 Aria 扩展：`♪` 谱面的判定（默认与上游等价，可选放宽到间奏标记） */
+import { isSonnetStaffSegment } from '../instrumentalLines.js';
 // 上游 ./sonnetGuides（createSonnetGuide）
 import { createSonnetGuide } from './sonnetGuides.js';
 // 上游 ./sonnetFrameDecor（buildSonnetFrameDecor / resolveSonnetFrameDecorSpec）
@@ -142,7 +144,11 @@ export const buildSonnetTextView = (
         Math.max(0.4, (options.shotEndTime - options.shotStartTime) * 0.12 + 0.1),
     );
 
-    if (segment.text === '♪') {
+    /* ★ 2026-10-11 Aria 扩展（默认关）：间奏标记也走谱面。
+       上游此处是字面量 `segment.text === '♪'`；`isSonnetStaffSegment` 在默认档下
+       **与它逐字等价**（只认 `♪`），只有用户在面板打开「间奏标记也走谱面」时才放宽
+       （MUSIC / MUSIC- / ♪♪ / 纯点号行…）。见 instrumentalLines.js 里的说明。 */
+    if (isSonnetStaffSegment(segment.text, options.interludeStaff === true)) {
         const staffView = buildSonnetStaffView(
             pixi,
             placement,

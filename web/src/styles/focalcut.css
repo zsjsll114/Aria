@@ -1,0 +1,892 @@
+/* ============================================================
+ * focalcut.css — 「镜幕 · FocalCut」宽银幕电影导演监看台 × 光学光缝动态排版
+ * ============================================================ */
+
+/* —— 全屏舞台显隐不变量 —— */
+.player-container.view-focalcut,
+.preview-player.view-focalcut {
+    position: relative;
+    overflow: hidden;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+}
+
+.player-container.view-focalcut .player-controls-wrapper,
+.player-container.view-focalcut .lyrics-area-wrapper,
+.preview-player.view-focalcut .cover-area,
+.preview-player.view-focalcut .preview-cover-area,
+.preview-player.view-focalcut .lyrics-container,
+.preview-player.view-focalcut .preview-lyrics-container,
+.preview-player.view-focalcut .scroll-container,
+.preview-player.view-focalcut .preview-lyrics-scroll,
+.preview-player.view-focalcut .preview-wireframes {
+    display: none !important;
+}
+
+body:not(.mv-bg-on) .player-container.view-focalcut .blur-background,
+body:not(.mv-bg-on) .player-container.view-focalcut .color-overlay {
+    display: none !important;
+}
+
+.player-container.view-focalcut .top-action-buttons {
+    display: flex !important;
+    position: absolute !important;
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px)) !important;
+    right: clamp(10px, 2vw, 30px) !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-focalcut .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+    margin: 0 !important;
+    background: rgba(14, 16, 22, 0.44) !important;
+    backdrop-filter: blur(26px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-focalcut .flyin-translation-area {
+    display: none !important;
+}
+
+/* —— 舞台根容器 & 双极光学变量 —— */
+.visualizer-stage-focalcut,
+.fc-stage {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: 10;
+    pointer-events: none;
+    user-select: none;
+    font-family: var(--vis-font-family, var(--app-font-family, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif)) !important;
+
+    --fc-bg: #0a0b10;
+    --fc-surface: #141720;
+    --fc-edge: #050609;
+    --fc-grid: rgba(247, 244, 238, 0.052);
+    --fc-crosshair: rgba(247, 244, 238, 0.42);
+    --fc-unlit: rgba(247, 244, 238, 0.24);
+    --fc-lit: #f7f4ee;
+    --fc-past: rgba(247, 244, 238, 0.35);
+    --fc-accent: #E8BE6A;
+    --fc-accent-ink: #121318;
+    --fc-secondary: #68AEE8;
+    --fc-beam: rgba(232, 190, 106, 0.22);
+    --fc-slit: rgba(245, 212, 140, 0.78);
+    --fc-shutter-bg: rgba(6, 7, 11, 0.90);
+
+    --fc-inv-bg: #efeae0;
+    --fc-inv-surface: #e4ddd0;
+    --fc-inv-lit: #13151b;
+    --fc-inv-unlit: rgba(18, 20, 26, 0.21);
+    --fc-inv-past: rgba(18, 20, 26, 0.34);
+    --fc-inv-accent: #a66c1a;
+    --fc-inv-crosshair: rgba(18, 20, 26, 0.44);
+    --fc-inv-grid: rgba(18, 20, 26, 0.065);
+
+    --fc-wall-alpha: 1;
+    --fc-font-scale: 1;
+}
+
+/* —— 背景暗房 / 银盐画廊光场 —— */
+.fc-wall-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(105% 78% at 50% 44%, var(--fc-surface) 0%, var(--fc-bg) 56%, var(--fc-edge) 100%);
+    opacity: var(--fc-wall-alpha, 1);
+    transition: background 0.55s ease, opacity 0.4s ease;
+}
+
+.fc-wall-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, transparent 48%, rgba(0, 0, 0, 0.42) 100%);
+    pointer-events: none;
+}
+
+.fc-stage.is-light-wall .fc-wall-backdrop::after {
+    background: radial-gradient(ellipse at 50% 50%, transparent 56%, rgba(42, 34, 22, 0.14) 100%);
+}
+
+/* 柔和封面色彩氛围帘 */
+.fc-wash {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(96px);
+    opacity: 0.34;
+    will-change: transform;
+    transition: opacity 0.5s ease;
+}
+
+.fc-wash-a {
+    width: 64vmax;
+    height: 44vmax;
+    left: -14vmax;
+    top: -12vmax;
+    background: radial-gradient(circle, color-mix(in srgb, var(--fc-accent) 72%, transparent) 0%, transparent 70%);
+}
+
+.fc-wash-b {
+    width: 58vmax;
+    height: 46vmax;
+    right: -14vmax;
+    bottom: -16vmax;
+    background: radial-gradient(circle, color-mix(in srgb, var(--fc-secondary) 64%, transparent) 0%, transparent 70%);
+}
+
+.fc-stage.is-light-wall .fc-wash {
+    opacity: 0.24;
+}
+
+/* 远景雕塑感水印字块（极低对比度，增加画廊景深） */
+.fc-watermark {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    overflow: hidden;
+    will-change: transform;
+}
+
+.fc-watermark-glyph {
+    font-size: clamp(220px, 34vw, 460px);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 0.9;
+    color: color-mix(in srgb, var(--fc-lit) 4.2%, transparent);
+    user-select: none;
+}
+
+.fc-stage.is-light-wall .fc-watermark-glyph {
+    color: color-mix(in srgb, var(--fc-lit) 5.2%, transparent);
+}
+
+/* —— 标志性视觉：变形宽银幕横向光缝（Anamorphic Light Slit） —— */
+.fc-anamorphic-slit {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 48%;
+    height: 2px;
+    z-index: 4;
+    pointer-events: none;
+    transform: translateY(-50%);
+    opacity: 0.58;
+    transition: opacity 0.25s ease;
+}
+
+.fc-slit-halo {
+    position: absolute;
+    left: 2%;
+    right: 2%;
+    top: -42px;
+    height: 86px;
+    background: radial-gradient(ellipse 62% 50% at 50% 50%,
+        color-mix(in srgb, var(--fc-slit) 48%, transparent) 0%,
+        color-mix(in srgb, var(--fc-secondary) 22%, transparent) 46%,
+        transparent 78%);
+    filter: blur(20px);
+}
+
+.fc-slit-core {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    top: 0;
+    height: 1.5px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--fc-secondary) 44%, transparent) 16%,
+        color-mix(in srgb, var(--fc-slit) 94%, #ffffff 6%) 50%,
+        color-mix(in srgb, var(--fc-secondary) 44%, transparent) 84%,
+        transparent 100%);
+    box-shadow:
+        0 0 22px color-mix(in srgb, var(--fc-slit) 82%, transparent),
+        0 0 8px color-mix(in srgb, #ffffff 42%, var(--fc-slit));
+}
+
+.fc-stage.is-light-wall .fc-slit-halo {
+    opacity: 0.52;
+}
+
+.fc-stage.is-light-wall .fc-slit-core {
+    opacity: 0.42;
+}
+
+/* —— 2.39:1 宽银幕电影框线与实时导演遥测 HUD —— */
+.fc-cinema-frame {
+    position: absolute;
+    inset: 0;
+    z-index: 18;
+    pointer-events: none;
+}
+
+.fc-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: clamp(22px, 5.2vh, 52px);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent);
+}
+
+.fc-bar-top {
+    top: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--fc-lit) 10%, transparent);
+}
+
+.fc-bar-bot {
+    bottom: 0;
+    height: clamp(24px, 5.5vh, 54px);
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.34), transparent);
+    border-top: 1px solid color-mix(in srgb, var(--fc-lit) 10%, transparent);
+}
+
+.fc-stage.is-light-wall .fc-bar-top {
+    background: linear-gradient(180deg, rgba(20, 18, 14, 0.08), transparent);
+}
+
+.fc-stage.is-light-wall .fc-bar-bot {
+    background: linear-gradient(0deg, rgba(20, 18, 14, 0.08), transparent);
+}
+
+.fc-corner {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-color: color-mix(in srgb, var(--fc-accent) 72%, var(--fc-lit) 28%);
+    border-style: solid;
+    border-width: 0;
+    opacity: 0.72;
+}
+
+.fc-c-tl { left: 20px; top: calc(clamp(22px, 5.2vh, 52px) + 12px); border-left-width: 1.5px; border-top-width: 1.5px; }
+.fc-c-tr { right: 20px; top: calc(clamp(22px, 5.2vh, 52px) + 12px); border-right-width: 1.5px; border-top-width: 1.5px; }
+.fc-c-bl { left: 20px; bottom: calc(clamp(24px, 5.5vh, 54px) + 12px); border-left-width: 1.5px; border-bottom-width: 1.5px; }
+.fc-c-br { right: 20px; bottom: calc(clamp(24px, 5.5vh, 54px) + 12px); border-right-width: 1.5px; border-bottom-width: 1.5px; }
+
+.fc-telemetry {
+    position: absolute;
+    left: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 600 10.5px/1 ui-monospace, "Cascadia Mono", Consolas, monospace !important;
+    letter-spacing: 0.16em;
+    color: var(--fc-crosshair);
+    text-transform: uppercase;
+}
+
+.fc-telemetry-top {
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(24px, 5.6vh, 56px) + 14px);
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--fc-bg) 56%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fc-lit) 12%, transparent);
+}
+
+.fc-telemetry-bot {
+    bottom: calc(clamp(24px, 5.5vh, 54px) + 16px);
+    padding-left: 8px;
+    border-left: 2px solid var(--fc-accent);
+}
+
+.fc-rec-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef5350;
+    box-shadow: 0 0 8px rgba(239, 83, 80, 0.85);
+    animation: fc-rec-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes fc-rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+.fc-sep {
+    opacity: 0.45;
+}
+
+.fc-lens {
+    color: var(--fc-lit);
+    opacity: 0.86;
+}
+
+.fc-fstop {
+    color: var(--fc-accent);
+}
+
+.fc-stage.hide-guides .fc-cinema-frame,
+.fc-stage.hide-guides .fc-world-grid,
+.fc-stage.hide-guides .fc-axis-rail,
+.fc-stage.hide-guides .fc-horizon-rule {
+    display: none;
+}
+
+.preview-player .fc-cinema-frame,
+.preview-player .fc-hud-sub {
+    display: none;
+}
+
+/* —— 双视口滑幕容器（100% ↔ 62%:38% 平滑分屏展开） —— */
+.fc-viewports {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.fc-viewport {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    perspective: 1280px;
+    perspective-origin: 50% 50%;
+}
+
+.fc-viewport-main {
+    flex: 1 1 100%;
+    transition: flex-basis 0.44s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fc-viewport-sub {
+    flex: 0 0 0%;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+    transition:
+        flex-basis 0.44s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.32s ease;
+
+    /* 反色画廊副视口：深色主屏配暖白银盐微距，浅色主屏配深曜石微距 */
+    --fc-bg: var(--fc-inv-bg);
+    --fc-surface: var(--fc-inv-surface);
+    --fc-lit: var(--fc-inv-lit);
+    --fc-unlit: var(--fc-inv-unlit);
+    --fc-past: var(--fc-inv-past);
+    --fc-accent: var(--fc-inv-accent);
+    --fc-crosshair: var(--fc-inv-crosshair);
+    --fc-grid: var(--fc-inv-grid);
+
+    background: radial-gradient(120% 95% at 45% 45%, var(--fc-surface) 0%, var(--fc-bg) 100%);
+    box-shadow: inset 18px 0 42px rgba(0, 0, 0, 0.24);
+}
+
+.fc-stage.is-split .fc-viewport-main {
+    flex: 0 0 62%;
+}
+
+.fc-stage.is-split .fc-viewport-sub {
+    flex: 0 0 38%;
+    opacity: 1;
+}
+
+.fc-split-divider {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    z-index: 16;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        var(--fc-accent) 20%,
+        #ffffff 50%,
+        var(--fc-accent) 80%,
+        transparent 100%);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--fc-accent) 70%, transparent);
+}
+
+.fc-hud-sub {
+    position: absolute;
+    left: 16px;
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(24px, 5.6vh, 56px) + 64px);
+    z-index: 16;
+    font: 700 10px/1 ui-monospace, "Cascadia Mono", Consolas, monospace !important;
+    letter-spacing: 0.18em;
+    color: var(--fc-lit);
+    background: color-mix(in srgb, var(--fc-bg) 76%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fc-lit) 18%, transparent);
+    border-left: 2.5px solid var(--fc-accent);
+    padding: 5px 10px;
+    border-radius: 999px;
+}
+
+/* —— 2.5D 电影云台与 1920×1080 世界画布 —— */
+.fc-cam-rig {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1920px;
+    height: 1080px;
+    margin-left: -960px;
+    margin-top: -540px;
+    transform-origin: 50% 50%;
+    transform-style: preserve-3d;
+    will-change: transform, filter;
+}
+
+.fc-world {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    transform-style: preserve-3d;
+}
+
+/* 极简精密建筑参考轴（克制不抢词） */
+.fc-world-grid {
+    position: absolute;
+    inset: -520px;
+    background-image:
+        linear-gradient(to right, var(--fc-grid) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--fc-grid) 1px, transparent 1px);
+    background-size: 160px 160px;
+    mask-image: radial-gradient(ellipse 68% 60% at 50% 50%, #000 35%, transparent 92%);
+    -webkit-mask-image: radial-gradient(ellipse 68% 60% at 50% 50%, #000 35%, transparent 92%);
+    pointer-events: none;
+}
+
+.fc-axis-rail {
+    position: absolute;
+    width: 3px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, transparent 0%, var(--fc-accent) 20%, var(--fc-accent) 80%, transparent 100%);
+    opacity: 0.78;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--fc-accent) 45%, transparent);
+    pointer-events: none;
+}
+
+.fc-horizon-rule {
+    position: absolute;
+    left: 160px;
+    right: 160px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--fc-crosshair) 26%, transparent) 24%, color-mix(in srgb, var(--fc-crosshair) 26%, transparent) 76%, transparent 100%);
+    pointer-events: none;
+}
+
+/* —— 歌词行：焦平面抬升 + 光学景深拉焦（Rack Focus） —— */
+.fc-line {
+    position: absolute;
+    transform: translateY(-50%) scale(calc(var(--fc-font-scale, 1) * 0.96));
+    transform-origin: left center;
+    white-space: nowrap;
+    line-height: 1.18;
+    letter-spacing: 0.03em;
+    opacity: 0.30;
+    filter: blur(1.6px);
+    transition:
+        opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+        filter 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fc-line.fc-align-center { transform-origin: center center; }
+.fc-line.fc-align-right  { transform-origin: right center; }
+
+.fc-line.is-current {
+    opacity: 1;
+    filter: none;
+    transform: translateY(-50%) scale(calc(var(--fc-font-scale, 1) * 1.03));
+    z-index: 4;
+}
+
+.fc-line.is-past-line {
+    opacity: 0.24;
+    filter: blur(2.1px);
+}
+
+.fc-stage.fc-no-rack .fc-line,
+.fc-stage.fc-perf-lite .fc-line {
+    filter: none !important;
+}
+
+.fc-stage.fc-no-rack .fc-line:not(.is-current),
+.fc-stage.fc-perf-lite .fc-line:not(.is-current) {
+    opacity: 0.36;
+}
+
+/* —— 双层像素锐利光学扫字（彻底告别锯齿描边） —— */
+.fc-unit {
+    display: inline-block;
+    position: relative;
+    white-space: pre;
+    transform-origin: center 72%;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fc-char {
+    color: var(--fc-unlit);
+}
+
+/* 顶层高光字形：通过 clip-path 实现像素锐利的左→右光学扫过 */
+.fc-char::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--fc-lit);
+    clip-path: inset(0 calc(100% - var(--fc-p, 0%)) 0 0);
+    pointer-events: none;
+}
+
+/* 正在演唱字符：轻盈抬升 + 光学光晕 + 底部微光游标 */
+.fc-line.is-current .fc-char.is-active {
+    transform: translateY(-4px) scale(1.06);
+    z-index: 2;
+}
+
+.fc-line.is-current .fc-char.is-active::after {
+    text-shadow:
+        0 0 18px color-mix(in srgb, var(--fc-accent) 62%, transparent),
+        0 0 38px color-mix(in srgb, var(--fc-secondary) 28%, transparent);
+}
+
+.fc-stage.is-light-wall .fc-viewport-main .fc-line.is-current .fc-char.is-active::after,
+.fc-stage:not(.is-light-wall) .fc-viewport-sub .fc-line.is-current .fc-char.is-active::after {
+    text-shadow: 0 3px 14px color-mix(in srgb, var(--fc-accent) 32%, transparent);
+}
+
+.fc-line.is-current .fc-char.is-active::before {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -0.06em;
+    height: 2.5px;
+    border-radius: 2px;
+    background: var(--fc-accent);
+    box-shadow: 0 0 10px var(--fc-accent);
+    opacity: 0.85;
+}
+
+/* 已唱过字符：在当前行内保持 100% 实心高对比，切行后随行淡退 */
+.fc-char.is-past::after {
+    clip-path: inset(0 0 0 0);
+}
+
+.fc-line:not(.is-current) .fc-char.is-past::after {
+    color: var(--fc-past);
+}
+
+/* —— AI 情感词：高亮色彩扫掠 + 动态底轨光条 —— */
+.fc-emo-word {
+    display: inline-block;
+    position: relative;
+    padding: 0 0.08em;
+    margin: 0 0.03em;
+    border-radius: 0.08em;
+    transition: background-color 0.28s ease;
+}
+
+.fc-emo-word::after {
+    content: '';
+    position: absolute;
+    left: 0.04em;
+    right: 0.04em;
+    bottom: -0.05em;
+    height: 3.5px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--fc-accent), color-mix(in srgb, var(--fc-accent) 65%, #ffffff 35%));
+    transform: scaleX(0.18);
+    transform-origin: left center;
+    opacity: 0.35;
+    transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+}
+
+.fc-line.is-current .fc-emo-word:has(.is-active),
+.fc-line.is-current .fc-emo-word:has(.is-past) {
+    background: color-mix(in srgb, var(--fc-accent) 13%, transparent);
+}
+
+.fc-line.is-current .fc-emo-word:has(.is-active)::after,
+.fc-line.is-current .fc-emo-word:has(.is-past)::after {
+    transform: scaleX(1);
+    opacity: 0.96;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--fc-accent) 70%, transparent);
+}
+
+.fc-char.is-emotion::after {
+    color: var(--fc-accent);
+}
+
+.fc-line.is-current .fc-char.is-emotion.is-active {
+    transform: translateY(-6px) scale(1.1);
+}
+
+.fc-line.is-current .fc-char.is-emotion.is-active::after {
+    text-shadow:
+        0 0 22px color-mix(in srgb, var(--fc-accent) 85%, transparent),
+        0 0 44px color-mix(in srgb, var(--fc-accent) 42%, transparent);
+}
+
+/* —— 光圈丝幕转场（仅段落换墙时柔滑过渡，绝不硬闪黑屏） —— */
+.fc-shutter {
+    position: absolute;
+    inset: 0;
+    z-index: 22;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--fc-shutter-bg) 82%, transparent) 30%,
+        color-mix(in srgb, var(--fc-accent) 26%, var(--fc-shutter-bg)) 50%,
+        color-mix(in srgb, var(--fc-shutter-bg) 82%, transparent) 70%,
+        transparent 100%);
+    transform: translateX(-110%);
+}
+
+.fc-shutter.is-sweeping {
+    animation: fc-aperture-wipe 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fc-aperture-wipe {
+    0%   { opacity: 0.85; transform: translateX(-105%); }
+    50%  { opacity: 0.72; transform: translateX(0%); }
+    100% { opacity: 0;    transform: translateX(105%); }
+}
+
+/* —— 底部电影稳态译文舱（分屏时自动居中于左侧 62% 主视口，绝不跨边丢对比度） —— */
+.fc-subtitles {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(128px, 15.5vh, 156px);
+    transform: translateX(-50%);
+    z-index: 25;
+    text-align: center;
+    max-width: min(82vw, 940px);
+    pointer-events: none;
+    transition: left 0.44s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.44s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fc-stage.is-split .fc-subtitles {
+    left: 31%;
+    max-width: min(56vw, 720px);
+}
+
+.fc-trans {
+    display: inline-block;
+    font-size: clamp(13px, 1.25vw, 17px);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--fc-lit);
+    background: color-mix(in srgb, var(--fc-bg) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fc-lit) 12%, transparent);
+    border-left: 3px solid var(--fc-accent);
+    border-radius: 6px;
+    padding: 5px 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.24);
+}
+
+.fc-trans:empty { display: none; }
+
+.fc-romaji {
+    margin-top: 5px;
+    font-size: clamp(11px, 0.92vw, 13.5px);
+    letter-spacing: 0.09em;
+    color: var(--fc-crosshair);
+}
+
+.fc-romaji:empty { display: none; }
+
+/* —— 模式选择卡预览：与重构后的「镜幕 · FocalCut」严格同源 —— */
+.view-mode-preview-focalcut {
+    position: relative;
+    width: 100%;
+    height: 150px;
+    overflow: hidden;
+    background: radial-gradient(110% 90% at 32% 46%, #181c28 0%, #090b10 72%, #050608 100%);
+}
+
+.vm-fc-cinema-bars {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.vm-fc-cinema-bars::before,
+.vm-fc-cinema-bars::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.vm-fc-cinema-bars::before {
+    top: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.vm-fc-cinema-bars::after {
+    bottom: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.vm-fc-hud {
+    position: absolute;
+    left: 8px;
+    top: 17px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: 600 7.5px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.12em;
+    color: rgba(247, 244, 238, 0.72);
+    background: rgba(8, 10, 15, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2.5px 6px;
+    border-radius: 999px;
+}
+
+.vm-fc-hud i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #ef5350;
+    box-shadow: 0 0 5px #ef5350;
+    display: inline-block;
+}
+
+.vm-fc-slit {
+    position: absolute;
+    left: 0;
+    width: 62%;
+    top: 54%;
+    height: 1.5px;
+    z-index: 2;
+    background: linear-gradient(90deg, transparent 0%, rgba(104, 174, 232, 0.45) 20%, #f5d48c 55%, rgba(232, 190, 106, 0.85) 100%);
+    box-shadow: 0 0 14px 3px rgba(232, 190, 106, 0.45);
+}
+
+.vm-fc-main-pane {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 62%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px 10px 14px 14px;
+    gap: 4px;
+    z-index: 3;
+    transform: perspective(260px) rotateY(-6deg);
+    transform-origin: left center;
+}
+
+.vm-fc-line-dim {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(247, 244, 238, 0.26);
+    filter: blur(0.6px);
+    letter-spacing: 0.08em;
+}
+
+.vm-fc-line-hero {
+    font-size: 19px;
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: 0.06em;
+    color: #f7f4ee;
+    text-shadow: 0 0 12px rgba(232, 190, 106, 0.45);
+}
+
+.vm-fc-line-hero .em {
+    color: #E8BE6A;
+    border-bottom: 2px solid #E8BE6A;
+    padding-bottom: 1px;
+}
+
+.vm-fc-line-hero .unlit {
+    color: rgba(247, 244, 238, 0.26);
+    text-shadow: none;
+}
+
+.vm-fc-split-pane {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 38%;
+    z-index: 4;
+    background: radial-gradient(110% 90% at 45% 45%, #f2ede3 0%, #e1d8c7 100%);
+    border-left: 2px solid #f0c975;
+    box-shadow: -4px 0 16px rgba(232, 190, 106, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.vm-fc-macro-char {
+    font-size: 52px;
+    font-weight: 900;
+    line-height: 1;
+    color: #14161d;
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 10px rgba(166, 108, 26, 0.22);
+    border-bottom: 3px solid #c98624;
+    padding: 0 4px 2px;
+}
+
+.vm-fc-macro-tag {
+    position: absolute;
+    left: 6px;
+    bottom: 16px;
+    font: 700 7px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.14em;
+    color: rgba(20, 22, 29, 0.65);
+    border-left: 1.5px solid #c98624;
+    padding-left: 4px;
+}
+
+/* —— 性能降级（锚在 html#ariaRoot） —— */
+html#ariaRoot body.perf-low .player-container.view-focalcut .bottom-control-bar,
+html#ariaRoot body.perf-minimal .player-container.view-focalcut .bottom-control-bar,
+html#ariaRoot.is-software-renderer .player-container.view-focalcut .bottom-control-bar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(14, 15, 20, 0.94) !important;
+}
+
+html#ariaRoot body.perf-low .fc-stage .fc-wash,
+html#ariaRoot body.perf-minimal .fc-stage .fc-wash,
+html#ariaRoot.is-software-renderer .fc-stage .fc-wash,
+html#ariaRoot body.perf-low .fc-stage .fc-shutter,
+html#ariaRoot.is-software-renderer .fc-stage .fc-shutter,
+html#ariaRoot body.perf-low .fc-stage .fc-slit-halo,
+html#ariaRoot.is-software-renderer .fc-stage .fc-slit-halo {
+    display: none !important;
+}
+
+html#ariaRoot body.perf-low .fc-stage .fc-line,
+html#ariaRoot body.perf-minimal .fc-stage .fc-line,
+html#ariaRoot.is-software-renderer .fc-stage .fc-line {
+    filter: none !important;
+}

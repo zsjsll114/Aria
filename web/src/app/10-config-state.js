@@ -4,13 +4,14 @@
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
 import { VisualizerManager } from '../core/visualizers/VisualizerManager.js';
-import { DEFAULT_SETTINGS, playerConfig } from '../config/defaults.js';
+import { DEFAULT_SETTINGS } from '../config/defaults.js';
 import { initDom } from '../infrastructure/dom.js';
 import ChorusDetector from '../core/chorusDetector.js';
 import AIAnalyzer from '../core/aiAnalyzer.js';
 import { LocalMusicManager } from '../services/localMusicManager.js';
 import { registerGlobal } from '../core/globalRegistry.js';
 import { PERFORMANCE_PROFILES } from '../config/performance.js';
+import { readSavedVolume, writeSavedVolume } from '../core/settingsStore.js';
 import { bridgeGlobalsToState } from '../infrastructure/globalBridge.js';
 
 /* ★ 必须早于本文件任何 globalThis 赋值：把 state 与 globalThis 的 59 个重叠键收口成一份存储。
@@ -207,7 +208,7 @@ globalThis.eqActivePreset = '默认';
 
 globalThis.eqGains = new Array(10).fill(0);
 
-globalThis.volume = playerConfig.initialVolume;
+globalThis.volume = readSavedVolume();
 
 /* 播放方式: 'sequence' = 顺序播放, 'loop' = 单曲循环, 'random' = 随机播放 */
 globalThis.playMode = 'sequence';
@@ -479,4 +480,4 @@ registerGlobal('currentViewMode', { owner: '10-config-state' });
 registerGlobal('pvEngineInstance', { owner: '10-config-state' });
 registerGlobal('tunnelEngineInstance', { owner: '10-config-state' });
 
-export { CUSTOM_COLOR_SVG, DROPDOWN_OPTIONS, FONT_FAMILY_MAP, FONT_LOCAL_NAMES, LANG_INFO, LYRIC_FONT_MAP, MULTILANG_FAMILY, PERFORMANCE_PROFILES, apiResponse, langFamilyName, localMusicManager };
+export { CUSTOM_COLOR_SVG, DROPDOWN_OPTIONS, FONT_FAMILY_MAP, FONT_LOCAL_NAMES, LANG_INFO, LYRIC_FONT_MAP, MULTILANG_FAMILY, PERFORMANCE_PROFILES, apiResponse, langFamilyName, localMusicManager, readSavedVolume, writeSavedVolume };

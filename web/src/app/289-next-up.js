@@ -31,6 +31,7 @@ import { saveSettings } from './180-boot-config.js';
 import { translatePhrase } from '../core/i18n.js';
 import { esc } from '../utils/formatters.js';
 import { logCatch, logInfo, logWarn } from '../services/log.js';
+import { registerSettingsGroup } from '../core/settingsRegistry.js';
 import {
     ACTION,
     KIND,
@@ -644,10 +645,10 @@ function rowHTML(labelZh, descZh, controlHTML) {
     </div>`;
 }
 
-export function mountNextUpSettingsUI() {
+export function mountNextUpSettingsUI(targetHost) {
     const d = doc();
     if (!d || d.getElementById('nextUpSettingsGroup')) return;
-    const host = d.querySelector('[data-section="interface"]') || d.getElementById('settingsBody');
+    const host = targetHost || d.querySelector('[data-section="playback"]') || d.querySelector('[data-section="interface"]');
     if (!host) return;
     try {
         const group = d.createElement('div');
@@ -677,17 +678,17 @@ export function mountNextUpSettingsUI() {
             scheduleTick();
         });
 
-        /* 设置面板每次打开都重刷：bootApp 里 loadSettings() 是 await 之后的事，
-           面板上的值必须以当时生效的配置为准（同 282） */
-        const overlay = d.getElementById('settingsOverlay');
-        if (overlay && typeof MutationObserver !== 'undefined') {
-            new MutationObserver(() => {
-                if (overlay.classList.contains('visible')) syncSettingsUI();
-            }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
-        }
         syncSettingsUI();
     } catch (e) { logCatch(TAG, e); }
 }
+
+registerSettingsGroup('playback', {
+    id: 'next-up',
+    order: 40,
+    render: (wrapper) => { mountNextUpSettingsUI(wrapper); },
+    onMount: syncSettingsUI,
+    onShow: syncSettingsUI,
+});
 
 function normalizeLeadValue(raw) {
     const n = Math.round(Number(raw));

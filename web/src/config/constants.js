@@ -8,6 +8,8 @@ export const OIAPI_LYRIC_BASE = 'https://www.oiapi.net/api/QQMusicLyric';
 export const FAV_STORAGE_KEY = 'lyrics_player_favorites';
 export const PLAYLIST_STORAGE_KEY = 'lyrics_player_playlists';
 export const SETTINGS_STORAGE_KEY = 'lyrics_player_settings';
+export const VOLUME_STORAGE_KEY = 'aria_last_volume';
+export const VOLUME_TS_STORAGE_KEY = 'aria_last_volume_ts';
 export const EQ_STORAGE_KEY = 'lyrics_player_eq';
 export const PERF_STORAGE_KEY = 'lyrics_player_performance';
 

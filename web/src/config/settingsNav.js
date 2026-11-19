@@ -8,26 +8,65 @@
 import { esc } from '../utils/formatters.js';
 
 export const SETTINGS_NAV = [
-  { group: '外观', groupEn: 'Appearance', items: [
-    { tab: 'appearance', label: '视觉模式', labelEn: 'Visual Modes' },
-    { tab: 'background', label: '背景', labelEn: 'Background' },
-    { tab: 'fonts',      label: '字体', labelEn: 'Fonts' },
+  { group: '外观与视觉', groupEn: 'Appearance & Visuals', items: [
+    {
+      tab: 'appearance', label: '视觉模式', labelEn: 'Visual Modes',
+      keywords: '外观 预览 工坊 视觉模式 主题 色板 调制器 vfx recipe preview workshop',
+    },
+    {
+      tab: 'lyrics', label: '歌词', labelEn: 'Lyrics',
+      keywords: '逐字 音节 桌面歌词 专注模式 zen per-char highlight',
+    },
+    {
+      tab: 'background', label: '背景', labelEn: 'Background',
+      keywords: '背景 模糊 亮度 摇曳 封面 颜色 blur brightness sway',
+    },
+    {
+      tab: 'fonts', label: '字体', labelEn: 'Fonts',
+      keywords: '字体 多语言 本地字体 字重 font cjk fontpack',
+    },
   ] },
-  { group: '播放', groupEn: 'Playback', items: [
-    { tab: 'playback',    label: '播放', labelEn: 'Playback' },
-    { tab: 'quality',     label: '音质', labelEn: 'Audio Quality' },
-    { tab: 'audio',       label: '音效', labelEn: 'Audio Effects' },
-    { tab: 'performance', label: '性能', labelEn: 'Performance' },
+  { group: '播放与性能', groupEn: 'Playback & Performance', items: [
+    {
+      tab: 'playback', label: '播放', labelEn: 'Playback',
+      keywords: '音量 渐变 快进 淡入淡出 预告 next up seek crossfade',
+    },
+    {
+      tab: 'quality', label: '音质', labelEn: 'Audio Quality',
+      keywords: '音质 无损 音源 音乐平台 now playing bitrate source flac',
+    },
+    {
+      tab: 'audio', label: '音效', labelEn: 'Audio Effects',
+      keywords: '均衡器 eq 音效 音调 声道 输出设备 exclusive',
+    },
+    {
+      tab: 'performance', label: '性能', labelEn: 'Performance',
+      keywords: '性能 降级 帧率 特效 强度 gpu hardware fps',
+    },
   ] },
-  { group: '服务', groupEn: 'Services', items: [
-    { tab: 'selfhost', label: '自建服务', labelEn: 'Self-Hosted' },
-    { tab: 'ai',       label: 'AI 分析', labelEn: 'AI Analysis' },
-    { tab: 'data',     label: '数据', labelEn: 'Data' },
+  { group: '服务与数据', groupEn: 'Services & Data', items: [
+    {
+      tab: 'selfhost', label: '自建服务', labelEn: 'Self-Hosted',
+      keywords: '自建 qq 网易 酷狗 cookie 扫码 短信',
+    },
+    {
+      tab: 'ai', label: 'AI 分析', labelEn: 'AI Analysis',
+      keywords: 'ai 分析 情绪 模型 api key 代理 worker gemini',
+    },
+    {
+      tab: 'data', label: '数据', labelEn: 'Data',
+      keywords: '数据 缓存 存储 备份 恢复 迁移 backup cache',
+    },
   ] },
-  { group: '系统', groupEn: 'System', items: [
-    { tab: 'interface', label: '界面', labelEn: 'Interface' },
-    { tab: 'shortcuts', label: '快捷键', labelEn: 'Shortcuts' },
-    { tab: 'about',     label: '关于', labelEn: 'About' },
+  { group: '界面与关于', groupEn: 'Interface & About', items: [
+    {
+      tab: 'interface', label: '界面', labelEn: 'Interface',
+      keywords: '界面 快捷键 toolbar 顶栏 底部栏 语言 引导 oobe shortcut',
+    },
+    {
+      tab: 'about', label: '关于', labelEn: 'About',
+      keywords: '关于 版本 更新 协议 作者 changelog license',
+    },
   ] },
 ];
 
@@ -84,7 +123,7 @@ export function renderSettingsNav(container) {
     if (typeof document !== 'undefined') {
       /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.settings-section')).forEach(sec => {
         let n = 0;
-        sec.querySelectorAll('.setting-label, .setting-desc, .settings-group-title').forEach(l => {
+        sec.querySelectorAll('.setting-label, .setting-desc, .settings-group-title, .ws-tier-summary, .vr-settings-bar').forEach(l => {
           const hit = deep && l.textContent.toLowerCase().includes(q);
           l.classList.toggle('settings-hit', hit);
           if (hit) n++;
@@ -99,7 +138,12 @@ export function renderSettingsNav(container) {
       let any = false;
       /** @type {NodeListOf<HTMLElement>} */ (gEl.querySelectorAll('.settings-tab')).forEach((bEl, ii) => {
         const it = g.items[ii];
-        const nameHit = !q || !it || it.label.toLowerCase().includes(q) || g.group.toLowerCase().includes(q);
+        const nameHit = !q || !it ||
+          it.label.toLowerCase().includes(q) ||
+          (it.labelEn || '').toLowerCase().includes(q) ||
+          (it.keywords || '').toLowerCase().includes(q) ||
+          g.group.toLowerCase().includes(q) ||
+          (g.groupEn || '').toLowerCase().includes(q);
         const deepHit = deep && !!it && (secHits.get(it.tab) || 0) > 0;
         const hit = nameHit || deepHit;
         bEl.style.display = hit ? '' : 'none';
@@ -155,7 +199,8 @@ export function refreshSectionAnchors() {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'settings-nav-anchor' + (i === 0 ? ' active' : '');
-    chip.textContent = ((x.title && x.title.textContent) || '').trim();
+    const titleLabel = x.title?.querySelector(':scope > span:first-child');
+    chip.textContent = (((titleLabel ? titleLabel.textContent : x.title?.textContent)) || '').trim();
     chip.__anchorTarget = x.group;   /* 滚动跟随时要用（见下方 scroll 监听） */
     chip.addEventListener('click', () => {
       /* ★ 用 scrollIntoView 而不是"自己算 scrollTop"（初版就是栽在这）：

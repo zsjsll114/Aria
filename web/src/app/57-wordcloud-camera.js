@@ -14,31 +14,38 @@ import { updateMobileLyricPreview } from './60-mobile-dual-page.js';
    埋点每帧一次 Map.get + 几次数值运算，无分配、不读 DOM。 */
 import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
 
-/* ★ 摄像机统一写入入口：平移写在 scrollEl 的 transform（屏幕像素）。
-   焦距缩放有双通道，解决"卡顿 vs 模糊"的两难：
-   - 运动中（settled=false）：#wcZoom 用 transform: scale —— 合成器层缩放，
-     零重排零重绘，跟焦/滚轮每帧写入也不卡顿（缩放期间文字按位图拉伸，略有软边）；
-   - 静止后（settled=true）：吸附为 CSS zoom —— 布局级缩放，文字按最终分辨率
-     重新栅格化，长时间停留的焦点行清晰锐利。
-   滚轮缩放/拖拽/自动跟焦三处共用此函数，保证"歌词字号不变、变的是摄像机"。 */
+/* ★ 摄像机统一写入入口：平移 + 缩放走纯 GPU 合成器层（零 CSS zoom 重栅格化抖动） */
 globalThis.__wcSetCam = function (x, y, s, settled) {
     const sc = typeof document !== 'undefined' ? document.getElementById('lyricsScroll') : null;
     if (!sc) return;
-    sc.style.transform = `translate(${x}px, ${y}px)`;
+    sc.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
     const z = sc.querySelector('#wcZoom');
     if (!z) return;
     if (typeof settled === 'boolean') globalThis.__wcCamSettled = settled;
-    if (globalThis.__wcCamSettled) {
-        z.style.transform = '';
-        z.style.zoom = String(s);
-    } else {
-        z.style.zoom = '1';
-        z.style.transform = `scale(${s})`;
-    }
+    z.style.zoom = '1';
+    z.style.transform = `scale(${s.toFixed(4)})`;
 };
 
-let wcSettleAt = 0; /* 静止缓冲：补间结束满 350ms 才允许切 CSS zoom（避免"每句一重栅格化"卡顿） */
-let wcLastFocusLine = -1; /* ★ 上次补间的焦点行号：句间切换时把补间时长减半（跨句要立刻到位） */
+/* ★ 切回前台时对齐物理状态：防止后台久停后纵波跨 30 行暴走或词云旧补间瞬移 */
+function snapLyricsWaveOnResume() {
+    if (wave && wave.inited && activeLineIndex >= 0 && wave.nodes[activeLineIndex]) {
+        wave.activeIndex = activeLineIndex;
+        wave.browse = 0;
+        wave.updateTargetLayout();
+        for (let i = 0; i < wave.nodes.length; i++) {
+            const nd = wave.nodes[i];
+            nd.y = nd.targetY;
+            nd.vy = 0;
+            nd.lastY = -99999;
+        }
+    }
+    wcTween = null;
+    wcLastTransform = '';
+}
+
+let wcSettleAt = 0;
+let wcLastFocusLine = -1;
+let wcLastDepthLine = -1;
 
 /* ============================================================
  * ★ 默认/歌词模式：AM 风格弹性滚动 + 间奏三点（Apple Music / AMLL 思路）
@@ -585,7 +592,7 @@ function waveSetActiveFromPlayback(index, snap) {
 function amNormalLyricsMode() {
     const sc = typeof document !== 'undefined' ? document.getElementById('lyricsScroll') : null;
     if (!sc || !playerContainer) return false;
-    for (const v of ['view-wordcloud', 'view-flyin', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-poster']) {
+    for (const v of ['view-wordcloud', 'view-flyin', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-poster', 'view-prism', 'view-astrolabe', 'view-vitrail', 'view-focalcut']) {
         if (playerContainer.classList.contains(v)) return false;
     }
     return true;
@@ -1005,24 +1012,33 @@ function updateLyricsGapDots(t) {
 const FX_PROBE_SOURCE = 'lyricsFx';
 registerLoop(FX_PROBE_SOURCE, '歌词弹簧/波纹循环');
 
+let lyricsFxRafId = 0;
+function isLyricsFxLoopRunning() { return !!lyricsFxLoopOn; }
+function stopLyricsFxLoop() {
+    lyricsFxLoopOn = false;
+    if (lyricsFxRafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(lyricsFxRafId);
+    lyricsFxRafId = 0;
+}
 function ensureLyricsFxLoop() {
     if (lyricsFxLoopOn) return;
+    if (!amNormalLyricsMode()) {
+        waveCleanup();
+        return;
+    }
     lyricsFxLoopOn = true;
     let last = performance.now();
     (function tick(ts) {
         if (!lyricsFxLoopOn) return;
-        requestAnimationFrame(tick);
-        probeFrame(FX_PROBE_SOURCE, ts);
-        const now = performance.now();
         if (!amNormalLyricsMode()) {
-            /* ★ 原来这条早退分支没有推进 last：离开歌词模式（词云/PV/飞入…）一段时间
-               再切回来时，dt 会被 clamp 到上限 0.04s（= 3 个物理子步），
-               回来第一帧行位姿一次性多推进两倍，观感是「跳一下」。
-               这里把 last 一并推进，语义等同「本帧没有物理推进」。 */
-            last = now;
+            /* ★ 2026-11-19：离开默认/歌词模式后直接停掉本 rAF 循环（而非空转 60fps），
+               消除词云/飞入/全屏视觉模式下的冗余主线程回调；切回默认/歌词模式时自动再启。 */
             waveCleanup();
+            stopLyricsFxLoop();
             return;
         }
+        lyricsFxRafId = requestAnimationFrame(tick);
+        probeFrame(FX_PROBE_SOURCE, ts);
+        const now = performance.now();
         const dt = Math.min(0.04, Math.max(0.001, (now - last) / 1000));
         last = now;
         /* ★ 耦合弹簧纵波：物理引擎接管歌词定位（行绝对定位，无容器平移）。
@@ -1069,6 +1085,33 @@ function updateWordcloudCamera(t) {
 
             const viewW = container.clientWidth;
             const viewH = container.clientHeight;
+            /* ★ 最小化/隐藏时视口为 0×0，跳过相机更新以免污染坐标缓存 */
+            if (viewW < 40 || viewH < 40) return;
+
+            /* ★ 按距离为词云所有行分级景深（0=当前焦点 / 1=相邻承接句 / 2=中景 / 3=远景星云），
+               并点亮当前句与前一句之间的星轨连线 */
+            if (wcLastDepthLine !== activeLineIndex) {
+                wcLastDepthLine = activeLineIndex;
+                for (let i = 0; i < lineElements.length; i++) {
+                    const dist = Math.abs(i - activeLineIndex);
+                    const depth = dist === 0 ? '0' : (dist === 1 ? '1' : (dist <= 3 ? '2' : '3'));
+                    if (lineElements[i].dataset.wcDepth !== depth) {
+                        lineElements[i].dataset.wcDepth = depth;
+                    }
+                }
+                const svg = scrollEl.querySelector('#wcConstellation');
+                if (svg) {
+                    svg.querySelectorAll('.wc-thread').forEach(p => {
+                        const f = Number(p.dataset.from);
+                        const to = Number(p.dataset.to);
+                        const lit = (to === activeLineIndex || f === activeLineIndex);
+                        p.classList.toggle('is-active', lit);
+                    });
+                    svg.querySelectorAll('.wc-star-node').forEach(d => {
+                        d.classList.toggle('is-active', Number(d.dataset.line) === activeLineIndex);
+                    });
+                }
+            }
 
             /* ★ 按"当前播放时间"选取焦点字，而非"最后一个上浮的 .active"。
                .active 只加不减（Apple Music 上浮风格），若据此跟焦，进度条回拖时
@@ -1101,44 +1144,38 @@ function updateWordcloudCamera(t) {
             const rawFont = parseFloat(activeLineEl?.dataset.wcFontSize || '2.5');
             const targetRaw = getWordcloudTargetFontRem();
 
-            /* ★ 用户需求：词云焦点"对准显示"用摄像机焦距缩放，而不是放大歌词字号。
-               基础歌词字号始终由排版定死（不变）；摄像机负责把焦点行拉近到目标观感、
-               其余行随镜头缩放出屏。焦距倍率 = 目标字号/焦点行基础字号。
-               用 CSS zoom 实现（Chromium 布局级缩放、按高分渲染），文字不糊；
-               不再改写任何 .line 的 fontSize（彻底移除之前的"放大歌词"逻辑）。 */
-            const fWidth = (globalThis.wordcloudZoomFov) || 1;   /* 用户可调焦距附加系数(预留) */
-            const targetScale = Math.max(0.8, Math.min(6, (targetRaw * fWidth) / (rawFont || 2.5)));
+            const fWidth = (globalThis.wordcloudZoomFov) || 1;
+            /* ★ 温和克制的焦距缩放区间（0.76x~2.25x）：既突出当前句主体，又不把短句放大成糊屏巨幅 */
+            const targetScale = Math.max(0.76, Math.min(2.25, (targetRaw * 0.88 * fWidth) / (rawFont || 2.4)));
 
-            /* 实时读取词云跟焦设置中的相机阻尼系数 wcLerpFactor，换算为补间时长 */
             const wcSetting = (appSettings.modeSettings && appSettings.modeSettings.wordcloud) || {};
             const tweenDur = wcLerpToDuration(wcSetting.wcLerpFactor);
 
-            /* ★ 相机焦点缓存：仅在焦点元素、上采样基准或布局版本变化时重算。
-               getBoundingClientRect 会强制同步布局，逐字高亮每帧写 width 已弄脏布局，
-               若相机每帧再测量会强制重排，拖慢整个渲染循环 */
             if (wordcloudCamCache == null || wordcloudCamCache.el !== focusEl || wordcloudCamCache.ver !== wordcloudLayoutVer) {
-                /* 测量时 DOM 处于"当前缩放 S"下（上次写入的 transform），视口坐标差 = S × 未缩放画布坐标，
-                   除以测量时的实际缩放 S 得到未缩放坐标（与缩放/平移状态无关，可安全缓存） */
                 const s0 = wordcloudCurrentScale || 1;
                 const wordRect = focusEl.getBoundingClientRect();
+                const lineRect = activeLineEl ? activeLineEl.getBoundingClientRect() : wordRect;
                 const canvasRect = scrollEl.getBoundingClientRect();
+                const wordCx = (wordRect.left + wordRect.width / 2 - canvasRect.left) / s0;
+                const wordCy = (wordRect.top + wordRect.height / 2 - canvasRect.top) / s0;
+                const lineCx = (lineRect.left + lineRect.width / 2 - canvasRect.left) / s0;
+                const lineCy = (lineRect.top + lineRect.height / 2 - canvasRect.top) / s0;
+                /* 镜头柔柔牵引当前演唱字，同时保住整句居中构图（55% 句心 + 45% 字心） */
                 wordcloudCamCache = {
                     el: focusEl,
                     ver: wordcloudLayoutVer,
-                    seq: ++wcCacheSeq,              /* 焦点/布局变化即递增 → 触发新的缓动补间 */
-                    wx: (wordRect.left + wordRect.width / 2 - canvasRect.left) / s0,
-                    wy: (wordRect.top + wordRect.height / 2 - canvasRect.top) / s0
+                    seq: ++wcCacheSeq,
+                    wx: lineCx * 0.55 + wordCx * 0.45,
+                    wy: lineCy * 0.60 + wordCy * 0.40
                 };
             }
             const wordX = wordcloudCamCache.wx;
             const wordY = wordcloudCamCache.wy;
 
-            /* 目标缩放与平移：使焦点字中心居中于视口。
-             * transform: translate(X, Y) scale(S)；字在视口中的位置 = X + wordX*S
-             * 居中: X = viewW/2 - wordX*S（用最终缩放计算，缩放与平移同步收敛） */
             const endScale = targetScale;
             const endX = viewW / 2 - wordX * endScale;
-            const endY = viewH / 2 - wordY * endScale;
+            /* 视觉重心略微上移 4%，为底部译文舱与控制栏留出优雅呼吸区 */
+            const endY = viewH * 0.46 - wordY * endScale;
 
             /* ★ 非线性(缓动)补间：逐字/逐句乃至缩放变化都用【时间驱动 + easeOut 缓动】
                替代原先的"固定比例 Lerp"。固定 Lerp 每帧按同一比例靠拢，速度看起来是
@@ -1215,6 +1252,8 @@ function cleanupWordCloud() {
                 /* 把行移回 scrollEl 直接挂载并移除焦距层，还原普通模式布局 */
                 const zl = scrollEl.querySelector('#wcZoom');
                 if (zl) {
+                    const svg = zl.querySelector('#wcConstellation');
+                    if (svg) svg.remove();
                     zl.style.transform = '';
                     zl.style.zoom = '1';
                     while (zl.firstChild) scrollEl.appendChild(zl.firstChild);
@@ -1227,7 +1266,11 @@ function cleanupWordCloud() {
                 el.style.top = '';
                 el.style.fontSize = '';
                 el.style.zIndex = '';
+                el.style.removeProperty('--wc-tilt');
+                delete el.dataset.wcTier;
+                delete el.dataset.wcDepth;
             });
+            wcLastDepthLine = -1;
             wordcloudLayoutDone = false;
             wordcloudLayoutVer++;      /* 使相机焦点缓存失效 */
             wordcloudCamCache = null;
@@ -1264,6 +1307,36 @@ function syncLineVisualRange(centerIndex) {
     if (LYRICS_VIRTUAL_SCROLL.enabled && !amNormalLyricsMode()) updateVirtualLyricsRender(centerIndex);
 }
 
+function resetLineWordsHighlight(idx) {
+    const words = wordElementsByLine[idx] || [];
+    const highlights = wordHighlightElementsByLine[idx] || [];
+    for (let i = 0; i < words.length; i++) {
+        if (words[i] && words[i].classList.contains('active')) words[i].classList.remove('active');
+        if (highlights[i]) {
+            highlights[i].style.setProperty('--reveal', '0%');
+            highlights[i].classList.remove('done');
+            highlights[i].style.clipPath = '';
+        }
+        if (words[i]) lastWordProgress.delete(words[i]);
+    }
+}
+
+/* ★ 2026-11-19：彻底清除所有残留的旧 .line.active（除 keepIdx 外）。
+   后台桌面歌词同步修改过 activeLineIndex 或切回前台重置 activeLineIndex=-1 时，
+   若不清理旧 .line.active，飞入模式会出现两句重叠且 querySelector 永远卡在旧句导致后续行全部变小。 */
+function clearStaleActiveLines(keepIdx = -1) {
+    const sc = typeof document !== 'undefined' ? document.getElementById('lyricsScroll') : null;
+    if (!sc) return;
+    const stale = sc.querySelectorAll('.line.active');
+    for (let k = 0; k < stale.length; k++) {
+        const el = stale[k];
+        const idx = parseInt(el.dataset.index, 10);
+        if (idx === keepIdx) continue;
+        el.classList.remove('active');
+        if (!Number.isNaN(idx) && idx >= 0) resetLineWordsHighlight(idx);
+    }
+}
+
 function updateLyricsHighlight() {
             if (lyrics.length === 0 || lineElements.length === 0) return;
             const t = currentTime + lyricOffset;  /* 应用歌词偏移 */
@@ -1282,6 +1355,14 @@ function updateLyricsHighlight() {
             }
             if (newActiveIndex === -1) newActiveIndex = 0;
 
+            const isWordcloudMode = playerContainer.classList.contains('view-wordcloud');
+            const isFlyinMode = playerContainer.classList.contains('view-flyin');
+            const isPvMode = playerContainer.classList.contains('view-pv');
+            const isDedicatedVisMode = isPvMode
+                || currentViewMode === 'tunnel'
+                || currentViewMode === 'tempera'
+                || !!(mainVisManager && mainVisManager.has(currentViewMode));
+
             /* 活动行变化：只更新旧/新活动行附近受影响的几行，避免全量遍历 */
             if (newActiveIndex !== activeLineIndex) {
                 const oldIndex = activeLineIndex;
@@ -1293,53 +1374,51 @@ function updateLyricsHighlight() {
 
                 if (oldIndex >= 0 && lineElements[oldIndex]) {
                     lineElements[oldIndex].classList.remove('active');
-                    /* ★ 旧行逐词重置（2026-09-28 恢复）：用户实测否决了「旧行保留满高亮」——
-                       换行后旧行的高亮进度必须归位。为控切行帧成本，重置用「显式归零写入」
-                       （--reveal: 0% + done 移除 + lastWordProgress.delete），保持恒定盒
-                       体制下的变量写入（无重排）；lastWordProgress 同步删除，保证该行
-                       再次激活时第一帧必然重新计算。 */
-                    const oldWords = wordElementsByLine[oldIndex] || [];
-                    const oldHighlights = wordHighlightElementsByLine[oldIndex] || [];
-                    for (let i = 0; i < oldWords.length; i++) {
-                        if (oldWords[i] && oldWords[i].classList.contains('active')) oldWords[i].classList.remove('active');
-                        if (oldHighlights[i]) {
-                            oldHighlights[i].style.setProperty('--reveal', '0%');
-                            oldHighlights[i].classList.remove('done');
-                            oldHighlights[i].style.clipPath = '';
-                        }
-                        lastWordProgress.delete(oldWords[i]);
-                    }
+                    resetLineWordsHighlight(oldIndex);
+                } else {
+                    /* oldIndex < 0（前台恢复或重渲染首帧）：强清 DOM 中可能残留的旧 .line.active */
+                    clearStaleActiveLines(activeLineIndex);
+                }
+                /* 飞入模式严禁任意两行同时 .active（防止后台切回两句叠字 + 后续行失焦变小） */
+                if (isFlyinMode) {
+                    clearStaleActiveLines(activeLineIndex);
                 }
 
                 if (lineElements[activeLineIndex]) {
                     lineElements[activeLineIndex].classList.add('active');
                 }
 
+                /* ★ 独立全屏视觉模式：#lyricsScroll 隐藏，只需推进 activeLineIndex 供桌面歌词/底栏译文使用，
+                   跳过隐藏 DOM 的虚拟滚动、行模糊与手机预览开销 */
+                if (isDedicatedVisMode) {
+                    if (typeof updateFlyinTranslation === 'function' && activeLineIndex >= 0 &&
+                        (isPvMode || currentViewMode === 'tempera')) {
+                        updateFlyinTranslation(activeLineIndex);
+                    }
+                    stopLyricsFxLoop();
+                    return;
+                }
+
                 /* ★ P4：行变化时同步手机版歌词预览 */
                 updateMobileLyricPreview();
-
-                /* ★ 词云模式 / PV 模式：跳过模糊和虚拟滚动（所有行必须可见或由专用引擎接管） */
-                const isWordcloudMode = playerContainer.classList.contains('view-wordcloud');
-                const isPvMode = playerContainer.classList.contains('view-pv');
 
                 /* ★ 切行同步降尖峰：整页 blur 重排是切行瞬间"突然卡一下"的大头。
                    改为「可视窗口 ±14 行 + 顺延到下一帧」，当前帧只做高亮与行类切换，
                    模糊/虚拟滚动分摊到下一帧；远处行保持上次状态（屏幕外不可见）。 */
-                if (!isUserScrolling && !isWordcloudMode && !isPvMode) {
+                if (!isUserScrolling && !isWordcloudMode && !isDedicatedVisMode) {
                     scheduleLineVisualSync(activeLineIndex);
                 }
 
-                /* 飞入模式 / 词云模式 / 浮空与全景视觉模式：统一更新底部翻译/罗马音区域 */
-                if (typeof updateFlyinTranslation === 'function' && activeLineIndex >= 0) {
+                /* 飞入模式 / 词云模式：统一更新底部翻译/罗马音区域 */
+                if (typeof updateFlyinTranslation === 'function' && activeLineIndex >= 0 &&
+                    (isFlyinMode || isWordcloudMode)) {
                     updateFlyinTranslation(activeLineIndex);
                 }
 
-                if (playerContainer.classList.contains('view-flyin')) {
-                    flyinAutoScaleFont();
-                } else if (playerContainer.classList.contains('view-wordcloud')) {
+                if (isFlyinMode) {
+                    flyinAutoScaleFont(lineElements[activeLineIndex]);
+                } else if (isWordcloudMode) {
                     /* 词云模式：不使用传统滚动，镜头跟焦由 updateWordcloudCamera 在每帧驱动 */
-                } else if (isPvMode || (mainVisManager && mainVisManager.has(currentViewMode))) {
-                    /* PV 模式与全景视觉模式：由独立渲染引擎进行运镜，跳过传统滚动 */
                 } else if (!isUserScrolling && appSettings.lyrics.autoScroll && lineElements[activeLineIndex]) {
                     /* ★ 耦合弹簧纵波：活动行切换由物理引擎接管——
                        大跳（seek>2.5s）瞬时吸附，正常切行走弹簧波（锚点+耦合力+冲量） */
@@ -1348,6 +1427,13 @@ function updateLyricsHighlight() {
                     const bigJump = isNaN(tNow) || Math.abs(tNow - lineStart) > 2500;
                     waveSetActiveFromPlayback(activeLineIndex, bigJump);
                 }
+            }
+
+            /* ★ 性能（2026-11-19）：独立全屏视觉模式下 #lyricsScroll 不可见，
+               严禁每帧对隐藏的逐字 DOM 写 --reveal / classList，避免无谓样式失效与卡顿 */
+            if (isDedicatedVisMode) {
+                stopLyricsFxLoop();
+                return;
             }
 
             /* 只更新当前活动行内的单词高亮，使用缓存的 .word-highlight 元素
@@ -1433,8 +1519,10 @@ function updateLyricsHighlight() {
             }
 
             /* 默认/歌词模式：弹簧滚动 + 行间三点由常驻 rAF 驱动（ensureLyricsFxLoop），
-               这里只需确保 loop 已启动（播放/暂停/滚轮都可用） */
-            ensureLyricsFxLoop();
+               后台节流期不重新自启，等回到前台由 287 恢复 */
+            if (!(typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('is-bg-throttled'))) {
+                ensureLyricsFxLoop();
+            }
         }
 
 /* ★ 词云模式性能分档消费：相机跟焦开关与节流
@@ -1453,4 +1541,4 @@ function wordcloudApplyPerf(profile = {}) {
     _wcLastWrite = 0;
 }
 
-export { cleanupWordCloud, updateLyricsHighlight, updateWordcloudCamera, wordcloudApplyPerf };
+export { cleanupWordCloud, clearStaleActiveLines, ensureLyricsFxLoop as startLyricsFxLoop, isLyricsFxLoopRunning, snapLyricsWaveOnResume, stopLyricsFxLoop, updateLyricsHighlight, updateWordcloudCamera, wordcloudApplyPerf };

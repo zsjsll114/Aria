@@ -14,6 +14,7 @@ import { probeAll, SOURCE_PROBES } from '../core/sourceProbe.js';
 import { translatePhrase } from '../core/i18n.js';
 import { esc } from '../utils/formatters.js';
 import { logCatch } from '../services/log.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 
 const tx = translatePhrase;
 const TAG = 'sourceStatus';
@@ -83,11 +84,21 @@ export async function refreshSourceStatus() {
     }
 }
 
-if (typeof document !== 'undefined') {
-    renderIdle();
+function bindSourceStatusUI() {
+    if (typeof document === 'undefined') return;
+    if (!_busy && listEl() && listEl().children.length === 0) renderIdle();
     const btn = document.getElementById('btnSourceProbe');
-    if (btn) {
+    if (btn && !btn.dataset.probeBound) {
+        btn.dataset.probeBound = '1';
         btn.textContent = tx('测试');
         btn.addEventListener('click', () => { void refreshSourceStatus(); });
     }
 }
+
+bindSourceStatusUI();
+registerSettingsHook('quality', {
+    id: 'source-status',
+    order: 10,
+    onMount: bindSourceStatusUI,
+    onShow: bindSourceStatusUI,
+});

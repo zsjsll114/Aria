@@ -134,6 +134,9 @@ export class DimensionShapes {
         const fov = this.fov;
         const freqData = audioData.freqData || new Uint8Array(64);
         const bass = audioData.bass || 0;
+        const overall = audioData.overall || 0;
+        this._time = (this._time || 0) + dt;
+        const spin = this._time * (0.12 + overall * 0.45);
 
         const renderDots = [];
 
@@ -147,6 +150,7 @@ export class DimensionShapes {
                 const geom = shapeObj.geom;
                 const pos = shapeObj.worldPos; // 3D 世界坐标
                 const rot = shapeObj.fixedRot || [0.2, 0.35, 0.1];
+                const rotY = rot[1] + spin + pos.x * 0.004;
                 const scale = shapeObj.scale || 1.0;
 
                 for (let pi = 0; pi < geom.points.length; pi += (this._stride || 1)) {
@@ -154,7 +158,7 @@ export class DimensionShapes {
                     // ★ 每一个点对应频谱中的一个频率，计算专属起伏振幅
                     const fVal = (freqData[pt.freqIdx] || 0) / 255;
                     // 粒子沿法线向外起伏位移
-                    const disp = fVal * 20 * (0.5 + bass * 0.7);
+                    const disp = fVal * 26 * (0.5 + bass * 0.75);
 
                     const px = (pt.ox + pt.nx * disp) * scale;
                     const py = (pt.oy + pt.ny * disp) * scale;
@@ -162,7 +166,7 @@ export class DimensionShapes {
 
                     // 几何体自身的世界空间姿态旋转
                     let lPt = this.rotateX(px, py, pz, rot[0]);
-                    lPt = this.rotateY(lPt.x, lPt.y, lPt.z, rot[1]);
+                    lPt = this.rotateY(lPt.x, lPt.y, lPt.z, rotY);
                     lPt = this.rotateZ(lPt.x, lPt.y, lPt.z, rot[2]);
 
                     // 转换至 3D 摄像机视口空间

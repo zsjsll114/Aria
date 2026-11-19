@@ -393,3 +393,116 @@ test('导出面：浏览器函数都在', () => {
 	assert.equal(typeof POSTER_FONT, 'string');
 	assert.equal(typeof mod.POSTER_LOGO_URL, 'string');
 });
+
+/* ---------------- Step 5: Vitrail / fit:safe / 工坊风格与整句折行 ---------------- */
+
+test('FULL_BLEED_MODES 含 vitrail，POSTER_STUDIO_FRAMES 含 3:4 画报画幅', () => {
+	assert.ok(FULL_BLEED_MODES.has('vitrail'));
+	assert.equal(isFullBleedMode('vitrail'), true);
+	const ids = mod.POSTER_STUDIO_FRAMES.map((f) => f.id);
+	assert.deepEqual(ids, ['square', 'portrait', 'story', 'native']);
+	const portrait = posterFrameFor('portrait');
+	assert.equal(portrait.id, 'portrait');
+	assert.equal(portrait.w, 1080);
+	assert.equal(portrait.h, 1440);
+});
+
+test('layoutFor({ fit: "safe" }) 在窄画幅中完整保留宽屏文字/封面模式水平边界', () => {
+	for (const frameId of ['square', 'portrait', 'story']) {
+		for (const mode of ['letterpress', 'cover', 'tempera', 'vitrail']) {
+			const L = layoutFor(frameId, 1418, 802, mode, { fit: 'safe' });
+			assert.equal(L.fullBleed, false, `${frameId}/${mode} safe 模式不应满出血裁切`);
+			assert.equal(L.heroRect.w, L.W, `${frameId}/${mode} 水平不能被裁切`);
+			assert.ok(L.heroRect.x >= 0 && L.heroRect.x + L.heroRect.w <= L.W);
+			assert.ok(L.heroRect.y + L.heroRect.h <= L.info.y);
+		}
+	}
+	const crop = layoutFor('square', 1418, 802, 'vitrail', { fit: 'cover' });
+	assert.equal(crop.fullBleed, true);
+});
+
+test('wrapTextByPixelWidth：中英文混排折行不越过 maxW 且不断裂完整英文单词', () => {
+	const ctx = makeCtx();
+	ctx.font = '700 32px sans-serif';
+	const enLines = mod.wrapTextByPixelWidth(ctx, 'Dancing through the midnight rain together forever', 180);
+	assert.ok(enLines.length >= 2);
+	for (const line of enLines) {
+		assert.ok(ctx.measureText(line).width <= 180 || !line.includes(' '));
+	}
+	assert.ok(enLines.join(' ').includes('midnight'));
+	assert.ok(enLines.join(' ').includes('together'));
+
+	const zhLines = mod.wrapTextByPixelWidth(ctx, '一眨眼一瞬间你说好就是永远如果可以茫茫人海千年一眼相遇', 160);
+	assert.ok(zhLines.length >= 2);
+	assert.equal(zhLines.join(''), '一眨眼一瞬间你说好就是永远如果可以茫茫人海千年一眼相遇');
+});
+
+test('drawStyledPoster：覆盖 stage / vinyl / editorial(dark+light) / film 全画幅完整出句', () => {
+	assert.equal(mod.POSTER_STYLES.length, 4);
+	const makeStyledCtx = () => Object.assign(makeCtx(), {
+		arc() {},
+		roundRect() {},
+		lineTo() {},
+		rotate() {},
+	});
+	const lines = [
+		{ original: '一眨眼一瞬间你说好就是永远', translation: 'In a blink, you promised forever' },
+	];
+
+	for (const [style, tone] of [['stage', 'dark'], ['vinyl', 'dark'], ['editorial', 'dark'], ['editorial', 'light'], ['film', 'dark']]) {
+		const ctx = makeStyledCtx();
+		const info = mod.drawStyledPoster(ctx, {
+			style,
+			frame: 'portrait',
+			fit: 'safe',
+			tone,
+			view: fakeView,
+			cover: fakeCover,
+			logo: fakeLogo,
+			song: SONG,
+			accent: '#E8BE6A',
+			footer: 'Aria · 2026-11-16',
+			badge: '歌词',
+			mode: 'lyrics',
+			lines,
+		});
+		assert.equal(info.style, style);
+		assert.ok(ctx._rec.texts.some((t) => t.t.includes('晴天')), `${style}/${tone} 应绘制歌名`);
+		if (style !== 'stage') {
+			const joined = ctx._rec.texts.map((t) => t.t).join('');
+			assert.ok(joined.includes('一眨眼一瞬间'), `${style}/${tone} 应完整渲染所选原句`);
+			assert.ok(joined.includes('forever'), `${style}/${tone} 应渲染译文`);
+		}
+	}
+});
+
+test('drawPoster portrait（内嵌模式）：绘制放射氛围光晕与上下边缘柔和渐变', () => {
+	const ctx = makeCtx();
+	const portraitView = { width: 1440, height: 900 };
+	const layout = layoutFor('portrait', 1440, 900, 'lyrics');
+	assert.equal(layout.fullBleed, false);
+	assert.equal(layout.hasBackdrop, true);
+	drawPoster(ctx, {
+		layout,
+		view: portraitView,
+		cover: fakeCover,
+		logo: fakeLogo,
+		song: SONG,
+		accent: '#c3e65a',
+		badge: '歌词',
+	});
+	assert.equal(ctx._rec.images.filter(im => im.img === portraitView).length, 2);
+	assert.ok(ctx._rec.fills.length >= 3, 'portrait 内嵌应绘制径向光晕与边缘接缝渐隐填充');
+	assert.ok(ctx._rec.ops.some(op => op[0] === 'stop'), 'portrait 内嵌应写入渐变色停靠点');
+});
+
+test('304-lyric-poster 契约：全 13 模式标签、空状态隐藏及定格接口完整接入', async () => {
+	const { readFileSync } = await import('node:fs');
+	const src = readFileSync(new URL('../../web/src/app/304-lyric-poster.js', import.meta.url), 'utf8');
+	assert.match(src, /pv:\s*'诗境'/, 'MODE_LABEL 应将 pv 标为诗境');
+	assert.match(src, /jizura:\s*'字缀'/, 'MODE_LABEL 应包含 jizura: 字缀');
+	assert.ok(src.includes("'.lyrics-empty-state'"), 'HIDE_SELECTORS 应隐藏空状态占位卡片');
+	assert.ok(src.includes('stageSonnetForPoster'), '应接入诗境定格句接口');
+	assert.ok(src.includes('stageTemperaForPoster'), '应接入版画定格句接口');
+	assert.ok(src.includes('stageForPoster'), '应接入 canvas 视觉器定格句接口');
+});

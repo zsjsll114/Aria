@@ -34,18 +34,78 @@ function sanitizeImageUrl(u) {
                 .replace(/(photo_new\/T002R)800x800(M000)/, '$1500x500$2');
         }
 
-function setCoverImage(url) {
+function markCoverAreaEmpty() {
+            if (typeof document === 'undefined') return;
+            const layers = getCoverLayers();
+            layers.forEach((l) => {
+                l.style.opacity = '0';
+                l.classList.remove('active');
+            });
+            const ca = document.querySelector('.cover-area');
+            if (ca) {
+                ca.classList.remove('has-cover');
+                ca.classList.add('is-empty');
+            }
+            document.documentElement?.classList?.remove('aria-bright-backdrop');
+        }
+
+        function syncCoverAreaHealth() {
+            if (typeof document === 'undefined') return;
+            const ca = document.querySelector('.cover-area');
+            if (!ca) return;
+            const layers = getCoverLayers();
+            const hasLoaded = layers.some((im) => {
+                const s = im.getAttribute('src');
+                return Boolean(s) && im.complete && im.naturalWidth > 0 && im.style.opacity !== '0';
+            });
+            ca.classList.toggle('has-cover', hasLoaded);
+            ca.classList.toggle('is-empty', !hasLoaded);
+            if (!hasLoaded) {
+                layers.forEach((im) => {
+                    if (im.complete && im.naturalWidth === 0) im.style.opacity = '0';
+                });
+            }
+        }
+
+        function initCoverAreaFallbackSync() {
+            if (typeof document === 'undefined') return;
+            getCoverLayers().forEach((im) => {
+                if (im._ariaFallbackBound) return;
+                im._ariaFallbackBound = true;
+                im.addEventListener('load', () => {
+                    if (im.naturalWidth > 0 && im.style.opacity !== '0') {
+                        const ca = document.querySelector('.cover-area');
+                        if (ca) {
+                            ca.classList.add('has-cover');
+                            ca.classList.remove('is-empty');
+                        }
+                    } else {
+                        syncCoverAreaHealth();
+                    }
+                });
+                im.addEventListener('error', () => {
+                    im.style.opacity = '0';
+                    syncCoverAreaHealth();
+                });
+            });
+            syncCoverAreaHealth();
+        }
+
+        function setCoverImage(url) {
             const coverToUse = sanitizeImageUrl(url || playerConfig.coverUrl);
             const layers = getCoverLayers();
             if (layers.length === 0) return;
 
             if (!url) {
-                /* 隐藏所有封面层 */
+                /* 隐藏所有封面层并切入空封面视觉兜底（Issue #1） */
                 layers.forEach(l => {
                     l.style.opacity = '0';
                     if (l === songCover) l.removeAttribute('src');
                     if (l === songCover2) l.removeAttribute('src');
                 });
+                const ca = typeof document !== 'undefined' ? document.querySelector('.cover-area') : null;
+                if (ca) { ca.classList.remove('has-cover'); ca.classList.add('is-empty'); }
+                if (typeof document !== 'undefined') document.documentElement.classList.remove('aria-bright-backdrop');
                 return;
             }
 
@@ -71,6 +131,8 @@ function setCoverImage(url) {
                 inactiveCover.style.opacity = '1';
                 activeCover.style.opacity = '0';
                 activeCoverIndex = 1 - activeCoverIndex;
+                const ca = typeof document !== 'undefined' ? document.querySelector('.cover-area') : null;
+                if (ca) { ca.classList.add('has-cover'); ca.classList.remove('is-empty'); }
 
                 try {
                     extractDominantColor(inactiveCover);
@@ -110,7 +172,8 @@ function setCoverImage(url) {
                 };
                 plainProbe.onerror = () => {
                     if (myGen !== coverGen) return;
-                    tryCrossfade();
+                    applied = true;
+                    markCoverAreaEmpty();
                 };
                 plainProbe.src = coverToUse;
             };
@@ -155,6 +218,11 @@ function extractDominantColor(imgElement) {
                 applyColorOverlay(r, g, b);
                 applyColorToLyrics(r, g, b);
                 window.dominantColor = { r, g, b };
+                /* 亮背景检测：高亮度专辑主色（如黄绿/白浅调）为右上角胶囊增强对比底衬 */
+                if (typeof document !== 'undefined') {
+                    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    document.documentElement.classList.toggle('aria-bright-backdrop', luma >= 145);
+                }
                 /* ★ 标题栏颜色跟随（240 事件驱动钩子，替代原 700ms 轮询） */
                 if (typeof globalThis.__updateBrandColor === 'function') globalThis.__updateBrandColor();
                 const palette = typeof extractCoverPalette === 'function' ? extractCoverPalette(imgElement) : { primary: '#3a86ff', secondary: '#ff006e', accent: '#ffbe0b' };
@@ -584,6 +652,7 @@ document.querySelector('.lyrics-container')?.classList.remove('user-scrolling');
             });
         }
 
+if (typeof document !== 'undefined') initCoverAreaFallbackSync();
 if (typeof window !== 'undefined') window.__genPrebakedBg = generatePrebakedBlurBackground;
 
 export { applyColorOverlay, applyColorToLyrics, extractDominantColor, generatePrebakedBlurBackground, getActiveBgLayer, getActiveCover, getInactiveBgLayer, getInactiveCover, initLyricsInteractions, sanitizeImageUrl, setBlurBackground, setCoverImage, shouldUsePrebakedBlur };

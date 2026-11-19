@@ -24,7 +24,8 @@ import { applyVolumeOnSongChange, closePlaylists, loadPlaylistTrack } from './13
 import { loadOnlineSong } from './175-track-index-online.js';
 import { debouncedSaveConfigToBackend, getStreamCachedAudioUrl } from './180-boot-config.js';
 /* ★ 自建平台歌单（网易云/酷狗/QQ）接入歌单页 */
-import { fetchStatus, selfhostEnabled, selfhostPlaylists, selfhostPlaylistSongs } from './selfhost-runtime.js';
+import { fetchStatus, selfhostEnabled, selfhostPlaylists, selfhostPlaylistSongs, selfhostCreatePlaylist, selfhostDeletePlaylist, selfhostPlaylistMutateTracks } from './selfhost-runtime.js';
+import { buildCollectionQueue, enqueueTrack, insertNextAndPlay } from '../core/playlistQueue.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* ===== 平台来源图标（src/img 官方 SVG；供各歌单列表右下角复用） ===== */
@@ -394,7 +395,7 @@ async function renderPlaylistsView() {
             /* ★ 退出当前歌单自动退出编辑模式，不保留多选状态 */
             globalThis.plMultiEdit = false;
             globalThis.plMultiSel = new Set();
-            playlistsListEl.classList.remove('song-grid-view');   /* 歌单列表视图不套用歌曲卡片布局 */
+            Aria.__clearSongView?.(playlistsListEl, false);   /* 歌单列表视图不套用歌曲卡片布局 */
             playlistViewMode = 'list';
             currentPlaylistId = null;
             syncPlaylistHeaderCtxBtns();
@@ -447,12 +448,12 @@ async function renderPlaylistsView() {
                     </div>
                 </div>`;
 
-            /* ★ 自建平台歌单入口：网易云 → 酷狗 → QQ → 汽水（未登录/未启用也显示，点击可提示登录）
+            /* ★ 自建平台歌单入口：网易云 → 酷狗 → QQ（未登录/未启用也显示，点击可提示登录）
                状态优先用缓存 selfPlatMetaCache，null=尚未加载→乐观显示可点击 */
             {
                 const pm = selfPlatMetaCache;
-                const SELF_PLAT = { netease: { name: '网易云音乐', mark: '网', color: 'rgba(223,42,42,.25)' }, kugou: { name: '酷狗', mark: '狗', color: 'rgba(0,163,232,.25)' }, qq: { name: 'QQ音乐', mark: 'Q', color: 'rgba(47,200,135,.25)' }, qishui: { name: '汽水音乐', mark: '汽', color: 'rgba(24,180,158,.28)' } };
-                ['netease', 'kugou', 'qq', 'qishui'].forEach(src => {
+                const SELF_PLAT = { netease: { name: '网易云音乐', mark: '网', color: 'rgba(223,42,42,.25)' }, kugou: { name: '酷狗', mark: '狗', color: 'rgba(0,163,232,.25)' }, qq: { name: 'QQ音乐', mark: 'Q', color: 'rgba(47,200,135,.25)' } };
+                ['netease', 'kugou', 'qq'].forEach(src => {
                     const meta = SELF_PLAT[src];
                     const ok = pm ? !!pm[src] : null;          /* true=已登录 false=未登录 null=未知(乐观) */
                     const shown = ok === null ? '点击查看' + meta.name + '歌单'
@@ -472,6 +473,7 @@ async function renderPlaylistsView() {
             }
 
             if (playlists.length === 0 && localCount === 0) {
+                Aria.__clearSongView?.(playlistsListEl, false);
                 playlistsListEl.innerHTML = html + '<div class="empty-hint">还没有自定义歌单，点击 + 创建</div>';
                 playlistsHintEl.textContent = '';
                 return;
@@ -533,7 +535,7 @@ async function renderPlaylistsView() {
             _refreshPlaylistDynamic();
         }
 
-/* 自建平台登录状态缓存：{netease:bool, kugou:bool, qq:bool, qishui:bool}；null=尚未加载 */
+/* 自建平台登录状态缓存：{netease:bool, kugou:bool, qq:bool}；null=尚未加载 */
 let selfPlatMetaCache = null;
 
 /* 后台刷新歌单列表页的动态信息（本地歌曲数 / 自建平台登录态），seq 防竞态 */
@@ -554,7 +556,7 @@ async function _refreshPlaylistDynamic() {
   }
   if (status && typeof status === 'object') {
     selfPlatMetaCache = {};
-    ['netease', 'kugou', 'qq', 'qishui'].forEach(src => {
+    ['netease', 'kugou', 'qq'].forEach(src => {
       const s = status[src];
       selfPlatMetaCache[src] = !!(selfhostEnabled(src) && s && s.alive && s.loggedIn);
     });
@@ -566,7 +568,7 @@ async function _refreshPlaylistDynamic() {
       const metaEl = el.querySelector('.playlist-meta');
       if (metaEl) metaEl.textContent = ok ? '点击查看我的' + (metaName.replace('歌单', '')) + '歌单' : '未登录，点击去「设置 → 自建服务」登录';
     });
-    playlistsHintEl.textContent = `共 ${getPlaylists().length} 个歌单 · ${localSongsCache.length} 首本地音乐 · 4 平台`;
+    playlistsHintEl.textContent = `共 ${getPlaylists().length} 个歌单 · ${localSongsCache.length} 首本地音乐 · 3 平台`;
   }
 }
 
@@ -582,17 +584,13 @@ const SELF_PLAT_UI = {
   netease: { name: '网易云音乐', icon: 'src/img/NeteaseMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(212,60,51,.55), rgba(180,40,35,.35))' },
   kugou: { name: '酷狗', icon: 'src/img/KugouMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(0,131,199,.55), rgba(0,90,150,.35))' },
   qq: { name: 'QQ音乐', icon: 'src/img/QQMusicIcon.svg', bg: 'linear-gradient(150deg, rgba(23,158,103,.55), rgba(16,120,78,.35))' },
-  /* ★ 汽水刻意不给 icon：仓库里没有对应图标文件，塞一个不存在的路径会变成
-     破图 alt；留空则只渲染背景渐变色块。歌单卡片绝大多数自带 coverUrl
-     （vendor 直接给抖音 CDN 图），图标只在「无封面歌单」时才被看到。 */
-  qishui: { name: '汽水音乐', icon: '', bg: 'linear-gradient(150deg, rgba(24,180,158,.55), rgba(12,120,110,.35))' },
 };
 
-async function renderSelfPlatList(src) {
+async function renderSelfPlatList(src, forceRefresh = false) {
   resetListScroll();
   const meta = SELF_PLAT_UI[src] || { name: src, icon: '', bg: 'linear-gradient(150deg,#5b6b7f,#3f4b5c)' };
   const token = ++selfPlatSeq;
-  if (selfPlatState.src !== src) selfPlatState = { src, cards: [], sub: null, navTitle: '', songs: [] };
+  if (selfPlatState.src !== src) selfPlatState = { src, cards: [], card: null, sub: null, navTitle: '', songs: [] };
   selfPlatState.src = src;
   playlistViewMode = 'selfplat-list';
   currentPlaylistId = '__selfplat_list__';
@@ -601,44 +599,100 @@ async function renderSelfPlatList(src) {
   playlistBackBtn.classList.add('visible');
   playlistCreateBox.style.display = 'none';
   /* ★ 返回/切换：本地已有卡片即时渲染，后台静默刷新 */
-  const isLocal = selfPlatState.cards.length > 0;
-  playlistsHintEl.textContent = isLocal ? '' : '';
+  const isLocal = !forceRefresh && selfPlatState.cards.length > 0;
+  playlistsHintEl.textContent = isLocal ? `来自 ${meta.name} · 共 ${selfPlatState.cards.length} 个歌单` : '';
   if (isLocal) buildSelfPlatCards(meta);
   else Aria.skeleton.load(playlistsListEl, 'cards', 9);
   const res = await selfhostPlaylists(src);
   if (token !== selfPlatSeq) return;   /* 已被更新的操作取代 */
   if (!res.ok) {
-    if (!isLocal) playlistsListEl.innerHTML = `<div class="rank-error">${escapeHtml(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">请到「设置 → 自建服务」登录对应平台</span></div>`;
+    if (!isLocal) {
+      Aria.__clearSongView?.(playlistsListEl, false);
+      playlistsListEl.innerHTML = `<div class="rank-error">${escapeHtml(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">请到「设置 → 自建服务」登录对应平台</span></div>`;
+    }
     return;
   }
   selfPlatState.cards = res.cards || [];
-  if (!selfPlatState.cards.length) {
-    playlistsListEl.innerHTML = '<div class="rank-empty">账号下暂无歌单</div>';
-    return;
-  }
   buildSelfPlatCards(meta);
   playlistsHintEl.textContent = `来自 ${meta.name} · 共 ${selfPlatState.cards.length} 个歌单`;
 }
 
 function buildSelfPlatCards(meta) {
-  playlistsListEl.classList.remove('song-grid-view');   /* 歌单宫格不套用歌曲卡片布局 */
-  /* ★ 布局切换按钮只在 ≥2 张卡时显示：单张卡在"网格(1fr槽位≈130px)"与
-     "轮播(固定158px)"下宽度几乎相同，按钮看起来像坏的（实测探针结论） */
+  Aria.__clearSongView?.(playlistsListEl, false);   /* 歌单宫格不套用歌曲卡片布局 */
+  const canCloudEdit = ['netease', 'kugou'].includes(selfPlatState.src);
   const showViewToggle = selfPlatState.cards.length >= 2;
-  playlistsListEl.innerHTML = `
-    <div style="font-size:11px;opacity:.6;padding:2px 4px 8px;">来自 ${escapeHtml(meta.name)} · 共 ${selfPlatState.cards.length} 个歌单（播放/操作同本地歌单）</div>
-    ${showViewToggle ? Aria.__cardsCarouselBarHTML() : ''}<div class="rank-board-grid">${selfPlatState.cards.map((b, i) => `
+  const actionBarHtml = `
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;padding:2px 4px 8px;">
+      ${canCloudEdit ? '<button class="setting-btn primary" id="selfPlatCreateBtn" style="padding:4px 10px;font-size:11px;">+ 新建云端歌单</button>' : ''}
+      <button class="setting-btn" id="selfPlatRefreshBtn" style="padding:4px 10px;font-size:11px;">刷新</button>
+      <button class="setting-btn" id="selfPlatOpenFavBtn" style="padding:4px 10px;font-size:11px;">自建收藏</button>
+    </div>`;
+  const bodyHtml = selfPlatState.cards.length
+    ? `${showViewToggle ? Aria.__cardsCarouselBarHTML() : ''}<div class="rank-board-grid">${selfPlatState.cards.map((b, i) => `
       <div class="rank-board-card" data-i="${i}" title="${escapeHtml(b.name)}">
         ${b.cover
         ? `<img class="rank-board-bg" src="${escapeHtml(b.cover)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
-        : `<span class="rank-board-ph" style="background:${meta.bg};display:flex;align-items:center;justify-content:center;">${meta.icon ? `<img src="${meta.icon}" alt="" style="width:34px;height:34px;opacity:.9;" onerror="this.style.visibility='hidden'">` : ''}</span>`}
+        : `<span class="rank-board-ph" style="background:${meta.bg};display:flex;align-items:center;justify-content:center;">${meta.icon ? `<img src="${escapeHtml(meta.icon)}" alt="" style="width:34px;height:34px;opacity:.9;" onerror="this.style.visibility='hidden'">` : ''}</span>`}
+        ${canCloudEdit && b.owned ? `<button class="selfplat-card-del" data-del-selfpl="${i}" title="删除云端歌单" style="position:absolute;top:6px;left:6px;z-index:3;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}
         <div class="rank-board-meta">
           <div class="rank-board-name">${escapeHtml(b.name)}</div>
-          <div class="rank-board-count">${b.count ? b.count + ' 首' : ''}</div>
+          <div class="rank-board-count">${b.count ? escapeHtml(String(b.count)) + ' 首' : ''}</div>
         </div>
         <span class="rank-card-src">${escapeHtml(meta.name)}</span>
-      </div>`).join('')}</div>`;
-  Aria.__bindCardsCarouselBar(playlistsListEl);
+      </div>`).join('')}</div>`
+    : '<div class="rank-empty">账号下暂无歌单</div>';
+  playlistsListEl.innerHTML = actionBarHtml + bodyHtml;
+  if (showViewToggle) Aria.__bindCardsCarouselBar(playlistsListEl);
+  const createBtn = playlistsListEl.querySelector('#selfPlatCreateBtn');
+  if (createBtn) {
+    createBtn.onclick = async () => {
+      if (typeof window.showGlassPrompt !== 'function') return;
+      const name = await window.showGlassPrompt({
+        title: `新建${meta.name}云端歌单`,
+        desc: '歌单将直接创建在您的平台账号内',
+        placeholder: '输入新歌单名称',
+        okText: '创建',
+      });
+      if (!name || !name.trim()) return;
+      createBtn.disabled = true;
+      const r = await selfhostCreatePlaylist(selfPlatState.src, name.trim());
+      createBtn.disabled = false;
+      if (r.ok) {
+        if (typeof setHint === 'function') setHint(`已创建云端歌单「${name.trim()}」`);
+        renderSelfPlatList(selfPlatState.src, true);
+      } else if (typeof setHint === 'function') {
+        setHint(r.err || '创建云端歌单失败');
+      }
+    };
+  }
+  const refreshBtn = playlistsListEl.querySelector('#selfPlatRefreshBtn');
+  if (refreshBtn) refreshBtn.onclick = () => renderSelfPlatList(selfPlatState.src, true);
+  const openFavBtn = playlistsListEl.querySelector('#selfPlatOpenFavBtn');
+  if (openFavBtn) {
+    openFavBtn.onclick = () => {
+      if (typeof window.openSelfFavorites === 'function') {
+        closePlaylists();
+        window.openSelfFavorites(selfPlatState.src);
+      }
+    };
+  }
+  playlistsListEl.querySelectorAll('[data-del-selfpl]').forEach(delBtn => {
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
+      const idx = Number(delBtn.dataset.delSelfpl);
+      const b = selfPlatState.cards[idx];
+      if (!b) return;
+      showCtxConfirm('删除云端歌单', `确定要删除云端歌单「${b.name}」吗？此操作将同步删除账号内歌单且无法撤销。`, async () => {
+        const r = await selfhostDeletePlaylist(selfPlatState.src, b);
+        if (r.ok) {
+          if (typeof setHint === 'function') setHint(`已删除云端歌单「${b.name}」`);
+          renderSelfPlatList(selfPlatState.src, true);
+        } else if (typeof setHint === 'function') {
+          setHint(r.err || '删除云端歌单失败');
+        }
+      });
+    };
+  });
   playlistsListEl.querySelectorAll('.rank-board-card').forEach(card => {
     card.onclick = () => renderSelfPlatSongs(selfPlatState.cards[Number(card.dataset.i)]);
   });
@@ -648,25 +702,33 @@ async function renderSelfPlatSongs(card) {
   if (!card || !card.key) return;
   resetListScroll();
   const token = ++selfPlatSeq;
+  const sameCard = selfPlatState.sub === card.key && Array.isArray(selfPlatState.songs) && selfPlatState.songs.length > 0;
+  selfPlatState.card = card;
   selfPlatState.sub = card.key;
   selfPlatState.navTitle = card.name || '歌单';
+  if (!sameCard) selfPlatState.songs = [];
   playlistViewMode = 'selfplat-songs';
   currentPlaylistId = '__selfplat_songs__';
   syncPlaylistHeaderCtxBtns();
   playlistsTitleEl.textContent = selfPlatState.navTitle;
   /* ★ 缓存优先：同一歌单已加载过（返回/再次进入）→ 立即渲染，后台静默刷新 */
-  const useCache = Array.isArray(selfPlatState.songs) && selfPlatState.songs.length > 0;
+  const useCache = sameCard;
   if (useCache) _renderSelfPlatSongsList(selfPlatState.songs);
   else { Aria.skeleton.load(playlistsListEl, 'list', 8); playlistsHintEl.textContent = ''; }
-  const res = await selfhostPlaylistSongs(selfPlatState.src, card.key);
+  const res = await selfhostPlaylistSongs(selfPlatState.src, card.key, card);
   if (token !== selfPlatSeq) return;
   if (!res.ok) {
-    if (!useCache) playlistsListEl.innerHTML = `<div class="rank-error">${escapeHtml(res.err || '获取失败')}</div>`;
+    if (!useCache) {
+      Aria.__clearSongView?.(playlistsListEl, false);
+      playlistsListEl.innerHTML = `<div class="rank-error">${escapeHtml(res.err || '获取失败')}</div>`;
+    }
     return;
   }
   selfPlatState.songs = res.list || [];
   if (!selfPlatState.songs.length) {
+    Aria.__clearSongView?.(playlistsListEl, false);
     playlistsListEl.innerHTML = '<div class="rank-empty">该歌单暂无歌曲</div>';
+    playlistsHintEl.textContent = '共 0 首';
     return;
   }
   /* ★ 后台刷新替换：保持用户当前滚动位置，不因重渲染跳回顶部 */
@@ -677,12 +739,13 @@ async function renderSelfPlatSongs(card) {
 function _renderSelfPlatSongsList(songs, preserveScroll) {
   const savedTop = preserveScroll ? playlistsListEl.scrollTop : 0;
   let favKeys = new Set();
-  try { favKeys = new Set((getFavorites() || []).map(f => makeSongKey(f))); } catch (e) { /* ignore */ }
+  try { favKeys = new Set((getFavorites() || []).map(f => makeSongKey(f))); } catch (e) { logCatch('playlists', e); }
+  const canEditTracks = !!(selfPlatState.card && selfPlatState.card.owned && ['netease', 'kugou'].includes(selfPlatState.src));
   playlistsHintEl.textContent = `共 ${songs.length} 首`;
   /* 播放全部 + 批量下载工具栏（同本地歌单） */
   playlistsListEl.innerHTML = `
-    <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-      <div class="play-all-btn" id="selfPlatPlayAll" style="flex:1;margin-bottom:0;">
+    <div class="rank-list-head">
+      <div class="play-all-btn" id="selfPlatPlayAll">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
         <span>播放全部（${songs.length}）</span>
       </div>
@@ -707,36 +770,65 @@ function _renderSelfPlatSongsList(songs, preserveScroll) {
         <div class="result-artist">${escapeHtml(singer)} ${(typeof Aria.__platformIconHTML === 'function' ? Aria.__platformIconHTML(s.source || s.src) : '')}</div>
       </div>
       <div class="result-actions">
+        <button class="result-action-btn" data-soact="playnext" data-soid="${i}" title="下一首播放">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+        </button>
         <button class="result-action-btn" data-soact="addnow" data-soid="${i}" title="加入当前播放">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
         </button>
         <button class="result-action-btn ${isFav ? 'active-fav' : ''}" data-soact="fav" data-soid="${i}" title="${isFav ? '取消收藏' : '收藏'}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
         </button>
+        ${canEditTracks ? `<button class="result-action-btn" data-soact="rmself" data-soid="${i}" title="从云端歌单移除">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>` : ''}
       </div>
     </div>`;
   }).join('')}`;
-  const __listHead = playlistsListEl.querySelector('.rank-list-head');
-  if (__listHead) __listHead.appendChild(Aria.__songViewBtn(playlistsListEl));
-  Aria.__applySongViewTo(playlistsListEl);
+  Aria.__mountSongView(playlistsListEl);
   const dlBtn = document.getElementById('selfPlatDl');
   if (dlBtn) dlBtn.onclick = () => { if (typeof window.batchDownloadSongs === 'function') window.batchDownloadSongs(songs, selfPlatState.navTitle + ' '); };
   const playAll = document.getElementById('selfPlatPlayAll');
   if (playAll) playAll.onclick = () => {
+    const q = buildCollectionQueue(songs, 0, selfPlatState.src || '');
+    if (!q.playlist.length) return;
     try {
-      if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) { globalThis.playlist.length = 0; globalThis.playlist.push(...songs); globalThis.currentTrackIndex = 0; }
-    } catch (e) { /* ignore */ }
-    loadOnlineSong(songs[0], true).catch(e => logWarn('playlists', '[自建平台] 播放全部失败:', e));
-    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(songs[0]);
-    if (typeof setHint === 'function') setHint(`播放全部：${songs.length} 首已加入播放队列`);
+      if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
+        globalThis.playlist = q.playlist;
+        globalThis.currentTrackIndex = q.currentTrackIndex;
+      }
+    } catch (e) { logCatch('playlists', e); }
+    loadPlaylistTrack(0).catch(e => logWarn('playlists', '[自建平台] 播放全部失败:', e));
+    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.playlist[0]);
+    if (typeof setHint === 'function') setHint(`播放全部：${q.playlist.length} 首已加入播放队列`);
   };
   playlistsListEl.querySelectorAll('.result-item[data-soid]').forEach(el => {
     el.onclick = (e) => {
       if (e.target.closest('[data-soact]')) return;
-      const s = songs[Number(el.dataset.soid)];
+      const idx = Number(el.dataset.soid);
+      const s = songs[idx];
       if (!s) return;
-      loadOnlineSong(s).catch(e => logWarn('playlists', '[自建平台] 播放失败:', e));
-      if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(s);
+      const q = buildCollectionQueue(songs, idx, selfPlatState.src || '');
+      if (!q.playlist.length) return;
+      try {
+        if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
+          globalThis.playlist = q.playlist;
+          globalThis.currentTrackIndex = q.currentTrackIndex;
+        }
+      } catch (err) { logCatch('playlists', err); }
+      loadPlaylistTrack(q.currentTrackIndex).catch(err => logWarn('playlists', '[自建平台] 播放失败:', err));
+      if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.playlist[q.currentTrackIndex]);
+    };
+  });
+  playlistsListEl.querySelectorAll('[data-soact="playnext"]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const s = songs[Number(btn.dataset.soid)];
+      if (!s) return;
+      if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+        const res = globalThis.Aria.enqueuePlayNextTrack(s, selfPlatState.src || '');
+        if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+      }
     };
   });
   playlistsListEl.querySelectorAll('[data-soact="addnow"]').forEach(btn => {
@@ -744,8 +836,16 @@ function _renderSelfPlatSongsList(songs, preserveScroll) {
       e.stopPropagation();
       const s = songs[Number(btn.dataset.soid)];
       if (!s) return;
-      try { if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) globalThis.playlist.push(s); } catch (_e) { logCatch('playlists', _e); }
-      if (typeof setHint === 'function') setHint('已加入当前播放队列');
+      let res = { added: false, duplicate: false };
+      try {
+        if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
+          res = enqueueTrack(globalThis.playlist, s, selfPlatState.src || '');
+        }
+      } catch (_e) { logCatch('playlists', _e); }
+      if (typeof setHint === 'function') {
+        if (res.added) setHint('已加入当前播放队列');
+        else if (res.duplicate) setHint('已在当前播放队列中');
+      }
     };
   });
   playlistsListEl.querySelectorAll('[data-soact="fav"]').forEach(btn => {
@@ -758,6 +858,31 @@ function _renderSelfPlatSongsList(songs, preserveScroll) {
         btn.classList.toggle('active-fav', faved);
         if (typeof setHint === 'function') setHint(faved ? '已加入收藏' : '已取消收藏');
       } catch (_e) { logCatch('playlists', _e); }
+    };
+  });
+  playlistsListEl.querySelectorAll('[data-soact="rmself"]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.soid);
+      const s = songs[idx];
+      if (!s || !selfPlatState.card) return;
+      const songTitle = s.name || s.song || s.title || '该歌曲';
+      showCtxConfirm('移出云端歌单', `将「${songTitle}」从云端歌单「${selfPlatState.navTitle}」中移除？`, async () => {
+        const r = await selfhostPlaylistMutateTracks(selfPlatState.src, selfPlatState.card, [s], 'del');
+        if (r.ok) {
+          selfPlatState.songs.splice(idx, 1);
+          if (typeof setHint === 'function') setHint(`已从云端歌单移除「${songTitle}」`);
+          if (!selfPlatState.songs.length) {
+            Aria.__clearSongView?.(playlistsListEl, false);
+            playlistsListEl.innerHTML = '<div class="rank-empty">该歌单暂无歌曲</div>';
+            playlistsHintEl.textContent = '共 0 首';
+          } else {
+            _renderSelfPlatSongsList(selfPlatState.songs, true);
+          }
+        } else if (typeof setHint === 'function') {
+          setHint(r.err || '移出云端歌单失败');
+        }
+      });
     };
   });
   /* ★ 后台刷新替换后恢复滚动位置（preserveScroll） */
@@ -783,6 +908,7 @@ function renderRecentDetail() {
   playlistBackBtn.classList.add('visible');
   playlistCreateBox.style.display = 'none';
   if (!list.length) {
+    Aria.__clearSongView?.(playlistsListEl, false);
     playlistsListEl.innerHTML = '<div class="rank-empty">还没有播放过歌曲<br>去搜索 / 榜单 / 收藏里点一首吧</div>';
     playlistsHintEl.textContent = '';
     return;
@@ -798,6 +924,12 @@ function renderRecentDetail() {
         <div class="result-artist">${escapeHtml(it.artist || '未知歌手')}${it.source ? ' · ' + ({ tencent: 'QQ', kugou: '酷狗', netease: '网易', kuwo: '酷我' }[it.source] || it.source) : ''} · ${it.at ? new Date(it.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
       </div>
       <div class="result-actions">
+        <button class="result-action-btn" data-rhplaynext="${i}" title="下一首播放">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <button class="result-action-btn" data-rhaddnow="${i}" title="加入当前播放">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
+        </button>
         <button class="fav-item-delete" data-rhdel="${i}" title="删除这条记录">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -808,8 +940,8 @@ function renderRecentDetail() {
     </div>`;
   }).join('');
   playlistsListEl.innerHTML = `
-    <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-      <div class="play-all-btn" id="rcPlayAll" style="flex:1;margin-bottom:0;">
+    <div class="rank-list-head">
+      <div class="play-all-btn" id="rcPlayAll">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
         <span>播放全部（${list.length}）</span>
       </div>
@@ -847,30 +979,71 @@ function renderRecentDetail() {
       } else if (window.confirm('清空全部历史播放记录？')) doClear();
     };
   }
-  const hd = playlistsListEl.querySelector('.rank-list-head');
-  if (hd) hd.appendChild(Aria.__songViewBtn(playlistsListEl));
-  Aria.__applySongViewTo(playlistsListEl);
+  Aria.__mountSongView(playlistsListEl);
   const pa = document.getElementById('rcPlayAll');
   if (pa) pa.onclick = () => {
+    const q = buildCollectionQueue(list.map(it => ({ source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key })), 0);
+    if (!q.playlist.length) return;
     try {
       if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
-        globalThis.playlist.length = 0;
-        globalThis.playlist.push(...list.map(it => ({ source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover })));
-        globalThis.currentTrackIndex = 0;
+        globalThis.playlist = q.playlist;
+        globalThis.currentTrackIndex = q.currentTrackIndex;
       }
-    } catch (e) { /* ignore */ }
-    const first = { source: list[0].source, id: list[0].id, mid: list[0].mid, hash: list[0].hash, song: list[0].title, singer: list[0].artist, cover: list[0].cover };
-    loadOnlineSong(first).catch(e => logWarn('playlists', '[历史] 播放全部失败:', e));
-    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(first);
-    if (typeof setHint === 'function') setHint(`播放全部：${list.length} 首已加入播放队列`);
+    } catch (e) { logCatch('playlists', e); }
+    loadPlaylistTrack(0).catch(e => logWarn('playlists', '[历史] 播放全部失败:', e));
+    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.playlist[0]);
+    if (typeof setHint === 'function') setHint(`播放全部：${q.playlist.length} 首已加入播放队列`);
   };
+  playlistsListEl.querySelectorAll('[data-rhplaynext]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const it = list[Number(btn.dataset.rhplaynext)];
+      if (!it) return;
+      const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key };
+      if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+        const res = globalThis.Aria.enqueuePlayNextTrack(info, it.source || '');
+        if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+      }
+    };
+  });
+  playlistsListEl.querySelectorAll('[data-rhaddnow]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const it = list[Number(btn.dataset.rhaddnow)];
+      if (!it) return;
+      const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key };
+      let res = { added: false, duplicate: false };
+      try {
+        if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
+          res = enqueueTrack(globalThis.playlist, info, it.source || '');
+        }
+      } catch (err) { logCatch('playlists', err); }
+      if (typeof setHint === 'function') {
+        if (res.added) setHint('已加入当前播放队列');
+        else if (res.duplicate) setHint('已在当前播放队列中');
+      }
+    };
+  });
   playlistsListEl.querySelectorAll('.result-item[data-rh]').forEach(el => {
-    el.onclick = () => {
+    el.onclick = (e) => {
+      if (e.target.closest('[data-rhplaynext]') || e.target.closest('[data-rhaddnow]') || e.target.closest('[data-rhdel]')) return;
       const it = list[Number(el.dataset.rh)];
       if (!it) return;
-      const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover };
+      const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key };
+      if (info.source === 'local' && info.url) {
+        const curList = typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist) ? globalThis.playlist : [];
+        const curIdx = typeof globalThis.currentTrackIndex === 'number' ? globalThis.currentTrackIndex : 0;
+        const q = insertNextAndPlay(curList, info, 'local', curIdx);
+        if (q.index >= 0 && typeof globalThis.playlist !== 'undefined') {
+          globalThis.playlist = q.playlist;
+          globalThis.currentTrackIndex = q.currentTrackIndex;
+          loadPlaylistTrack(q.currentTrackIndex).catch(err => logWarn('playlists', '[历史] 本地播放失败:', err));
+          if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.track);
+        }
+        return;
+      }
       if (info.source && (info.id || info.mid || info.hash)) {
-        loadOnlineSong(info).catch(e => logWarn('playlists', '[历史] 播放失败:', e));
+        loadOnlineSong(info).catch(err => logWarn('playlists', '[历史] 播放失败:', err));
         if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(info);
       }
     };
@@ -916,6 +1089,7 @@ async function renderLocalMusicDetail() {
                 </div>`;
 
             if (localSongsCache.length === 0) {
+                Aria.__clearSongView?.(playlistsListEl, false);
                 html += '<div class="empty-hint">暂无本地音乐，点击上方横幅上传第一首歌吧！</div>';
                 playlistsListEl.innerHTML = html;
                 _bindLocalMusicBannerEvents();
@@ -924,8 +1098,8 @@ async function renderLocalMusicDetail() {
 
             /* 播放全部按钮 */
             html += `
-                <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-                    <div class="play-all-btn" id="playAllLocalBtn" style="flex:1;margin-bottom:0;">
+                <div class="rank-list-head">
+                    <div class="play-all-btn" id="playAllLocalBtn">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
                         <span>播放全部（${localSongsCache.length}）</span>
                     </div>
@@ -959,6 +1133,12 @@ async function renderLocalMusicDetail() {
                             <div class="result-artist">${artist} ${song.album ? '· ' + escapeHtml(song.album) : ''}</div>
                         </div>
                         <div class="result-actions">
+                            <button class="result-action-btn" data-action="playnext-local" data-idx="${idx}" title="下一首播放">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                            </button>
+                            <button class="result-action-btn" data-action="addnow-local" data-idx="${idx}" title="加入当前播放">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
+                            </button>
                             <button class="result-action-btn" data-action="match-lyric-online" data-folder="${escapeHtml(song.folder)}" data-idx="${idx}" title="在线重新匹配歌词">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>
                             </button>
@@ -976,9 +1156,7 @@ async function renderLocalMusicDetail() {
             });
 
             playlistsListEl.innerHTML = html;
-            const __localHead = playlistsListEl.querySelector('.rank-list-head');
-            if (__localHead) __localHead.appendChild(Aria.__songViewBtn(playlistsListEl));
-            Aria.__applySongViewTo(playlistsListEl);
+            Aria.__mountSongView(playlistsListEl);
             _bindLocalMusicBannerEvents();
             _asyncFillLocalCovers();
         }
@@ -1115,9 +1293,9 @@ function _bindLocalMusicBannerEvents() {
         }
 
 /* 播放本地结构化单曲 */
-async function playLocalMusicSong(song) {
+async function playLocalMusicSong(song, opts) {
             if (!song) return;
-            closePlaylists();
+            if (!opts || opts.closePanel !== false) closePlaylists();
             if (typeof setHint === 'function') setHint(`正在加载本地音乐: ${song.title}`);
 
             // 1. 设置音轨信息
@@ -1381,6 +1559,7 @@ function renderNowPlayingDetail() {
             playlistCreateBox.style.display = 'none';
 
             if (playlist.length === 0) {
+                Aria.__clearSongView?.(playlistsListEl, false);
                 playlistsListEl.innerHTML = '<div class="empty-hint">播放队列为空</div>';
                 playlistsHintEl.textContent = '';
                 return;
@@ -1388,8 +1567,8 @@ function renderNowPlayingDetail() {
             playlistsHintEl.textContent = `共 ${playlist.length} 首歌曲`;
             let html = '';
             html += `
-                <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-                    <div class="play-all-btn" id="playAllBtn" data-pid="__now_playing__" style="flex:1;margin-bottom:0;">
+                <div class="rank-list-head">
+                    <div class="play-all-btn" id="playAllBtn" data-pid="__now_playing__">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
                         <span>播放全部（${playlist.length}）</span>
                     </div>
@@ -1423,9 +1602,7 @@ function renderNowPlayingDetail() {
                     + `</div>`;
             });
             playlistsListEl.innerHTML = html;
-            const __npHead = playlistsListEl.querySelector('.rank-list-head');
-            if (__npHead) __npHead.appendChild(Aria.__songViewBtn(playlistsListEl));
-            Aria.__applySongViewTo(playlistsListEl);
+            Aria.__mountSongView(playlistsListEl);
             /* ★ 随机排序（当前播放页）：复用 245 队列面板的洗牌逻辑，只洗队列不动歌单 */
             const _npShuffle = document.getElementById('npShuffleBtn');
             if (_npShuffle) {
@@ -1451,6 +1628,7 @@ function renderPlaylistDetail(playlistId) {
             playlistCreateBox.style.display = 'none';
 
             if (pl.songs.length === 0) {
+                Aria.__clearSongView?.(playlistsListEl, false);
                 playlistsListEl.innerHTML = '<div class="empty-hint">歌单暂无歌曲</div>';
                 playlistsHintEl.textContent = '';
                 return;
@@ -1463,8 +1641,8 @@ function renderPlaylistDetail(playlistId) {
             const bSel = globalThis.plMultiSel;
             /* 整单播放入口 + 批量编辑切换 */
             html += `
-                <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-                    <div class="play-all-btn" id="playAllBtn" data-pid="${escapeHtml(pl.id)}" style="flex:1;margin-bottom:0;">
+                <div class="rank-list-head">
+                    <div class="play-all-btn" id="playAllBtn" data-pid="${escapeHtml(pl.id)}">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M6 4l14 8-14 8V4z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg>
                         <span>播放全部（${pl.songs.length}）</span>
                     </div>
@@ -1507,6 +1685,9 @@ function renderPlaylistDetail(playlistId) {
                             <div class="result-artist">${artist}${(typeof Aria.__platformIconHTML === 'function' ? Aria.__platformIconHTML(song.source || song.src) : '')}</div>
                         </div>
                         <div class="result-actions">
+                            <button class="result-action-btn" data-action="playnext-pl" data-sidx="${idx}" title="下一首播放">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                            </button>
                             <button class="result-action-btn" data-action="addnow-pl" data-sidx="${idx}" title="加入当前播放">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
                             </button>
@@ -1526,9 +1707,7 @@ function renderPlaylistDetail(playlistId) {
 
             /* ★ 修复：宫格切换按钮须在 new innerHTML 注入后挂载（此前在赋值前 query，
                .rank-list-head 取到旧视图残留/为空 → 所有歌单详情（含链接导入）缺切换按钮） */
-            const __plHead = playlistsListEl.querySelector('.rank-list-head');
-            if (__plHead) __plHead.appendChild(Aria.__songViewBtn(playlistsListEl));
-            Aria.__applySongViewTo(playlistsListEl);
+            Aria.__mountSongView(playlistsListEl);
 
             /* ★ 批量操作交互：多选切换 / 勾选 / 删除选中 / 批量下载 / 合并到... */
             const _batchToggle = document.getElementById('plBatchToggle');
@@ -1736,14 +1915,11 @@ async function playEntirePlaylist(playlistId) {
             if (!pl || pl.songs.length === 0) return;
             closePlaylists();
             playlistsHintEl.textContent = `正在加载歌单: ${pl.name}`;
-            /* 构造播放队列（title 多字段兜底，避免个别条目缺 title 时首曲显示「未知歌曲」） */
-            playlist = pl.songs.map(s => ({
-                url: null, title: s.title || s.song || s.name, artist: s.artist,
-                cover: s.cover, source: s.source, id: s.id, mid: s.mid,
-                key: s.key
-            }));
-            currentTrackIndex = 0;
-            await loadPlaylistTrack(0);
+            const q = buildCollectionQueue(pl.songs, 0);
+            if (!q.playlist.length) return;
+            playlist = q.playlist;
+            currentTrackIndex = q.currentTrackIndex;
+            await loadPlaylistTrack(currentTrackIndex);
             playlistsHintEl.textContent = '';
         }
 

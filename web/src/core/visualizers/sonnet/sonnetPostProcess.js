@@ -2,12 +2,9 @@
 // 机械移植自 chthollyphile/folia-major src/components/visualizer/sonnet/sonnetPostProcess.ts
 import { createSonnetLensFilter } from './sonnetLensFilter.js';
 import { createSonnetPrintFilters } from './sonnetPrintFilters.js';
-
-// 上游此函数 import 自 './sonnetMotion'，但既有 sonnetMotion.js 缺失该导出（此前批次移植遗漏）。
-// 为不改动既有文件，此处内联与 sonnetMotion.ts 逐字一致的定义；后续如补齐 sonnetMotion.js 可改回 import。
-const resolveSonnetAnimationScale = (theme) => (
-    theme.animationIntensity === 'calm' ? 0.65 : theme.animationIntensity === 'chaotic' ? 1.35 : 1
-);
+/* ★ 2026-10-11 改回上游形态（sonnetPostProcess.ts:2 就是这行 import）：
+   此前 sonnetMotion.js 漏了这个导出，才在本地内联了一份定义绕开。*/
+import { resolveSonnetAnimationScale } from './sonnetMotion.js';
 
  
 // @note Version Control: Project Folia version 0.6.13-750617

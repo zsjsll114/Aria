@@ -82,7 +82,35 @@
 .plm-list::-webkit-scrollbar-track { background: transparent; }
 .plm-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
 .plm-list::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
-.plm-empty { text-align: center; color: rgba(255,255,255,0.45); padding: 40px 20px; font-size: 13px; line-height: 1.8; }
+.plm-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    text-align: center; color: rgba(255,255,255,0.45); padding: 40px 20px; font-size: 13px; line-height: 1.8;
+}
+.plm-undo-btn {
+    padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    color: var(--aria-accent, #E8BE6A); background: rgba(var(--aria-accent-rgb, 232,190,106), 0.14);
+    border: 1px solid rgba(var(--aria-accent-rgb, 232,190,106), 0.35); cursor: pointer;
+    transition: background .18s ease, transform .18s ease;
+}
+.plm-undo-btn:hover { background: rgba(var(--aria-accent-rgb, 232,190,106), 0.24); transform: translateY(-1px); }
+
+.plm-locate {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.8); cursor: pointer; flex-shrink: 0;
+    transition: background .18s ease, color .18s ease;
+}
+.plm-locate:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.plm-dur { color: rgba(255,255,255,0.42); font-variant-numeric: tabular-nums; }
+
+@keyframes plmLocateFlash {
+    0% { box-shadow: inset 0 0 0 1px rgba(var(--aria-accent-rgb, 232,190,106), 0.7), 0 0 16px rgba(var(--aria-accent-rgb, 232,190,106), 0.28); }
+    100% { box-shadow: none; }
+}
+.plm-item.plm-locate-flash {
+    animation: plmLocateFlash .9s var(--e-enter);
+}
 
 /* 编号徽标（窄）——左侧更紧凑，歌曲信息整体靠左 */
 .plm-rank {

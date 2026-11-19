@@ -17,6 +17,7 @@ import { saveSettings } from './180-boot-config.js';
 import { applyFontFamily, applyModeFontFamily, applyGlassStrength } from './210-color-multilang.js';
 import { applyAppearanceTokens } from '../core/appearanceMod.js';
 import { getLanguage, setLanguage } from '../core/i18n.js';
+import { readFlatSettingValue, writeFlatSettingValue } from '../core/settingsStore.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 
 /* 应用所有设置到播放器 */
@@ -26,14 +27,16 @@ function applyAllSettings() {
             const b = appSettings.background;
             const i = appSettings.interface;
 
+            if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.syncBottomBarCollapsed === 'function') {
+                globalThis.Aria.syncBottomBarCollapsed();
+            }
+
             /* 播放设置 */
             /* ★ 不在此重放 volume（2026-09-25 probe3 实测）：volume 是运行时可变状态
-               （滑杆/遥控器/淡入淡出都在改，persistVolume 又把它们写回 initialVolume）。
-               __reapplyFontSettings 触发的全量重放会把旧 initialVolume 打回 volume——
-               自定义字体注册完成后 ~2.5s，用户当前音量被静默覆盖（栈：
-               initCustomFonts → applyAllSettings:29）。boot 初始值由
-               10-config-state.js 的 globalThis.volume = playerConfig.initialVolume 负责，
-               「初始音量」面板滑块本身就是下次启动生效的语义，此处只同步音频节点增益。 */
+               （滑杆/遥控器/淡入淡出都在改）。
+               __reapplyFontSettings 触发的全量重放若重写 volume，自定义字体注册完成
+               后 ~2.5s 会把用户刚刚调过的音量覆写。boot 初始值由 10-config-state.js 与
+               180-boot-config.js 从上次关闭时保存的音量恢复，此处只同步音频节点增益。 */
             audio.volume = volumePercentToGain(volume);
             if (volumeBar) volumeBar.style.width = volume + '%';
             playMode = p.defaultPlayMode;
@@ -78,13 +81,11 @@ function applyAllSettings() {
 
 /* ========== 应用函数 ========== */
 /* LYRIC_FONT_MAP 已提升至顶部 */
-/* ★ 基准字号 (medium = 1.0x 的基准像素值) */
-const FONT_BASE_ORIGINAL = 24;
-
-/* medium 档位原文基准 px */
-const FONT_BASE_SUB = 16;
+/* ★ 基准字号 (medium = 1.0x 的基准像素值，设为原 1.50x 体量) */
+const FONT_BASE_ORIGINAL = 36;
 
 /* medium 档位翻译/罗马音基准 px */
+const FONT_BASE_SUB = 24;
 function applyLyricFontSize(size) {
             /* 兼容旧格式：档位关键字 small/medium/large/xlarge → 倍率 */
             let scale;
@@ -105,9 +106,9 @@ function applyLyricFontSize(size) {
                 style.id = 'lyric-font-style';
                 document.head.appendChild(style);
             }
-            /* ★ 仅作用于主播放器，不污染预览引擎 (.preview-player)；排除词云模式（词云行使用内联随机字号） */
+            /* ★ 仅作用于主播放器，不污染预览引擎 (.preview-player)；排除词云/飞入模式（由各自 JS 缩放逻辑设置字号） */
             style.textContent = `
-                .player-container:not(.preview-player):not(.view-wordcloud) .lrc-original { --font-size: ${originalSize} !important; font-size: ${originalSize} !important; }
+                .player-container:not(.preview-player):not(.view-wordcloud):not(.view-flyin) .lrc-original { --font-size: ${originalSize} !important; font-size: ${originalSize} !important; }
                 .player-container:not(.preview-player):not(.view-wordcloud) .lrc-romaji,
                 .player-container:not(.preview-player):not(.view-wordcloud) .lrc-translation { --font-size: ${subSize} !important; font-size: ${subSize} !important; }
             `;
@@ -215,11 +216,11 @@ function applyLyricAlign(align) {
 function applyModeSettings(mode) {
             if (!appSettings.modeSettings) {
                 appSettings.modeSettings = {
-                    cover: { align: 'left', fontSize: 24, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
-                    lyrics: { align: 'center', fontSize: 24, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
-                    flyin: { align: 'center', fontSize: 28, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 80, bgBrightness: 0.12, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', flyinTranslateY: 14, flyinScale: 0.8, flyinGlow: 8, flyinTransSize: 15, flyinTransBottom: 16, emotionGlow: 10 },
+                    cover: { align: 'left', fontSize: 1.0, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
+                    lyrics: { align: 'center', fontSize: 1.0, blurLevel: 5, highlightColor: '#ffffff', highlightInactiveColor: 'rgba(255,255,255,0.6)', inactiveColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
+                    flyin: { align: 'center', fontSize: 1.0, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 80, bgBrightness: 0.12, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', flyinTranslateY: 14, flyinScale: 0.8, flyinGlow: 8, flyinTransSize: 15, flyinTransBottom: 16, emotionGlow: 10 },
                     wordcloud: { align: 'center', fontSize: 20, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', wcFontMin: 14, wcFontMax: 36, wcDensity: 20, wcDimBlur: 4, wcDimOpacity: 0.25, wcLerpFactor: 0.04, emotionGlow: 10 },
-                    pv: { align: 'center', fontSize: 36, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, emotionGlow: 10 },
+                    pv: { align: 'center', fontSize: 36, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, graphicColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, animationIntensity: 'normal', postProcessEnabled: false, postProcessGrain: 0.2, postProcessContrast: 0, postProcessRgbShift: 0, postProcessHalftone: 0, postProcessVignette: 0.85, postProcessLensDistortion: 0.3, postProcessLensDispersion: 0.6, showOnlyText: false, showGuide: true, showGiantDecorativeText: true, showFixedGeo: true, cameraIntensity: 1, typographyMotion: 1, mgDensity: 1, outerFrameMode: 'full', interludeStaff: false, emotionGlow: 10 },
                     /* ★ neon/letterpress 缺席时 applyModeSettings 会 fallback 到 cover 档
                        （错档的字号/字体设置被错误应用），与 defaults.js 保持同键 */
                     neon: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 14 },
@@ -227,7 +228,11 @@ function applyModeSettings(mode) {
                     dimension: { align: 'center', fontSize: 32, blurLevel: 5, highlightColor: '#ffffff', showTranslation: true, showRomaji: true, bgColor: '#E8BE6A', bgBlur: 60, bgBrightness: 0.35, swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default', emotionGlow: 10 },
                     /* ★ 字面 · Jizura 缺席时的兜底——不补就会 fallback 到 cover 档
                        （错档的字号/字体被错误应用），与 defaults.js 保持同键 */
-                    jizura: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 12, style: 'noir', mood: null, aspect: '16:9', fps: 24, fast: null, perf: 'auto', beat: 'every', wordSync: 'off', motion: 0.7, glitch: 0.55, chroma: 0.7, decor: 0.5, density: 0.55, texture: 0.6, flash: true, hud: 'auto' }
+                    jizura: { align: 'center', fontSize: 1.0, highlightColor: '#ffffff', showTranslation: true, fontFamily: 'default', emotionGlow: 12, style: 'ai', mood: null, extra: true, aspect: '16:9', fps: 24, fast: null, perf: 'auto', beat: 'every', wordSync: 'off', motion: 0.7, glitch: 0.55, chroma: 0.7, decor: 0.5, density: 0.55, texture: 0.6, flash: true, hud: 'auto' },
+                    prism: { fontSize: 1.0, highlightColor: '#7ce8ff', showTranslation: true, showRomaji: true, fontFamily: 'default', prismPreset: 'auto', prismCutRate: 'phrase', prismRefraction: 0.75, prismDispersion: 0.68, prismCaustics: 0.72, prismCamera: 0.85, prismHud: true },
+                    astrolabe: { fontSize: 1.0, highlightColor: '#f5efe4', showTranslation: true, showRomaji: true, fontFamily: 'default', astrolabePreset: 'auto', astrolabeCutRate: 'phrase', astrolabeInversion: true, astrolabeHatch: 0.75, astrolabeContrast: 0.80, astrolabeCamera: 0.85, astrolabeCropMarks: true, astrolabeGrain: true, astrolabePrintLevel: 'balanced' },
+                    vitrail: { fontSize: 1.0, highlightColor: '#f3d58b', showTranslation: true, showRomaji: true, fontFamily: 'default', vitrailPreset: 'auto', vitrailArchitecture: 'auto', vitrailCamera: 0.85, vitrailLighting: 0.90, vitrailReflection: true, vitrailParticles: true, vitrailParallax: true, vitrailQuality: 'auto' },
+                    focalcut: { fontSize: 1.0, highlightColor: '', showTranslation: true, showRomaji: true, fontFamily: 'default', focalcutPolarity: 'auto', focalcutCutRate: 'normal', focalcutSplitLens: true, focalcutCamera: 0.90, focalcutGuides: true, focalcutRackFocus: true }
                 };
             }
             const s = appSettings.modeSettings[mode] || appSettings.modeSettings.cover;
@@ -263,8 +268,8 @@ function applyModeSettings(mode) {
                 let fsVal = (raw === undefined || raw === null || raw === '') ? 1 : raw;
                 const fsNum = parseFloat(fsVal);
                 if (!isNaN(fsNum) && fsNum > 3) {
-                    /* 旧像素值 → 倍率 (FONT_BASE_ORIGINAL = 24) */
-                    fsVal = fsNum / 24;
+                    /* 旧像素值 → 倍率 (FONT_BASE_ORIGINAL = 36) */
+                    fsVal = fsNum / FONT_BASE_ORIGINAL;
                     if (s.fontSize !== undefined) s.fontSize = fsVal; /* 同步回 modeSettings 避免反复迁移 */
                 }
                 applyLyricFontSize(fsVal);
@@ -272,13 +277,8 @@ function applyModeSettings(mode) {
             /* 全局主题色：控制全局控件/按钮/强调色 */
             const effectiveThemeColor = appSettings.interface.themeColor || '#E8BE6A';
             applyThemeColor(effectiveThemeColor);
-            /* 背景设置（模糊度、亮度、摇摆） */
-            if (s.bgBlur !== undefined) appSettings.background.blur = parseInt(s.bgBlur);
-            if (s.bgBrightness !== undefined) appSettings.background.brightness = parseFloat(s.bgBrightness);
-            if (s.swayEnabled !== undefined) appSettings.background.swayEnabled = s.swayEnabled;
-            if (s.swayAmp !== undefined) appSettings.background.swayAmp = parseInt(s.swayAmp);
-            if (s.swayDuration !== undefined) appSettings.background.swayDuration = parseInt(s.swayDuration);
-            applyBackgroundSettings();
+            /* 背景设置（模糊度、亮度、摇摆）：不再污染全局 appSettings.background.*，按本模式覆写传给 applyBackgroundSettings */
+            applyBackgroundSettings(s);
             /* 字体 — ★ 每个模式独立字体设置
                「跟随字体设置」(default/inherit)：应用全局字体，不覆盖 interface.fontFamily
                设置具体字体(宋体/楷体/黑体/仿宋/等宽/自定义)：该模式内独立生效 */
@@ -367,8 +367,21 @@ function applyThemeColor(color) {
             root.style.setProperty('--pv-emotion-color', color);
         }
 
-function applyBackgroundSettings() {
-            const b = appSettings.background;
+function applyBackgroundSettings(modeOverride = null) {
+            const rawBg = appSettings.background || {};
+            const curMs = (modeOverride && typeof modeOverride === 'object')
+                ? modeOverride
+                : (typeof currentViewMode === 'string' && appSettings.modeSettings
+                    ? appSettings.modeSettings[currentViewMode]
+                    : null);
+            const b = {
+                dynamicBg: rawBg.dynamicBg,
+                blur: (curMs && curMs.bgBlur !== undefined) ? parseInt(curMs.bgBlur) : rawBg.blur,
+                brightness: (curMs && curMs.bgBrightness !== undefined) ? parseFloat(curMs.bgBrightness) : rawBg.brightness,
+                swayEnabled: (curMs && curMs.swayEnabled !== undefined) ? Boolean(curMs.swayEnabled) : rawBg.swayEnabled,
+                swayAmp: (curMs && curMs.swayAmp !== undefined) ? parseInt(curMs.swayAmp) : rawBg.swayAmp,
+                swayDuration: (curMs && curMs.swayDuration !== undefined) ? parseInt(curMs.swayDuration) : rawBg.swayDuration,
+            };
             const layers = getBlurBgLayers();
             if (layers.length === 0) return;
             playerConfig.enableBlurBackground = b.dynamicBg;
@@ -461,115 +474,49 @@ function applyInterfaceSettings() {
 /* ========== 全局设置键值读取与更新 ========== */
 function getSettingValue(key) {
             if (!appSettings) return '';
-            switch (key) {
-                case 'defaultPlayMode':
-                    return appSettings.playback?.defaultPlayMode || 'sequence';
-                case 'defaultRate':
-                    return String(appSettings.playback?.defaultRate ?? '1');
-                case 'defaultEqPreset':
-                    return appSettings.audio?.defaultEqPreset || 'default';
-                case 'fontFamily':
-                    return appSettings.interface?.fontFamily || 'default';
-                case 'language':
-                    return getLanguage();
-                case 'aiProvider':
-                    return appSettings.ai?.provider || 'openai';
-                case 'qqPlaybackQuality':
-                    return appSettings.quality?.qqPlayback || '320';
-                case 'qqDownloadQuality':
-                    return appSettings.quality?.qqDownload || 'flac';
-                case 'neteasePlaybackQuality':
-                    return appSettings.quality?.neteasePlayback || 'exhigh';
-                case 'neteaseDownloadQuality':
-                    return appSettings.quality?.neteaseDownload || 'lossless';
-                case 'kugouPlaybackQuality':
-                    return appSettings.quality?.kugouPlayback || '320';
-                case 'kugouDownloadQuality':
-                    return appSettings.quality?.kugouDownload || 'flac';
-                /* ★ 缺省 S：老配置里没有这个键时不能变成空串（那会让 103 的
-                   currentTier() 回落 S —— 行为一致，但 trigger 文案会空白）。 */
-                case 'mvUpscaleTier':
-                    return appSettings.background?.mvUpscaleTier || 'S';
-                default:
-                    return '';
-            }
+            if (key === 'language') return getLanguage();
+            return readFlatSettingValue(key, appSettings);
         }
 
 function setSettingValue(key, value) {
             if (!appSettings) return;
+            if (key === 'language') {
+                if (!appSettings.interface) appSettings.interface = {};
+                appSettings.interface.language = value;
+                setLanguage(value);
+                saveSettings();
+                return;
+            }
+            if (key === 'aiProvider' && typeof updateAiProviderUI === 'function') {
+                updateAiProviderUI(value);
+                saveSettings();
+                return;
+            }
+            writeFlatSettingValue(key, value, appSettings);
             switch (key) {
                 case 'defaultPlayMode':
-                    if (!appSettings.playback) appSettings.playback = {};
-                    appSettings.playback.defaultPlayMode = value;
                     if (typeof setPlayMode === 'function') setPlayMode(value);
                     break;
                 case 'defaultRate':
-                    if (!appSettings.playback) appSettings.playback = {};
-                    appSettings.playback.defaultRate = parseFloat(value) || 1;
                     if (audio) audio.playbackRate = appSettings.playback.defaultRate;
                     break;
                 case 'defaultEqPreset':
-                    if (!appSettings.audio) appSettings.audio = {};
-                    appSettings.audio.defaultEqPreset = value;
                     if (typeof applyEqPreset === 'function') applyEqPreset(value);
                     break;
                 case 'fontFamily':
-                    if (!appSettings.interface) appSettings.interface = {};
-                    appSettings.interface.fontFamily = value;
-                    applyFontFamily(value);
+                    applyFontFamily(appSettings.interface.fontFamily);
                     /* ★ 同步到外观预览引擎，使预览页实时跟随字体切换 */
                     if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance && typeof previewEngineInstance.setModeVar === 'function') {
-                        try { previewEngineInstance.setModeVar('fontFamily', value); } catch (e) { logCatch('settingsFontsize', e); }
+                        try { previewEngineInstance.setModeVar('fontFamily', appSettings.interface.fontFamily); } catch (e) { logCatch('settingsFontsize', e); }
                     }
-                    break;
-                case 'language':
-                    if (!appSettings.interface) appSettings.interface = {};
-                    appSettings.interface.language = value;
-                    setLanguage(value);
-                    break;
-                case 'aiProvider':
-                    if (typeof updateAiProviderUI === 'function') {
-                        updateAiProviderUI(value);
-                    } else {
-                        if (!appSettings.ai) appSettings.ai = {};
-                        appSettings.ai.provider = value;
-                    }
-                    break;
-                case 'qqPlaybackQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.qqPlayback = value;
-                    break;
-                case 'qqDownloadQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.qqDownload = value;
-                    break;
-                case 'neteasePlaybackQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.neteasePlayback = value;
-                    break;
-                case 'neteaseDownloadQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.neteaseDownload = value;
-                    break;
-                case 'kugouPlaybackQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.kugouPlayback = value;
-                    break;
-                case 'kugouDownloadQuality':
-                    if (!appSettings.quality) appSettings.quality = {};
-                    appSettings.quality.kugouDownload = value;
                     break;
                 /* ★ 换档必须让渲染器重建：S/M/L 的 pass 图与纹理编号完全不同
                    （9 / 17 / 19 pass），拿旧实例画新档等于用错权重。
                    先复位降级闸 —— 上一档可能已经因为吃不下被自动关掉，
                    不复位的话用户换到更轻的档也不会重新生效。 */
                 case 'mvUpscaleTier':
-                    if (!appSettings.background) appSettings.background = {};
-                    appSettings.background.mvUpscaleTier = value;
                     if (typeof Aria !== 'undefined') {
                         if (typeof Aria.resetMvUpscaleGuard === 'function') Aria.resetMvUpscaleGuard();
-                        /* applyMvBgSettings 会走 103 的 startMvUpscale，
-                           发现 info.tier 与设置不符就 dispose 重建 */
                         if (typeof Aria.applyMvBgSettings === 'function') Aria.applyMvBgSettings();
                     }
                     break;
@@ -601,10 +548,9 @@ if (typeof window !== 'undefined') {
             if (pe && typeof pe.setModeVar === 'function') {
                 const cm = pe.currentMode || (typeof currentViewMode !== 'undefined' ? currentViewMode : 'cover');
                 const ms = (typeof appSettings !== 'undefined' && appSettings.modeSettings && appSettings.modeSettings[cm]) || null;
-                const mf = (ms && ms.fontFamily && ms.fontFamily !== 'default' && ms.fontFamily !== 'inherit')
-                    ? ms.fontFamily
-                    : ((appSettings.interface && appSettings.interface.fontFamily) || 'default');
+                const mf = (ms && ms.fontFamily) || 'default';
                 pe.setModeVar('fontFamily', mf);
+                if (typeof pe.applyModeVars === 'function') pe.applyModeVars();
             }
         } catch (e) { /* 忽略 */ }
     };

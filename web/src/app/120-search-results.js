@@ -113,7 +113,8 @@ else searchResultsEl.innerHTML = pre + ((typeof Aria.__skeleton === 'function') 
 function hideResults() {
 /* ★ 必须先取消挂起的骨架定时器：否则 150ms 后骨架会把清空的面板又填回来 */
 if (Aria.skeleton) Aria.skeleton.cancel(searchResultsEl);
-searchResultsEl.innerHTML = '';
+Aria.__clearSongView?.(searchResultsEl);
+if (searchResultsEl) searchResultsEl.innerHTML = '';
 }
 
 /* ========== 收藏功能（localStorage 持久化） ========== */

@@ -112,7 +112,7 @@ def main():
             # —— 1. 两个开关存在 + 默认值 ——
             page.evaluate("document.getElementById('openSettingsBtn').click()")
             page.wait_for_timeout(400)
-            page.evaluate("""() => { const t=document.querySelector('#settingsTabs [data-tab="interface"]'); if(t) t.click(); }""")
+            page.evaluate("""() => { const t=document.querySelector('#settingsTabs [data-tab="lyrics"]'); if(t) t.click(); }""")
             page.wait_for_timeout(500)
             ui = page.evaluate("""() => {
                 const q = id => document.getElementById(id);

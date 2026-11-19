@@ -43,12 +43,13 @@
  * ============================================================ */
 import { esc } from '../utils/formatters.js';
 import { logCatch, logWarn } from '../services/log.js';
+import { registerSettingsGroup } from '../core/settingsRegistry.js';
 import { state } from '../infrastructure/state.js';
 import { saveSettings } from './180-boot-config.js';
 import { hideCtxMenu } from './80-context-menu.js';
 import { translatePhrase } from '../core/i18n.js';
 import {
-    TOOLBAR_BARS, TOOLBAR_PREF_KEY, controlsOfBar, buildPref, defaultLayout,
+    TOOLBAR_BARS, TOOLBAR_PREF_KEY, controlsOfBar, controlGroupOf, buildPref, defaultLayout,
     isRemovable, layoutEqual, moveId, normalizePref, resolveChildIds,
     sanitizeLayout, setHidden,
 } from '../core/toolbarLayout.js';
@@ -194,6 +195,18 @@ function applyBar(bar) {
         if (key.charAt(0) === '@') continue;             /* 哨兵键 = 未登记节点，不代理显隐 */
         if (!controlsOfBar(bar).some(c => c.id === key)) continue;
         el.classList.toggle(HIDDEN_CLASS, layout.hidden.includes(key));
+        const grp = controlGroupOf(key);
+        if (grp && el.dataset.tbGroup !== grp) el.dataset.tbGroup = grp;
+    }
+    /* 按真实可见子元素序打组间分隔线：第一个可见项及同组不画，跨组首位才标 .tb-group-start */
+    let prevGrp = '';
+    for (let i = 0; i < host.children.length; i++) {
+        const el = host.children[i];
+        const visible = !el.classList.contains(HIDDEN_CLASS);
+        const grp = el.dataset?.tbGroup || controlGroupOf(el.id) || '';
+        const isGroupStart = Boolean(visible && grp && prevGrp && grp !== prevGrp);
+        el.classList.toggle('tb-group-start', isGroupStart);
+        if (visible && grp) prevGrp = grp;
     }
 }
 
@@ -458,6 +471,8 @@ function syncGroupHost() {
     if (!group || !body) return;
     const active = !!(section && section.classList.contains('active'));
     const sectionRenders = !!(section && section.offsetParent);
+    const inInterface = !!(section && group.closest && group.closest('[data-section="interface"]') === section);
+    if (inInterface && (!active || sectionRenders)) return;
     const want = (section && (!active || sectionRenders)) ? section : body;
     if (group.parentElement !== want) {
         try {
@@ -466,10 +481,10 @@ function syncGroupHost() {
     }
 }
 
-function mountSettingsGroup() {
+function mountSettingsGroup(targetHost) {
     const d = doc();
     if (!d || byId(GROUP_ID)) return;
-    const host = q('[data-section="interface"]') || q('#settingsBody');
+    const host = targetHost || q('[data-section="interface"]') || q('#settingsBody');
     if (!host) return;
     try {
         const group = d.createElement('div');
@@ -488,7 +503,7 @@ function mountSettingsGroup() {
             </div>
             <div id="${LIST_ID}"></div>`;
         host.appendChild(group);
-        byId('tbRestoreDefaults')?.addEventListener('click', () => {
+        group.querySelector('#tbRestoreDefaults')?.addEventListener('click', () => {
             const bars = readBars();
             if (layoutEqual(bars.top, defaultLayout('top'))) return;
             bars.top = defaultLayout('top');
@@ -500,6 +515,14 @@ function mountSettingsGroup() {
         });
     } catch (e) { logCatch(TAG, e); }
 }
+
+registerSettingsGroup('interface', {
+    id: 'toolbar-customize',
+    order: 25,
+    render: (wrapper) => { mountSettingsGroup(wrapper); },
+    onMount: () => { applyAll(); renderSettings(); },
+    onShow: () => { applyAll(); renderSettings(); },
+});
 
 /* 改一份布局 → 存盘 → 立即生效（不需要刷新页面） */
 function commit(nextLayout) {
@@ -555,31 +578,6 @@ function watchConfigLanded() {
             new MutationObserver(onConfig)
                 .observe(d.documentElement, { attributes: true, attributeFilter: ['style'] });
         } catch (e) { logCatch(TAG, e); }
-    }
-    const overlay = byId('settingsOverlay');
-    if (overlay && typeof MutationObserver !== 'undefined') {
-        try {
-            /* 面板里的节内容是按需重建的（200 每次进 interface 都可能重写 DOM），
-               所以每次打开都确认说明组还在、并把行重画一遍（同 289/290 的兜法） */
-            new MutationObserver(() => {
-                if (!overlay.classList.contains('visible')) return;
-                mountSettingsGroup();
-                applyAll();
-                renderSettings();
-            }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
-        } catch (e) { logCatch(TAG, e); }
-    }
-    /* 页签切换不改 overlay 的 class，光靠上面那个观察器会在「界面」页签打开后
-       错过 syncGroupHost 的判定时机（200 换页签只动 .settings-section.active）。
-       mountSettingsGroup 是幂等的：万一 200 把分区内容整段重建了，这里补回来。 */
-    if (d.addEventListener) {
-        d.addEventListener('click', (e) => {
-            if (!e.target || !e.target.closest || !e.target.closest('.settings-tab')) return;
-            try {
-                mountSettingsGroup();
-                renderSettings();
-            } catch (err) { logCatch(TAG, err); }
-        }, true);
     }
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('load', onConfig);

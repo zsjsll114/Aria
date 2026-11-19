@@ -1,0 +1,228 @@
+/* ============================================================
+ * web/src/styles/vitrail.css — 「琉璃龛 · Vitrail」（mode: vitrail）全屏舞台样式与不变量
+ *
+ * 严格满足 tests/js/test_view_mode_stage.js 的全屏舞台不变量：
+ *   1. 显式 display:none 隐藏 .player-controls-wrapper 与 .lyrics-area-wrapper
+ *   2. 舞台绝对定位铺满 .player-container，底部浮动播放控件栏与右上角工具栏保持交互
+ *   3. 性能降级选择器锚在 html#ariaRoot（AGENTS 约束 12）
+ * ============================================================ */
+
+.player-container.view-vitrail {
+    flex-direction: column;
+    padding-bottom: 0;
+    background: #08070b !important;
+}
+
+.player-container.view-vitrail .visualizer-stage-vitrail {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.player-container.view-vitrail .player-controls-wrapper,
+.player-container.view-vitrail .lyrics-area-wrapper {
+    display: none !important;
+}
+
+body:not(.mv-bg-on) .player-container.view-vitrail .blur-background,
+body:not(.mv-bg-on) .player-container.view-vitrail .color-overlay {
+    display: none !important;
+}
+
+.player-container.view-vitrail .top-action-buttons {
+    display: flex !important;
+    position: absolute !important;
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px)) !important;
+    right: clamp(10px, 2vw, 30px) !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-vitrail .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+    margin: 0 !important;
+    background: rgba(14, 16, 22, 0.44) !important;
+    backdrop-filter: blur(26px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-vitrail .flyin-translation-area {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* 性能降级：纯软渲染/低配模式取消毛玻璃合成开销（锚定 html#ariaRoot，AGENTS 约束 12） */
+html#ariaRoot.is-software-renderer .player-container.view-vitrail .bottom-control-bar,
+html#ariaRoot body.perf-low .player-container.view-vitrail .bottom-control-bar,
+html#ariaRoot body.perf-minimal .player-container.view-vitrail .bottom-control-bar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(16, 15, 20, 0.94) !important;
+}
+
+.visualizer-stage-vitrail,
+.vis-vitrail-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    user-select: none;
+}
+
+.vis-vitrail-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+}
+
+.vis-vitrail-subtitles {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(170px, 19.5vh, 198px);
+    transform: translateX(-50%) translateY(0);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: min(86vw, 1080px);
+    min-width: 240px;
+    padding: 2px 12px;
+    border-radius: 10px;
+    background: transparent;
+    text-align: center;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.38s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), color 0.45s ease;
+}
+
+.vis-vitrail-sub-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.30s cubic-bezier(0.22, 1, 0.36, 1) 0.08s, transform 0.36s cubic-bezier(0.22, 1, 0.36, 1) 0.04s;
+    will-change: opacity, transform;
+}
+
+.vis-vitrail-sub-slot.is-entering {
+    opacity: 0;
+    transform: translateY(7px);
+    transition: none;
+}
+
+.vis-vitrail-sub-ghost {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    top: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: none;
+    transition: opacity 0.16s cubic-bezier(0.22, 1, 0.36, 1), transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+}
+
+.vis-vitrail-sub-ghost.is-leaving {
+    opacity: 0;
+    transform: translateY(-9px);
+}
+
+.vis-vitrail-subtitles.is-empty {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+}
+
+.appearance-preview-stage .vis-vitrail-subtitles {
+    bottom: 58px;
+}
+
+.vis-vitrail-sub-romaji {
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: rgba(247, 240, 226, 0.82);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.92), 0 0 18px rgba(0, 0, 0, 0.72);
+    line-height: 1.35;
+}
+
+.vis-vitrail-sub-trans {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: rgba(248, 241, 228, 0.96);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.92), 0 0 20px rgba(0, 0, 0, 0.75);
+    line-height: 1.42;
+}
+
+.vis-vitrail-subtitles.is-light-stone {
+    background: transparent;
+}
+
+.vis-vitrail-subtitles.is-light-stone .vis-vitrail-sub-romaji {
+    color: rgba(32, 27, 20, 0.84);
+    text-shadow: 0 1px 6px rgba(245, 239, 226, 0.95), 0 0 14px rgba(245, 239, 226, 0.82);
+}
+
+.vis-vitrail-subtitles.is-light-stone .vis-vitrail-sub-trans {
+    color: rgba(21, 18, 14, 0.96);
+    text-shadow: 0 1px 8px rgba(245, 239, 226, 0.95), 0 0 16px rgba(245, 239, 226, 0.85);
+}
+
+/* 模式选择卡片缩略图：1:1 还原真实 WebGL2 圣殿（纵深列柱 + 偏左圆月窗 + 偏右高窗 + 水镜踏步 + 浮雕字） */
+.view-mode-preview-vitrail {
+    position: relative;
+    background: #0d162c;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.vm-vitrail-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.vm-vitrail-word {
+    position: relative;
+    z-index: 3;
+    margin-top: 8px;
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: #f4f7ff;
+    text-shadow:
+        0 2px 10px rgba(4, 10, 24, 0.92),
+        0 0 14px rgba(134, 194, 255, 0.45);
+}
+
+.vm-vitrail-word .glow {
+    color: #f4c66d;
+    text-shadow:
+        0 2px 10px rgba(4, 10, 24, 0.92),
+        0 0 14px rgba(244, 198, 109, 0.72);
+}

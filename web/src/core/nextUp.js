@@ -123,8 +123,10 @@ export function trackCover(entry) {
 /** @param {any} entry @returns {boolean} */
 export function isPlayableTrack(entry) {
     if (!entry || typeof entry !== 'object') return false;
-    const hasOnline = !!(entry.source && (entry.id || entry.mid));
-    return hasOnline || !!entry.url;
+    const isLocal = entry.isLocal === true || entry.source === 'local';
+    if (isLocal) return !!(entry.url || entry.audioUrl);
+    const hasOnline = !!(entry.source && (entry.id || entry.mid || entry.hash));
+    return hasOnline || !!(entry.url || entry.audioUrl);
 }
 
 /**

@@ -510,6 +510,14 @@
     if (anchorCenterX === null) captureAnchor();
   }
 
+  function handlePayloadJson(raw) {
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      applyTheme(parsed);
+      renderState(parsed);
+    } catch (_) {}
+  }
   window.addEventListener('storage', function (e) {
     /* ★ 锁定状态跨窗口同步：主界面解锁/加锁即时反映到本窗口 */
     if (e.key === 'aria_dtk_locked' && e.newValue !== null) {
@@ -518,9 +526,17 @@
       if (locked && invoke) invoke('desktop_lyrics_click_through', { enable: true }).catch(function () {});
     }
     if (e.key === 'aria_dtk_state' && e.newValue) {
-      try { applyTheme(JSON.parse(e.newValue)); renderState(JSON.parse(e.newValue)); } catch (_) {}
+      handlePayloadJson(e.newValue);
     }
   });
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      var dtkBc = new BroadcastChannel('aria_dtk_sync');
+      dtkBc.onmessage = function (ev) {
+        if (ev && typeof ev.data === 'string') handlePayloadJson(ev.data);
+      };
+    }
+  } catch (_) {}
 
   /* ★ 主题色跟随：主界面推送的 themeColor → 逐字高亮色 */
   function hexToRgba(hex, a) {

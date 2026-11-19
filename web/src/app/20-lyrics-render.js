@@ -17,6 +17,82 @@ import { ensureWordTiming } from '../parsers/wordTiming.js'; // 行级歌词 →
 import { alignLyrics, needsAlign, wordAlignKey } from '../services/wordAlign.js'; // 频谱逐字对齐
 import { perCharSynthesisWanted } from '../config/wordPerChar.js'; // 开关1：要不要摊平（纯函数判定）
 import { maybeUpgradeToWordLyrics } from './293-word-upgrade.js'; // 开关2：去别的音源换真逐字
+import { translatePhrase } from '../core/i18n.js';
+
+function _triggerHeaderBtn(id) {
+    if (typeof document === 'undefined') return;
+    document.getElementById(id)?.click();
+}
+
+function syncLyricsEmptyState() {
+    if (typeof document === 'undefined') return;
+    const emptyEl = document.getElementById('lyricsEmptyState');
+    if (!emptyEl) return;
+
+    if (!emptyEl.dataset.lesBound) {
+        emptyEl.dataset.lesBound = '1';
+        document.getElementById('lesSearchBtn')?.addEventListener('click', () => _triggerHeaderBtn('openSearchBtn'));
+        document.getElementById('lesDailyBtn')?.addEventListener('click', () => _triggerHeaderBtn('openDailyBtn'));
+        document.getElementById('lesPlaylistsBtn')?.addEventListener('click', () => _triggerHeaderBtn('openPlaylistsBtn'));
+        document.getElementById('lesModeBtn')?.addEventListener('click', () => _triggerHeaderBtn('openViewModeBtn'));
+        window.addEventListener('aria:languagechange', syncLyricsEmptyState);
+    }
+
+    const scrollEl = document.getElementById('lyricsScroll');
+    const hasLyrics = (Array.isArray(globalThis.lyrics) && globalThis.lyrics.length > 0)
+        || Boolean(scrollEl && scrollEl.querySelector('.line'));
+    if (hasLyrics) {
+        emptyEl.hidden = true;
+        return;
+    }
+
+    emptyEl.hidden = false;
+    const song = globalThis.currentSongData;
+    const hasTrack = Boolean(
+        (audio && (audio.currentSrc || audio.getAttribute('src')))
+        || (song && (song.audioUrl || song.url || song.songmid || song.hash || song.id))
+    );
+
+    const titleEl = document.getElementById('lesTitle');
+    const descEl = document.getElementById('lesDesc');
+    const searchBtn = document.getElementById('lesSearchBtn');
+    const dailyBtn = document.getElementById('lesDailyBtn');
+    const playlistsBtn = document.getElementById('lesPlaylistsBtn');
+    const modeBtn = document.getElementById('lesModeBtn');
+
+    if (hasTrack) {
+        if (titleEl) titleEl.textContent = translatePhrase('纯音乐 / 暂无歌词');
+        if (descEl) descEl.textContent = translatePhrase('静享旋律，亦可切换视觉模式沉浸体验');
+        if (searchBtn) {
+            searchBtn.hidden = false;
+            searchBtn.classList.remove('les-btn-primary');
+            searchBtn.textContent = translatePhrase('搜索歌曲');
+        }
+        if (dailyBtn) dailyBtn.hidden = true;
+        if (playlistsBtn) playlistsBtn.hidden = true;
+        if (modeBtn) {
+            modeBtn.hidden = false;
+            modeBtn.textContent = translatePhrase('切换视觉模式');
+        }
+    } else {
+        if (titleEl) titleEl.textContent = translatePhrase('开启你的音乐旅程');
+        if (descEl) descEl.textContent = translatePhrase('搜索想听的歌曲，或探索每日推荐与精选歌单');
+        if (searchBtn) {
+            searchBtn.hidden = false;
+            searchBtn.classList.add('les-btn-primary');
+            searchBtn.textContent = translatePhrase('搜索歌曲');
+        }
+        if (dailyBtn) {
+            dailyBtn.hidden = false;
+            dailyBtn.textContent = translatePhrase('每日推荐');
+        }
+        if (playlistsBtn) {
+            playlistsBtn.hidden = false;
+            playlistsBtn.textContent = translatePhrase('我的歌单');
+        }
+        if (modeBtn) modeBtn.hidden = true;
+    }
+}
 
 /* 全景视觉模式调度器 */
 if (typeof window !== 'undefined') { window.currentViewMode = 'cover'; }
@@ -333,7 +409,7 @@ function renderLyrics(lyrics) {
                不在此同步会导致 PV/Tunnel 等场景拿到的仍是上一首歌的旧歌词 */
             globalThis.lyrics = lyrics;
             const scrollEl = typeof document !== 'undefined' ? document.getElementById('lyricsScroll') : null;
-            scrollEl.innerHTML = '';
+            if (scrollEl) scrollEl.innerHTML = '';
 
             const styleId = 'lyrics-render-style';
             let style = document.getElementById(styleId);
@@ -569,6 +645,7 @@ function cacheLyricElements() {
             /* ★ todos #12 开关2：行级歌词去别的音源换一份真逐字回来。
                同样放在渲染之后，理由和上面一样（它会再触发一次 renderLyrics）。 */
             maybeUpgradeToWordLyrics(lyrics);
+            syncLyricsEmptyState();
         }
 
 /* 虚拟滚动：根据当前活动行更新渲染范围 */
@@ -667,4 +744,13 @@ export function setActiveAudio(el) {
     return audio === el;
 }
 
-export { cacheLyricElements, renderLyrics, updateLineBlur, updateVirtualLyricsRender };
+if (typeof document !== 'undefined') {
+    if (audio && !audio._ariaEmptyStateBound) {
+        audio._ariaEmptyStateBound = true;
+        audio.addEventListener('loadstart', syncLyricsEmptyState);
+        audio.addEventListener('emptied', syncLyricsEmptyState);
+    }
+    syncLyricsEmptyState();
+}
+
+export { cacheLyricElements, renderLyrics, syncLyricsEmptyState, updateLineBlur, updateVirtualLyricsRender };

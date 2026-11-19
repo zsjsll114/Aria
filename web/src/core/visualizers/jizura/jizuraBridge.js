@@ -109,8 +109,11 @@ export function lineEndsFromLines(lines) {
  * 用 Aria 的歌词与设置造一份上游 `plan`（分镜/卡点/部件抽签的结果）。
  * @param {object} J 引擎
  * @param {Array} lines Aria 歌词行（带 start/end）
- * @param {{style?:string, mood?:string|null, aspect?:string, res?:number, fps?:number,
- *          title?:string, artist?:string, fx?:object, analyses?:object|null}} [opts]
+ * @param {{style?:string, mood?:string|null, extra?:boolean, aspect?:string, res?:number, fps?:number,
+ *          title?:string, artist?:string, fx?:object, bpm?:number,
+ *          analyses?:{beats?:number[], energy?:Float32Array|ArrayLike<number>|null, energyRate?:number}|null}} [opts]
+ *   `analyses` 是引擎的「音频分析」通道：只从中合并 `beats` 与 `energy`/`energyRate`
+ *   （与其他字段无关，其余原样透传）。它与本函数自建的拍点栅格**合并**，同名以传入者为准。
  * @returns {object} plan（失败抛错，由调用方 catch）
  */
 /**
@@ -156,6 +159,7 @@ export function buildJizuraPlan(J, lines, opts = {}) {
     const base = J.defaultProject();
     const clean = cleanJizuraLines(lines);
     if (clean.length === 0) return null;
+    const bpm = normalizeBpm(opts.bpm);
     const project = Object.assign({}, base, {
         title: opts.title || '',
         artist: opts.artist || '',
@@ -164,6 +168,12 @@ export function buildJizuraPlan(J, lines, opts = {}) {
            P1 先只吃显式 style —— 未给就用上游默认 'noir'。 */
         style: opts.style || base.style || JIZURA_DEFAULT_STYLE,
         mood: opts.mood || null,
+        /* ★ 追加分（extra，2026-10-11）：上游 `defaultProject()` 里它是 false，而它决定
+           「首次公开版之后新增的部件与风格能否被**抽签**选中」（闸门是 11q_sets.js:51-57
+           的 J.randomOk，判据是严格 `=== true`）。不转发 = 抽签池只剩 486/910 ——
+           转场仅 5/27、风格仅 12/27，正是「画面太容易重复」的来源。
+           默认开（与 defaults.js 同键），面板的「追加部件」开关可关回首版部件集。 */
+        extra: opts.extra !== false,
         aspect: opts.aspect || base.aspect,
         /* ★ 刻意不转发 opts.res：引擎从不读 project.res（画幅由 aspect 决定，
            见 08_planner.js:283 → J.designSize(aspect)，按 aspect 返回硬编码尺寸）。
@@ -177,7 +187,7 @@ export function buildJizuraPlan(J, lines, opts = {}) {
             lineEnds: (opts.wordSync && opts.wordSync !== 'off') ? lineEndsFromLines(lines) : undefined,
             /* ★ 真实 BPM（若已缓存）：引擎的匀速卡点网格建在它上面。
                没有就保持 0，引擎按歌词行距自估 —— 不编数据。 */
-            bpm: normalizeBpm(opts.bpm),
+            bpm,
         }),
     });
     if (opts.fx) project.fx = Object.assign({}, base.fx, opts.fx);
@@ -188,6 +198,14 @@ export function buildJizuraPlan(J, lines, opts = {}) {
     /* 'auto' = 上游おまかせ：按歌词长度/情绪从 27 套里抽一套版式（并顺带挑主题与部件开关）。
        一律走 J.omakase 而不是自己抽签 —— 它的抽取要考虑"哪些部件属于同一套语言"，
        自己随机出来的组合会在观感上互相打架（例如活字版式配霓虹描边）。 */
+    /* 引擎第二参 `audio`（08_planner.js:270 的 `J.plan(project, audio)`）是「音频分析」整条通道，
+       真正被用到的只有三个字段：`beats`（卡点栅格，见下 beatAnalysesOf）与
+       `energy`/`energyRate`（能量包络，驱动 6 处按音乐强弱的缩放，见 09_render.js:113）。
+       ★ 这里**合并**而不是二选一：拍点栅格由我们按真实 BPM 自建（调用方通常没有），
+       能量包络来自 automix 缓存（我们造不出来），两边都可能有 —— 缺哪边就少哪边的效果。
+       调用方显式给的字段优先（它更清楚自己拿到了什么）。 */
+    const grid = beatAnalysesOf(J, bpm, lines);
+    const audio = (grid || opts.analyses) ? Object.assign({}, grid, opts.analyses) : null;
     if (opts.style === 'auto' && typeof J.omakase === 'function') {
         /* ★ 种子取自「歌名|歌手|歌词」而不是 Math.random（上游默认）：
            实测这条链上每次 plan 重建（改任何设置、切画幅、重载歌词）都会重抽一次，
@@ -195,9 +213,37 @@ export function buildJizuraPlan(J, lines, opts = {}) {
            同歌同种子 ⇒ 同一个观感，且换歌自然换风格。 */
         const seed = textSeed(`${project.title}|${project.artist}|${project.lyrics}`.slice(0, 4096));
         const picked = J.omakase(project, seededRandom(seed), opts.theme || null);
-        return J.plan(picked || project, opts.analyses || null);
+        return J.plan(picked || project, audio);
     }
-    return J.plan(project, opts.analyses || null);
+    return J.plan(project, audio);
+}
+
+/**
+ * 只带拍点栅格的引擎第二参（上游 `audioLike()` 的等价物，见 scratch/jizura 的
+ * `J.plan(S.project, audioLike())`）。
+ *
+ * ★ 为什么必须给：`plan.beats` 驱动两件事 ——
+ *   ① `snap()`（08_planner.js:307-314）把切点对齐到拍点，实测会移动 **32/73（44%）**
+ *      的字面切点（同一首歌、同一种子）；
+ *   ② 渲染层的 `beatAt()` 拍点脉冲（09_render.js:112 `beatInfo`）。
+ *   上游只要 `bpm > 0` 就**必然**给栅格（连没导入音频时都用一条 600s 的长网格，
+ *   见 scratch/jizura/index.html 的 audioLike），我们此前一律传 null，等于把
+ *   「跟着音乐走」整块关掉 —— 画面只跟歌词时间走，观感自然发木、像分镜变少了。
+ *
+ * 网格长度取「末行时间 + 60s」与 600s 的较大者：上游固定 600s，超过 10 分钟的歌
+ * 会在尾部静默丢拍点；这里只会更宽，不会更窄。
+ *
+ * @param {object} J 引擎
+ * @param {number} bpm 已过 normalizeBpm 的值（0 = 交给引擎自估，此时不给栅格）
+ * @param {Array} lines Aria 歌词行
+ * @returns {{beats:number[]}|null}
+ */
+function beatAnalysesOf(J, bpm, lines) {
+    if (!(bpm > 0) || typeof J.beatGrid !== 'function') return null;
+    const t = lineTimesFromLines(lines);
+    const span = Math.max(600, (t.length ? t[t.length - 1] : 0) + 60);
+    const beats = J.beatGrid(bpm, 0, span);
+    return beats.length ? { beats } : null;
 }
 
 /**
@@ -215,6 +261,11 @@ export function jizuraPlanKey(lines, opts = {}) {
         times[times.length - 1],
         opts.style || '',
         opts.mood || '',
+        /* ★ 2026-10-11 「AI 推荐」(style='ai')：推荐结果由 AI 分析结果决定，而分析可能
+           **晚于**歌词到达（缓存命中/异步完成），不参与指纹就会"分析完了画面不变"。 */
+        opts.aiPreset || '',
+        /* 追加分开关直接决定抽签池大小 → 改它必须重建 plan，否则切了开关画面不变 */
+        opts.extra !== false,
         opts.aspect || '',
         opts.res || '',
         opts.fps || '',
@@ -564,26 +615,57 @@ export function trackFingerprint(track) {
 }
 
 /**
- * 取当前曲目**已缓存**的 BPM。
+ * 把 automix 的**原始 RMS 包络**归一化成引擎要的 0~1 口径。
  *
- * ★ 为什么刻意不调 `analyzeTrack`：那要解码整首歌（旧机器上以秒计，还得占用主线程），
- *   而这里只想要一个卡点网格。用户没开 automix 就说明他没要这份分析 ——
- *   替他跑一遍是"用几百毫秒的卡顿换一个装饰性参数"，不划算。
- *   缓存里有就用（需求 22 的分析缓存层正是为此），没有就交给引擎自估。
+ * 引擎（09_render.js:113）按 `floor(t * plan.energyRate)` 直接取数组值当「该时刻的能量」，
+ * 6 处消费者全是 `env.energy != null ? <按能量缩放> : <假噪声摆动>` 的形态
+ * （07_decor.js:218、11p_decorB.js:810/2360、11p_exitB.js:1763、11p_layoutsB.js:1773、
+ * 11p_looks.js:775）。所以喂进去的必须已经是 0~1，而且要以**响处**为 1 ——
+ * 否则整首歌的元素都缩在最小值上，比不给还难看。口径照上游 `10_audio.js:62-66`：
+ * 以 95 分位为 1、超出夹到 1。
+ *
+ * @param {Float32Array|ArrayLike<number>|null} env 原始 RMS 包络（automix 缓存里的 energy）
+ * @returns {Float32Array|null} 归一化副本；入参不可用返回 null
+ */
+export function normalizeEnergy(env) {
+    if (!env || typeof env.length !== 'number' || env.length === 0) return null;
+    const sorted = Array.from(env).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    /* p95 为 0（整首静音/全零）时兜底 1，不能拿 0 当除数 */
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] || 1;
+    const out = new Float32Array(env.length);
+    for (let i = 0; i < env.length; i++) {
+        const v = Number(env[i]);
+        out[i] = Number.isFinite(v) ? Math.min(1, v / p95) : 0;
+    }
+    return out;
+}
+
+/**
+ * 取当前曲目**已缓存**的分析结果：BPM + 能量包络（都只读缓存，不做新分析）。
+ *
+ * ★ 能量包络是 2026-10-11 才进缓存的（envelope.js 以前算了就丢，见那里的注释）。
+ *   **旧缓存条目没有这个字段** → 这里返回 energy:null，引擎按原本的噪声摆动走，
+ *   观感与升级前一致（不会变差）；要拿到包络得让那首歌重新分析一次
+ *   （清空「混音分析缓存」即可，见 core/storageManager.js 的 automix 目标）。
  * ★ 动态 import：静态引会把 automix 分析器拖进首屏包，毁掉本模式的懒加载。
  */
-export async function currentTrackBpm(entry) {
+export async function currentTrackAnalysis(entry) {
+    const empty = { bpm: 0, energy: null, energyRate: 0 };
     const track = entry || currentTrackEntry();
-    if (!track) return 0;
+    if (!track) return empty;
     try {
         const [{ automixCacheGet }, { automixCacheKey }] = await Promise.all([
             import('../../../services/aiCache.js'),
             import('../../automix/analyzer.js'),
         ]);
         const cached = await automixCacheGet(automixCacheKey(track));
-        return cached ? normalizeBpm(cached.bpm) : 0;
+        if (!cached) return empty;
+        const rate = Number(cached.energyRate) > 0 ? Number(cached.energyRate) : 0;
+        const energy = rate > 0 ? normalizeEnergy(cached.energy) : null;
+        return { bpm: normalizeBpm(cached.bpm), energy, energyRate: energy ? rate : 0 };
     } catch (e) {
         logCatch(JIZURA_TAG, e);
-        return 0;
+        return empty;
     }
 }

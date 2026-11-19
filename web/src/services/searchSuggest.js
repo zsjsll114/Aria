@@ -12,7 +12,6 @@
  *          → result.hots[].first           → result.{songs,artists,albums,playlists,mvs}[].name
  *  酷狗    /search/hot              /search/suggest?keywords=
  *          → data.list[].keywords[].keyword → data[].RecordDatas[].HintInfo
- *  汽水    无（零 suggest/hot 方法）→ 回退网易：宁可给一份通用建议，也不要空着
  *  酷我    2026-10-03 已从搜索页移除（无入口），这里不再登记
  *
  * 本模块只做「请求 + 解析」：解析函数全是纯函数并导出，便于单测；
@@ -28,8 +27,8 @@ export const MAX_HOT = 12;
 export const MAX_SUGGEST = 10;
 
 /* 没有该能力的源 → 借用谁。'' 表示不借（面板就只显示本地历史）。 */
-const HOT_FALLBACK = { qishui: 'netease' };
-const SUGGEST_FALLBACK = { qishui: 'netease' };
+const HOT_FALLBACK = {};
+const SUGGEST_FALLBACK = {};
 
 const HOT_PATHS = {
     tencent: '/getHotkey',

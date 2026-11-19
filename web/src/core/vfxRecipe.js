@@ -163,7 +163,7 @@ const tRatio = () => ({ type: 'ratio' });
 /** 与 index.html 的 .view-mode-card[data-mode] 卡片一致；220 的 switchView 只认这些。 */
 export const VIEW_MODES = [
     'cover', 'lyrics', 'flyin', 'wordcloud', 'pv', 'tunnel', 'dimension', 'letterpress', 'neon',
-    'tempera', 'jizura',
+    'tempera', 'jizura', 'prism', 'astrolabe', 'vitrail', 'focalcut',
 ];
 
 /* ---------- 命名空间字段表 ---------- */
@@ -351,6 +351,9 @@ export const MODE_FIELD_POOL = {
     wordcloudDepth: tInt(50, 4000),
     /* PV / 隧道 */
     preset: tEnum('dream', 'anime', 'cyber', 'minimal'),
+    /* 动效强度：上游 Theme.animationIntensity，合法值只有这三档（见 src/types.ts）。
+       不放进 schema = 这个键存不进分享码，导入别人的配方时分会静默回到 normal。 */
+    animationIntensity: tEnum('calm', 'normal', 'chaotic'),
     cameraSpeed: tNum(0.05, 10),
     cameraZoom: tNum(0.1, 10),
     cameraDamping: tNum(0.001, 1),
@@ -364,6 +367,34 @@ export const MODE_FIELD_POOL = {
     showEcho: tBool(),
     aiColorSync: tBool(),
     mosaicTilt: tBool(),
+    /* ★ 2026-10-11 后期处理组（上游 SonnetTuning 的 postProcess*）：不放进 schema =
+       这些键存不进分享码，导入别人的配方时会静默回到默认档（默认档 = folia 的干净画面）。
+       取值域按上游 types.ts:543-557 的注释：grain/contrast/rgbShift/halftone 0..1、
+       vignette 0..2（2 = 双倍暗角）、lensDistortion 0..2、lensDispersion 0..1。 */
+    postProcessEnabled: tBool(),
+    postProcessGrain: tNum(0, 1),
+    postProcessContrast: tNum(0, 1),
+    postProcessRgbShift: tNum(0, 1),
+    postProcessHalftone: tNum(0, 1),
+    postProcessVignette: tNum(0, 2),
+    postProcessLensDistortion: tNum(0, 2),
+    postProcessLensDispersion: tNum(0, 1),
+    /* ★ 2026-10-11 画面元素开关（本仓此前只钉了上游默认值的 4 个）：
+       仅文字 / 引导线 / 巨型装饰字 / 装饰画框（文字浮标）。上游同类键还有
+       showBackgroundMg 与 showBackgroundDecor，但本仓既有的「显示巨型背景字与几何构图」
+       「显示星芒微粒」已管那两层，故不收进来（避免两套开关管同一层）。 */
+    showOnlyText: tBool(),
+    showGuide: tBool(),
+    showGiantDecorativeText: tBool(),
+    showFixedGeo: tBool(),
+    /* ★ 2026-10-11 诗镜的三个数值旋钮（上游 SonnetSettingsPanel 的滑杆域 0..2 / step 0.05）
+       + 外层边框三档 + Aria 扩展的「间奏标记也走谱面」。
+       ★ `cameraIntensity` **不在这里重复声明**：它是全模式共享的 schema 键，下方 tempera
+       那块已经声明过 `tNum(0, 2)`，范围与诗镜滑杆一致（重复声明会被 tsc 的 TS1117 抓）。 */
+    typographyMotion: tNum(0, 2),
+    mgDensity: tNum(0, 2),
+    outerFrameMode: tEnum('none', 'frame', 'full'),
+    interludeStaff: tBool(),
     /* 版画 Tempera（2026-10-02 补 schema：defaults.js 已有这些键，漏一个就存不下来） */
     cameraIntensity: tNum(0, 2),
     glyphMotion: tNum(0, 2),
@@ -395,10 +426,43 @@ export const MODE_FIELD_POOL = {
     texture: tNum(0, 1),
     flash: tBool(),
     hud: tEnum('auto', 'on', 'off'),
+    /* 追加分：首版之后新增的部件与 12 套风格是否参与抽签（引擎 11q_sets.js 的 randomOk）。
+       不放进 schema = 这个键存不进分享码，导入别人的配方时抽签池会静默变回首版那套。 */
+    extra: tBool(),
     /* 按字切分镜：'off' / 'cuts'（最多 12 块）。
        ★ 曾经有第三档 'chars'（每字一块）已从面板与配方撤下：实测一个 cut 就是一次分镜，
        每字一块 = 一个字一个画面，观感不可接受（2026-10-07）。留着的代码只做能力验证。 */
     wordSync: tEnum('off', 'cuts'),
+    prismPreset: tEnum('auto', 'diamond', 'amber', 'obsidian', 'aurora'),
+    prismCutRate: tEnum('phrase', 'line', 'fast'),
+    prismRefraction: tNum(0, 1),
+    prismDispersion: tNum(0, 1),
+    prismCaustics: tNum(0, 1),
+    prismCamera: tNum(0, 1.5),
+    prismHud: tBool(),
+    astrolabePreset: tEnum('auto', 'obsidian', 'prussian', 'bauhaus', 'vermilion', 'celadon', 'ochre'),
+    astrolabeCutRate: tEnum('phrase', 'line', 'fast'),
+    astrolabeInversion: tBool(),
+    astrolabeHatch: tNum(0, 1),
+    astrolabeContrast: tNum(0, 1),
+    astrolabeCamera: tNum(0, 1.5),
+    astrolabeCropMarks: tBool(),
+    astrolabeGrain: tBool(),
+    astrolabePrintLevel: tEnum('clean', 'balanced', 'vintage', 'punch'),
+    vitrailPreset: tEnum('auto', 'amber', 'sapphire', 'jade', 'crimson', 'moonlight', 'alabaster'),
+    vitrailArchitecture: tEnum('auto', 'cathedral', 'observatory', 'cloister', 'pavilion', 'rotunda', 'arcade', 'scriptorium', 'atrium'),
+    vitrailCamera: tNum(0, 1.5),
+    vitrailLighting: tNum(0, 1.5),
+    vitrailReflection: tBool(),
+    vitrailParticles: tBool(),
+    vitrailParallax: tBool(),
+    vitrailQuality: tEnum('auto', 'high', 'balanced', 'lite'),
+    focalcutPolarity: tEnum('auto', 'dark', 'light'),
+    focalcutCutRate: tEnum('calm', 'normal', 'intense'),
+    focalcutSplitLens: tBool(),
+    focalcutCamera: tNum(0.15, 1.5),
+    focalcutGuides: tBool(),
+    focalcutRackFocus: tBool(),
 };
 
 /**
@@ -423,7 +487,14 @@ export const MODE_FIELDS_BY_MODE = {
         'highlightColor', 'showTranslation', 'showRomaji', 'themeColor', 'bgBlur', 'bgBrightness',
         'swayEnabled', 'swayAmp', 'swayDuration', 'fontFamily', 'emotionGlow'],
     pv: ['align', 'fontSize', 'blurLevel', 'cameraZoom', 'cameraSpeed', 'cameraDamping',
-        'halftoneSize', 'preset', 'showHud', 'showDecorations', 'showParticles', 'aiColorSync',
+        'halftoneSize', 'preset', 'animationIntensity', 'showHud', 'showDecorations', 'showParticles', 'aiColorSync',
+        /* ★ 2026-10-11 后期处理组（诗镜面板「后期处理」）：进池才随配方存取 */
+        'postProcessEnabled', 'postProcessGrain', 'postProcessContrast', 'postProcessRgbShift',
+        'postProcessHalftone', 'postProcessVignette', 'postProcessLensDistortion', 'postProcessLensDispersion',
+        /* ★ 2026-10-11 画面元素开关（仅文字 / 引导线 / 巨型装饰字 / 装饰画框） */
+        'showOnlyText', 'showGuide', 'showGiantDecorativeText', 'showFixedGeo',
+        /* ★ 2026-10-11 三个数值旋钮 + 外层边框三档 + 间奏标记扩展 */
+        'cameraIntensity', 'typographyMotion', 'mgDensity', 'outerFrameMode', 'interludeStaff',
         'highlightColor', 'showTranslation', 'showRomaji', 'graphicColor', 'themeColor',
         'bgBlur', 'bgBrightness', 'swayEnabled', 'swayAmp', 'swayDuration', 'fontFamily', 'emotionGlow'],
     tunnel: ['align', 'fontSize', 'blurLevel', 'cameraSpeed', 'cameraDamping', 'transitDuration',
@@ -444,9 +515,23 @@ export const MODE_FIELDS_BY_MODE = {
        下拉，用户设置会在分享/导入时静默丢失（test_vfx_recipe 的"schema 覆盖 defaults
        每个键"就是在拦这个，别绕）。 */
     jizura: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
-        'showTranslation', 'style', 'mood', 'aspect', 'fps', 'fast', 'perf',
+        'showTranslation', 'style', 'mood', 'extra', 'aspect', 'fps', 'fast', 'perf',
         'beat', 'wordSync',
         'motion', 'glitch', 'chroma', 'decor', 'density', 'texture', 'flash', 'hud'],
+    prism: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
+        'showTranslation', 'showRomaji', 'prismPreset', 'prismCutRate',
+        'prismRefraction', 'prismDispersion', 'prismCaustics', 'prismCamera', 'prismHud'],
+    astrolabe: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
+        'showTranslation', 'showRomaji', 'astrolabePreset', 'astrolabeCutRate',
+        'astrolabeInversion', 'astrolabeHatch', 'astrolabeContrast', 'astrolabeCamera', 'astrolabeCropMarks',
+        'astrolabeGrain', 'astrolabePrintLevel'],
+    vitrail: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
+        'showTranslation', 'showRomaji', 'vitrailPreset', 'vitrailArchitecture',
+        'vitrailCamera', 'vitrailLighting', 'vitrailReflection', 'vitrailParticles',
+        'vitrailParallax', 'vitrailQuality'],
+    focalcut: ['fontSize', 'highlightColor', 'themeColor', 'fontFamily', 'emotionGlow',
+        'showTranslation', 'showRomaji', 'focalcutPolarity', 'focalcutCutRate',
+        'focalcutSplitLens', 'focalcutCamera', 'focalcutGuides', 'focalcutRackFocus'],
 };
 
 /** 配方的四个组，UI 说明与统计共用这一份顺序。 */

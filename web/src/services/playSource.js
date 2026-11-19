@@ -21,7 +21,6 @@ const CHANNELS = {
     selfhostQQ:      { name: '本机自建 QQ 服务',   platform: 'QQ音乐',   tier: 'selfhost' },
     selfhostNetease: { name: '本机自建网易服务',   platform: '网易云',   tier: 'selfhost' },
     selfhostKugou:   { name: '本机自建酷狗服务',   platform: '酷狗音乐', tier: 'selfhost' },
-    selfhostQishui:  { name: '本机自建汽水服务',   platform: '汽水音乐', tier: 'selfhost' },
     qqResolve:       { name: '本机解析池',         platform: 'QQ音乐',   tier: 'local' },
     kugou:           { name: '酷狗取链接口',       platform: '酷狗音乐', tier: 'api' },
     kuwo:            { name: '酷我官方取链',       platform: '酷我音乐', tier: 'api' },
@@ -68,8 +67,6 @@ const PLATFORM_ALIAS = {
     kugou: 'kugou', kg: 'kugou',
     kuwo: 'kuwo', kw: 'kuwo',
     migu: 'migu', mg: 'migu',
-    /* 汽水：抖音系（Soda / Luna）在第三方字段里有 qishui / soda / douyin 几种写法 */
-    qishui: 'qishui', soda: 'qishui', qs: 'qishui',
     local: 'local',
 };
 
@@ -93,7 +90,7 @@ export function platformKeyOf(source) {
    真实原因（自建服务明明在线且毫秒级）。 */
 const SELFHOST_KEYS = { tencent: 'qq' };
 
-/** 任意来源标识 → 自建服务后端平台键（'qq'/'netease'/'kugou'/'qishui'；'' 表示无此平台） */
+/** 任意来源标识 → 自建服务后端平台键（'qq'/'netease'/'kugou'；'' 表示无此平台） */
 /** @param {any} source @returns {string} */
 export function selfhostKeyOf(source) {
     const key = platformKeyOf(source);
@@ -101,11 +98,8 @@ export function selfhostKeyOf(source) {
 }
 
 /* 有专门取链分支的平台。'local' / 'selfhost' / 拼写错的值都不在这里——
-   把它们也当成一个平台，会被 175 末尾的 else 塞进「未知音源 → vkeys」，比按全局判定更糟。
-   ★ 汽水（2026-10-03）在这里是**必须**的：它的取链不是「调接口拿直链」而是
-   「本机 vendor 解密后吐流」，只能走 175 里那条专属分支；漏登记就会掉进
-   `else`（未知音源）去调 vkeys 的 /qishui 接口 —— 那个接口不存在。 */
-export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo', 'qishui']);
+   把它们也当成一个平台，会被 175 末尾的 else 塞进「未知音源 → vkeys」，比按全局判定更糟。 */
+export const RESOLVE_SOURCES = new Set(['tencent', 'netease', 'kugou', 'kuwo']);
 
 /**
  * 这首歌该走哪条取链分支。
@@ -317,25 +311,57 @@ function bestQuality(hit) {
 }
 
 /**
+ * @param {any} platform
+ * @param {any} url
+ * @param {any} songKey
+ * @returns {string}
+ */
+function platformKeyFromTextOrUrl(platform, url, songKey) {
+    const k = platformKeyOf(platform);
+    if (k === 'tencent') return 'qq';
+    if (k === 'netease' || k === 'kugou' || k === 'kuwo' || k === 'local') return k;
+    if (platform === '本地') return 'local';
+    if (platform === 'QQ音乐') return 'qq';
+    if (platform === '网易云' || platform === '网易云音乐') return 'netease';
+    if (platform === '酷狗音乐') return 'kugou';
+    if (platform === '酷我音乐') return 'kuwo';
+    const u = String(url || '');
+    if (u) {
+        if (u.startsWith('blob:') || u.startsWith('data:') || /^[a-z]:[\\/]/i.test(u) || u.startsWith('file:')) return 'local';
+        if (/:3200\b/.test(u) || /stream\.qqmusic|qq\.com|y\.gtimg|qqmusic/.test(u)) return 'qq';
+        if (/kugou|kg-test|ymdata|fsg\.kugou/.test(u)) return 'kugou';
+        if (/kuwo/.test(u)) return 'kuwo';
+        if (/163\.com|126\.net/.test(u)) return 'netease';
+    }
+    const sk = (String(songKey || '').split(':')[0] || '').trim().toLowerCase();
+    const skNorm = platformKeyOf(sk);
+    if (skNorm === 'tencent') return 'qq';
+    if (skNorm === 'netease' || skNorm === 'kugou' || skNorm === 'kuwo' || skNorm === 'local') return skNorm;
+    return '';
+}
+
+/**
  * 角标文案，如 `QQ音乐 · 无损 FLAC` / `网易云 · 128k · 兜底`。
- * @returns {{text:string, tier:string, fallback:boolean}|null}
+ * @returns {{text:string, tier:string, fallback:boolean, platformKey:string}|null}
  */
 export function describeBadge() {
     if (!trace) return null;
+    const reqPlatformKey = platformKeyFromTextOrUrl('', '', trace.songKey);
     /* ★ 三种「还没有结果」的状态要分开说，别一律甩一个「取链失败」：
        正在取 / 在退避重试 / 彻底失败。用户原先的困惑正是把「正在取」读成了「失败」。 */
     if (trace.retry) {
-        return { text: `重试中 ${trace.retry.attempt}/${trace.retry.total}…`, tier: 'retry', fallback: true };
+        return { text: `重试中 ${trace.retry.attempt}/${trace.retry.total}…`, tier: 'retry', fallback: true, platformKey: reqPlatformKey };
     }
-    if (trace.failed) return { text: '取链失败', tier: 'failed', fallback: true };
-    if (!trace.hit) return { text: '正在获取…', tier: 'pending', fallback: false };
+    if (trace.failed) return { text: '取链失败', tier: 'failed', fallback: true, platformKey: reqPlatformKey };
+    if (!trace.hit) return { text: '正在获取…', tier: 'pending', fallback: false, platformKey: reqPlatformKey };
     const meta = channelMeta(trace.hit.channelId);
     const platform = meta.platform || sniffPlatform(trace.hit.url);
+    const platformKey = platformKeyFromTextOrUrl(platform, trace.hit.url, trace.songKey);
     const quality = bestQuality(trace.hit);
     const parts = [platform, quality].filter(Boolean);
     const fallback = meta.tier === 'public' || meta.tier === 'fallback' || meta.tier === 'unknown';
     if (fallback) parts.push('兜底');
-    return { text: parts.join(' · ') || '未知来源', tier: meta.tier, fallback };
+    return { text: parts.join(' · ') || '未知来源', tier: meta.tier, fallback, platformKey };
 }
 
 /**

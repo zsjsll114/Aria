@@ -13,7 +13,7 @@ import {
 	JIZURA_FX_DEFAULTS, applyJizuraFontOverride, buildJizuraPlan, cleanJizuraLines,
 	clearJizuraFontCaches, collectJizuraFx, computeWordSyncOverrides, currentTrackEntry,
 	hasRealWords, jizuraFamilyNames, jizuraPlanKey, lineTimesFromLines, lyricsTextFromLines,
-	normalizeBpm, perfOptionsFor, pickJizuraFamily, realWordLineCount, seededRandom, textSeed,
+	normalizeBpm, normalizeEnergy, perfOptionsFor, pickJizuraFamily, realWordLineCount, seededRandom, textSeed,
 	trackFingerprint,
 } from '../../web/src/core/visualizers/jizura/jizuraBridge.js';
 
@@ -118,6 +118,114 @@ test('TC8 normalizeBpm：30~300 之外与异常输入一律归 0', () => {
 	assert.equal(normalizeBpm(Infinity), 0);
 	assert.equal(normalizeBpm(null), 0);
 	assert.equal(normalizeBpm(undefined), 0);
+});
+
+test('TC9 ★ 拍点栅格必须喂给引擎（plan.beats 驱动卡点与拍点脉冲）', () => {
+	/* 上游 audioLike() 只要 bpm>0 就**必然**给栅格（连没音频时都用一条 600s 长网格）。
+	   不给 = 引擎 snap() 恒等返回，切点不再对齐拍点（实测同一首歌有 32/73 的切点会动），
+	   渲染层的 beatAt() 拍点脉冲也一起哑掉。 */
+	const seen = [];
+	const gridCalls = [];
+	const J = {
+		defaultProject: () => ({ style: 'noir', aspect: '16:9', fps: 24, timing: { bpm: 0, snap: true, tail: 0.9 }, fx: {} }),
+		/* 与上游 10_audio.js:129 的 J.beatGrid 同形：offset 起步、每 60/bpm 秒一拍 */
+		beatGrid: (bpm, offset, duration) => {
+			gridCalls.push([bpm, offset, duration]);
+			const p = 60 / bpm, out = [];
+			for (let t = offset; t < duration + 0.01; t += p) out.push(+t.toFixed(4));
+			return out;
+		},
+		plan: (p, audio) => { seen.push({ p, audio }); return { cuts: [], lines: [] }; },
+	};
+	const lines = [{ start: 0, end: 4000, original: 'あ' }, { start: 4000, end: 8000, original: 'い' }];
+
+	buildJizuraPlan(J, lines, { bpm: 120 });
+	assert.ok(seen[0].audio && Array.isArray(seen[0].audio.beats) && seen[0].audio.beats.length > 0,
+		'有 BPM 就必须带 beats');
+	assert.deepEqual(gridCalls[0], [120, 0, 600], '120 BPM：offset 0，网格长度不得短于上游的 600s');
+	assert.equal(seen[0].audio.beats[1], 0.5, '120 BPM → 每 0.5s 一拍');
+
+	/* 长歌：上游固定 600s 会在尾部静默丢拍点，这里必须盖到末行之后 */
+	buildJizuraPlan(J, [
+		{ start: 0, end: 1000, original: 'あ' },
+		{ start: 700000, end: 704000, original: 'い' },
+	], { bpm: 120 });
+	assert.equal(gridCalls[1][2], 760, '超过 10 分钟的歌：网格要盖到「末行 + 60s」');
+
+	buildJizuraPlan(J, lines, {});
+	assert.equal(seen[2].audio, null, '没有 BPM 就不给栅格（交给引擎自估，不编数据）');
+	buildJizuraPlan(J, lines, { bpm: 9999 });
+	assert.equal(seen[3].audio, null, '离谱 BPM 归 0 → 同样不给');
+
+	/* 调用方自带 analyses（能量包络就是走这条）时与自建栅格**合并**：
+	   两边都要在 —— 栅格我们造得出、包络造不出，缺哪边就少哪边的效果。 */
+	const mine = { energy: [0.1, 0.2], energyRate: 10 };
+	buildJizuraPlan(J, lines, { bpm: 120, analyses: mine });
+	assert.notEqual(seen[4].audio, mine, '给的应是合并副本，不是同一个对象');
+	assert.equal(seen[4].audio.energy, mine.energy, '调用方的 energy 必须原样带过去');
+	assert.equal(seen[4].audio.energyRate, 10);
+	assert.ok(Array.isArray(seen[4].audio.beats) && seen[4].audio.beats.length > 0,
+		'自建拍点栅格不得被调用方的字段挤掉（两个效果要能同时生效）');
+
+	/* 调用方显式给了 beats 就以它为准（它更清楚自己拿到了什么） */
+	buildJizuraPlan(J, lines, { bpm: 120, analyses: { beats: [1, 2, 3] } });
+	assert.deepEqual(seen[5].audio.beats, [1, 2, 3]);
+});
+
+test('TC25 ★ 能量包络归一化：以 95 分位为 1 并夹到 1，异常输入不抛不污染', () => {
+	/* 引擎按 floor(t * energyRate) 直取数组值当"该时刻能量"，6 处消费者都是
+	   `env.energy != null ? 按能量缩放 : 假噪声摆动` —— 给错量纲比不给还难看。 */
+	assert.equal(normalizeEnergy(null), null);
+	assert.equal(normalizeEnergy(undefined), null);
+	assert.equal(normalizeEnergy([]), null);
+	assert.equal(normalizeEnergy(new Float32Array(0)), null);
+	assert.equal(normalizeEnergy('nope'), null, '非数组类入参不得抛');
+	assert.equal(normalizeEnergy(123), null);
+
+	const flat = normalizeEnergy(Float32Array.from({ length: 20 }, (_, i) => (i + 1) / 20));
+	assert.ok(flat instanceof Float32Array, '必须给 Float32Array（引擎按索引直取，不做转换）');
+	assert.ok(flat.every((v) => v >= 0 && v <= 1), '必须落在 0~1');
+
+	/* 响处为 1：否则整首歌的元素都缩在最小值上 */
+	const spike = normalizeEnergy(Float32Array.from({ length: 20 }, (_, i) => (i === 19 ? 1 : 0.1)));
+	assert.equal(spike[19], 1, '最响处必须被归一成 1');
+	assert.ok(spike[0] < 0.2, `其余应保持相对大小，实得 ${spike[0]}`);
+
+	/* 全长一致：长度必须与入参一一对应（索引即时间） */
+	assert.equal(flat.length, 20);
+
+	/* 全零（静音）：不能除以 0（NaN 会顺着 6 处消费者扩散成整屏 NaN） */
+	const silent = normalizeEnergy(new Float32Array(10));
+	assert.ok(silent.every((v) => v === 0), '全零必须给出全 0 而不是 NaN');
+
+	/* NaN 项当 0，不得污染整条曲线 */
+	const dirty = normalizeEnergy(Float32Array.from([0.5, NaN, 0.5, 0.5]));
+	assert.ok(dirty.every((v) => Number.isFinite(v)), 'NaN 不得扩散');
+	assert.equal(dirty[1], 0);
+});
+
+test('TC24 ★ 追加分（extra）必须转发给引擎，否则抽签池只剩 53%', () => {
+	/* 闸门是引擎 11q_sets.js:51-57 的 J.randomOk —— `d.extra && !(project.extra === true)`
+	   直接排除，判据是严格 === true。上游 defaultProject() 里它是 false，而它控制的是
+	   「首版之后新增的全部部件与 12 套风格」（引擎自己的注释：356 parts, 12 styles）。
+	   不转发 = 抽签池 486/910、转场只剩 5/27 —— 就是「画面太容易重复」的来源。 */
+	const seen = [];
+	const J = {
+		defaultProject: () => ({ style: 'noir', aspect: '16:9', fps: 24, timing: { bpm: 0, snap: true }, fx: {} }),
+		plan: (p) => { seen.push(p); return { cuts: [], lines: [] }; },
+	};
+	const lines = [{ start: 0, end: 3000, original: 'a' }];
+
+	buildJizuraPlan(J, lines, {});
+	assert.equal(seen[0].extra, true, '默认必须是 true（沿用上游的 false 就是抽签池砍半）');
+	buildJizuraPlan(J, lines, { extra: false });
+	assert.equal(seen[1].extra, false, '面板关掉时必须如实传 false');
+	buildJizuraPlan(J, lines, { extra: true });
+	assert.equal(seen[2].extra, true);
+
+	/* 指纹：改这个开关必须换键，否则切了开关画面不动 */
+	assert.notEqual(jizuraPlanKey(lines, { extra: true }), jizuraPlanKey(lines, { extra: false }),
+		'extra 必须参与 plan 指纹');
 });
 
 test('TC10 当前曲目读取：越界/非数组一律 null 且不抛（读的是 app 注册的全局）', () => {

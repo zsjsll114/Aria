@@ -1,0 +1,266 @@
+/* ============================================================
+ * settings.css — 设置面板布局组件、表单输入、硬件信息卡与视觉工坊样式
+ * 提取自原 web/index.html 内联 style 与局域 <style>，统一维护
+ * ============================================================ */
+
+/* 隐藏式文件上传触发框 */
+.setting-file-hidden {
+    display: none;
+}
+
+/* 堆叠式设置行（例如 API Key 全宽输入） */
+.setting-row--stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.setting-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-control--row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.setting-control--gap8 {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.setting-desc--pad {
+    padding: 0 4px 8px;
+}
+
+.setting-desc--warn {
+    color: rgba(255, 180, 80, 0.72);
+}
+
+.setting-desc--ok {
+    color: rgba(120, 220, 180, 0.9);
+}
+
+.setting-value--auto {
+    min-width: auto;
+}
+
+/* 统一设置表单输入框 */
+.setting-input {
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.setting-input:focus {
+    border-color: rgba(var(--aria-accent-rgb), 0.5);
+    background: rgba(255, 255, 255, 0.11);
+}
+
+.setting-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.setting-input--wide {
+    width: 240px;
+}
+
+.setting-input--lg {
+    width: 260px;
+}
+
+.setting-input--sm {
+    width: 160px;
+}
+
+.setting-input--num {
+    width: 88px;
+}
+
+.setting-input--full {
+    width: 100%;
+    padding: 9px 40px 9px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+@media (max-width: 640px) {
+    .setting-input--wide,
+    .setting-input--lg {
+        width: 100%;
+        min-width: 140px;
+    }
+}
+
+/* 密钥输入容器与显隐眼睛按钮 */
+.setting-secret-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.setting-secret-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.setting-secret-toggle:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* 按钮扩展修饰 */
+.setting-btn--nowrap {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.setting-btn--min64 {
+    min-width: 64px;
+}
+
+.setting-btn--warn {
+    color: #ffaa55;
+}
+
+.setting-btn--ml8 {
+    margin-left: 8px;
+}
+
+/* 性能页硬件信息与效果卡片 */
+.settings-hw-card {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.settings-hw-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    gap: 12px;
+}
+
+.settings-hw-row--last {
+    margin-bottom: 0;
+}
+
+.settings-hw-label {
+    color: rgba(255, 255, 255, 0.5);
+    flex-shrink: 0;
+}
+
+.settings-hw-val {
+    text-align: right;
+}
+
+.settings-hw-val--wrap {
+    word-break: break-all;
+}
+
+#hwDetails {
+    margin-top: 4px;
+}
+
+#hwDetails summary {
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 12px;
+    user-select: none;
+    list-style: none;
+    outline: none;
+    transition: color 0.15s ease;
+}
+
+#hwDetails summary::-webkit-details-marker {
+    display: none;
+}
+
+#hwDetails summary:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.settings-hw-extra {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-effects-box {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.8;
+}
+
+/* 自建服务挂载容器 */
+.settings-selfhost-host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 2px;
+}
+
+/* 关于页 Star / Issues 按钮行 */
+.about-actions-row {
+    margin: 12px 0 6px;
+    display: flex;
+    gap: 10px;
+}
+
+.about-star-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    font-family: inherit;
+    text-decoration: none;
+}
+
+.about-star-btn--secondary {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 600;
+}
+
+.settings-registry-slot {
+    display: contents;
+}

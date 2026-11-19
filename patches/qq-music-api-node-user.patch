@@ -1,3 +1,40 @@
+diff --git a/src/controllers/getSongListDetail.ts b/src/controllers/getSongListDetail.ts
+index d6e4268..c94e228 100644
+--- a/src/controllers/getSongListDetail.ts
++++ b/src/controllers/getSongListDetail.ts
+@@ -1,21 +1,29 @@
+ import { KoaContext } from '../routes/types';
+ import { songListDetail } from '../services';
++import { resolveRequestCookie } from '../util/cookieResolver';
+ import { setApiResponse, withErrorHandler } from './util';
+ 
+ const getSongListDetailController = withErrorHandler(async (ctx: KoaContext) => {
+   const disstid = ctx.query.disstid || ctx.params.disstid;
++  const dirid = ctx.query.dirid || ctx.params.dirid;
+ 
+-  if (!disstid) {
++  if (!disstid && !dirid) {
+     setApiResponse(ctx, { status: 400, body: { response: 'no disstid' } });
+     return;
+   }
+ 
++  // ★ 携带用户 Cookie，否则 QQ「我喜欢」或私密歌单返回空曲目或鉴权失败
++  const { cookie } = resolveRequestCookie(ctx);
++
+   const props = {
+     method: 'get',
+     params: {
+-      disstid
++      ...(disstid ? { disstid } : {}),
++      ...(dirid ? { dirid } : {}),
+     },
+-    option: {}
++    option: {
++      ...(cookie ? { cookie } : {}),
++    }
+   };
+ 
+   const result = await songListDetail(props);
 diff --git a/src/controllers/getUserLikedSongs.ts b/src/controllers/getUserLikedSongs.ts
 index 78525d9..09c8407 100644
 --- a/src/controllers/getUserLikedSongs.ts
@@ -30,19 +67,343 @@ index 78525d9..09c8407 100644
 -});
 +});
 \ No newline at end of file
+diff --git a/src/services/apis/songLists/songListDetail.ts b/src/services/apis/songLists/songListDetail.ts
+index c6070b3..b2e4cc5 100644
+--- a/src/services/apis/songLists/songListDetail.ts
++++ b/src/services/apis/songLists/songListDetail.ts
+@@ -1,27 +1,276 @@
+-import { handleApi } from '../../../util/apiResponse';
+-import y_common from '../y_common';
+-import type { ApiOptions } from '../../../types/api';
++import { customResponse, errorResponse } from '../../../util/apiResponse';
++import { buildLoginSession, fetchWithTimeout, getGtk, REQUEST_TIMEOUT_MS } from '../../../util/loginUtils';
++import type { ApiOptions, ApiResponse } from '../../../types/api';
+ 
+-export default async ({ method = 'get', params = {}, option = {} }: ApiOptions) => {
+-	const data = {
+-		...params,
++const QQ_UA =
++	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
++
++interface DissAuth {
++	uid: string;
++	authst: string;
++	loginType: string;
++	euin: string;
++	gtk: number;
++}
++
++function normalizeNumericUin(raw?: string): string {
++	const val = String(raw || '').trim();
++	if (!val) return '0';
++	// ptqrlogin cookie 常见 uin=o0123456789 形态，musicu 接口需要纯数字 QQ 号
++	if (/^o0*\d+$/i.test(val)) {
++		const stripped = val.replace(/^o0*/i, '');
++		return stripped || '0';
++	}
++	return val;
++}
++
++function parseDissAuth(cookie?: string): DissAuth {
++	if (!cookie) {
++		return { uid: '0', authst: '', loginType: '2', euin: '', gtk: 5381 };
++	}
++	const { cookieObject } = buildLoginSession(cookie);
++	const uid = normalizeNumericUin(cookieObject.qqmusic_uin || cookieObject.wxuin || cookieObject.uin);
++	const authst = cookieObject.qqmusic_key || cookieObject.qm_keyst || '';
++	const euin = cookieObject.euin || cookieObject.encryptUin || cookieObject.encrypt_uin || '';
++	const loginType = cookieObject.tmeLoginType || (authst.startsWith('W_X') ? '1' : '2');
++	const skey = authst || cookieObject.p_skey || cookieObject.skey || '';
++	const gtk = skey ? getGtk(skey) : 5381;
++	return { uid, authst, loginType, euin, gtk };
++}
++
++async function resolveEuinFromProfile(uid: string, cookie?: string): Promise<string> {
++	if (!uid || uid === '0' || !cookie) return '';
++	try {
++		const qs = new URLSearchParams({
++			_: String(Date.now()),
++			cv: '4747474',
++			ct: '24',
++			format: 'json',
++			inCharset: 'utf-8',
++			outCharset: 'utf-8',
++			notice: '0',
++			platform: 'yqq.json',
++			needNewCode: '0',
++			uin: uid,
++			userid: uid,
++			cid: '205360838',
++			reqfrom: '1',
++			reqtype: '0',
++			hostUin: '0',
++			loginUin: uid,
++		});
++		const resp = await fetchWithTimeout(
++			`https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?${qs.toString()}`,
++			{
++				headers: {
++					'User-Agent': QQ_UA,
++					Referer: `https://y.qq.com/portal/profile.html?uin=${uid}`,
++					Cookie: cookie,
++				},
++			},
++			REQUEST_TIMEOUT_MS,
++		);
++		const json = (await resp.json()) as Record<string, any>;
++		const creator = json?.data?.creator || {};
++		return String(creator.encrypt_uin || creator.encryptUin || creator.euin || '').trim();
++	} catch {
++		return '';
++	}
++}
++
++async function fetchDissViaMusicu(params: {
++	disstid?: string | number;
++	dirid?: number;
++	cookie?: string;
++}): Promise<Record<string, any> | null> {
++	const { cookie } = params;
++	const auth = parseDissAuth(cookie);
++	const rawDisstid = Number(params.disstid) || 0;
++	const numDirid = Number(params.dirid) || (rawDisstid === 0 ? 201 : 0);
++	// "我喜欢"(dirid=201) 在 QQ musicu CgiGetDiss 中通常要求 disstid=0，若传入 tid/非零值可能返回空歌单
++	const numDisstid = numDirid === 201 ? 0 : rawDisstid;
++	const encHostUin = auth.euin || (numDirid === 201 ? await resolveEuinFromProfile(auth.uid, cookie) : '');
++
++	const comm: Record<string, any> = {
++		cv: 13020508,
++		v: 13020508,
++		ct: '11',
++		tmeAppID: 'qqmusic',
+ 		format: 'json',
++		inCharset: 'utf-8',
+ 		outCharset: 'utf-8',
+-		type: 1,
+-		json: 1,
+-		utf8: 1,
+-		onlysong: 0,
+-		new_format: 1
++		uid: auth.uid,
++		loginUin: auth.uid,
+ 	};
+-	const options = {
+-		...option,
+-		params: data
++	if (auth.uid !== '0') comm.qq = auth.uid;
++	if (auth.authst) {
++		comm.authst = auth.authst;
++		comm.tmeLoginType = auth.loginType;
++	}
++
++	const pageSize = 200;
++	const maxSongs = 2000;
++	let songBegin = 0;
++	let dirinfo: Record<string, any> | null = null;
++	let totalNum = 0;
++	const allSongs: any[] = [];
++
++	while (songBegin < maxSongs) {
++		const body = {
++			comm,
++			diss: {
++				module: 'music.srfDissInfo.DissInfo',
++				method: 'CgiGetDiss',
++				param: {
++					disstid: numDisstid,
++					...(numDirid ? { dirid: numDirid } : {}),
++					tag: true,
++					song_begin: songBegin,
++					song_num: pageSize,
++					userinfo: true,
++					orderlist: true,
++					...(encHostUin ? { enc_host_uin: encHostUin } : {}),
++				},
++			},
++		};
++		const resp = await fetchWithTimeout(
++			'https://u.y.qq.com/cgi-bin/musicu.fcg',
++			{
++				method: 'POST',
++				headers: {
++					'Content-Type': 'application/json',
++					'User-Agent': QQ_UA,
++					Referer: 'https://y.qq.com/',
++					Origin: 'https://y.qq.com',
++					...(cookie ? { Cookie: cookie } : {}),
++				},
++				body: JSON.stringify(body),
++			},
++			REQUEST_TIMEOUT_MS,
++		);
++		const json = (await resp.json()) as Record<string, any>;
++		const mod = json?.diss;
++		if (!mod || mod.code !== 0 || !mod.data) {
++			if (songBegin === 0) return null;
++			break;
++		}
++		const d = mod.data;
++		if (!dirinfo && d.dirinfo) dirinfo = d.dirinfo;
++		totalNum = Number(d.total_song_num ?? d.dirinfo?.songnum ?? 0);
++		const batch = Array.isArray(d.songlist) ? d.songlist : [];
++		allSongs.push(...batch);
++		if (batch.length < pageSize || (totalNum > 0 && allSongs.length >= totalNum)) {
++			break;
++		}
++		songBegin += batch.length;
++	}
++
++	const info = dirinfo || {};
++	return {
++		code: 0,
++		subcode: 0,
++		total_song_num: totalNum || allSongs.length,
++		cdlist: [
++			{
++				...info,
++				dirid: Number(info.dirid ?? numDirid ?? 0),
++				disstid: String(info.id || numDisstid || ''),
++				dissname: info.title || (numDirid === 201 ? '我喜欢' : ''),
++				songnum: info.songnum ?? totalNum ?? allSongs.length,
++				songlist: allSongs,
++			},
++		],
+ 	};
+-	return handleApi(
+-		y_common({
+-			url: '/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg',
+-			method: method,
+-			options
+-		})
+-	);
++}
++
++export default async ({ params = {}, option = {} }: ApiOptions): Promise<ApiResponse> => {
++	const disstid = params.disstid != null ? String(params.disstid) : '';
++	const dirid = params.dirid != null ? Number(params.dirid) : 0;
++	const cookie = typeof (option as any)?.cookie === 'string' ? (option as any).cookie : '';
++	const auth = parseDissAuth(cookie);
++
++	try {
++		// 若明确按 dirid=201("我喜欢") 或仅按 dirid 查询且已登录，优先走 musicu CgiGetDiss（支持私密/微信登录态）
++		if (cookie && (dirid === 201 || !disstid || disstid === '0')) {
++			const musicu = await fetchDissViaMusicu({ disstid: 0, dirid: dirid || 201, cookie });
++			const musicuSongs = musicu?.cdlist?.[0]?.songlist;
++			if (musicu && musicu.cdlist?.length && (Array.isArray(musicuSongs) && (musicuSongs.length > 0 || !disstid || disstid === '0'))) {
++				return customResponse({ response: musicu }, 200);
++			}
++			// 若传了非零 disstid 且 disstid:0 空，补充以原 disstid 再试一次 musicu
++			if (disstid && disstid !== '0') {
++				const alt = await fetchDissViaMusicu({ disstid, dirid: 0, cookie });
++				if (alt && alt.cdlist?.[0]?.songlist?.length) {
++					return customResponse({ response: alt }, 200);
++				}
++			}
++			if (musicu && musicu.cdlist?.length && !disstid) {
++				return customResponse({ response: musicu }, 200);
++			}
++		}
++
++		// 常规按 disstid 查询 c.y.qq.com（使用 undici fetch 携带 Cookie 与正确 loginUin）
++		let cpData: Record<string, any> | null = null;
++		let cpLooksLikeLiked = false;
++		if (disstid && disstid !== '0') {
++			const qs = new URLSearchParams({
++				disstid,
++				format: 'json',
++				inCharset: 'utf8',
++				outCharset: 'utf-8',
++				type: '1',
++				json: '1',
++				utf8: '1',
++				onlysong: '0',
++				new_format: '1',
++				g_tk: String(auth.gtk),
++				loginUin: auth.uid,
++				hostUin: '0',
++				notice: '0',
++				platform: 'yqq.json',
++				needNewCode: '0',
++			});
++			const url = `https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?${qs.toString()}`;
++			const resp = await fetchWithTimeout(
++				url,
++				{
++					headers: {
++						'User-Agent': QQ_UA,
++						Referer: 'https://y.qq.com/',
++						Origin: 'https://y.qq.com',
++						...(cookie ? { Cookie: cookie } : {}),
++					},
++				},
++				REQUEST_TIMEOUT_MS,
++			);
++			cpData = (await resp.json()) as Record<string, any>;
++			const cd = Array.isArray(cpData?.cdlist) ? cpData.cdlist[0] : null;
++			const songs = Array.isArray(cd?.songlist) ? cd.songlist : [];
++			const declaredCount = Number(cd?.songnum ?? 0);
++			cpLooksLikeLiked = Boolean(Number(cd?.dirid) === 201 || (typeof cd?.dissname === 'string' && cd.dissname.includes('喜欢')));
++			if (cpData?.code === 0 && cd && (songs.length > 0 || (declaredCount === 0 && dirid !== 201))) {
++				return customResponse({ response: cpData }, 200);
++			}
++		}
++
++		// 兜底：若 c.y.qq.com 失败或有 cookie 但 songlist 为空，改用 u.y.qq.com DissInfo.CgiGetDiss
++		// 若 cpData 已明确指向"我喜欢"(有封面/songnum 但无曲目)，按 dirid=201 补全曲目
++		const fallbackDirid = cpLooksLikeLiked ? 201 : dirid;
++		const fallback = await fetchDissViaMusicu({ disstid: cpLooksLikeLiked ? 0 : (disstid || 0), dirid: fallbackDirid, cookie });
++		const fbCd = fallback?.cdlist?.[0];
++		const fbMatchedId = Boolean(fbCd?.id && String(fbCd.id) === disstid);
++		const isMisroutedLiked = Boolean(
++			!cpLooksLikeLiked && disstid && disstid !== '0' && dirid !== 201 && Number(fbCd?.dirid) === 201 && !fbMatchedId,
++		);
++		if (fallback && fallback.cdlist?.length && !isMisroutedLiked) {
++			return customResponse({ response: fallback }, 200);
++		}
++
++		if (cpData) {
++			return customResponse({ response: cpData }, 200);
++		}
++		return errorResponse('获取歌单详情失败', 502);
++	} catch (error) {
++		return errorResponse(error instanceof Error ? error.message : '获取歌单详情失败', 502);
++	}
+ };
+diff --git a/src/services/apis/user/checkQQLoginQr.ts b/src/services/apis/user/checkQQLoginQr.ts
+index b612822..3879323 100644
+--- a/src/services/apis/user/checkQQLoginQr.ts
++++ b/src/services/apis/user/checkQQLoginQr.ts
+@@ -186,8 +186,15 @@ const checkQQLoginQr: ApiFunction = async ({ params = {} }: ApiOptions): Promise
+ 		const loginResponseText = await loginRes.text();
+ 		const euin = extractEncryptedUin(loginResponseText);
+ 
+-		const sessionCookie = allCookie().join('; ');
+-		const session = { ...buildLoginSession(sessionCookie), ...(euin ? { euin } : {}) };
++		const rawCookie = allCookie().join('; ');
++		const extraPairs: string[] = [];
++		if (euin && !/(?:^|;\s*)(?:euin|encryptUin|encrypt_uin)=/.test(rawCookie)) {
++			extraPairs.push(`euin=${euin}`);
++		}
++		const sessionCookie = extraPairs.length ? `${rawCookie}; ${extraPairs.join('; ')}` : rawCookie;
++		const baseSession = buildLoginSession(sessionCookie);
++		const cleanUin = /^o0*\d+$/i.test(baseSession.uin) ? baseSession.uin.replace(/^o0*/i, '') : baseSession.uin;
++		const session = { ...baseSession, ...(cleanUin ? { uin: cleanUin, loginUin: cleanUin } : {}), ...(euin ? { euin } : {}) };
+ 
+ 		return customResponse(
+ 			{
 diff --git a/src/services/apis/user/getUserLikedSongs.ts b/src/services/apis/user/getUserLikedSongs.ts
-index 1bfe54e..16ecd87 100644
+index 1bfe54e..43f4ab2 100644
 --- a/src/services/apis/user/getUserLikedSongs.ts
 +++ b/src/services/apis/user/getUserLikedSongs.ts
 @@ -1,6 +1,5 @@
 -import request from '../../../util/request';
 -import { getUserInfo } from '../../../config/user-info-store';
  import { customResponse, errorResponse } from '../../../util/apiResponse';
-+import { fetchWithTimeout, REQUEST_TIMEOUT_MS } from '../../../util/loginUtils';
++import { buildLoginSession, fetchWithTimeout, REQUEST_TIMEOUT_MS } from '../../../util/loginUtils';
  import type { ApiResponse } from '../../../types/api';
  
  const DEBUG_ENABLED = process.env.DEBUG === 'true';
-@@ -11,66 +10,68 @@ const debugLog = (message: string, payload?: unknown) => {
+@@ -11,66 +10,69 @@ const debugLog = (message: string, payload?: unknown) => {
  	}
  };
  
@@ -59,7 +420,8 @@ index 1bfe54e..16ecd87 100644
 +	cookie?: string;
  }): Promise<ApiResponse> => {
 -	const { uin, offset = 0, limit = 30 } = params;
-+	const { uin, offset = 0, limit = 30, cookie } = params;
++	const { uin: rawUin, offset = 0, limit = 30, cookie } = params;
++	const uin = /^o0*\d+$/i.test(String(rawUin || '')) ? String(rawUin).replace(/^o0*/i, '') : String(rawUin || '');
  	const page = Math.floor(offset / limit) + 1;
  
  	// 使用 c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg 接口
@@ -145,7 +507,74 @@ index 1bfe54e..16ecd87 100644
  
  		debugLog('upstream payload summary', {
  			topLevelKeys: payload && typeof payload === 'object' ? Object.keys(payload) : null,
-@@ -120,9 +121,8 @@ export const getUserLikedSongs = async (params: {
+@@ -101,6 +103,66 @@ export const getUserLikedSongs = async (params: {
+ 			});
+ 		}
+ 
++		// 若 profile_homepage 未返回 mymusic 且持有登录 cookie，回退 music.musicasset.PlaylistBaseRead 查找 dirId=201
++		if (!likedSongsInfo && cookie) {
++			try {
++				const { cookieObject } = buildLoginSession(cookie);
++				const rawAuth = cookieObject.qqmusic_uin || cookieObject.wxuin || cookieObject.uin || uin;
++				const authUid = /^o0*\d+$/i.test(String(rawAuth)) ? String(rawAuth).replace(/^o0*/i, '') : String(rawAuth);
++				const authst = cookieObject.qqmusic_key || cookieObject.qm_keyst || '';
++				const loginType = cookieObject.tmeLoginType || (authst.startsWith('W_X') ? '1' : '2');
++				const mRes = await fetchWithTimeout(
++					'https://u.y.qq.com/cgi-bin/musicu.fcg',
++					{
++						method: 'POST',
++						headers: {
++							'Content-Type': 'application/json',
++							'User-Agent': PROFILE_UA,
++							Referer: 'https://y.qq.com/',
++							Origin: 'https://y.qq.com',
++							Cookie: cookie,
++						},
++						body: JSON.stringify({
++							comm: {
++								cv: 13020508,
++								v: 13020508,
++								ct: '11',
++								tmeAppID: 'qqmusic',
++								format: 'json',
++								uid: authUid,
++								qq: authUid,
++								...(authst ? { authst, tmeLoginType: loginType } : {}),
++								loginUin: authUid,
++							},
++							pl: {
++								module: 'music.musicasset.PlaylistBaseRead',
++								method: 'GetPlaylistByUin',
++								param: { uin: authUid },
++							},
++						}),
++					},
++					REQUEST_TIMEOUT_MS,
++				);
++				const mData = (await mRes.json()) as Record<string, any>;
++				const vpl = mData?.pl?.data?.v_playlist;
++				if (Array.isArray(vpl)) {
++					const favDir = vpl.find((x: any) => Number(x?.dirId) === 201 || (x?.dirName || '').includes('喜欢'));
++					if (favDir) {
++						likedSongsInfo = {
++							id: String(favDir.tid || '0'),
++							title: favDir.dirName || '我喜欢',
++							num0: Number(favDir.songNum || 0),
++							num1: 0,
++							num2: 0,
++							picurl: favDir.picUrl || favDir.bigpicUrl || '',
++						};
++					}
++				}
++			} catch (fallbackErr) {
++				debugLog('GetPlaylistByUin fallback skipped', fallbackErr);
++			}
++		}
++
+ 		debugLog('liked songs info', likedSongsInfo);
+ 
+ 		if (!likedSongsInfo) {
+@@ -120,9 +182,8 @@ export const getUserLikedSongs = async (params: {
  			);
  		}
  
@@ -157,7 +586,7 @@ index 1bfe54e..16ecd87 100644
  		return customResponse(
  			{
  				response: {
-@@ -137,6 +137,7 @@ export const getUserLikedSongs = async (params: {
+@@ -137,6 +198,7 @@ export const getUserLikedSongs = async (params: {
  							albumCount: likedSongsInfo.num1,
  							playlistCount: likedSongsInfo.num2,
  							id: likedSongsInfo.id,
@@ -165,7 +594,7 @@ index 1bfe54e..16ecd87 100644
  						},
  					},
  				},
-@@ -147,4 +148,4 @@ export const getUserLikedSongs = async (params: {
+@@ -147,4 +209,4 @@ export const getUserLikedSongs = async (params: {
  		console.error('获取用户喜欢的歌曲失败:', error);
  		return errorResponse(error, 502);
  	}

@@ -4,7 +4,7 @@
  * 需求：向各音源接口发**轻量**请求，显示成功/失败与延迟。
  *
  * 为什么用 `mode: 'no-cors'`：
- *   各 vendor（QQ:3200 / 酷狗:3100 / 网易:3201 / 汽水:3300）都是**独立端口**，
+ *   各 vendor（QQ:3200 / 酷狗:3100 / 网易:3201）都是**独立端口**，
  *   对页面（127.0.0.1:8001）而言是跨源。要么改 server.py 加统一探测端点
  *   （要重打包 exe，记忆里的规矩是"能不动就不动"），要么让浏览器发 no-cors 请求。
  *   后端是我们自己的本机进程、只发 GET 根路径，no-cors 完全够用：
@@ -18,13 +18,12 @@
  *   别让用户以为是软件坏了。
  * ============================================================ */
 
-/** 默认探测目标。id 与 selfhost 的平台键保持一致的地方就复用（qq/kugou/netease/qishui）。 */
+/** 默认探测目标。id 与 selfhost 的平台键保持一致的地方就复用（qq/kugou/netease）。 */
 export const SOURCE_PROBES = [
     { id: 'server', label: '本机主服务', url: '/api/selfhost/status', sameOrigin: true, timeoutMs: 8000 },
     { id: 'qq', label: 'QQ 音乐', url: 'http://127.0.0.1:3200/' },
     { id: 'kugou', label: '酷狗音乐', url: 'http://127.0.0.1:3100/' },
     { id: 'netease', label: '网易云音乐', url: 'http://127.0.0.1:3201/' },
-    { id: 'qishui', label: '汽水音乐', url: 'http://127.0.0.1:3300/' },
     { id: 'public', label: '公网兜底（vkeys）', url: 'https://api.vkeys.cn/', publicNet: true, timeoutMs: 5000 },
 ];
 
@@ -108,7 +107,7 @@ export async function probeAll(items, timeoutMs) {
 /** @param {any} data 自建服务的 JSON 响应 */
 function summarizeSelfHost(data) {
     if (!data || typeof data !== 'object') return '';
-    const keys = ['qq', 'kugou', 'netease', 'qishui'];
+    const keys = ['qq', 'kugou', 'netease'];
     const bits = [];
     for (const k of keys) {
         const s = data[k];

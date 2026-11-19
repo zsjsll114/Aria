@@ -1,28 +1,21 @@
-# docs/screenshots —— README 首屏素材
+# docs/screenshots —— README 首屏素材（v3.0.0）
 
-README「十种歌词视觉」区块的截图占位已按本目录命名预留，图片放入后取消
-README 中的注释即可展示。
+本目录存放 `README.md` 与 `README.en.md` 展示的真实界面截图。
 
-## 命名规范（与 README 引用一一对应）
+## 文件清单
 
 | 文件名 | 内容 |
 |---|---|
-| lyrics1.png / lyrics2.png | 歌词模式（默认逐字高亮，两张可并排） |
-| flyin.png | 飞入 |
-| wordcloud.png | 词云 |
-| pv.png | PV 分镜 |
-| mondrian.png | 蒙德里安（含纵深穿梭） |
-| letterpress.png | 活字 |
-| neon.png | 霓虹 |
-| dimension.png | 浮空（待补） |
-
-| desktop-lyrics.png | 桌面歌词（可选） |
-
-## 拍摄建议
-
-- **同一首歌、同一段副歌**拍全部模式——九张图风格统一，首屏观感翻倍
-- 尺寸 1920×1080（或窗口等比），PNG 格式；深色封面/夜色氛围的歌最能体现
-  活字、霓虹、蒙德里安的质感
-- PV / 蒙德里安 / 霓虹开 AI 情绪分析后再截（构图与配色贴合歌词情绪）
-- 视频（可选）：每个模式 5~10 秒 mp4 放本目录或 Release 附件，
-  README 用 `<video>` 或链接引用
+| vitrail.jpg | 琉璃龛 · Vitrail（WebGL2 3D 光学圣殿） |
+| focalcut.jpg | 镜幕 · FocalCut（2.5D 建筑展墙与光学扫字） |
+| prism.jpg | 棱镜 · Prism（多镜头光学切面折射） |
+| folio.jpg | 画册 · Folio（瑞士天体海报构图） |
+| letterpress.jpg | 活字 · Letterpress（铅字字盘矩阵与棉纸压印） |
+| jizura.jpg | 字面 · Jizura（日系动态文字 PV） |
+| verse.jpg | 诗镜 · Verse（多镜头歌词影像） |
+| wordcloud.jpg | 云涌 · WordCloud（星轨词云与景深虚化） |
+| mondrian.png | 格律 · Mondrian（蒙德里安色块拼画） |
+| flyin.jpg | 飞白 · Fly-In（巨幕逐字飞入） |
+| lyrics.jpg | 拾光 · Lyrics（沉浸逐字歌词） |
+| cover.jpg | 默认模式 · Default（封面与歌词并排） |
+| artist-page-01-songs.png / artist-page-02-albums.png | 歌手页（单曲 / 专辑） |

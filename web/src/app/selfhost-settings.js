@@ -9,13 +9,19 @@
  * - 偏好持久化到 localStorage：selfhost_prefs
  * 依赖 server.py 的 /api/selfhost/* 路由 + 各平台 vendor 副进程。
  * ============================================================ */
-const PLATFORMS = ['kugou', 'qq', 'netease', 'qishui'];
-import { kugouTodayStr, updateSelfHostBadge } from './selfhost-runtime.js';
+const PLATFORMS = ['kugou', 'qq', 'netease'];
+import { getSelfhostOptions, invalidateSelfhostCaches, kugouTodayStr, saveSelfhostOption, startSelfhostService, updateSelfHostBadge } from './selfhost-runtime.js';
+import { mountDropdown } from '../ui/settingsPrimitives.js';
 import { esc } from '../utils/formatters.js';
-const PLATFORM_LABEL = { kugou: '酷狗音乐', qq: 'QQ音乐', netease: '网易云音乐', qishui: '汽水音乐' };
-/* 官方平台图标（用户放入 src/img，已同步到 web/src/img）
-   ★ 汽水暂无图标文件：这里刻意不给 'qishui' 占位，platformIconImg 会返回空串
-     （面板只显示名称）。指向一个不存在的文件只会渲染出裂图。 */
+import { logCatch } from '../services/log.js';
+const PLATFORM_LABEL = { kugou: '酷狗音乐', qq: 'QQ音乐', netease: '网易云音乐' };
+const PLATFORM_PORTS = { kugou: 3100, qq: 3200, netease: 3201 };
+const PLATFORM_CAPS = {
+  kugou: '搜索兜底 · KRC 逐字歌词 · 日推 · 云端歌单(可建删/移除) · 签到领 VIP（播放走公网）',
+  qq: '搜索 · 逐字歌词 · 日推 · 歌单/收藏(只读) · 高音质播放 · 歌手页',
+  netease: '搜索 · 逐字歌词 · 日推 · 云端歌单(可建删/编辑) · 红心收藏 · 高音质播放 · 歌手页',
+};
+/* 官方平台图标（用户放入 src/img，已同步到 web/src/img） */
 const PLATFORM_ICON_SRC = { kugou: 'src/img/KugouMusicIcon.svg', qq: 'src/img/QQMusicIcon.svg', netease: 'src/img/NeteaseMusicIcon.svg', kuwo: 'src/img/KuwoMusicIcon.svg' };
 function platformIconImg(name, size = 18) {
   const src = PLATFORM_ICON_SRC[name];
@@ -81,23 +87,53 @@ export function initSelfhostSection() {
   const prefs = loadPrefs();
   const myId = ++_selfhostRenderId;
 
-  // 顶部说明
+  // 顶部标题与快捷操作条
+  const topBar = document.createElement('div');
+  topBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;';
   const tip = document.createElement('div');
   tip.className = 'settings-group-title';
+  tip.style.margin = '0';
   tip.textContent = '自建服务（需 Node.js）';
-  host.appendChild(tip);
+  topBar.appendChild(tip);
+
+  const topRight = document.createElement('div');
+  topRight.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const summaryBadge = document.createElement('span');
+  summaryBadge.className = 'setting-desc';
+  summaryBadge.style.cssText = 'margin:0;font-size:11px;opacity:.75;';
+  summaryBadge.textContent = '状态检测中…';
+  topRight.appendChild(summaryBadge);
+
+  const openFavBtn = document.createElement('button');
+  openFavBtn.className = 'setting-btn';
+  openFavBtn.style.cssText = 'padding:4px 10px;font-size:11px;';
+  openFavBtn.textContent = '自建收藏';
+  openFavBtn.addEventListener('click', () => {
+    if (typeof window.openSelfFavorites === 'function') window.openSelfFavorites(state.active);
+  });
+  topRight.appendChild(openFavBtn);
+
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'setting-btn';
+  refreshBtn.style.cssText = 'padding:4px 10px;font-size:11px;';
+  refreshBtn.textContent = '刷新状态';
+  refreshBtn.addEventListener('click', () => {
+    invalidateSelfhostCaches();
+    initSelfhostSection();
+  });
+  topRight.appendChild(refreshBtn);
+  topBar.appendChild(topRight);
+  host.appendChild(topBar);
+
   const tipDesc = document.createElement('div');
   tipDesc.className = 'setting-desc';
-  tipDesc.style.cssText = 'margin:-2px 0 12px;padding-left:4px;';
+  tipDesc.style.cssText = 'margin:2px 0 12px;padding-left:4px;';
   tipDesc.textContent = '登录后日推/收藏/高音质走自建接口；无 VIP 试听链自动回退免费源池。扫码一次长期有效（登录态自动保存）。'
-    + '注意：扫码只是「登录」，各平台的启用开关还决定「哪些功能真的走自建」——QQ 的取播放链接也受其开关控制，酷狗目前只有日推/收藏走自建（播放链接仍走公网）。'
-    + '酷狗若扫码后仍提示需要验证，可在登录弹窗改用「手机号」短信验证码登录。'
-    + '汽水音乐的搜索与逐字歌词匿名就能用，只有播放需要扫码登录；登录态由本机服务保管，重启不用重扫。';
+    + '各平台启用开关决定对应功能是否优先自建：QQ 覆盖日推/收藏/歌单与取播放链接；酷狗覆盖日推/歌单/签到/KRC歌词兜底（播放链接仍走公网）；'
+    + '网易云覆盖日推/红心/云端歌单与高音质播放。';
   host.appendChild(tipDesc);
 
-  /* 三平台分栏：Tab 头 + 内容区 */
-  const tabWrap = document.createElement('div');
-  tabWrap.className = 'settings-group';
+  /* 四平台分栏：Tab 头 + 内容区 */
   const tabBar = document.createElement('div');
   tabBar.className = 'setting-btn-group';
   tabBar.style.cssText = 'justify-content:flex-start;margin-bottom:10px;flex-wrap:wrap;';
@@ -119,15 +155,21 @@ export function initSelfhostSection() {
     b.addEventListener('click', () => showTab(name));
     return b;
   };
-  /* ★ 首帧立即渲染：不等待 /api/selfhost/status 网络往返，控件立即可交互；
-     在线/登录徽标随后异步刷新（后端已预启动时此间隔仅数百毫秒） */
+  /* ★ 首帧立即渲染：不等待 /api/selfhost/status 网络往返，控件立即可交互 */
   PLATFORMS.forEach(name => tabBar.appendChild(tabBtn(name, null)));
   host.appendChild(tabBar);
   host.appendChild(bodyWrap);
   showTab(state.active, null);
   getStatus().then(status => {
     if (myId !== _selfhostRenderId) return; // 过期版本，丢弃
-    /* 更新三平台「已登录」徽标，并重建当前激活面板的实时状态区 */
+    if (status) {
+      const aliveCnt = PLATFORMS.filter(n => status[n] && status[n].alive).length;
+      const loginCnt = PLATFORMS.filter(n => status[n] && status[n].loggedIn).length;
+      summaryBadge.textContent = `在线 ${aliveCnt}/${PLATFORMS.length} · 已登录 ${loginCnt}/${PLATFORMS.length}`;
+    } else {
+      summaryBadge.textContent = '后端未连接';
+    }
+    /* 更新平台「已登录」徽标，并重建当前激活面板的实时状态区 */
     PLATFORMS.forEach(name => {
       const b = tabBar.querySelector(`.setting-btn[data-sname="${name}"]`);
       if (b) {
@@ -136,33 +178,57 @@ export function initSelfhostSection() {
       }
     });
     if (status) showTab(state.active, status);
-    try { updateSelfHostBadge(); } catch (e) { /* ignore */ }
-    // ★ 若有副进程尚未就绪，后台拉起中 → 延迟重刷一次
+    else syncSelfhostI18n();
+    try { updateSelfHostBadge(); } catch (e) { logCatch('selfhostSettings', e); }
+    // ★ 若有副进程处于启动中（且无持久化启动失败 error），延迟重刷一次
     if (status) {
-      const pending = PLATFORMS.some(n => status[n] && status[n].hasSource && !status[n].alive);
+      const pending = PLATFORMS.some(n => status[n] && status[n].hasSource && !status[n].alive && (status[n].starting || !status[n].error));
       if (pending) setTimeout(() => { if (myId === _selfhostRenderId) initSelfhostSection(); }, 4000);
     }
-  }).catch(() => { /* 离线场景保持占位骨架，可交互 */ });
+  }).catch((e) => {
+    logCatch('selfhostSettings', e);
+    summaryBadge.textContent = '状态获取失败';
+    syncSelfhostI18n();
+  });
 }
 
 /* 当前激活的 Tab（模块级缓存，切换设置页后保留） */
 let selfTabActive = 'netease';
 
+function syncSelfhostI18n() {
+  try {
+    const api = globalThis.AriaI18n;
+    if (api && typeof api.applyLanguageToUiRoots === 'function') {
+      api.applyLanguageToUiRoots('#selfhostContainer');
+    }
+  } catch (e) { logCatch('selfhostSettings', e); }
+}
+
 function renderTabBody(bodyWrap, name, status) {
+  bodyWrap.dataset.activePlat = name;
   bodyWrap.innerHTML = '';
   /* status === null → 首帧占位（外层已异步刷新）；status === undefined → 点击 tab 主动拉取；
      status 有值 → 直接用传入状态，不重复请求 */
   if (status === null) {
     bodyWrap.appendChild(buildPlatformPanel(name, null, loadPrefs()));
+    syncSelfhostI18n();
     return;
   }
   if (status) {
     bodyWrap.appendChild(buildPlatformPanel(name, status[name] || null, loadPrefs()));
+    syncSelfhostI18n();
   } else {
     getStatus().then(s => {
+      if (bodyWrap.dataset.activePlat !== name) return;
+      bodyWrap.innerHTML = '';
       bodyWrap.appendChild(buildPlatformPanel(name, s ? s[name] : null, loadPrefs()));
-    }).catch(() => {
+      syncSelfhostI18n();
+    }).catch((e) => {
+      logCatch('selfhostSettings', e);
+      if (bodyWrap.dataset.activePlat !== name) return;
+      bodyWrap.innerHTML = '';
       bodyWrap.appendChild(buildPlatformPanel(name, null, loadPrefs()));
+      syncSelfhostI18n();
     });
   }
 }
@@ -173,67 +239,130 @@ function buildPlatformPanel(name, st, prefs) {
 
   const enabled = !!(prefs.enabled && prefs.enabled[name]);
   const alive = !!(st && st.alive);
+  const starting = !!(st && st.starting);
   const hasSource = !!(st && st.hasSource);
   const loggedIn = !!(st && st.loggedIn);
+  const port = (st && st.port) || PLATFORM_PORTS[name] || '';
 
-  // 标题行：图标 + 名称 + 存活状态 + 启用开关
+  // 标题行：图标 + 名称 + 端口 + 存活状态 + 启动/重启 + 启用开关
   const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+  head.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;';
   const icon = document.createElement('span');
   icon.innerHTML = platformIconImg(name, 18);
   icon.style.cssText = 'opacity:.95;flex:0 0 auto;display:inline-flex;';
   head.appendChild(icon);
   const nameEl = document.createElement('span');
-  nameEl.style.cssText = 'font-weight:600;font-size:13px;';
+  nameEl.className = 'setting-label';
+  nameEl.style.cssText = 'font-weight:600;font-size:13px;margin:0;';
   nameEl.textContent = PLATFORM_LABEL[name];
   head.appendChild(nameEl);
+  if (port) {
+    const portEl = document.createElement('span');
+    portEl.className = 'setting-desc';
+    portEl.style.cssText = 'margin:0;font-size:10px;opacity:.55;font-family:monospace;';
+    portEl.textContent = `:${port}`;
+    head.appendChild(portEl);
+  }
   const dot = document.createElement('span');
   dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:${
-    hasSource ? (alive ? '#4cd964' : '#ff3b30') : '#9a9a9a'};`;
-  dot.title = !hasSource ? '本地组件缺失' : (!alive ? '服务未启动' : '本地服务运行中');
+    hasSource ? (alive ? '#4cd964' : (starting ? '#ff9f0a' : '#ff3b30')) : '#9a9a9a'};`;
+  dot.title = !hasSource ? '本地组件缺失' : (alive ? '本地服务运行中' : (starting ? '服务启动中' : '服务未启动'));
   head.appendChild(dot);
   const badge = document.createElement('span');
   badge.className = 'setting-desc';
   badge.style.cssText = 'margin:0;font-size:11px;';
-  badge.textContent = !hasSource ? '未安装' : (alive ? '本地运行中' : '离线');
+  badge.textContent = !hasSource ? '未安装' : (alive ? '本地运行中' : (starting ? '启动中…' : '离线'));
   head.appendChild(badge);
-  head.appendChild(Object.assign(document.createElement('div'), { style: 'flex:1;' }));
-  /* ★ 汽水不给启用开关：它的搜索源就是本机服务、播放也只有这一条路，
-     开关盖不到任何分支 —— 摆一个按了没反应的开关比没有更糟（用户会以为
-     「关了就不走自建」，实际照走）。登录态行照旧。 */
-  if (name !== 'qishui') {
-    const tog = document.createElement('button');
-    tog.className = 'setting-toggle' + (enabled ? ' on' : '');
-    /* ★ 开关的真实作用域三平台并不一致（详见 selfhost-runtime.js）：
-       · QQ     — 日推/收藏 + **取播放链接**（selfhostQQPlayUrl 以此开关为闸门）
-       · 网易云 — 日推/收藏/歌单；取播放链接只看副进程是否在线，不受此开关影响
-       · 酷狗   — 日推/收藏/签到；**没有**自建取播放链接，播放仍走公网源
-       旧文案只写「日推/收藏优先」，于是「扫码登录了却还走在线源」无从解释。 */
-    tog.title = {
-      qq: '启用 QQ 自建：日推/收藏 + 取播放链接都走本机（关掉则取链接退回在线源池）',
-      netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求本地服务在线，不受此开关影响）',
-      kugou: '启用酷狗自建：日推/收藏/签到走本机（酷狗暂无自建取播放链接，播放仍走公网源）',
-    }[name] || '启用该平台自建';
-    tog.addEventListener('click', () => {
-      const v = !tog.classList.contains('on');
-      tog.classList.toggle('on', v);
-      prefs.enabled = prefs.enabled || {}; prefs.enabled[name] = v; savePrefs(prefs);
-    });
-    head.appendChild(tog);
+  if (st && st.exposed) {
+    const expBadge = document.createElement('span');
+    expBadge.className = 'setting-desc';
+    expBadge.style.cssText = 'margin:0;font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(255,59,48,.18);color:#ff6961;border:1px solid rgba(255,59,48,.35);';
+    expBadge.title = '检测到非回环端口暴露风险，建议重启服务以应用 127.0.0.1 监听隔离';
+    expBadge.textContent = '端口暴露风险';
+    head.appendChild(expBadge);
   }
+  head.appendChild(Object.assign(document.createElement('div'), { style: 'flex:1;' }));
+
+  if (hasSource) {
+    const svcBtn = document.createElement('button');
+    svcBtn.className = 'setting-btn';
+    svcBtn.style.cssText = 'padding:3px 9px;font-size:11px;';
+    svcBtn.textContent = starting ? '启动中…' : (alive ? '重启' : '启动服务');
+    svcBtn.disabled = starting;
+    svcBtn.addEventListener('click', async () => {
+      svcBtn.disabled = true;
+      svcBtn.textContent = alive ? '重启中…' : '启动中…';
+      await startSelfhostService(name, alive);
+      invalidateSelfhostCaches();
+      initSelfhostSection();
+    });
+    head.appendChild(svcBtn);
+  }
+
+  const tog = document.createElement('button');
+  tog.className = 'setting-toggle' + (enabled ? ' on' : '');
+  tog.title = {
+    qq: '启用 QQ 自建：日推/收藏 + 取播放链接都走本机（关掉则取链接退回在线源池）',
+    netease: '启用网易云自建：日推/收藏/歌单走本机（取播放链接只要求本地服务在线，不受此开关影响）',
+    kugou: '启用酷狗自建：日推/收藏/签到走本机（酷狗暂无自建取播放链接，播放仍走公网源）',
+  }[name] || '启用该平台自建';
+  tog.addEventListener('click', () => {
+    const v = !tog.classList.contains('on');
+    tog.classList.toggle('on', v);
+    prefs.enabled = prefs.enabled || {}; prefs.enabled[name] = v; savePrefs(prefs);
+    invalidateSelfhostCaches();
+  });
+  head.appendChild(tog);
   g.appendChild(head);
+
+  if (PLATFORM_CAPS[name]) {
+    const capsEl = document.createElement('div');
+    capsEl.className = 'setting-desc';
+    capsEl.style.cssText = 'margin:0 0 8px;font-size:11px;opacity:.7;';
+    capsEl.textContent = `能力范围：${PLATFORM_CAPS[name]}`;
+    g.appendChild(capsEl);
+  }
+
+  if (st && !alive && st.error) {
+    const errBox = document.createElement('div');
+    errBox.className = 'setting-desc';
+    errBox.style.cssText = 'margin:0 0 8px;padding:6px 8px;border-radius:8px;background:rgba(255,59,48,.12);color:#ff8a80;font-size:11px;';
+    errBox.textContent = `启动异常：${st.error}`;
+    g.appendChild(errBox);
+  }
 
   // 登录状态行
   const row = document.createElement('div');
   row.className = 'setting-row';
   const isOk = alive && loggedIn;
+  const vipText = st && st.vip === true
+    ? 'VIP'
+    : (st && typeof st.vip === 'string' && st.vip
+      ? st.vip
+      : (st && typeof st.vip === 'number' && st.vip > 0 ? `VIP Lv.${st.vip}` : ''));
+  const identity = (st && st.nickname)
+    ? `${st.nickname} (uid ${(st && st.uid) || ''})`
+    : `uid ${(st && st.uid) || ''}`;
   const stateLabel = loggedIn
-    ? `已登录 · uid ${(st && st.uid) || ''}`
-    : (alive ? '未登录' : '服务未启动');
+    ? `已登录 · ${identity}${vipText ? ` · ${vipText}` : ''}`
+    : (starting ? '服务启动中…' : (alive ? '未登录' : '服务未启动'));
   row.innerHTML = `<div><div class="setting-label">登录状态</div>
-    <div class="setting-desc" style="color:${isOk ? 'var(--theme-color, #3b82f6)' : 'inherit'}">${stateLabel}</div></div>`;
+    <div class="setting-desc" style="color:${isOk ? 'var(--theme-color, #3b82f6)' : 'inherit'}">${esc(stateLabel)}</div></div>`;
   const ctrl = document.createElement('div');
   ctrl.className = 'setting-control';
+  ctrl.style.cssText = 'gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+
+  if (loggedIn) {
+    const favBtn = document.createElement('button');
+    favBtn.className = 'setting-btn';
+    favBtn.style.cssText = 'padding:6px 10px;';
+    favBtn.textContent = '查看收藏';
+    favBtn.addEventListener('click', () => {
+      if (typeof window.openSelfFavorites === 'function') window.openSelfFavorites(name);
+    });
+    ctrl.appendChild(favBtn);
+  }
+
   const btn = document.createElement('button');
   btn.className = 'setting-btn' + (loggedIn ? ' danger' : ' primary');
   btn.style.padding = '6px 12px';
@@ -246,64 +375,60 @@ function buildPlatformPanel(name, st, prefs) {
   }
   btn.addEventListener('click', () => {
     if (loggedIn) {
-      shFetch(`/api/selfhost/${name}/logout`, { method: 'POST' }).then(initSelfhostSection).catch(initSelfhostSection);
+      shFetch(`/api/selfhost/${name}/logout`, { method: 'POST' })
+        .then(() => { invalidateSelfhostCaches(); initSelfhostSection(); })
+        .catch(() => { invalidateSelfhostCaches(); initSelfhostSection(); });
     } else {
-      openLoginModal(name);
+      openLoginModal(name, 'qr');
     }
   });
   ctrl.appendChild(btn);
+
   row.appendChild(ctrl);
   g.appendChild(row);
 
-  /* 手动填写 Cookie（可选，跳过扫码）
-     ★ 汽水没有这条路：它的会话由本机 vendor 自己落盘（见 selfhost_service.py 注释），
-       粘贴任何 cookie 都无从注入到汽水请求里 —— 摆一个「填了必失败」的输入框是误导。
-       所以汽水这里改成一句说明，不做看起来能填的空控件。 */
-  if (name === 'qishui') {
-    const note = document.createElement('div');
-    note.className = 'setting-desc';
-    note.style.cssText = 'margin:0 0 4px;font-size:11px;opacity:.7;';
-    note.textContent = '登录会话由本机服务保管，无需手动填 Cookie；换设备重新扫码即可';
-    g.appendChild(note);
-  } else {
-    const ckRow = document.createElement('div');
-    ckRow.className = 'setting-row';
-    ckRow.style.cssText = 'min-height:40px;align-items:flex-start;';
-    const ckLeft = document.createElement('div');
-    ckLeft.style.cssText = 'flex:1;padding-right:10px;';
-    ckLeft.innerHTML = `<div class="setting-label">手动填写 Cookie</div>
+  // 手动填写 Cookie（可选，跳过扫码）
+  const ckRow = document.createElement('div');
+  ckRow.className = 'setting-row';
+  ckRow.style.cssText = 'min-height:40px;align-items:flex-start;';
+  const ckLeft = document.createElement('div');
+  ckLeft.style.cssText = 'flex:1;padding-right:10px;';
+  ckLeft.innerHTML = `<div class="setting-label">手动填写 Cookie</div>
     <div class="setting-desc" style="margin:0;font-size:11px;">粘贴登录状态，保存后即登录（可选）</div>`;
-    const ckRight = document.createElement('div');
-    ckRight.className = 'setting-control';
-    ckRight.style.cssText = 'flex-direction:row-reverse;gap:6px;';
-    const ckInp = document.createElement('input');
-    ckInp.type = 'text';
-    ckInp.className = 'appearance-font-select';
-    ckInp.placeholder = name === 'kugou' ? 'token=..;userid=..' : (name === 'qq' ? 'uin=..;p_skey=..' : 'MUSIC_U=..');
-    ckInp.style.cssText = 'max-width:180px;max-width:none;min-width:160px;padding:5px 10px;font-size:11px;';
-    const ckSave = document.createElement('button');
-    ckSave.className = 'setting-btn primary';
-    ckSave.style.padding = '4px 10px';
-    ckSave.textContent = '保存';
-    ckSave.addEventListener('click', async () => {
-      const val = ckInp.value.trim();
-      if (!val) { ckSave.textContent = '空'; setTimeout(() => ckSave.textContent = '保存', 1200); return; }
-      ckSave.disabled = true;
-      try {
-        const r = await shFetch(`/api/selfhost/${name}/setcookie`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cookie: val }),
-        });
-        ckSave.disabled = false;
-        ckSave.textContent = r && r.ok ? '已登录' : '失败';
-        setTimeout(() => ckSave.textContent = '保存', 1500);
-        if (r && r.ok) initSelfhostSection();
-      } catch (e) { ckSave.disabled = false; ckSave.textContent = '✗ 失败'; }
-    });
-    ckRight.appendChild(ckSave); ckRight.appendChild(ckInp);
-    ckRow.appendChild(ckLeft); ckRow.appendChild(ckRight);
-    g.appendChild(ckRow);
-  }
+  const ckRight = document.createElement('div');
+  ckRight.className = 'setting-control';
+  ckRight.style.cssText = 'flex-direction:row-reverse;gap:6px;';
+  const ckInp = document.createElement('input');
+  ckInp.type = 'text';
+  ckInp.className = 'appearance-font-select';
+  ckInp.placeholder = name === 'kugou' ? 'token=..;userid=..' : (name === 'qq' ? 'uin=..;p_skey=..' : 'MUSIC_U=..');
+  ckInp.style.cssText = 'max-width:180px;max-width:none;min-width:160px;padding:5px 10px;font-size:11px;';
+  const ckSave = document.createElement('button');
+  ckSave.className = 'setting-btn primary';
+  ckSave.style.padding = '4px 10px';
+  ckSave.textContent = '保存';
+  ckSave.addEventListener('click', async () => {
+    const val = ckInp.value.trim();
+    if (!val) { ckSave.textContent = '空'; setTimeout(() => ckSave.textContent = '保存', 1200); return; }
+    ckSave.disabled = true;
+    try {
+      const r = await shFetch(`/api/selfhost/${name}/setcookie`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie: val }),
+      });
+      ckSave.disabled = false;
+      ckSave.textContent = r && r.ok ? '已登录' : '失败';
+      setTimeout(() => ckSave.textContent = '保存', 1500);
+      if (r && r.ok) {
+        enablePlatform(name);
+        invalidateSelfhostCaches();
+        initSelfhostSection();
+      }
+    } catch (e) { logCatch('selfhostSettings', e); ckSave.disabled = false; ckSave.textContent = '✗ 失败'; }
+  });
+  ckRight.appendChild(ckSave); ckRight.appendChild(ckInp);
+  ckRow.appendChild(ckLeft); ckRow.appendChild(ckRight);
+  g.appendChild(ckRow);
 
   // 酷狗：每日签到领 VIP（自动签到开关 + 立即签到）
   if (name === 'kugou') {
@@ -340,6 +465,9 @@ function buildPlatformPanel(name, st, prefs) {
       g.appendChild(ciRow);
     }
   }
+
+  // 上游 API 参数配置（依据各平台源码支持项生成）
+  g.appendChild(buildUpstreamOptionsSection(name, st, hasSource));
 
   // 说明
   if (!hasSource) {
@@ -406,8 +534,8 @@ async function runKugouCheckin(btn, row, auto = false) {
   poll();
 }
 
-/* ==================== 登录弹窗（扫码 / 手机 / 邮箱） ==================== */
-async function openLoginModal(platform) {
+/* ==================== 登录弹窗（扫码 / 手机 / 邮箱 / Cookie） ==================== */
+async function openLoginModal(platform, initialMode = 'qr') {
   const overlay = document.getElementById('selfhostQrOverlay');
   const body = document.getElementById('selfhostQrBody');
   const title = document.getElementById('selfhostQrTitle');
@@ -422,7 +550,7 @@ async function openLoginModal(platform) {
   if (platform === 'netease') {
     renderNeteaseLoginTabs(body, platform);
   } else if (platform === 'kugou') {
-    renderKugouLoginTabs(body, platform);
+    renderKugouLoginTabs(body, platform, initialMode);
   } else {
     await startQrCode(platform, qrState.qrType);
   }
@@ -460,13 +588,11 @@ function renderNeteaseLoginTabs(body, platform) {
   renderNeteasePanel(wrap, 'qr', platform, () => openLoginModal(platform));
 }
 
-/* ---- 酷狗：扫码 / 手机号（短信验证码） ----
-   手机号这条路是后加的：酷狗对 /song/url 的风控会要求「登录确认身份」(v_type=38)，
-   扫码在部分账号/风控档位下不足以解锁；手机验证码是官方支持的另一条路
-   （issue #206 首帖标注「手机验证码 ✓ 已支持」）。 */
-function renderKugouLoginTabs(body, platform) {
+/* ---- 酷狗：扫码 / 手机号（短信验证码） ---- */
+function renderKugouLoginTabs(body, platform, initialMode = 'qr') {
+  const modes = ['qr', 'phone'];
   const tabs = ['扫码', '手机号'];
-  let mode = 'qr';
+  const startMode = modes.includes(initialMode) ? initialMode : 'qr';
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
   body.innerHTML = '';
@@ -476,23 +602,22 @@ function renderKugouLoginTabs(body, platform) {
   tabBar.className = 'setting-btn-group';
   tabBar.style.cssText = 'justify-content:center;';
   tabs.forEach((label, i) => {
+    const m = modes[i];
     const b = document.createElement('button');
-    b.className = 'setting-btn' + (i === 0 ? ' active' : '');
+    b.className = 'setting-btn' + (m === startMode ? ' active' : '');
     b.textContent = label;
     b.addEventListener('click', () => {
       tabBar.querySelectorAll('.setting-btn').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      mode = ['qr', 'phone'][i];
-      /* 切 tab 时停止上一模式的扫码轮询与倒计时，避免残留请求/定时器 */
       stopPoll();
       clearKgCountdown();
       qrState.keyObj = null;
-      renderKugouPanel(wrap, mode, platform);
+      renderKugouPanel(wrap, m, platform);
     });
     tabBar.appendChild(b);
   });
   wrap.appendChild(tabBar);
-  renderKugouPanel(wrap, 'qr', platform);
+  renderKugouPanel(wrap, startMode, platform);
 }
 
 function clearKgCountdown() {
@@ -519,21 +644,8 @@ function buildLoginField(label, key, ph, type) {
   return field;
 }
 
-function renderKugouPanel(wrap, mode, platform) {
-  const old = wrap.querySelector('[data-kg-panel]');
-  if (old) old.remove();
-  const panel = document.createElement('div');
-  panel.dataset.kgPanel = '1';
-  panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
-  wrap.appendChild(panel);
-
-  if (mode === 'qr') {
-    panel.innerHTML = '<div style="opacity:.6;text-align:center;padding:24px 0;">正在获取二维码…</div>';
-    fetchQrThen(platform, 2, panel);
-    return;
-  }
-
-  /* 手机号 + 短信验证码 */
+/** 手机验证码登录表单（酷狗） */
+function renderSmsLoginForm(panel, platform, hintText) {
   const mobileField = buildLoginField('手机号', 'mobile', '11 位手机号（不带 +86）', 'text');
   panel.appendChild(mobileField);
   const codeField = buildLoginField('验证码', 'code', '6 位短信验证码', 'text');
@@ -548,7 +660,7 @@ function renderKugouPanel(wrap, mode, platform) {
   const hint = document.createElement('div');
   hint.className = 'setting-desc';
   hint.style.cssText = 'margin:0;font-size:11px;color:rgba(255,255,255,.45);text-align:center;';
-  hint.textContent = '验证码由酷狗官方短信下发；登录态仅保存在本机';
+  hint.textContent = hintText;
   panel.appendChild(hint);
 
   const errEl = document.createElement('div');
@@ -564,7 +676,6 @@ function renderKugouPanel(wrap, mode, platform) {
   const val = (key) => (panel.querySelector(`input[data-key="${key}"]`) || {}).value || '';
   mobileField.querySelector('input').focus();
 
-  /* 获取验证码：60 秒倒计时防连点（发短信有频控） */
   sendBtn.addEventListener('click', async () => {
     const mobile = val('mobile').trim();
     if (!mobile) {
@@ -627,7 +738,8 @@ function renderKugouPanel(wrap, mode, platform) {
       if (r && r.ok && r.loggedIn) {
         errEl.style.color = '#4cd964';
         errEl.textContent = '登录成功';
-        enablePlatform(platform);   /* ★ 登录即启用（日推/高音质取链的前置开关） */
+        enablePlatform(platform);
+        invalidateSelfhostCaches();
         clearKgCountdown();
         setTimeout(() => { document.getElementById('selfhostQrOverlay').classList.remove('visible'); initSelfhostSection(); }, 600);
       } else {
@@ -642,6 +754,22 @@ function renderKugouPanel(wrap, mode, platform) {
       submit.textContent = '登 录';
     }
   });
+}
+
+function renderKugouPanel(wrap, mode, platform) {
+  const old = wrap.querySelector('[data-kg-panel]');
+  if (old) old.remove();
+  const panel = document.createElement('div');
+  panel.dataset.kgPanel = '1';
+  panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
+  wrap.appendChild(panel);
+
+  if (mode === 'qr') {
+    panel.innerHTML = '<div style="opacity:.6;text-align:center;padding:24px 0;">正在获取二维码…</div>';
+    fetchQrThen(platform, 2, panel);
+    return;
+  }
+  renderSmsLoginForm(panel, platform, '验证码由酷狗官方短信下发；登录态仅保存在本机');
 }
 
 /* ★ OOBE 复用口：全局暴露扫码登录弹窗（000-tooltip 首启引导直接拉起） */
@@ -718,6 +846,7 @@ function renderNeteasePanel(wrap, mode, platform, restart) {
         errEl.style.color = '#4cd964';
         errEl.textContent = '登录成功';
         enablePlatform(platform);   /* ★ 登录即启用 */
+        invalidateSelfhostCaches();
         setTimeout(() => { document.getElementById('selfhostQrOverlay').classList.remove('visible'); initSelfhostSection(); }, 600);
       } else {
         errEl.style.color = '#ff5f57';
@@ -775,8 +904,6 @@ function buildKeyObj(platform, qr) {
   }
   if (platform === 'kugou') return { key: qr.key, qrcode: qr.key };
   if (platform === 'netease') return { key: qr.key };
-  /* 汽水：vendor 的扫码 token（Python 侧原样转交给 /login/qr/check） */
-  if (platform === 'qishui') return { key: qr.key };
   return {};
 }
 
@@ -847,6 +974,7 @@ function startPoll() {
       stopPoll();
       if (hint) hint.textContent = '登录成功';
       enablePlatform(qrState.platform);   /* ★ 登录即启用 */
+      invalidateSelfhostCaches();
       setTimeout(() => {
         document.getElementById('selfhostQrOverlay')?.classList.remove('visible');
         initSelfhostSection();
@@ -868,30 +996,15 @@ function startPoll() {
       if (qrState.platform && qrState.keyObj) qrTimer = setTimeout(loop, 3000);
       return;
     }
-    /* 过期码停止轮询（酷狗 status=0 / 网易云 800 / 汽水 'expired'） */
-    if (r && (r.status === 0 || r.status === 800 || r.status === 'expired')) {
+    /* 过期码停止轮询（酷狗 status=0 / 网易云 800） */
+    if (r && (r.status === 0 || r.status === 800)) {
       stopPoll();
       if (hint) hint.textContent = '二维码已过期，点击右上角关闭后重新扫码';
       return;
     }
-    /* ★ 'failed' 必须与 'expired' 分开处理：
-       它表示**上游拒绝了这次校验**（风控 / 需要二次验证），二维码本身还没过期。
-       旧实现把两者并入同一个分支、统一显示「二维码已过期」—— 真正的原因
-       （vendor 从上游 description 原文透传的那句话）被整条盖掉，
-       用户看到的现象就是「扫了码没反应 / 莫名其妙说过期」。
-       这里显示真实原因并**停止轮询**：库在 failed 状态下不加退避，
-       继续轮询会持续打上游，把风控越踩越死。 */
-    if (r && r.status === 'failed') {
-      stopPoll();
-      if (hint) hint.textContent = describeStatus(r, qrState.platform);
-      return;
-    }
     if (hint) hint.textContent = describeStatus(r, qrState.platform);
-    /* 递归调度下一轮（间隔 2s；失败重试 3s）
-       ★ 汽水 vendor 内部有 QR_MIN_POLL_MS=3500 的本地节流：间隔不足的请求它直接用
-         缓存状态应答、根本不打上游。前端按 2s 轮询等于一半是空转，对齐到 4s 既省掉
-         空转，也让提示刷新节奏与真实探测一致。 */
-    const pollMs = qrState.platform === 'qishui' ? 4000 : 2000;
+    /* 递归调度下一轮（间隔 2s；失败重试 3s） */
+    const pollMs = 2000;
     if (qrState.platform && qrState.keyObj) {
       qrTimer = setTimeout(loop, r ? pollMs : 3000);
     }
@@ -910,6 +1023,7 @@ function bindModalClose(overlay) {
   overlay.__qrOnCloseBound = true;
   const onClose = () => {
     stopPoll();
+    clearKgCountdown();
     qrState.platform = null; qrState.keyObj = null;
     overlay.classList.remove('visible');
   };
@@ -939,24 +1053,259 @@ function describeStatus(r, platform) {
     if (st === 800) return '二维码已过期';
     return msg || '等待扫码…';
   }
-  if (platform === 'qishui') {
-    /* 汽水 vendor 透传的是字符串状态（waiting/scanned/expired/failed），
-       不是其它平台的数字码 —— 别按数字比，那会永远落到最后的兜底分支。
-       ★ 并且必须优先透出 message：vendor 的 status 只有 scanned/waiting 两个
-       粗粒度值，真正的进度全在 message 里（「已扫码，请在手机上确认」→
-       「手机已确认，正在等待下发 Cookie（请勿刷新）」→「访问太频繁，约 N 秒后继续」）。
-       早期实现按 status 硬编码文案、把 message 丢掉，手机确认完界面还停在
-       「已扫码」—— 用户看到的就是「扫了码没反应」。
-       message 仅在含中文时采用：未扫码阶段上游回的是 'new' 这类英文原始值，
-       直接展示会变成界面上的乱码文案。 */
-    const progress = /[\u4e00-\u9fa5]/.test(msg) ? msg : '';
-    if (st === 'scanned') return progress || '已扫码，请在手机上确认';
-    if (st === 'expired') return '二维码已过期';
-    if (st === 'failed') return progress || '二维码已失效';
-    if (st === 'waiting') return progress || '等待扫码…';
-    return progress || '等待扫码…';
-  }
   return msg || '等待扫码…';
+}
+
+/* 依据三个上游自建 API 源码（KuGouMusicApi / qq-music-api / NeteaseCloudMusicApi）暴露的可配置参数 */
+function buildUpstreamOptionsSection(name, st, hasSource) {
+  const details = document.createElement('details');
+  details.className = 'selfhost-api-details';
+  details.style.cssText = 'margin-top:8px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px;';
+  const summary = document.createElement('summary');
+  summary.className = 'setting-label';
+  summary.style.cssText = 'cursor:pointer;font-size:12px;opacity:.88;user-select:none;padding:4px 0;display:flex;align-items:center;justify-content:space-between;';
+  summary.innerHTML = '<span class="setting-label" style="margin:0;font-size:12px;">接口与参数配置</span><span class="setting-desc" style="margin:0;font-size:10px;opacity:.6;">按上游 API 自定义</span>';
+  details.appendChild(summary);
+
+  const box = document.createElement('div');
+  box.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-top:4px;';
+  details.appendChild(box);
+
+  const shOpts = getSelfhostOptions(name);
+  const srvCfg = (st && st.config) || {};
+
+  const addSelectRow = (label, desc, items, value, onChange) => {
+    const r = document.createElement('div');
+    r.className = 'setting-row';
+    r.style.cssText = 'min-height:36px;';
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="setting-label" style="font-size:12px;">${esc(label)}</div>`
+      + (desc ? `<div class="setting-desc" style="margin:0;font-size:11px;">${esc(desc)}</div>` : '');
+    const ctrl = document.createElement('div');
+    ctrl.className = 'setting-control';
+    const dd = document.createElement('div');
+    dd.className = 'setting-dropdown selfhost-option-dropdown';
+    const currentVal = value == null ? '' : String(value);
+    const options = items.map(([val, txt]) => ({
+      value: val == null ? '' : String(val),
+      label: String(txt),
+    }));
+    mountDropdown(dd, options, currentVal, {
+      onSelect: (opt) => onChange(opt.value),
+    });
+    ctrl.appendChild(dd);
+    r.appendChild(left);
+    r.appendChild(ctrl);
+    box.appendChild(r);
+  };
+
+  const addToggleRow = (label, desc, checked, onChange) => {
+    const r = document.createElement('div');
+    r.className = 'setting-row';
+    r.style.cssText = 'min-height:36px;';
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="setting-label" style="font-size:12px;">${esc(label)}</div>`
+      + (desc ? `<div class="setting-desc" style="margin:0;font-size:11px;">${esc(desc)}</div>` : '');
+    const ctrl = document.createElement('div');
+    ctrl.className = 'setting-control';
+    const tog = document.createElement('button');
+    tog.className = 'setting-toggle' + (checked ? ' on' : '');
+    tog.type = 'button';
+    tog.addEventListener('click', () => {
+      const next = !tog.classList.contains('on');
+      tog.classList.toggle('on', next);
+      onChange(next);
+    });
+    ctrl.appendChild(tog);
+    r.appendChild(left);
+    r.appendChild(ctrl);
+    box.appendChild(r);
+  };
+
+  const addInputRow = (label, desc, placeholder, value, onSave) => {
+    const r = document.createElement('div');
+    r.className = 'setting-row';
+    r.style.cssText = 'min-height:36px;align-items:flex-start;';
+    const left = document.createElement('div');
+    left.style.cssText = 'flex:1;padding-right:10px;';
+    left.innerHTML = `<div class="setting-label" style="font-size:12px;">${esc(label)}</div>`
+      + (desc ? `<div class="setting-desc" style="margin:0;font-size:11px;">${esc(desc)}</div>` : '');
+    const ctrl = document.createElement('div');
+    ctrl.className = 'setting-control';
+    ctrl.style.cssText = 'gap:6px;';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'appearance-font-select';
+    inp.placeholder = placeholder || '';
+    inp.value = value || '';
+    inp.style.cssText = 'min-width:130px;max-width:170px;padding:4px 8px;font-size:11px;';
+    const btn = document.createElement('button');
+    btn.className = 'setting-btn';
+    btn.type = 'button';
+    btn.style.cssText = 'padding:4px 10px;font-size:11px;';
+    btn.textContent = '应用';
+    btn.addEventListener('click', () => onSave(inp.value.trim(), btn));
+    ctrl.appendChild(inp);
+    ctrl.appendChild(btn);
+    r.appendChild(left);
+    r.appendChild(ctrl);
+    box.appendChild(r);
+  };
+
+  const pushBackendCfg = async (patch, restart = false, btn = null) => {
+    try {
+      if (btn) btn.disabled = true;
+      const r = await shFetch(`/api/selfhost/${name}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: patch, restart }),
+      });
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = r && r.ok ? '已保存' : '失败';
+        setTimeout(() => { btn.textContent = restart ? '保存并重启' : '应用'; }, 1400);
+      }
+      if (restart && r && r.ok) {
+        invalidateSelfhostCaches();
+        initSelfhostSection();
+      }
+    } catch (e) {
+      logCatch('selfhostSettings', e);
+      if (btn) { btn.disabled = false; btn.textContent = '失败'; }
+    }
+  };
+
+  if (name === 'qq') {
+    addSelectRow(
+      '取链音质偏好',
+      '对应 /getMusicPlay 的 quality 参数',
+      [['auto', '跟随全局音质'], ['flac', 'FLAC 无损'], ['320', '320kbps MP3'], ['128', '128kbps MP3'], ['m4a', 'M4A']],
+      shOpts.playQuality || 'auto',
+      (v) => saveSelfhostOption('qq', { playQuality: v }),
+    );
+    addToggleRow(
+      '无版权音质自动降级',
+      '高音质无直链时自动沿 flac→320→128 回退',
+      shOpts.qualityFallback !== false,
+      (v) => saveSelfhostOption('qq', { qualityFallback: v }),
+    );
+    addSelectRow(
+      '每日推荐策略',
+      '微信账号建议热门聚合；QQ账号可切个性化日推',
+      [['pool', '热门歌单聚合'], ['personal', '官方个性化日推']],
+      shOpts.dailyMode || 'pool',
+      (v) => saveSelfhostOption('qq', { dailyMode: v }),
+    );
+    addToggleRow(
+      '歌词格式化 (isFormat)',
+      '对应 /getLyric?isFormat 参数（换行整理）',
+      shOpts.lyricFormat !== false,
+      (v) => saveSelfhostOption('qq', { lyricFormat: v }),
+    );
+    addSelectRow(
+      '搜索单页条数 (limit)',
+      '对应 /getSearchByKey?limit（上限 60）',
+      [['60', '60 首'], ['30', '30 首'], ['20', '20 首'], ['10', '10 首']],
+      String(shOpts.searchLimit || 60),
+      (v) => saveSelfhostOption('qq', { searchLimit: Number(v) || 60 }),
+    );
+    addToggleRow(
+      '匿名降级模式 (FALLBACK_MODE)',
+      '服务端启用：未携带 Cookie 时允许基础接口匿名请求',
+      srvCfg.fallbackMode !== false,
+      (v) => pushBackendCfg({ fallbackMode: v }, Boolean(st && st.alive && hasSource)),
+    );
+    addToggleRow(
+      '全局兜底 Cookie (USE_GLOBAL_COOKIE)',
+      '服务端启用：无显式 Cookie 时使用服务内置全局凭证',
+      Boolean(srvCfg.useGlobalCookie),
+      (v) => pushBackendCfg({ useGlobalCookie: v }, Boolean(st && st.alive && hasSource)),
+    );
+  } else if (name === 'kugou') {
+    addSelectRow(
+      '客户端版本 (platform)',
+      '概念版支持签到领 VIP；更改后需重启酷狗服务生效',
+      [['lite', '酷狗概念版 (lite)'], ['standard', '手机正式版']],
+      srvCfg.platform || 'lite',
+      (v) => pushBackendCfg({ platform: v }, Boolean(st && st.alive && hasSource)),
+    );
+    addSelectRow(
+      '每日推荐客户端',
+      '对应 /everyday/recommend?platform 参数',
+      [['ios', 'iOS 端算法'], ['android', 'Android 端算法']],
+      shOpts.dailyPlatform || 'ios',
+      (v) => saveSelfhostOption('kugou', { dailyPlatform: v }),
+    );
+    addInputRow(
+      '上游代理 (KUGOU_API_PROXY)',
+      '可选 HTTP 代理地址（保存后重启服务生效）',
+      'http://127.0.0.1:7890',
+      srvCfg.proxy || '',
+      (val, btn) => pushBackendCfg({ proxy: val }, Boolean(st && st.alive && hasSource), btn),
+    );
+  } else if (name === 'netease') {
+    addSelectRow(
+      '自建取链音质等级 (level)',
+      '对应 /song/url/v1?level（支持臻品母带/沉浸环绕）',
+      [
+        ['auto', '跟随全局音质'],
+        ['jymaster', '超清母带 (jymaster)'],
+        ['sky', '沉浸环绕声 (sky/c51)'],
+        ['jyeffect', '高清环绕声 (jyeffect)'],
+        ['hires', 'Hi-Res 无损'],
+        ['lossless', 'FLAC 无损'],
+        ['exhigh', '极高音质'],
+        ['higher', '较高音质'],
+        ['standard', '标准音质'],
+      ],
+      shOpts.playLevel || 'auto',
+      (v) => saveSelfhostOption('netease', { playLevel: v }),
+    );
+    addToggleRow(
+      '试听/无版权音质降级',
+      '返回 30s 试听链时自动下探兼容音质，避免截断',
+      shOpts.levelFallback !== false,
+      (v) => saveSelfhostOption('netease', { levelFallback: v }),
+    );
+    addSelectRow(
+      '编码格式 (encodeType)',
+      '对应 /song/url/v1?encodeType 参数',
+      [['flac', 'FLAC (默认)'], ['aac', 'AAC'], ['mp3', 'MP3']],
+      shOpts.encodeType || 'flac',
+      (v) => saveSelfhostOption('netease', { encodeType: v }),
+    );
+    addSelectRow(
+      '歌单曲目拉取上限',
+      '对应 /playlist/track/all?limit 参数',
+      [['200', '200 首'], ['500', '500 首'], ['1000', '1000 首']],
+      String(shOpts.playlistLimit || 500),
+      (v) => saveSelfhostOption('netease', { playlistLimit: Number(v) || 500 }),
+    );
+    addInputRow(
+      '真实 IP (realIP)',
+      '海外或代理环境可填国内 IPv4（如 116.25.146.177）',
+      '留空自动',
+      shOpts.realIP || '',
+      (val, btn) => {
+        saveSelfhostOption('netease', { realIP: val });
+        btn.textContent = '已保存';
+        setTimeout(() => { btn.textContent = '应用'; }, 1200);
+      },
+    );
+    addInputRow(
+      '请求代理 (proxy)',
+      '可选透传给 Netease API 的代理 URL',
+      'http://127.0.0.1:7890',
+      shOpts.proxy || '',
+      (val, btn) => {
+        saveSelfhostOption('netease', { proxy: val });
+        btn.textContent = '已保存';
+        setTimeout(() => { btn.textContent = '应用'; }, 1200);
+      },
+    );
+  }
+
+  return details;
 }
 
 /* 供设置面板显式初始化 */

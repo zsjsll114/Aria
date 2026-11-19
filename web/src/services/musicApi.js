@@ -7,6 +7,73 @@ import { decryptKrc, parseKrc } from './krcParser.js';
 import { parseLrc } from '../parsers/lrcParser.js';
 import { logWarn, logInfo, logError } from './log.js';
 import { selfhostKeyOf } from './playSource.js';
+import { getSelfhostPlayHooks } from './selfhostPlayHooks.js';
+import { isProviderInCooldown, recordProviderFailure, recordProviderSuccess } from '../core/resolveCache.js';
+
+/**
+ * 通过服务端轻接口根据数字 songId 补全 QQ 音乐 songMid（用于补齐自建直链路径）。
+ * @param {string|number} songId
+ * @returns {Promise<string>}
+ */
+export async function fetchQQSongMid(songId) {
+    const sid = String(songId ?? '').trim();
+    if (!sid || !/^\d+$/.test(sid)) return '';
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2500);
+    try {
+        const res = await fetch(`/api/qq/mid?id=${encodeURIComponent(sid)}`, { signal: ctl.signal });
+        if (!res || !res.ok) return '';
+        const data = await res.json().catch(() => null);
+        if (data && data.ok && data.mid) {
+            return String(data.mid).trim();
+        }
+        return '';
+    } catch (/** @type {any} */ e) {
+        logWarn('musicApi', `[QQMid] id=${sid} 补全失败:`, (e && e.message) || e);
+        return '';
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * 串行尝试 byfuns 音质阶梯，并结合连续传输/限流失败冷却防止卡顿。
+ * 注意：HTTP 200 返回的业务错误文本（如 sign_error / error）证明上游可达，不计入冷却计数。
+ * @param {string|number} songId
+ * @param {string[]} levels
+ * @param {string} [logPrefix='']
+ * @returns {Promise<{ url: string, level: string } | null>}
+ */
+async function _fetchByfunsPlayUrl(songId, levels, logPrefix = '') {
+    if (!songId || !Array.isArray(levels) || levels.length === 0) return null;
+    if (isProviderInCooldown('byfuns')) {
+        logInfo('musicApi', `${logPrefix}byfuns 处于冷却期，跳过并直落兜底`);
+        return null;
+    }
+    for (const level of levels) {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 3500);
+        try {
+            const resp = await fetch(`https://api.byfuns.top/1/?id=${songId}&level=${level}`, { signal: ctl.signal });
+            if (typeof resp.status === 'number' && (resp.status === 429 || resp.status >= 500)) {
+                const tripped = recordProviderFailure('byfuns', `HTTP ${resp.status}`);
+                if (tripped) break;
+                continue;
+            }
+            const text = (await resp.text()).trim();
+            recordProviderSuccess('byfuns');
+            if (text.startsWith('http')) {
+                return { url: text, level };
+            }
+        } catch (/** @type {any} */ e) {
+            const tripped = recordProviderFailure('byfuns', (e && e.message) || 'network');
+            if (tripped || isProviderInCooldown('byfuns')) break;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+    return null;
+}
 /**
  * 浏览器端 JSONP 跨域请求
  * 绕过一切浏览器 CORS 限制与 Mixed Content 限制（纯原生 <script> 注入）
@@ -178,10 +245,69 @@ export async function searchKugouSongs(keyword, page = 1, pagesize = 40) {
                 source: 'kugou'
             };
         }).filter(item => item.hash);
-        return { success: true, list };
+        if (list.length > 0) return { success: true, list };
     } catch (/** @type {any} */ err) {
-        logError('musicApi', '[KuGou Search] 搜索全部失败:', err);
-        return { success: false, message: '搜索失败，请检查网络或本地服务器状态' };
+        logWarn('musicApi', '[KuGou Search] mobilecdn 异常，尝试自建兜底:', err && err.message);
+    }
+
+    // 3. 本机自建 KuGouMusicApi 兜底
+    const vList = await fetchKugouVendorSearch(cleanWord, page, pagesize);
+    if (vList && vList.length > 0) {
+        return { success: true, list: vList };
+    }
+    return { success: true, list: [] };
+}
+
+/**
+ * 本机自建 KuGouMusicApi 歌曲搜索（与 JSONP / mobilecdn 同形输出，失败返回 null）
+ * @param {string} keyword
+ * @param {number} [page]
+ * @param {number} [pagesize]
+ * @returns {Promise<any[]|null>}
+ */
+export async function fetchKugouVendorSearch(keyword, page = 1, pagesize = 40) {
+    const cleanWord = String(keyword || '').trim();
+    if (!cleanWord) return null;
+    try {
+        const path = `/search?keywords=${encodeURIComponent(cleanWord)}&type=song&page=${page}&pagesize=${pagesize}`;
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 5000);
+        let res;
+        try {
+            res = await fetch(`/api/selfhost/kugou/proxy?path=${encodeURIComponent(path)}`, { signal: ctl.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!res.ok) return null;
+        const json = await res.json();
+        const lists = (json && json.data && (json.data.lists || json.data.info)) || [];
+        if (!Array.isArray(lists) || !lists.length) return null;
+        const out = lists.map(item => {
+            const song = String(item.SongName || item.songname || item.FileName || '').replace(/<\/?em>/g, '') || '未知歌曲';
+            const singer = String(item.SingerName || item.singername || '').replace(/<\/?em>/g, '') || '未知歌手';
+            const hash = item.FileHash || item.HQFileHash || item.SQFileHash || item.ResFileHash || item.hash || '';
+            const album = String(item.AlbumName || item.album_name || '').replace(/<\/?em>/g, '') || '';
+            const cover = String(item.Image || (item.trans_param && item.trans_param.union_cover) || item.album_img || '').replace('{size}', '400');
+            const artists = Array.isArray(item.Singers) && item.Singers.length
+                ? item.Singers.map((/** @type {any} */ s) => ({ id: String((s && s.id) || ''), mid: '', name: (s && s.name) || '' })).filter((/** @type {any} */ a) => a.name)
+                : String(singer).split(/[\/、,&;]+/).map(n => n.trim()).filter(Boolean).map(n => ({ id: '', mid: '', name: n }));
+            return {
+                id: hash,
+                mid: hash,
+                hash,
+                song,
+                singer,
+                artists,
+                album,
+                duration: item.Duration || item.HQDuration || item.duration || 0,
+                cover,
+                source: 'kugou',
+            };
+        }).filter(item => item.hash);
+        return out.length ? out : null;
+    } catch (/** @type {any} */ e) {
+        logWarn('musicApi', '[KuGou Vendor Search] 自建搜索不可用:', e && e.message);
+        return null;
     }
 }
 
@@ -219,7 +345,7 @@ export async function qqResolveInfo(mid, dur, quality) {
     if (!mid) return null;
     try {
         const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 45000);
+        const timer = setTimeout(() => ctl.abort(), 20000);
         const params = new URLSearchParams({ mid });
         if (dur && dur > 30) params.set('dur', String(Math.round(dur)));
         if (quality) params.set('q', String(quality));
@@ -399,7 +525,8 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     lrc: data.lrc || '',
                     parsedList: parsedList,
                     title: data.title || cleanTitle,
-                    artist: data.artist || cleanSinger
+                    artist: data.artist || cleanSinger,
+                    provider: 'kuwo'
                 };
             }
         } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
@@ -428,7 +555,8 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                     lrc: d.lyrics_url || '',
                     parsedList: parsedList,
                     title: d.title || cleanTitle,
-                    artist: d.artist || cleanSinger
+                    artist: d.artist || cleanSinger,
+                    provider: 'kuwo'
                 };
             }
         } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
@@ -440,29 +568,45 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
         logWarn('musicApi', `[Kuwo] 该歌曲在酷我为VIP付费歌曲，自动平滑启用原唱高音质解析: ${searchWord}`);
         try {
             const qqCtl = new AbortController();
-            const qqTimer = setTimeout(() => qqCtl.abort(), 8000);
+            const qqTimer = setTimeout(() => qqCtl.abort(), 4500);
             const qqRes = await fetch(`${API_BASE}/tencent?word=${encodeURIComponent(searchWord)}&num=5`, { signal: qqCtl.signal }).then(r => r.json()).catch(() => ({}));
             clearTimeout(qqTimer);
             if (qqRes.code === 200 && qqRes.data && qqRes.data.length > 0) {
                 const candidates = Array.isArray(qqRes.data) ? qqRes.data : [qqRes.data];
                 const bestSong = /** @type {any[]} */ (candidates).find(c => {
                     const cSinger = (c.singer || '').trim();
-                    return cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
-                }) || candidates[0];
+                    const singerOk = cleanSinger && (cSinger.includes(cleanSinger) || cleanSinger.includes(cSinger));
+                    return singerOk && isTrustworthyCrossMatch(c, cleanTitle);
+                }) || /** @type {any[]} */ (candidates).find(c => isTrustworthyCrossMatch(c, cleanTitle));
 
                     if (bestSong && bestSong.mid) {
                         const userQ = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.qqPlayback) || '320';
-                        let playUrl = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
+                        const shHooks = getSelfhostPlayHooks();
+                        let playUrl = null;
+                        let resolvedProvider = '';
+                        if (shHooks && typeof shHooks.qq === 'function') {
+                            try {
+                                const shUrl = await shHooks.qq(bestSong.mid, userQ);
+                                if (shUrl) { playUrl = shUrl; resolvedProvider = 'selfhostQQ'; }
+                            } catch (/** @type {any} */ e) { logWarn('musicApi', '[Kuwo Fallback] QQ 自建取链异常:', e.message); }
+                        }
+                        if (!playUrl) {
+                            playUrl = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
+                            if (playUrl) resolvedProvider = 'qqResolve';
+                        }
 
                         /* ★ 2026-09-29：ygking.top 音质阶梯已移除（上游死亡），解析池未命中直接落 vkeys */
 
                         if (!playUrl && bestSong.id) {
+                        const vkCtl = new AbortController();
+                        const vkTimer = setTimeout(() => vkCtl.abort(), 4500);
                         try {
-                            const vkeysRes = await fetch(`${API_BASE}/tencent?id=${bestSong.id}`).then(r => r.json()).catch(() => ({}));
+                            const vkeysRes = await fetch(`${API_BASE}/tencent?id=${bestSong.id}`, { signal: vkCtl.signal }).then(r => r.json()).catch(() => ({}));
                             if (vkeysRes.code === 200 && vkeysRes.data && vkeysRes.data.url) {
                                 playUrl = vkeysRes.data.url;
+                                resolvedProvider = 'vkeysPrefetch';
                             }
-                        } catch (/** @type {any} */ e) { logWarn('musicApi', e); }
+                        } catch (/** @type {any} */ e) { logWarn('musicApi', e); } finally { clearTimeout(vkTimer); }
                     }
 
                     if (playUrl) {
@@ -479,7 +623,8 @@ export async function getKuwoPlayInfo(songId, songTitle = '', singer = '') {
                             parsedList: lyricObj.parsedList || [],
                             lyricObj: lyricObj,  /* 透传完整歌词对象（含 yrc/lrc/trans/roma） */
                             title: bestSong.song || cleanTitle,
-                            artist: bestSong.singer || cleanSinger
+                            artist: bestSong.singer || cleanSinger,
+                            provider: resolvedProvider || 'qqResolve'
                         };
                     }
                 }
@@ -665,7 +810,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
         // ① 优先检索 QQ 音乐（周杰伦等巨星原唱版权主要在 QQ 音乐）
         try {
             const qqCtl = new AbortController();
-            const qqTimer = setTimeout(() => qqCtl.abort(), 8000);
+            const qqTimer = setTimeout(() => qqCtl.abort(), 4500);
             const qqRes = await fetch(`${API_BASE}/tencent?word=${encodeURIComponent(searchWord)}&num=5`, { signal: qqCtl.signal }).then(r => r.json()).catch(() => ({}));
             clearTimeout(qqTimer);
             if (qqRes.code === 200 && qqRes.data && qqRes.data.length > 0) {
@@ -678,8 +823,15 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                 }) || /** @type {any[]} */ (candidates).find(c => isTrustworthyCrossMatch(c, cleanTitle));
 
                 if (bestSong && bestSong.mid) {
-                    // 优先走本地解析池（多源竞速 + 防试听校验），按用户播放音质裁剪阶梯
                     const userQ = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.qqPlayback) || '320';
+                    const shHooks = getSelfhostPlayHooks();
+                    if (shHooks && typeof shHooks.qq === 'function') {
+                        try {
+                            const shUrl = await shHooks.qq(bestSong.mid, userQ);
+                            if (shUrl) return { url: shUrl, cover: bestSong.cover || '', provider: 'selfhostQQ' };
+                        } catch (/** @type {any} */ e) { logWarn('musicApi', '[KuGou Play] QQ 自建取链异常:', e.message); }
+                    }
+                    // 优先走本地解析池（多源竞速 + 防试听校验），按用户播放音质裁剪阶梯
                     const resolved = await qqResolveUrl(bestSong.mid, bestSong.duration, userQ);
                     if (resolved) {
                         /* ★ provider 如实上报：这就是用户看到的「酷狗取链接口 / 链接域名
@@ -694,7 +846,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                 if (bestSong && bestSong.id) {
                     try {
                         const vkCtl = new AbortController();
-                        const vkTimer = setTimeout(() => vkCtl.abort(), 8000);
+                        const vkTimer = setTimeout(() => vkCtl.abort(), 4500);
                         const vkeysUrl = await fetch(`${API_BASE}/tencent?id=${bestSong.id}`, { signal: vkCtl.signal }).then(r => r.json()).catch(() => ({}));
                         clearTimeout(vkTimer);
                         if (vkeysUrl.code === 200 && vkeysUrl.data && vkeysUrl.data.url) {
@@ -710,7 +862,7 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
         // ② 次选检索网易云音乐（严格过滤歌手名，防止匹配到翻唱/非原唱版本）
         try {
             const ncmCtl = new AbortController();
-            const ncmTimer = setTimeout(() => ncmCtl.abort(), 8000);
+            const ncmTimer = setTimeout(() => ncmCtl.abort(), 4500);
             const ncmRes = await fetch(`${API_BASE}/netease?word=${encodeURIComponent(searchWord)}&num=5`, { signal: ncmCtl.signal }).then(r => r.json()).catch(() => ({}));
             clearTimeout(ncmTimer);
             if (ncmRes.code === 200 && ncmRes.data && ncmRes.data.length > 0) {
@@ -724,19 +876,18 @@ export async function getKugouPlayInfo(hash, songTitle = '', singer = '', qualit
                 });
 
                 if (validSong) {
-                    // 多音质依次尝试 byfuns（单档偶发 504/超时），全部失败才回退网易外链（外链对版权歌曲经常失效）
-                    const LEVELS = ['exhigh', 'lossless', 'higher', 'standard', 'hires'];
-                    for (const level of LEVELS) {
+                    const userLevel = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.neteasePlayback) || 'exhigh';
+                    const shHooks = getSelfhostPlayHooks();
+                    if (shHooks && typeof shHooks.netease === 'function') {
                         try {
-                            const controller = new AbortController();
-                            const timeout = setTimeout(() => controller.abort(), 8000);
-                            const resp = await fetch(`https://api.byfuns.top/1/?id=${validSong.id}&level=${level}`, { signal: controller.signal });
-                            clearTimeout(timeout);
-                            const text = await resp.text();
-                            if (text && text.startsWith('http')) {
-                                return { url: text.trim(), cover: validSong.cover || '', provider: 'byfuns' };
-                            }
-                        } catch (/** @type {any} */ e) { /* 尝试下一音质 */ }
+                            const shUrl = await shHooks.netease(validSong.id, userLevel);
+                            if (shUrl) return { url: shUrl, cover: validSong.cover || '', provider: 'selfhostNetease' };
+                        } catch (/** @type {any} */ e) { logWarn('musicApi', '[KuGou Play] 网易自建取链异常:', e.message); }
+                    }
+                    // 多音质依次尝试 byfuns（单档偶发 504/超时，结合熔断冷却），全部失败才回退网易外链
+                    const byHit = await _fetchByfunsPlayUrl(validSong.id, ['exhigh', 'lossless', 'higher', 'standard', 'hires'], '[KuGou Play] ');
+                    if (byHit) {
+                        return { url: byHit.url, cover: validSong.cover || '', provider: 'byfuns' };
                     }
                     return { url: `https://music.163.com/song/media/outer/url?id=${validSong.id}`, cover: validSong.cover || '', provider: 'neteaseOuter' };
                 }
@@ -874,7 +1025,7 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
     if (source === 'netease') {
         try {
             const ctl = new AbortController();
-            const timer = setTimeout(() => ctl.abort(), 8000);
+            const timer = setTimeout(() => ctl.abort(), 4500);
             let res;
             try {
                 res = await fetch(`${API_BASE}/netease?word=${encodeURIComponent(searchWord)}&num=5`, { signal: ctl.signal }).then(r => r.json());
@@ -882,28 +1033,32 @@ export async function fetchSameSongUrlFrom(source, title, singer) {
             if (!(res.code === 200 && res.data)) return null;
             const rawCandidates = Array.isArray(res.data) ? res.data : [res.data];
             const candidates = filterCleanSongCandidates(rawCandidates, cleanTitle);
+            const trusted = /** @type {any[]} */ (candidates).filter(c => isTrustworthyCrossMatch(c, cleanTitle));
+            const pool = trusted.length > 0 ? trusted : candidates;
             /* 优先精确歌手匹配，防翻唱/伴奏 */
-            const valid = /** @type {any[]} */ (candidates).find(c => {
+            const valid = /** @type {any[]} */ (pool).find(c => {
                 const cs = (c.singer || '').trim();
-                return !cleanSinger || cs === cleanSinger || cs.includes(cleanSinger);
-            }) || candidates[0];
+                return !cleanSinger || cs === cleanSinger || cs.includes(cleanSinger) || cleanSinger.includes(cs);
+            }) || pool[0];
             if (!valid || !valid.id) return null;
-            const LEVELS = ['exhigh', 'lossless', 'higher', 'standard'];
-            for (const level of LEVELS) {
+            const shHooks = getSelfhostPlayHooks();
+            const userLevel = (globalThis.appSettings && globalThis.appSettings.quality && globalThis.appSettings.quality.neteasePlayback) || 'exhigh';
+            if (shHooks && typeof shHooks.netease === 'function') {
                 try {
-                    const c2 = new AbortController();
-                    const t2 = setTimeout(() => c2.abort(), 8000);
-                    const resp = await fetch(`https://api.byfuns.top/1/?id=${valid.id}&level=${level}`, { signal: c2.signal });
-                    clearTimeout(t2);
-                    const text = (await resp.text()).trim();
-                    if (text.startsWith('http')) {
-                        logInfo('musicApi', `[跨源] 网易云同名歌成功: ${valid.song} - ${valid.singer} (音质:${level})`);
-                        return { url: text, cover: valid.cover || '', id: String(valid.id) };
+                    const shUrl = await shHooks.netease(valid.id, userLevel);
+                    if (shUrl) {
+                        logInfo('musicApi', `[跨源] 网易云自建同名歌成功: ${valid.song} - ${valid.singer}`);
+                        return { url: shUrl, cover: valid.cover || '', id: String(valid.id), provider: 'selfhostNetease' };
                     }
-                } catch (/** @type {any} */ e) { /* 试下一音质 */ }
+                } catch (/** @type {any} */ e) { logWarn('musicApi', '[跨源] 网易云自建取链异常:', e.message); }
+            }
+            const byHit = await _fetchByfunsPlayUrl(valid.id, ['exhigh', 'lossless', 'higher', 'standard'], '[跨源] ');
+            if (byHit) {
+                logInfo('musicApi', `[跨源] 网易云同名歌成功: ${valid.song} - ${valid.singer} (音质:${byHit.level})`);
+                return { url: byHit.url, cover: valid.cover || '', id: String(valid.id), provider: 'byfuns' };
             }
             /* byfuns 全败：网易外链兜底（版权受限歌可能404，交给音频错误处理链接管） */
-            return { url: `https://music.163.com/song/media/outer/url?id=${valid.id}`, cover: valid.cover || '', id: String(valid.id) };
+            return { url: `https://music.163.com/song/media/outer/url?id=${valid.id}`, cover: valid.cover || '', id: String(valid.id), provider: 'neteaseOuter' };
         } catch (/** @type {any} */ e) {
             logWarn('musicApi', '[跨源] 网易云同名歌检索异常:', e.message);
         }
@@ -1212,6 +1367,47 @@ export async function fetchKugouLyric(songInfo) {
         }
     }
 
+    // 2.5 本机自建 KuGouMusicApi KRC 逐字歌词兜底（公网受限或超时时无缝接管）
+    try {
+        const kw = `${title} ${singer}`.trim();
+        const sPath = `/search/lyric?keywords=${encodeURIComponent(kw)}&hash=${encodeURIComponent(hash)}&duration=${durMs}`;
+        const ctl1 = new AbortController();
+        const t1 = setTimeout(() => ctl1.abort(), 4500);
+        let sRes;
+        try {
+            sRes = await fetch(`/api/selfhost/kugou/proxy?path=${encodeURIComponent(sPath)}`, { signal: ctl1.signal });
+        } finally {
+            clearTimeout(t1);
+        }
+        if (sRes && sRes.ok) {
+            const sJson = await sRes.json();
+            const candidates = (sJson && sJson.candidates) || (sJson && sJson.data && sJson.data.candidates) || [];
+            if (Array.isArray(candidates) && candidates.length > 0) {
+                const best = candidates[0];
+                const dlPath = `/lyric?id=${encodeURIComponent(String(best.id))}&accesskey=${encodeURIComponent(String(best.accesskey))}&fmt=krc&decode=true`;
+                const ctl2 = new AbortController();
+                const t2 = setTimeout(() => ctl2.abort(), 4500);
+                let dlRes;
+                try {
+                    dlRes = await fetch(`/api/selfhost/kugou/proxy?path=${encodeURIComponent(dlPath)}`, { signal: ctl2.signal });
+                } finally {
+                    clearTimeout(t2);
+                }
+                if (dlRes && dlRes.ok) {
+                    const dlJson = await dlRes.json();
+                    const rawKrc = (dlJson && dlJson.decodeContent) || (dlJson && dlJson.content ? await decryptKrc(dlJson.content) : '');
+                    const parsedLyrics = rawKrc ? parseKrc(rawKrc) : [];
+                    if (parsedLyrics.length > 0) {
+                        logInfo('musicApi', `[KuGou Lyric] 自建 KRC 逐字歌词成功: ${parsedLyrics.length} 行`);
+                        return { parsedList: parsedLyrics, krcText: rawKrc, source: 'kugou' };
+                    }
+                }
+            }
+        }
+    } catch (/** @type {any} */ e) {
+        logWarn('musicApi', '[KuGou Lyric] 自建 KRC 接口异常:', e && e.message);
+    }
+
     // 3. LRC 回退方案（使用 Meting API 获取酷狗 LRC）
     if (hash) {
         const metingUrls = [
@@ -1244,83 +1440,7 @@ export async function fetchKugouLyric(songInfo) {
     return {};
 }
 
-/**
- * 获取汽水（抖音 Soda / Luna）逐字歌词。
- *
- * ★ 为什么要「先转成 KRC 文本再 parse」而不是直接构造 parsedList：
- *   汽水歌词天然是逐字带绝对毫秒（`{timeMs, text, words:[{timeMs,text}]}`），
- *   与 KRC 的 `<相对起点,时长,0>字` 是同一信息量的两种写法。手工拼 parsedList 就得
- *   复刻 parseKrc 的全部字段（start/duration/end/original/translation/romaji），
- *   渲染层以后多要一个字段就会在这里静默漏。转一道 KRC 文本，下游拿到的对象
- *   与酷狗那条路**逐字段同构**，渲染层零分支。
- */
-/** @param {any} songInfo @returns {Promise<any>} */
-export async function fetchQishuiLyric(songInfo) {
-    const id = String((songInfo && (songInfo.qishuiId || songInfo.id)) || '');
-    if (!id) return {};
-    try {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 6000);
-        let j;
-        try {
-            const res = await fetch(
-                `/api/selfhost/qishui/proxy?path=${encodeURIComponent('/lyric?id=' + encodeURIComponent(id))}`,
-                { signal: ctl.signal });
-            if (!res.ok) return {};
-            j = await res.json();
-        } finally { clearTimeout(timer); }
-        if (!j || !j.ok || !Array.isArray(j.lines) || !j.lines.length) return {};
-        const parsedList = parseKrc(qishuiLinesToKrc(j.lines));
-        if (!parsedList.length) return {};
-        logInfo('musicApi', `[Qishui Lyric] 逐字歌词解析成功: ${parsedList.length} 行`);
-        return { parsedList, source: 'qishui' };
-    } catch (/** @type {any} */ e) {
-        logWarn('musicApi', '[Qishui Lyric] 取词异常:', e.message);
-        return {};
-    }
-}
-
-/**
- * 汽水逐字行 → KRC 文本（`[行起,行时长]<相对起,字时长,0>字…`）。纯函数，可单测。
- * 汽水只给每个字的**绝对起点**，字时长靠相邻字的差值推；行末字用下一行起点兜底，
- * 整首最后一行没有下一行时给 800ms，**不允许出现 0 时长**——0 会让高亮进度除零
- * （英文歌的「高亮滞后」就是这条链上 math.round 造出 0 宽度引起的）。
- */
-/** @param {any[]} lines @returns {string} */
-export function qishuiLinesToKrc(lines) {
-    const src = Array.isArray(lines) ? lines : [];
-    const out = [];
-    for (let i = 0; i < src.length; i++) {
-        const ln = src[i] || {};
-        const start = Math.max(0, Math.round(Number(ln.timeMs) || 0));
-        /** @type {any[]} */
-        const words = (Array.isArray(ln.words) && ln.words.length)
-            ? ln.words
-            : [{ timeMs: start, text: String(ln.text == null ? '' : ln.text) }];
-        const rawNext = (i + 1 < src.length) ? Math.round(Number((src[i + 1] || {}).timeMs) || 0) : null;
-        const nextStart = (rawNext != null && rawNext > start) ? rawNext : null;
-        const starts = words.map(w => Math.max(start, Math.round(Number((w || {}).timeMs) || 0)));
-        let lastEnd = start + 1;
-        const parts = [];
-        for (let k = 0; k < words.length; k++) {
-            const ws = /** @type {number} */ (starts[k]);
-            let we;
-            if (k + 1 < words.length) we = /** @type {number} */ (starts[k + 1]);
-            else if (nextStart != null) we = nextStart;
-            else we = ws + 800;
-            we = Math.max(ws + 1, we);
-            lastEnd = Math.max(lastEnd, we);
-            /* '<' / '>' 会破坏 KRC 的标签语法（真实歌词里出现过 '<'） */
-            const text = String((words[k] || {}).text == null ? '' : (words[k] || {}).text).replace(/[<>]/g, '');
-            parts.push(`<${ws - start},${we - ws},0>${text}`);
-        }
-        const dur = Math.max(1, (nextStart != null ? nextStart : lastEnd) - start);
-        out.push(`[${start},${dur}]${parts.join('')}`);
-    }
-    return out.join('\n');
-}
-
-/* 带超时的 JSON fetch：兜底链路的每一环都必须 bounded，
+/** 带超时的 JSON fetch：兜底链路的每一环都必须 bounded，
    否则某个外部接口挂起会让 lyricPromise 永不落地 → 歌词永久为空（切歌场景已复现） */
 /**
  * @param {string} url
@@ -1349,6 +1469,20 @@ async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
  *   失败/未在线返回 null，由调用方回落公网 vkeys。
  * ============================================================ */
 /**
+ * @param {string} plat
+ * @returns {Record<string, any>}
+ */
+function _readSelfhostOpts(plat) {
+    try {
+        if (typeof localStorage === 'undefined') return {};
+        const p = JSON.parse(localStorage.getItem('selfhost_prefs') || '{}');
+        return (p && p.options && p.options[plat]) || {};
+    } catch {
+        return {};
+    }
+}
+
+/**
  * @param {string} source
  * @param {any} songId
  * @returns {Promise<any>}
@@ -1357,9 +1491,17 @@ export async function fetchVendorLyric(source, songId) {
     try {
         if (!songId) return null;
         let path;
-        if (source === 'tencent') path = `/getLyric?songmid=${encodeURIComponent(String(songId))}`;
-        else if (source === 'netease') path = `/lyric?id=${encodeURIComponent(String(songId))}`;
-        else return null;
+        if (source === 'tencent') {
+            const qqOpts = _readSelfhostOpts('qq');
+            const fmt = qqOpts.lyricFormat === false ? '&isFormat=false' : '&isFormat=true';
+            path = `/getLyric?songmid=${encodeURIComponent(String(songId))}${fmt}`;
+        } else if (source === 'netease') {
+            const neOpts = _readSelfhostOpts('netease');
+            const extras = [];
+            if (neOpts.realIP) extras.push(`realIP=${encodeURIComponent(String(neOpts.realIP).trim())}`);
+            if (neOpts.proxy) extras.push(`proxy=${encodeURIComponent(String(neOpts.proxy).trim())}`);
+            path = `/lyric?id=${encodeURIComponent(String(songId))}${extras.length ? '&' + extras.join('&') : ''}`;
+        } else return null;
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 4000);
         /* ★ source('tencent') ≠ 后端平台键('qq')：直接拼会 404 并被下面的 catch 吞掉，

@@ -19,9 +19,14 @@ const global = typeof window !== 'undefined' ? window : (typeof globalThis !== '
 export function resolveFontFamily(fontKey, globalFontKey) {
     /* ★ 当选择"跟随字体设置"时，解析为全局字体设置 */
     if (!fontKey || fontKey === 'default' || fontKey === 'inherit') {
-        if (globalFontKey && globalFontKey !== 'default' && globalFontKey !== 'inherit') {
+        const gKey = (globalFontKey !== undefined)
+            ? globalFontKey
+            : ((typeof globalThis !== 'undefined' && globalThis.appSettings && globalThis.appSettings.interface)
+                ? globalThis.appSettings.interface.fontFamily
+                : null);
+        if (gKey && gKey !== 'default' && gKey !== 'inherit') {
             /* 递归解析全局字体（但避免无限递归） */
-            return resolveFontFamilyInner(globalFontKey);
+            return resolveFontFamilyInner(gKey);
         }
         return "'Segoe UI', 'Microsoft YaHei', sans-serif";
     }
@@ -212,6 +217,31 @@ function resolveFontFamilyInner(fontKey) {
                 pv: {
                     fontSize: getMS('pv', 'fontSize', 1.5),
                     preset: getMS('pv', 'preset', 'dream'),
+                    /* ★ 2026-10-11：进 modeVars 才能让外观面板重开时回填成真实值
+                       （syncModeSectionValues 的 `mv` 取到对象就不再往回落） */
+                    animationIntensity: getMS('pv', 'animationIntensity', 'normal'),
+                    /* ★ 2026-10-11 后期处理组：同样必须进 modeVars，否则外观面板重开时
+                       这组控件回填不上（`mv` 取到对象就不再往回落，见上面那条注释） */
+                    postProcessEnabled: getMS('pv', 'postProcessEnabled', false),
+                    postProcessGrain: getMS('pv', 'postProcessGrain', 0.2),
+                    postProcessContrast: getMS('pv', 'postProcessContrast', 0),
+                    postProcessRgbShift: getMS('pv', 'postProcessRgbShift', 0),
+                    postProcessHalftone: getMS('pv', 'postProcessHalftone', 0),
+                    postProcessVignette: getMS('pv', 'postProcessVignette', 0.85),
+                    postProcessLensDistortion: getMS('pv', 'postProcessLensDistortion', 0.3),
+                    postProcessLensDispersion: getMS('pv', 'postProcessLensDispersion', 0.6),
+                    /* ★ 2026-10-11 画面元素开关（仅文字 / 引导线 / 巨型装饰字 / 装饰画框）：
+                       同样必须进 modeVars，否则面板重开时这 4 个 toggle 回填不上 */
+                    showOnlyText: getMS('pv', 'showOnlyText', false),
+                    showGuide: getMS('pv', 'showGuide', true),
+                    showGiantDecorativeText: getMS('pv', 'showGiantDecorativeText', true),
+                    showFixedGeo: getMS('pv', 'showFixedGeo', true),
+                    /* ★ 2026-10-11 三个数值旋钮 + 外层边框三档 + 间奏标记扩展（同上：不回填就白做） */
+                    cameraIntensity: getMS('pv', 'cameraIntensity', 1),
+                    typographyMotion: getMS('pv', 'typographyMotion', 1),
+                    mgDensity: getMS('pv', 'mgDensity', 1),
+                    outerFrameMode: getMS('pv', 'outerFrameMode', 'full'),
+                    interludeStaff: getMS('pv', 'interludeStaff', false),
                     halftoneSize: getMS('pv', 'halftoneSize', 6),
                     cameraSpeed: getMS('pv', 'cameraSpeed', 1.0),
                     cameraZoom: getMS('pv', 'cameraZoom', 1.0),
@@ -246,8 +276,70 @@ function resolveFontFamilyInner(fontKey) {
                 },
                 dimension: defaultVisModeVar('dimension'),
                 /* ★ 字面 · Jizura：预览区拿的是通用版式变量（本模式真正画什么由引擎决定，
-                   预览只保证"参数改动有回响"与切模式不串档）。 */
-                jizura: defaultVisModeVar('jizura')
+                   预览只保证"参数改动有回响"与切模式不串档）。
+                   ★ 2026-10-11：本模式的**专有键必须一并进 modeVars**。回填函数
+                   `syncModeSectionValues` 取 `mv = modeVars[mode] || appSettings.modeSettings[mode] || …`
+                   —— 对象为真就不再往回落，于是 jizura 的风格/情绪/密度/闪光等控件
+                   一直停在 HTML 里写死的初始值（重开面板看到的不是真实设置）。
+                   注意 .setting-btn-group（perf/beat）谁也没回填，是更早就存在的缺口。 */
+                jizura: Object.assign({}, defaultVisModeVar('jizura'), {
+                    /* ★ 2026-10-11 默认改成 'ai'：AI 分析完自动挑一套风格，不用用户手选
+                       （无分析结果时引擎回落抽签，观感等同旧的「自动匹配」） */
+                    style: getMS('jizura', 'style', 'ai'),
+                    mood: getMS('jizura', 'mood', null),
+                    /* 追加分：面板的「追加部件」toggle（默认开，见 defaults.js） */
+                    extra: getMS('jizura', 'extra', true),
+                    aspect: getMS('jizura', 'aspect', '16:9'),
+                    fps: getMS('jizura', 'fps', 24),
+                    fast: getMS('jizura', 'fast', null),
+                    perf: getMS('jizura', 'perf', 'auto'),
+                    beat: getMS('jizura', 'beat', 'every'),
+                    wordSync: getMS('jizura', 'wordSync', 'off'),
+                    motion: getMS('jizura', 'motion', 0.7),
+                    glitch: getMS('jizura', 'glitch', 0.55),
+                    chroma: getMS('jizura', 'chroma', 0.7),
+                    decor: getMS('jizura', 'decor', 0.5),
+                    density: getMS('jizura', 'density', 0.55),
+                    texture: getMS('jizura', 'texture', 0.6),
+                    flash: getMS('jizura', 'flash', true),
+                    hud: getMS('jizura', 'hud', 'auto'),
+                }),
+                prism: Object.assign({}, defaultVisModeVar('prism'), {
+                    fontFamily: getMS('prism', 'fontFamily', globalFontKey),
+                    showTranslation: getMS('prism', 'showTranslation', true),
+                    showRomaji: getMS('prism', 'showRomaji', true),
+                    prismPreset: getMS('prism', 'prismPreset', 'auto'),
+                    prismCutRate: getMS('prism', 'prismCutRate', 'phrase'),
+                    prismRefraction: getMS('prism', 'prismRefraction', 0.75),
+                    prismDispersion: getMS('prism', 'prismDispersion', 0.68),
+                    prismCaustics: getMS('prism', 'prismCaustics', 0.72),
+                    prismCamera: getMS('prism', 'prismCamera', 0.85),
+                    prismHud: getMS('prism', 'prismHud', true),
+                }),
+                vitrail: Object.assign({}, defaultVisModeVar('vitrail'), {
+                    fontFamily: getMS('vitrail', 'fontFamily', globalFontKey),
+                    showTranslation: getMS('vitrail', 'showTranslation', true),
+                    showRomaji: getMS('vitrail', 'showRomaji', true),
+                    vitrailPreset: getMS('vitrail', 'vitrailPreset', 'auto'),
+                    vitrailArchitecture: getMS('vitrail', 'vitrailArchitecture', 'auto'),
+                    vitrailCamera: getMS('vitrail', 'vitrailCamera', 0.85),
+                    vitrailLighting: getMS('vitrail', 'vitrailLighting', 0.90),
+                    vitrailReflection: getMS('vitrail', 'vitrailReflection', true),
+                    vitrailParticles: getMS('vitrail', 'vitrailParticles', true),
+                    vitrailParallax: getMS('vitrail', 'vitrailParallax', true),
+                    vitrailQuality: getMS('vitrail', 'vitrailQuality', 'auto'),
+                }),
+                focalcut: Object.assign({}, defaultVisModeVar('focalcut'), {
+                    fontFamily: getMS('focalcut', 'fontFamily', globalFontKey),
+                    showTranslation: getMS('focalcut', 'showTranslation', true),
+                    showRomaji: getMS('focalcut', 'showRomaji', true),
+                    focalcutPolarity: getMS('focalcut', 'focalcutPolarity', 'auto'),
+                    focalcutCutRate: getMS('focalcut', 'focalcutCutRate', 'normal'),
+                    focalcutSplitLens: getMS('focalcut', 'focalcutSplitLens', true),
+                    focalcutCamera: getMS('focalcut', 'focalcutCamera', 0.90),
+                    focalcutGuides: getMS('focalcut', 'focalcutGuides', true),
+                    focalcutRackFocus: getMS('focalcut', 'focalcutRackFocus', true),
+                })
                 };
             this.globalVars = { 
                 glassStrength: (intf.glassStrength != null ? intf.glassStrength : 40),
@@ -258,6 +350,23 @@ function resolveFontFamilyInner(fontKey) {
             this._blurStyleEl = null;
             this._swayStyleEl = null;
             this._emotionStyleEl = null;
+            this._reRenderTimers = [];
+            this._flyinTimers = [];
+            this._flyinNeedsScale = false;
+        }
+
+        _clearReRenderTimers() {
+            if (Array.isArray(this._reRenderTimers)) {
+                this._reRenderTimers.forEach(id => clearTimeout(id));
+                this._reRenderTimers = [];
+            }
+        }
+
+        _clearFlyinTimers() {
+            if (Array.isArray(this._flyinTimers)) {
+                this._flyinTimers.forEach(id => clearTimeout(id));
+                this._flyinTimers = [];
+            }
         }
 
         async init() {
@@ -266,13 +375,17 @@ function resolveFontFamilyInner(fontKey) {
             this.loadLyrics();
             this.updateCycleDuration();
             /* ★ 修复首次打开不显示：等待容器和歌词容器都有非零尺寸 */
-            const waitForLayout = (maxRetries = 15) => new Promise(resolve => {
+            const waitForLayout = (maxRetries = 45) => new Promise(resolve => {
                 let retries = 0;
                 const check = () => {
+                    if (this.destroyed || this._previewsSuspended) {
+                        resolve();
+                        return;
+                    }
                     const r = this.container.getBoundingClientRect();
                     const lc = this.lyricsContainerEl;
                     const lcR = lc ? lc.getBoundingClientRect() : { width: 0, height: 0 };
-                    if (((r.width > 50 && r.height > 50 && lcR.width > 10 && lcR.height > 10)) || retries >= maxRetries) {
+                    if ((r.width > 50 && r.height > 50 && lcR.width > 10 && lcR.height > 10) || retries >= maxRetries) {
                         resolve();
                         return;
                     }
@@ -303,19 +416,29 @@ function resolveFontFamilyInner(fontKey) {
                 this._resizeObserver.observe(this.container);
             }
 
-            /* ★ 多次延迟重渲染，覆盖面板动画展开的各种时序 */
+            /* ★ 多次延迟稳定布局，覆盖面板动画展开时序；不重复清空已就绪 DOM（避免飞入词重置透明度闪烁） */
+            this._clearReRenderTimers();
             const reRender = () => {
-                /* ★ 这三个定时器最长 600ms，必然跨过"开了设置马上关"的操作：
-                   挂起/已销毁时直接退出，别把 setMode 又跑起来（会清挂起标志）。 */
                 if (this.destroyed || this._previewsSuspended) return;
-                if (this.currentMode) {
+                if (!this.currentMode) return;
+                if (!this.lineElements || this.lineElements.length === 0) {
                     this.setMode(this.currentMode);
+                } else if (this.currentMode === 'flyin') {
+                    this.updateFlyinTranslation(this.activeLineIndex >= 0 ? this.activeLineIndex : 0, true);
+                    this.flyinAutoScaleFont();
+                    this.update(this.lastTime || 0);
+                } else if (this.currentMode === 'wordcloud' && (!this.wcLayoutDone || this.wcCanvasW === 0)) {
+                    this.layoutWordCloud();
+                    this.update(this.lastTime || 0);
+                } else {
                     this.update(this.lastTime || 0);
                 }
             };
-            setTimeout(reRender, 150);
-            setTimeout(reRender, 300);
-            setTimeout(reRender, 600);
+            this._reRenderTimers = [
+                setTimeout(reRender, 150),
+                setTimeout(reRender, 300),
+                setTimeout(reRender, 600)
+            ];
         }
 
         /* ★ 加载硬编码歌词（不再从 API 获取） */
@@ -685,8 +808,8 @@ function resolveFontFamilyInner(fontKey) {
             }
 
             if (this.currentMode === 'wordcloud') { this.scrollEl.style.transition = 'none'; setTimeout(() => this.layoutWordCloud(), 60); }
-            else if (this.currentMode === 'flyin') { this.scrollEl.style.transition = 'none'; this.scrollEl.style.transform = 'none'; }
-            else if (this.currentMode === 'pv') { this.scrollEl.style.transition = 'none'; this.scrollEl.style.transform = 'none'; }
+            else if (this.currentMode === 'flyin') { this.scrollEl.style.width = ''; this.scrollEl.style.height = ''; this.scrollEl.style.transition = 'none'; this.scrollEl.style.transform = 'none'; }
+            else if (this.currentMode === 'pv') { this.scrollEl.style.width = ''; this.scrollEl.style.height = ''; this.scrollEl.style.transition = 'none'; this.scrollEl.style.transform = 'none'; }
             else { this.scrollEl.style.width = ''; this.scrollEl.style.height = ''; this.scrollEl.style.transition = 'transform 0.5s cubic-bezier(0.15,0.85,0.25,1)'; this.scrollEl.style.transform = 'translateY(0px)'; }
 
             this.activeLineIndex = -1; this.updateLineBlur();
@@ -955,23 +1078,37 @@ function resolveFontFamilyInner(fontKey) {
             const c = this.lyricsContainerEl;
             if (!c) return;
             const fa = document.getElementById('previewFlyinTransArea');
-            const al = this.playerEl.querySelector('.preview-line.active');
+            const al = this.playerEl.querySelector('.preview-line.active')
+                || (this.activeLineIndex >= 0 && this.lineElements ? this.lineElements[this.activeLineIndex] : null);
             if (!al) return;
             const le = al.querySelector('.lrc-original');
             if (!le) return;
+            if (c.clientWidth < 50 || c.clientHeight < 60) {
+                le.style.maxHeight = '';
+                this._flyinNeedsScale = true;
+                return;
+            }
             const tr = 20, br = fa ? fa.offsetHeight + 20 : 60;
             const mh = c.clientHeight - tr - br - (this.controlsBar ? this.controlsBar.offsetHeight : 40);
-            if (mh <= 0) return;
+            const mw = Math.max(80, c.clientWidth * 0.92);
+            if (mh < 40) {
+                le.style.maxHeight = '';
+                this._flyinNeedsScale = true;
+                return;
+            }
+            this._flyinNeedsScale = false;
             const v = this.modeVars.flyin;
-            const baseFontPx = 24;
+            /* 1.0x 基准放大到旧版(24px)的 >=5 倍并按容器宽高自适应收缩，避免小窗裁切 */
+            const baseFontPx = Math.max(120, Math.round(c.clientWidth * 0.24));
             const bs = (parseFloat(v.fontSize) || 1.0) * baseFontPx;
             le.style.fontSize = bs + 'px';
             le.style.maxHeight = 'none';
             const nh = le.scrollHeight;
-            if (nh > mh) {
-                const s = mh / nh;
-                le.style.fontSize = (bs * s) + 'px';
-                le.style.maxHeight = mh + 'px';
+            const nw = le.scrollWidth;
+            if (nh > mh || nw > mw) {
+                const s = Math.min(nh > mh ? mh / nh : 1, nw > mw ? mw / nw : 1);
+                le.style.fontSize = Math.max(24, Math.floor(bs * s)) + 'px';
+                if (nh * s > mh) le.style.maxHeight = mh + 'px';
             }
         }
 
@@ -1049,13 +1186,41 @@ function resolveFontFamilyInner(fontKey) {
                         }
                     }
                 }
-                if (this.lineElements[this.activeLineIndex]) this.lineElements[this.activeLineIndex].classList.add('active');
+                const activeLineEl = this.lineElements[this.activeLineIndex];
+                /* ★ 飞入模式首屏/切模式落地修复：若先加 line.active 再在 flyinAutoScaleFont() 里读
+                   scrollHeight 触发强制布局、之后才加 word.active，会让已唱过的字全被锁进 0→1 的
+                   CSSTransition（主线程忙碌时甚至停在 opacity:0，直到下一句切换才显字）。
+                   首次进入（oi < 0）先把已到点的词与当前行无过渡地同步提交到 opacity:1，再清回 transition。 */
+                const initialFlyin = this.currentMode === 'flyin' && oi < 0 && !!activeLineEl;
+                const settledFlyinWords = [];
+                if (initialFlyin) {
+                    activeLineEl.style.transition = 'none';
+                    const initWords = this.wordElementsByLine[this.activeLineIndex] || [];
+                    for (let j = 0; j < initWords.length; j++) {
+                        const we = initWords[j];
+                        if (!we) continue;
+                        const ws = parseInt(we.dataset.start);
+                        if (t >= ws) {
+                            we.style.transition = 'none';
+                            we.classList.add('active');
+                            settledFlyinWords.push(we);
+                        }
+                    }
+                }
+                if (activeLineEl) activeLineEl.classList.add('active');
                 this.updateLineBlur();
                 if (this.currentMode === 'flyin') {
-                    this.updateFlyinTranslation(this.activeLineIndex);
+                    this.updateFlyinTranslation(this.activeLineIndex, oi < 0);
                     this.flyinAutoScaleFont();
+                    if (initialFlyin) {
+                        void activeLineEl.offsetHeight;
+                        activeLineEl.style.transition = '';
+                        for (let j = 0; j < settledFlyinWords.length; j++) {
+                            settledFlyinWords[j].style.transition = '';
+                        }
+                    }
                 } else if (this.currentMode === 'wordcloud') {
-                    this.updateFlyinTranslation(this.activeLineIndex);
+                    this.updateFlyinTranslation(this.activeLineIndex, oi < 0);
                 } else {
                     if (this.lineElements[this.activeLineIndex]) {
                         const ae = this.lineElements[this.activeLineIndex];
@@ -1068,6 +1233,8 @@ function resolveFontFamilyInner(fontKey) {
                         }
                     }
                 }
+            } else if (this.currentMode === 'flyin' && this._flyinNeedsScale) {
+                this.flyinAutoScaleFont();
             }
             /* 逐字高亮（仅计算当前行） */
             const aw = this.wordElementsByLine[this.activeLineIndex] || [], ah = this.wordHighlightElementsByLine[this.activeLineIndex] || [];
@@ -1236,6 +1403,8 @@ function resolveFontFamilyInner(fontKey) {
         suspendPreviews() {
             this._previewsSuspended = true;
             this.isPlaying = false;
+            this._clearReRenderTimers();
+            this._clearFlyinTimers();
             if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
             try { this.updatePlayIcon(); } catch (e) { logCatch('previewEngine', e); }
             this._hideAllPvPreviewContainers();
@@ -1251,6 +1420,7 @@ function resolveFontFamilyInner(fontKey) {
 
         setMode(mode) {
             this.currentMode = mode;
+            this._clearFlyinTimers();
             /* ★ 进入模式 = 解除挂起（suspendPreviews 的反向操作）：设置页重开 /
                切回外观 Tab 都走 setMode，若不清零，异步建好的预览会被误判为
                「已挂起」而永远保持暂停。 */
@@ -1260,7 +1430,7 @@ function resolveFontFamilyInner(fontKey) {
                （浮层没打开时它还是会保持 none，见 _syncPreviewRootVisibility。） */
             this._syncPreviewRootVisibility();
             this._wcLastTransform = '';   /* 切模式后 scrollEl 的 transform 可能被其他模式改写，强制相机重写 */
-            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tempera', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-jizura');
+            this.playerEl.classList.remove('view-cover', 'view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tempera', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-jizura', 'view-prism', 'view-astrolabe', 'view-vitrail', 'view-focalcut');
 
             const ca = this.playerEl.querySelector('.preview-cover-area');
             if (ca) ca.style.display = (mode === 'cover') ? '' : 'none';
@@ -1395,6 +1565,12 @@ function resolveFontFamilyInner(fontKey) {
                 }).then(handle => {
                     if (this.destroyed || gen !== this._previewGen) { handle.destroy(); return; }
                     this.temperaPreview = handle;
+                    const tm = (this.modeVars && this.modeVars.tempera && this.modeVars.tempera.fontFamily) || 'default';
+                    const liveIntf = (typeof globalThis !== 'undefined' && globalThis.appSettings && globalThis.appSettings.interface)
+                        || (this.appSettings && this.appSettings.interface)
+                        || {};
+                    const gf = liveIntf.fontFamily || 'default';
+                    this._temperaFontStack = resolveFontFamily(tm, gf);
                     /* ★ 创建是异步的：期间设置页可能已关闭 → 直接暂停，别在后台空转 */
                     if (this._previewsSuspended) { handle.setPaused(true); return; }
                     handle.setTime((this.lastTime || 0) / 1000);
@@ -1485,47 +1661,49 @@ function resolveFontFamilyInner(fontKey) {
             }
 
             this.render();
+            /* ★ 先应用 CSS 变量（含 --preview-font-family/--preview-font-size），再测距/激活，避免先按默认字体算完又跳变 */
+            this.applyAllVars();
             if (mode === 'flyin') {
                 this.scrollEl.style.transform = 'none';
+                /* ★ 保持 activeLineIndex = -1 让 update(curT) 同步走通 ni !== activeLineIndex：
+                   一次性完成行激活、updateLineBlur、updateFlyinTranslation(ni, true)、flyinAutoScaleFont 和首词激活 */
                 const curT = this.lastTime || 0;
-                let ni = -1, lo = 0, hi = this.lyrics.length - 1;
-                while (lo <= hi) { const mid = (lo + hi) >> 1; if (this.lyrics[mid].start <= curT) { ni = mid; lo = mid + 1; } else { hi = mid - 1; } }
-                if (ni === -1) ni = 0;
-                this.activeLineIndex = ni;
-                if (this.lineElements[ni]) {
-                    this.lineElements.forEach((el, idx) => el.classList.toggle('active', idx === ni));
-                }
-                this.updateFlyinTranslation(ni, true);
-                setTimeout(() => this.flyinAutoScaleFont(), 30);
-                /* ★ 修复：从 PV/浮空模式切换到飞入模式后歌词不显示，强制延迟重渲染 */
+                this.update(curT);
+                const gen = this._previewGen;
+                const safeScale = () => {
+                    if (this.destroyed || this._previewsSuspended || this.currentMode !== 'flyin' || gen !== this._previewGen) return;
+                    this.flyinAutoScaleFont();
+                };
+                this._flyinTimers.push(setTimeout(safeScale, 30));
                 requestAnimationFrame(() => {
-                    if (this.lineElements[ni]) {
-                        this.lineElements.forEach((el, idx) => el.classList.toggle('active', idx === ni));
+                    if (this.destroyed || this._previewsSuspended || this.currentMode !== 'flyin' || gen !== this._previewGen) return;
+                    if (this.activeLineIndex < 0) {
+                        this.update(this.lastTime || 0);
                     }
-                    this.updateFlyinTranslation(ni, true);
-                    setTimeout(() => this.flyinAutoScaleFont(), 50);
+                    const activeIdx = this.activeLineIndex >= 0 ? this.activeLineIndex : 0;
+                    if (this.lineElements[activeIdx] && !this.lineElements[activeIdx].classList.contains('active')) {
+                        this.lineElements.forEach((el, idx) => el.classList.toggle('active', idx === activeIdx));
+                    }
+                    this.updateFlyinTranslation(activeIdx, true);
+                    this.flyinAutoScaleFont();
                 });
-                /* ★ 概率空白根修（用户实测：切模式时概率出现）：切模式瞬间容器可能
-                   还在面板展开动画中（尺寸 0），flyinAutoScaleFont 量到 0 宽会把
-                   歌词字号算成 0 且不再补救（ResizeObserver 只在尺寸变化时触发，
-                   若切模式前后容器尺寸没变就不会再回调）。多重延迟兜底覆盖时序窗。
-                   ★ 2026-10-02 再延长（用户复测「有概率不显示到下一句」）：面板展开
-                   动画在低端机上可超 1s，补 1200/2500 两档。 */
-                [140, 320, 650, 1200, 2500].forEach(d => setTimeout(() => {
-                    try { if (this.currentMode === 'flyin') this.flyinAutoScaleFont(); } catch (_e) { logCatch('previewEngine', _e); }
-                }, d));
-            } else if (mode === 'wordcloud') {
-                this.layoutWordCloud();
-                /* ★ 修复：如果容器尺寸为 0 导致布局跳过，延迟重试 */
-                const vw = this.lyricsContainerEl?.clientWidth || 0;
-                const vh = this.lyricsContainerEl?.clientHeight || 0;
-                if (vw === 0 || vh === 0) {
-                    setTimeout(() => this.layoutWordCloud(), 100);
-                    setTimeout(() => this.layoutWordCloud(), 300);
+                [140, 320, 650, 1200, 2500].forEach(d => {
+                    this._flyinTimers.push(setTimeout(() => {
+                        try { safeScale(); } catch (_e) { logCatch('previewEngine', _e); }
+                    }, d));
+                });
+            } else {
+                if (mode === 'wordcloud') {
+                    this.layoutWordCloud();
+                    const vw = this.lyricsContainerEl?.clientWidth || 0;
+                    const vh = this.lyricsContainerEl?.clientHeight || 0;
+                    if (vw === 0 || vh === 0) {
+                        setTimeout(() => this.layoutWordCloud(), 100);
+                        setTimeout(() => this.layoutWordCloud(), 300);
+                    }
                 }
+                this.update(this.lastTime || 0);
             }
-            this.applyAllVars();
-            this.update(this.lastTime || 0);
         }
 
         /* ========== CSS 变量应用 ========== */
@@ -1537,8 +1715,8 @@ function resolveFontFamilyInner(fontKey) {
             const r = this.container;
             const v = this.modeVars[this.currentMode] || this.modeVars.cover;
 
-            /* 基础文字样式变量（全局各模式生效） */
-            const baseFontPx = 24; /* medium 基准 */
+            /* 基础文字样式变量（封面/歌词模式 1.0x 基准调整为 36px，其余维持 24px） */
+            const baseFontPx = (this.currentMode === 'cover' || this.currentMode === 'lyrics') ? 36 : 24;
             const fontScale = parseFloat(v.fontSize); 
             const fontSizePx = (isNaN(fontScale) ? 1.0 : fontScale) * baseFontPx;
             r.style.setProperty('--preview-font-size', fontSizePx + 'px');
@@ -1583,9 +1761,12 @@ function resolveFontFamilyInner(fontKey) {
             r.style.setProperty('--preview-bg-color', bgCol);
             r.style.setProperty('--preview-bg-color-rgb', this.hexToRgb(bgCol));
 
-            /* ★ 传入全局字体键，使 'default'/'inherit' 能解析为全局字体 */
-            const globalFk = (this.appSettings && this.appSettings.interface && this.appSettings.interface.fontFamily) || 'default';
-            const adv = this.appSettings && this.appSettings.interface && this.appSettings.interface.advancedFonts;
+            /* ★ 传入全局字体键，使 'default'/'inherit' 能解析为全局字体（优先读 live globalThis.appSettings） */
+            const liveIntf = (typeof globalThis !== 'undefined' && globalThis.appSettings && globalThis.appSettings.interface)
+                || (this.appSettings && this.appSettings.interface)
+                || {};
+            const globalFk = liveIntf.fontFamily || 'default';
+            const adv = liveIntf.advancedFonts;
             const modeFont = v.fontFamily || 'default';
             let resolvedFont;
             if (adv && adv.enabled) {
@@ -1600,8 +1781,27 @@ function resolveFontFamilyInner(fontKey) {
                 resolvedFont = resolveFontFamily(modeFont, globalFk);
             }
             r.style.setProperty('--preview-font-family', resolvedFont);
+            r.style.setProperty('--app-font-family', resolvedFont);
+            r.style.setProperty('--vis-font-family', resolvedFont);
+            r.style.setProperty('--pv-font-family', resolvedFont);
             if (this.playerEl) {
                 this.playerEl.style.fontFamily = resolvedFont;
+                this.playerEl.style.setProperty('--app-font-family', resolvedFont);
+                this.playerEl.style.setProperty('--vis-font-family', resolvedFont);
+                this.playerEl.style.setProperty('--pv-font-family', resolvedFont);
+            }
+            if (this.currentMode === 'pv' && this.sonnetPreviewEngine) {
+                try { this.sonnetPreviewEngine.applySettings(this.modeVars.pv || {}); } catch (e) { logCatch('previewEngine', e); }
+            }
+            if (this.visManager && this.visManager.has(this.currentMode)) {
+                try { this.visManager.applySettings(v || {}); } catch (e) { logCatch('previewEngine', e); }
+            }
+            if (this.currentMode === 'tempera' && this.temperaPreview && resolvedFont
+                && this._temperaFontStack && this._temperaFontStack !== resolvedFont) {
+                try { this.temperaPreview.destroy(); } catch (e) { logCatch('previewEngine', e); }
+                this.temperaPreview = null;
+                this._temperaCreating = false;
+                this.setMode('tempera');
             }
 
             const glowVal = (v.emotionGlow !== undefined && v.emotionGlow !== null) ? parseFloat(v.emotionGlow) : 10;
@@ -1839,7 +2039,10 @@ function resolveFontFamilyInner(fontKey) {
                     this.setMode('tempera');
                 }
                 this.render();
+                this.applyModeVars();
+                this.update(this.lastTime || 0);
                 requestAnimationFrame(() => {
+                    if (this.destroyed || this._previewsSuspended) return;
                     this.update(this.lastTime || 0);
                     if (this.currentMode === 'flyin') {
                         this.updateFlyinTranslation(this.activeLineIndex >= 0 ? this.activeLineIndex : 0, true);
@@ -1854,10 +2057,15 @@ function resolveFontFamilyInner(fontKey) {
             if (this.onSettingChange) this.onSettingChange(name, value, this.currentMode);
         }
 
-        setGlobalVar(name, value) {
+        setGlobalVar(name, value, silent = false) {
             this.globalVars[name] = value;
+            if (name === 'themeColor' && this.modeVars) {
+                Object.keys(this.modeVars).forEach((m) => {
+                    if (this.modeVars[m]) this.modeVars[m].themeColor = value;
+                });
+            }
             this.applyAllVars();
-            if (this.onSettingChange) this.onSettingChange(name, value, this.currentMode);
+            if (!silent && this.onSettingChange) this.onSettingChange(name, value, this.currentMode);
         }
 
         hexToRgb(hex) {
@@ -1866,7 +2074,15 @@ function resolveFontFamilyInner(fontKey) {
             return `${r},${g},${b}`;
         }
 
-        destroy() { this.isPlaying = false; if (this.rafId) cancelAnimationFrame(this.rafId); if (this.container) this.container.innerHTML = ''; }
+        destroy() {
+            this.destroyed = true;
+            this.isPlaying = false;
+            this._clearReRenderTimers();
+            this._clearFlyinTimers();
+            if (this.rafId) cancelAnimationFrame(this.rafId);
+            if (this._resizeObserver) { try { this._resizeObserver.disconnect(); } catch (e) { logCatch('previewEngine', e); } }
+            if (this.container) this.container.innerHTML = '';
+        }
     }
 
     global.PreviewEngine = PreviewEngine;

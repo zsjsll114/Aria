@@ -19,6 +19,9 @@ import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { applyEqGains, buildEqBands, buildEqPresets } from './90-eq.js'; // EQ 分享码导入（90-eq 不 import 258，无环）
 import { platformKeyOf } from '../services/playSource.js'; // 平台规范名：历史去重与取链分支共用一份表
 import { titleOf, artistOf } from '../services/lyricIndex.js'; // title/song/name 与 artist/singer 字段归一
+import { buildCollectionQueue, enqueueTrack, insertNextAndPlay } from '../core/playlistQueue.js';
+import { applyPlayTick, createTickTracker, resetTickForTrack } from '../core/listenStatsReport.js';
+import { loadStoredStats, saveStoredStats, openListenStatsOverlay, closeListenStatsOverlay } from './256-listen-stats.js';
 
 const $ = (id) => typeof document !== 'undefined' ? document.getElementById(id) : null;
 
@@ -203,6 +206,7 @@ globalThis.Aria.__openDefaultPlaylistView = async function () {
         <div class="playlist-cover"><span class="playlist-cover-fallback"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h12a3 3 0 0 1 3 3v11"></path><path d="M3 5v14h12a3 3 0 0 0 3-3V5"></path></svg></span></div>
         <div class="playlist-info"><div class="playlist-name">我的歌单</div><div class="playlist-meta">本地创建/收藏的歌单 · 点击进入</div></div>
     </div>`;
+    Aria.__clearSongView?.(listEl, false);
     listEl.innerHTML = mineEntry() + (Aria.__skeleton ? Aria.__skeleton('list', 6) : '<div class="empty-hint">加载中...</div>');
     const mineRow = listEl.querySelector('#dailyBackToMine');
     if (mineRow) mineRow.onclick = () => renderPlaylistsView();
@@ -228,6 +232,7 @@ globalThis.Aria.__openDefaultPlaylistView = async function () {
     }
     /* ★ 三平台都没有日推 → 直接打开热门榜单 */
     logWarn('rankings', `[Daily] 歌单默认视图：三平台日推均不可用（${results.map(x => x.src + '=' + ((x.r && x.r.err) || (x.r && x.r.ok ? 'empty' : 'fail'))).join('，')}）→ 热门榜单`);
+    Aria.__clearSongView?.(listEl, false);
     listEl.innerHTML = mineEntry() + `<div class="rank-error" style="margin:18px 6px;">今日日推暂时不可用（三平台未启用或服务离线）<br><span style="font-size:11px;opacity:.75">已自动为你打开热门榜单</span><br><span style="font-size:11px;opacity:.75">登录了却不显示？到 设置 → 自建服务 打开对应平台开关</span></div>`;
     const mineRow2 = listEl.querySelector('#dailyBackToMine');
     if (mineRow2) mineRow2.onclick = () => renderPlaylistsView();
@@ -239,8 +244,8 @@ globalThis.Aria.__openDefaultPlaylistView = async function () {
 function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
     const favs = new Set((getFavorites() || []).map(f => makeSongKey(f)));
     const playAllRow = `
-        <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-            <div class="rank-playall" id="dailyRowPlayAll" style="flex:1;display:flex;align-items:center;gap:6px;padding:9px 14px;background:rgba(255,255,255,.07);border-radius:10px;cursor:pointer;">
+        <div class="rank-list-head">
+            <div class="rank-playall" id="dailyRowPlayAll">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>播放全部（${songs.length}）
             </div>
         </div>`;
@@ -261,6 +266,12 @@ function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
                 <div class="result-artist">${singer}</div>
             </div>
             <div class="result-actions">
+                <button class="result-action-btn" data-action="playnext-daily" data-i="${i}" title="下一首播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                <button class="result-action-btn" data-action="addnow-daily" data-i="${i}" title="加入当前播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
+                </button>
                 <button class="result-action-btn ${isFav ? 'active-fav' : ''}" data-action="fav-daily" data-i="${i}" title="${isFav ? '取消收藏' : '收藏'}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
                 </button>
@@ -268,6 +279,7 @@ function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
         </div>`;
     });
     listEl.innerHTML = mineEntryHtml + playAllRow + rows;
+    Aria.__mountSongView?.(listEl);
     const mineRow = listEl.querySelector('#dailyBackToMine');
     if (mineRow) mineRow.onclick = () => renderPlaylistsView();
     const playAll = listEl.querySelector('#dailyRowPlayAll');
@@ -276,6 +288,16 @@ function renderDailyRowsInto(listEl, mineEntryHtml, songs) {
         /* 与榜单行同一个入口：playRankSong 才会做酷狗缺标识的提示 + 记最近播放，
            直接调 loadOnlineSong 会让日推和榜单行为不一致（日推点完不进历史）。 */
         el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; playRankSong(songs[Number(el.dataset.i)]); };
+    });
+    listEl.querySelectorAll('.result-action-btn[data-action="playnext-daily"]').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const item = songs[Number(btn.dataset.i)];
+            playNextRankSong(item, item && item.source);
+        };
+    });
+    listEl.querySelectorAll('.result-action-btn[data-action="addnow-daily"]').forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); addNowRankSong(songs[Number(btn.dataset.i)]); };
     });
     listEl.querySelectorAll('.result-action-btn[data-action="fav-daily"]').forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); toggleRankFav(songs[Number(btn.dataset.i)], btn); };
@@ -338,12 +360,10 @@ globalThis.Aria.__fetchHotBoardQueue = async function (cap = 30) {
     return queue.slice(0, cap * 3);
 };
 
-/* 每日推荐：分栏（QQ / 酷狗 / 网易云 / 汽水）
-   ★ 前三个的顺序按用户要求：QQ 优先 → 酷狗 → 网易云（聚合与日推 tab 都读这个数组）。
-   汽水**追加在末位**：它的日推走字节推荐流（匿名可用，不需要登录也不需要平台开关），
-   与前三家的「自建服务需启用」语义不同，排在后面不会打乱用户已习惯的顺序。 */
-const dailySrcOrder = ['qq', 'kugou', 'netease', 'qishui'];
-const DAILY_SRC_LABEL = { netease: '网易云音乐', qq: 'QQ音乐', kugou: '酷狗音乐', qishui: '汽水音乐' };
+/* 每日推荐：分栏（QQ / 酷狗 / 网易云）
+   ★ 顺序：QQ 优先 → 酷狗 → 网易云（聚合与日推 tab 都读这个数组）。 */
+const dailySrcOrder = ['qq', 'kugou', 'netease'];
+const DAILY_SRC_LABEL = { netease: '网易云音乐', qq: 'QQ音乐', kugou: '酷狗音乐' };
 let dailyState = { src: 'netease', loading: false, cache: {} };
 
 function renderDailyTracks(list) {
@@ -410,17 +430,17 @@ async function loadDailyList(listEl) {
     dailyState.loading = false;
     if (!res.ok) {
         if (!Array.isArray(cached) || !cached.length) {
-            /* ★ 汽水没有平台开关（设置页刻意不渲染），「去设置启用」的引导对它是错的：
-               它的推荐流既不需要启用也不需要登录，唯一失败原因是本机副进程没起来。 */
-            const how = dailyState.src === 'qishui'
-                ? '汽水服务未启动'
-                : `请到「设置 → 自建服务」启用「${lbl}」`;
+            const how = `请到「设置 → 自建服务」启用「${lbl}」`;
+            Aria.__clearSongView?.(listEl, false);
             listEl.innerHTML = `<div class="rank-error">${esc(res.err || '获取失败')}<br><span style="font-size:11px;opacity:.7">${esc(how)}</span></div>`;
         }
         return;
     }
     if (!res.list || !res.list.length) {
-        if (!Array.isArray(cached) || !cached.length) listEl.innerHTML = `<div class="rank-error">「${lbl}」今日暂无推荐歌曲${dailyState.src === 'qq' ? '<br><span style="font-size:11px;opacity:.7">QQ 日推可能需要登录，可切到网易云音乐/酷狗</span>' : ''}</div>`;
+        if (!Array.isArray(cached) || !cached.length) {
+            Aria.__clearSongView?.(listEl, false);
+            listEl.innerHTML = `<div class="rank-error">「${lbl}」今日暂无推荐歌曲${dailyState.src === 'qq' ? '<br><span style="font-size:11px;opacity:.7">QQ 日推可能需要登录，可切到网易云音乐/酷狗</span>' : ''}</div>`;
+        }
         return;
     }
     dailyState.cache[dailyState.src] = res.list;
@@ -525,6 +545,7 @@ async function loadRankSource(src, force, silent) {
         renderBoards(!!silent);
     } catch (err) {
         if (my !== rankSeq) return;
+        Aria.__clearSongView?.(listEl, false);
         listEl.innerHTML = `<div class="rank-error">${esc((err && err.message) || '加载失败')}<br><button class="rank-retry" onclick="Aria.__rankRetry&&Aria.__rankRetry()">重试</button></div>`;
     }
 }
@@ -540,7 +561,7 @@ function renderBoards(preserveScroll) {
        主动操作（切源/打开/返回）才回顶 */
     const savedTop = preserveScroll ? listEl.scrollTop : 0;
     if (!preserveScroll) resetRankScroll();
-    listEl.classList.remove('song-grid-view');   /* 榜宫格视图不套用歌曲卡片布局 */
+    Aria.__clearSongView?.(listEl, false);   /* 榜宫格视图不套用歌曲卡片布局 */
     const pal = ['#5b6b7f', '#7a6f8e', '#7d8a6a', '#8a6a6a', '#6a7f8e', '#8e7a6a', '#6a8e7f', '#8e6a7f', '#6f7f8e', '#7f8e6a'];
     const fmtBig = (n) => { n = Number(n) || 0; return n >= 100000000 ? (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿' : n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + '万' : String(n); };
     const boardMeta = (b) => {
@@ -622,6 +643,7 @@ async function openBoard(idx) {
     if (b.songs && b.songs.length) {
         renderSongs(b.songs);
     } else {
+        Aria.__clearSongView?.(listEl, false);
         listEl.innerHTML = `<div class="rank-error">该榜歌曲暂不可用<br><span style="font-size:11px;opacity:.7">可切换其它榜单，或用搜索播放同名歌曲</span></div>`;
     }
 }
@@ -631,14 +653,15 @@ function renderSongs(songs) {
     const listEl = $('rankList');
     resetRankScroll();
     if (!Array.isArray(songs) || !songs.length) {
+        Aria.__clearSongView?.(listEl, false);
         listEl.innerHTML = '<div class="rank-empty">该榜单暂无歌曲</div>';
         return;
     }
     let favKeys = new Set();
     try { favKeys = new Set((getFavorites() || []).map(f => makeSongKey(f))); } catch (e) { /* ignore */ }
     listEl.innerHTML = `
-        <div class="rank-list-head" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-            <div class="rank-playall" style="flex:1;display:flex;align-items:center;gap:6px;padding:9px 14px;background:rgba(255,255,255,.07);border-radius:10px;cursor:pointer;">
+        <div class="rank-list-head">
+            <div class="rank-playall">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>播放全部（${songs.length}）
             </div>
             <button class="setting-btn icon-btn" id="rankPlayAllDl" style="width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;" title="批量下载整单歌曲" aria-label="批量下载">
@@ -662,6 +685,9 @@ function renderSongs(songs) {
                 <div class="result-artist">${esc(singer)}</div>
             </div>
             <div class="result-actions">
+                <button class="result-action-btn" data-action="playnext-rank" data-i="${i}" title="下一首播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                </button>
                 <button class="result-action-btn" data-action="addnow-rank" data-i="${i}" title="加入当前播放">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
                 </button>
@@ -676,15 +702,16 @@ function renderSongs(songs) {
     }).join('')}`;
     /* ★ 榜内歌单恢复 行式⇄宫格 切换（用户要求；与歌单/收藏列表同一套 B1 规范）。
        按钮必须在 innerHTML 注入之后挂载，否则 .rank-list-head 取到旧节点。 */
-    const __rankViewHead = listEl.querySelector('.rank-list-head');
-    if (__rankViewHead) __rankViewHead.appendChild(Aria.__songViewBtn(listEl));
-    Aria.__applySongViewTo(listEl);
+    Aria.__mountSongView(listEl);
     const playAllBar = listEl.querySelector('.rank-playall');
     if (playAllBar) playAllBar.onclick = () => playAllRankSongs(songs);
     const dlBtn = document.getElementById('rankPlayAllDl');
     if (dlBtn) dlBtn.onclick = (e) => { e.stopPropagation(); batchDownloadSongs(songs, '榜单'); };
     listEl.querySelectorAll('.result-item').forEach(el => {
         el.onclick = (e) => { if (e.target.closest('.result-action-btn')) return; playRankSong(songs[Number(el.dataset.i)]); };
+    });
+    listEl.querySelectorAll('.result-action-btn[data-action="playnext-rank"]').forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); playNextRankSong(songs[Number(btn.dataset.i)]); };
     });
     listEl.querySelectorAll('.result-action-btn[data-action="addnow-rank"]').forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); addNowRankSong(songs[Number(btn.dataset.i)]); };
@@ -702,26 +729,44 @@ function renderSongs(songs) {
    （playlist=[{...}]），不传 true 会清掉刚 push 的全部歌曲 → 只播第一首 */
 function playAllRankSongs(songs) {
     if (!Array.isArray(songs) || !songs.length) return;
+    const fallbackSrc = (rankState && rankState.src) || '';
+    const q = buildCollectionQueue(songs, 0, fallbackSrc);
+    if (!q.playlist.length) return;
     try {
         if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
-            globalThis.playlist.length = 0;
-            globalThis.playlist.push(...songs);
-            globalThis.currentTrackIndex = 0;
+            globalThis.playlist = q.playlist;
+            globalThis.currentTrackIndex = q.currentTrackIndex;
         }
-    } catch (e) { /* ignore */ }
-    loadOnlineSong(songs[0], true).catch(e => logWarn('rankings', '[Rank] 播放全部失败:', e));
-    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(songs[0]);
-    if (typeof setHint === 'function') setHint(`播放全部：${songs.length} 首已加入播放队列`);
+    } catch (e) { logCatch('rankings', e); }
+    loadOnlineSong(q.playlist[0], true).catch(e => logWarn('rankings', '[Rank] 播放全部失败:', e));
+    if (typeof window.recordRecentPlay === 'function') window.recordRecentPlay(q.playlist[0]);
+    if (typeof setHint === 'function') setHint(`播放全部：${q.playlist.length} 首已加入播放队列`);
+}
+/* 下一首播放（插播到当前曲之后） */
+function playNextRankSong(song, explicitFallbackSrc) {
+    if (!song) return;
+    const fallbackSrc = explicitFallbackSrc || (rankState && rankState.src) || '';
+    if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+        const res = globalThis.Aria.enqueuePlayNextTrack(song, fallbackSrc);
+        if (typeof setHint === 'function' && res && res.message) setHint(res.message);
+        return;
+    }
+    addNowRankSong(song);
 }
 /* 加入当前播放 */
 function addNowRankSong(song) {
     if (!song) return;
+    const fallbackSrc = (rankState && rankState.src) || '';
+    let res = { added: false, duplicate: false };
     try {
         if (typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist)) {
-            globalThis.playlist.push(song);
+            res = enqueueTrack(globalThis.playlist, song, fallbackSrc);
         }
-    } catch (e) { /* ignore */ }
-    if (typeof setHint === 'function') setHint('已加入当前播放队列');
+    } catch (e) { logCatch('rankings', e); }
+    if (typeof setHint === 'function') {
+        if (res.added) setHint('已加入当前播放队列');
+        else if (res.duplicate) setHint('已在当前播放队列中');
+    }
 }
 /* 添加到指定歌单：复用全局「加入歌单」弹层（130 renderAddToPlaylistList），
    先同步 globalThis.currentSongData/currentSongKey 为该曲，再打开弹层 */
@@ -899,6 +944,7 @@ function openRecent() {
     const list = getRecentHistory();
     const listEl = $('recentList');
     if (!list.length) {
+        Aria.__clearSongView?.(listEl, false);
         listEl.innerHTML = '<div class="rank-empty">还没有播放过歌曲<br>去搜索 / 榜单 / 收藏里点一首吧</div>';
         return;
     }
@@ -909,18 +955,55 @@ function openRecent() {
                 <div class="result-title">${esc(it.title)}</div>
                 <div class="result-artist">${esc(it.artist)}${it.source ? ' · ' + ({tencent:'QQ',kugou:'酷狗',netease:'网易',kuwo:'酷我'}[it.source] || it.source) : ''} · ${it.at ? new Date(it.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
             </div>
-            <button class="rank-del" data-i="${i}" title="移出">×</button>
+            <div class="result-actions">
+                <button class="result-action-btn" data-action="playnext-recent" data-i="${i}" title="下一首播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                <button class="result-action-btn" data-action="addnow-recent" data-i="${i}" title="加入当前播放">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
+                </button>
+                <button class="rank-del" data-i="${i}" title="移出">×</button>
+            </div>
         </div>`).join('');
+    Aria.__applySongViewTo?.(listEl);
     listEl.querySelectorAll('.result-item').forEach(el => {
         el.onclick = (e) => {
-            if (e.target.closest('.rank-del')) return;
+            if (e.target.closest('.rank-del') || e.target.closest('.result-action-btn')) return;
             const it = list[Number(el.dataset.i)];
             if (!it) return;
-            const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover };
+            const info = { source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key };
+            if (info.source === 'local' && info.url) {
+                const curList = typeof globalThis.playlist !== 'undefined' && Array.isArray(globalThis.playlist) ? globalThis.playlist : [];
+                const curIdx = typeof globalThis.currentTrackIndex === 'number' ? globalThis.currentTrackIndex : 0;
+                const q = insertNextAndPlay(curList, info, 'local', curIdx);
+                if (q.index >= 0 && typeof globalThis.playlist !== 'undefined') {
+                    globalThis.playlist = q.playlist;
+                    globalThis.currentTrackIndex = q.currentTrackIndex;
+                    loadPlaylistTrack(q.currentTrackIndex).catch(err => logWarn('rankings', '[Recent] 本地播放失败:', err));
+                    recordRecentPlay(q.track);
+                }
+                return;
+            }
             if (info.source && (info.id || info.mid || info.hash)) {
-                loadOnlineSong(info).catch(e => logWarn('rankings', '[Recent] 播放失败:', e));
+                loadOnlineSong(info).catch(err => logWarn('rankings', '[Recent] 播放失败:', err));
                 recordRecentPlay(info);
             }
+        };
+    });
+    listEl.querySelectorAll('.result-action-btn[data-action="playnext-recent"]').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const it = list[Number(btn.dataset.i)];
+            if (!it) return;
+            playNextRankSong({ source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key }, it.source || '');
+        };
+    });
+    listEl.querySelectorAll('.result-action-btn[data-action="addnow-recent"]').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const it = list[Number(btn.dataset.i)];
+            if (!it) return;
+            addNowRankSong({ source: it.source, id: it.id, mid: it.mid, hash: it.hash, song: it.title, singer: it.artist, cover: it.cover, url: it.url, key: it.key });
         };
     });
     listEl.querySelectorAll('.rank-del').forEach(btn => {
@@ -937,99 +1020,20 @@ function openRecent() {
 function closeRecent() { $('recentOverlay')?.classList.remove('visible'); }
 
 /* ============================================================
- * 四、播放统计（640 宽 search-modal；KPI + 常听歌曲/歌手 + 近 7 日）
+ * 四、播放统计（累计写入交由 core/listenStatsReport；弹窗呈现交由 app/256-listen-stats）
  * ============================================================ */
-const STATS_KEY = 'aria_play_stats';
-
-function loadStats() {
-    try { return JSON.parse(localStorage.getItem(STATS_KEY) || 'null') || defaultStats(); } catch (e) { return defaultStats(); }
+const _statTracker = createTickTracker();
+if (typeof globalThis.Aria !== 'undefined') {
+    globalThis.Aria.__resetPlayStatsTick = () => resetTickForTrack(_statTracker);
 }
-function defaultStats() {
-    return { totalPlays: 0, totalMs: 0, firstAt: 0, songs: {}, artists: {}, days: {} };
-}
-function saveStats(s) {
-    try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch (e) { logCatch('rankings', e); }
-}
-let _statAcc = 0;
 window.recordPlayStats = function (sec) {
     if (!window.currentSongData) return;
-    const st = loadStats();
-    const d = window.currentSongData;
-    const k = `${d.source || ''}:${d.id || d.mid || ''}`;
-    const s = Math.max(0, sec || 0);
-    _statAcc += s;
-    /* ★ 统一用毫秒存储：变量名 totalMs / songs[k].ms / days[day] 都暗示 ms 单位 */
-    const ms = Math.round(s * 1000);
-    st.totalMs += ms;
-    const day = new Date().toISOString().slice(0, 10);
-    st.days[day] = (st.days[day] || 0) + ms;
-    if (!st.firstAt) st.firstAt = Date.now();
-    if (_statAcc >= 30) {
-        _statAcc = 0;
-        st.totalPlays += 1;
-        st.songs[k] = st.songs[k] || { title: d.title || '未知', artist: d.artist || '', n: 0, ms: 0 };
-        st.songs[k].n += 1;
-        st.songs[k].title = d.title || st.songs[k].title;
-        st.songs[k].artist = d.artist || st.songs[k].artist;
-        st.songs[k].ms += ms;
-        const ak = d.artist || '未知';
-        st.artists[ak] = st.artists[ak] || { n: 0, ms: 0 };
-        st.artists[ak].n += 1;
-        st.artists[ak].ms += ms;
-    }
-    /* ★ 每次上报都落盘：否则累计<30s 时统计全不保存，近7日/累计收听永远 0s */
-    saveStats(st);
+    const res = applyPlayTick(loadStoredStats(), _statTracker, sec, window.currentSongData, Date.now());
+    if (res.changed) saveStoredStats(res.stats);
 };
 
-function fmtMs(ms) {
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}秒`;
-    if (s < 3600) return `${Math.floor(s / 60)}分${s % 60}秒`;
-    return `${Math.floor(s / 3600)}时${Math.floor((s % 3600) / 60)}分`;
-}
-
-function openStats() {
-    const ov = $('statsOverlay');
-    if (!ov) return;
-    ov.classList.add('visible');
-    const st = loadStats();
-    const body = $('statsBody');
-    const songs = Object.entries(st.songs).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
-    const artists = Object.entries(st.artists).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
-    const days7 = Object.entries(st.days).sort().slice(-7);
-    const maxSong = songs.length ? songs[0][1].n : 1;
-    const maxArt = artists.length ? artists[0][1].n : 1;
-    const maxDay = days7.length ? Math.max(...days7.map(x => x[1])) : 1;
-    body.innerHTML = `
-        <div class="stats-kpis">
-            <div class="stats-kpi"><div class="v">${st.totalPlays}</div><div class="l">累计播放</div></div>
-            <div class="stats-kpi"><div class="v">${fmtMs(st.totalMs)}</div><div class="l">累计收听</div></div>
-            <div class="stats-kpi"><div class="v">${Object.keys(st.songs).length}</div><div class="l">听过的歌</div></div>
-            <div class="stats-kpi"><div class="v">${Object.keys(st.artists).length}</div><div class="l">听过的歌手</div></div>
-        </div>
-        <div class="stats-block">
-            <div class="stats-block-title">常听歌曲</div>
-            ${songs.length ? songs.map(([k, v]) => `<div class="stats-bar-row">
-                <div class="stats-bar-name">${esc(v.title)}</div>
-                <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${(v.n / maxSong * 100).toFixed(1)}%"></div></div>
-                <div class="stats-bar-val">${v.n} 次</div></div>`).join('') : '<div class="stats-empty" style="padding:10px">暂无数据，多听几首吧</div>'}
-        </div>
-        <div class="stats-block">
-            <div class="stats-block-title">常听歌手</div>
-            ${artists.length ? artists.map(([k, v]) => `<div class="stats-bar-row">
-                <div class="stats-bar-name">${esc(k)}</div>
-                <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${(v.n / maxArt * 100).toFixed(1)}%"></div></div>
-                <div class="stats-bar-val">${v.n} 首</div></div>`).join('') : '<div class="stats-empty" style="padding:10px">暂无数据</div>'}
-        </div>
-        <div class="stats-block">
-            <div class="stats-block-title">近 7 日收听时长</div>
-            ${days7.length ? days7.map(([d, ms]) => `<div class="stats-bar-row">
-                <div class="stats-bar-name">${d.slice(5)}</div>
-                <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${(ms / maxDay * 100).toFixed(1)}%"></div></div>
-                <div class="stats-bar-val">${fmtMs(ms)}</div></div>`).join('') : '<div class="stats-empty" style="padding:10px">暂无数据</div>'}
-        </div>`;
-}
-function closeStats() { $('statsOverlay')?.classList.remove('visible'); }
+function openStats() { openListenStatsOverlay(); }
+function closeStats() { closeListenStatsOverlay(); }
 
 /* ============================================================
  * 五、EQ 分享码（复制 / 导入走毛玻璃弹窗）

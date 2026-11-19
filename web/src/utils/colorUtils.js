@@ -151,6 +151,55 @@ export function refineColor(hex) {
     return '#' + refinedRgb.map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * AI 情感词颜色归一化（机制兜底，去「荧光/同质化」）：
+ *   ① 饱和度压到 ≤0.75（高级感 = 低饱和带灰，忌荧光纯色）
+ *   ② 亮度收进可读带 [0.52, 0.80]（深色不再隐身、过曝不再刺眼）
+ *   ③ 色相保留（情感色彩倾向不变）
+ * 只认 #rrggbb，其它写法原样返回；幂等。LLM 即使输出荧光色也被压回高级感。
+ * @param {string|null|undefined} hex
+ * @returns {string|null|undefined}
+ */
+export function normalizeEmotionColor(hex) {
+    if (!hex || !hex.startsWith('#')) return hex;
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+    const ns = Math.min(s, 0.75);
+    const nl = Math.max(0.52, Math.min(0.80, l));
+    const [r, g, b] = hslToRgb(h, ns, nl);
+    return '#' + [r, g, b].map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 情感词颜色对实际底色的对比度护栏：保色相/饱和度，只调亮度，
+ * 直到对底色对比度 ≥ minRatio（默认 4.5:1）。暗底提亮、亮底压深。
+ * 已可读则原样返回；只认 #rrggbb，其它写法原样返回。
+ * @param {string|null|undefined} color
+ * @param {string|null|undefined} bgHex
+ * @param {number} [minRatio]
+ * @returns {string|null|undefined}
+ */
+export function ensureEmotionContrast(color, bgHex, minRatio = 4.5) {
+    if (!color || !bgHex) return color;
+    const rgb = hexToRgb(color);
+    const bg = hexToRgb(bgHex);
+    if (!rgb || !bg) return color;
+    const bgLum = relativeLuminance(bg[0], bg[1], bg[2]);
+    if (contrastRatio(relativeLuminance(rgb[0], rgb[1], rgb[2]), bgLum) >= minRatio) return color;
+    const [h, s, l0] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+    const lighten = pickInk(bgLum).light;
+    let l = l0;
+    for (let i = 0; i < 32; i++) {
+        l += lighten ? 0.03 : -0.03;
+        if (l <= 0.02 || l >= 0.98) { l = Math.max(0.02, Math.min(0.98, l)); break; }
+        const [r, g, b] = hslToRgb(h, s, l);
+        if (contrastRatio(relativeLuminance(r, g, b), bgLum) >= minRatio) break;
+    }
+    const [r, g, b] = hslToRgb(h, s, l);
+    return '#' + [r, g, b].map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
+}
+
 
 /**
  * 从封面图片提取 3 色调色盘（主色、副色、强调色）并优化饱和度

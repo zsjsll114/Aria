@@ -214,6 +214,10 @@ export function disposeMvUpscale() {
     _lastSize = { w: 0, h: 0 };
 }
 
+export function isMvUpscaleRunning() {
+    return !!_running;
+}
+
 /** 窗口尺寸变化时重建 canvas 尺寸（下一帧 render 会自动跟上） */
 export function notifyMvUpscaleResize() {
     if (!_running) return;

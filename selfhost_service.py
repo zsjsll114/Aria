@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易云 / 汽水）
+selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易云）
 ====================================================================
 每个平台以独立 Node 服务（后端 music API server）以本地副进程运行，
 由 server.py 统一代理访问，避免前端直连副进程、统一 CORS 与超时。
@@ -15,18 +15,6 @@ selfhost_service.py — 自建音乐服务副进程托管（酷狗 / QQ / 网易
   kugou    -> MakcRe/KuGouMusicApi   (概念版 lite, 端口 3100)
   qq       -> sansejian/qq-music-api (tsx src/app.ts, 端口 3200)
   netease  -> NeteaseCloudMusicApi   fork (端口 3201, vendor 待安置)
-  qishui   -> 自写 server.mjs + ly-music-source 库 (端口 3300, 见下)
-
-★ 汽水与前三个平台的一处结构性差异（决定了它为什么不能照抄同一套接线）：
-  前三个 vendor 都是「上游已经把音频 URL 解好」，Python 侧只负责把登录态注入
-  查询串/请求头；汽水的音频是**加密**的，解密在 vendor 进程内完成，它给的是
-  字节流而不是直链。所以：
-    1) 登录态不经过 Python —— 会话由 vendor 自己落盘（_eval/qishui-music-api/.session.json），
-       Python 的 _STATE['qishui'].cookie 只是一个「曾登录」标记（'qishui-session'），
-       真实登录态一律以 vendor 的 GET /status 为准（见 _qishui_login_snapshot）。
-    2) 播放链路是「vendor /stream → server.py /api/audio/stream（带 Range 与磁盘缓存）→ 浏览器」，
-       前端拿到的仍然是一个 http URL（127.0.0.1:3300/stream?id=…），
-       与其它源拿 CDN 直链的形状一致，下游 getStreamCachedAudioUrl 无需特殊分支。
 """
 import atexit
 import json
@@ -84,45 +72,120 @@ _SERVICES = {
         'qr':   '_get_qr_netease',
         'poll': '_poll_netease',
     },
-    'qishui': {
-        'label':   '汽水音乐',
-        'port':    3300,
-        # ★ 代码与第三方库分家（2026-10-03）：`.gitignore:19` 把 `_eval/` 整目录排除
-        #   （第三方音源镜像），另外三个 vendor 全是上游 clone 的、丢了能重跑
-        #   scripts/setup-vendors.bat；但汽水的适配层是我们自己写的，必须入库 ——
-        #   于是它放在 scripts/（受控），第三方库 ly-music-source 留在 _eval/（镜像）。
-        #   cwd 仍取 _eval/qishui-music-api：NODE_OPTIONS 的 preload 守卫用的是
-        #   `../../scripts/…` 相对路径（绝对中文路径会被 cmd 剥引号变乱码，见下方注释），
-        #   层级必须与另外三个 vendor 一致。
-        'dir':     os.path.join(PROJECT_DIR, '_eval', 'qishui-music-api'),
-        'start':   'node ../../scripts/qishui-server.mjs',
-        'env':     {'PORT': '3300'},
-        'qr':      '_get_qr_qishui',
-        'poll':    '_poll_qishui',
-    },
 }
 
 
 # ==================== 运行时状态（进程 + 登录态） ====================
 class _Service:
-    __slots__ = ('proc', 'alive', 'base', 'cookie', 'tmp', 'uid')
+    __slots__ = (
+        'proc', 'alive', 'starting', 'err',
+        'base', 'cookie', 'tmp', 'uid', 'nickname', 'vip',
+    )
 
     def __init__(self, base):
         self.proc = None
         self.alive = False
+        self.starting = False
+        self.err = ''
         self.base = base
         self.cookie = ''   # 登录态：'token=..;userid=..'(kugou) / QQ cookie 串 / 网易云 cookie
         self.tmp = ''      # 网易云二维码会话临时 cookie
         self.uid = ''      # 当前登录账号的数字 id（netease userId / qq loginUin / kugou userid）
+        self.nickname = ''
+        self.vip = ''
 
 
 _STATE = {name: _Service(f'http://127.0.0.1:{cfg["port"]}') for name, cfg in _SERVICES.items()}
 _STATE_LOCK = threading.Lock()
+# 仅访问 127.0.0.1 本机副进程，绕过 Windows 系统 HTTP 代理（防止 Clash/V2Ray 截胡导致超慢/502）
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+_NETEASE_CACHEABLE_PREFIXES = ('/search', '/cloudsearch', '/lyric', '/song/detail', '/artist/', '/album', '/toplist', '/simi/')
 
 # ==================== 登录态持久化 ====================
 # 自建登录 cookie/uid 只存内存时，服务重启即失效 → 重启后"自建收藏/歌单"全部获取不到。
 # 这里把登录态落盘到 cache/selfhost_login.json，服务重启自动恢复，扫码一次长期可用。
-_PERSIST_PATH = os.path.join(PROJECT_DIR, 'cache', 'selfhost_login.json')
+_USER_DATA_DIR_OVERRIDE = os.environ.get('ARIA_USER_DATA_DIR', '').strip()
+_PERSIST_PATH = (
+    os.path.join(os.path.abspath(_USER_DATA_DIR_OVERRIDE), 'selfhost_login.json')
+    if _USER_DATA_DIR_OVERRIDE
+    else os.path.join(PROJECT_DIR, 'cache', 'selfhost_login.json')
+)
+_CONFIG_PERSIST_PATH = os.path.join(os.path.dirname(_PERSIST_PATH), 'selfhost_config.json')
+
+_DEFAULT_SERVICE_CONFIG = {
+    'kugou': {'platform': 'lite', 'proxy': ''},
+    'qq': {'fallbackMode': True, 'useGlobalCookie': False},
+    'netease': {'proxy': ''},
+}
+_SERVICE_CONFIG = {k: dict(v) for k, v in _DEFAULT_SERVICE_CONFIG.items()}
+
+
+def _load_service_config():
+    try:
+        with open(_CONFIG_PERSIST_PATH, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        if isinstance(raw, dict):
+            for k, defaults in _DEFAULT_SERVICE_CONFIG.items():
+                if isinstance(raw.get(k), dict):
+                    merged = dict(defaults)
+                    merged.update(raw[k])
+                    _SERVICE_CONFIG[k] = merged
+    except Exception:
+        pass
+
+
+def _save_service_config():
+    try:
+        os.makedirs(os.path.dirname(_CONFIG_PERSIST_PATH), exist_ok=True)
+        with open(_CONFIG_PERSIST_PATH, 'w', encoding='utf-8') as f:
+            json.dump(_SERVICE_CONFIG, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _normalize_qq_uid(raw):
+    s = str(raw or '').strip()
+    if not s:
+        return ''
+    if (s[0] in ('o', 'O')) and s[1:].isdigit():
+        stripped = s[1:].lstrip('0')
+        return stripped or '0'
+    return s
+
+
+def get_service_config(name=None):
+    if name:
+        return dict(_SERVICE_CONFIG.get(name, {}))
+    return {k: dict(v) for k, v in _SERVICE_CONFIG.items()}
+
+
+def set_service_config(name, cfg=None, restart=False):
+    if name not in _SERVICES:
+        return {'ok': False, 'err': '未知平台'}
+    cur = dict(_DEFAULT_SERVICE_CONFIG.get(name, {}))
+    cur.update(_SERVICE_CONFIG.get(name, {}))
+    if isinstance(cfg, dict):
+        if name == 'kugou':
+            plat = str(cfg.get('platform', cur.get('platform', 'lite'))).strip().lower()
+            cur['platform'] = 'standard' if plat in ('standard', 'normal', 'mobile', '') else 'lite'
+            cur['proxy'] = str(cfg.get('proxy', cur.get('proxy', '')) or '').strip()
+        elif name == 'qq':
+            if 'fallbackMode' in cfg:
+                cur['fallbackMode'] = bool(cfg.get('fallbackMode'))
+            if 'useGlobalCookie' in cfg:
+                cur['useGlobalCookie'] = bool(cfg.get('useGlobalCookie'))
+        elif name == 'netease':
+            if 'proxy' in cfg:
+                cur['proxy'] = str(cfg.get('proxy') or '').strip()
+    _SERVICE_CONFIG[name] = cur
+    _save_service_config()
+    if restart and (_STATE[name].alive or _STATE[name].proc is not None):
+        r = start_service(name, restart=True)
+        return {'ok': bool(r.get('ok')), 'config': dict(cur), 'restarted': True, 'alive': bool(r.get('alive')), 'err': r.get('err', '')}
+    return {'ok': True, 'config': dict(cur), 'restarted': False}
+
+
+_load_service_config()
 
 
 # Set-Cookie 属性段在 Cookie 请求头里必须剔除：网易云官方接口收到带
@@ -218,9 +281,9 @@ def probe_vendor_exposed(name):
 
 
 def _probe_alive(name):
-    """轻量探测副进程端口是否在监听（最多 1s，不拉起进程）"""
+    """轻量探测副进程端口是否在监听（最多 1s，不拉起进程，绕过系统代理）"""
     try:
-        with urllib.request.urlopen(f'http://127.0.0.1:{_SERVICES[name]["port"]}/', timeout=1) as r:
+        with _LOCAL_OPENER.open(f'http://127.0.0.1:{_SERVICES[name]["port"]}/', timeout=1) as r:
             return r.status in (200, 404)
     except Exception:
         return False
@@ -228,66 +291,156 @@ def _probe_alive(name):
 
 def _ensure_running_async(name):
     """在后台线程中拉起副进程（不阻塞调用者）。"""
+    svc = _STATE[name]
+    if svc.starting:
+        return None
+    svc.starting = True
+
     def _worker():
         try:
             ensure_running(name)
-        except Exception:
-            pass
+        except Exception as e:
+            svc.err = str(e)[:160]
+        finally:
+            svc.starting = False
+
     t = threading.Thread(target=_worker, args=(), daemon=True)
     t.start()
     return t
 
 
+def _kill_proc_tree(p):
+    """终止副进程及其整个进程树（cmd/npx/node）。"""
+    if p is None or p.poll() is not None:
+        return
+    try:
+        if os.name == 'nt':
+            subprocess.run(
+                ['taskkill', '/PID', str(p.pid), '/T', '/F'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+            )
+        else:
+            p.terminate()
+            try:
+                p.wait(timeout=2)
+            except Exception:
+                p.kill()
+    except Exception:
+        pass
+
+
 def ensure_running(name):
     """确保副进程已启动并监听端口；返回是否成功"""
     cfg = _SERVICES[name]
+    svc = _STATE[name]
     if not os.path.isdir(cfg['dir']):
-        _STATE[name].alive = False
+        svc.alive = False
+        svc.starting = False
+        svc.err = f'缺少源码目录：{cfg["dir"]}'
         return False
+    svc.starting = True
+    try:
+        with _STATE_LOCK:
+            if _state_is_ok(name):
+                svc.err = ''
+                return True
+            node = _find_node()
+            if not node:
+                svc.alive = False
+                svc.err = '未检测到 Node.js（请安装 Node 或检查 PATH / ARIA_NODE）'
+                return False
+            env = dict(os.environ)
+            env.update(cfg.get('env', {}))
+            scfg = _SERVICE_CONFIG.get(name) or {}
+            if name == 'kugou':
+                env['platform'] = 'lite' if scfg.get('platform', 'lite') == 'lite' else ''
+                kg_proxy = str(scfg.get('proxy') or '').strip()
+                if kg_proxy:
+                    env['KUGOU_API_PROXY'] = kg_proxy
+                else:
+                    env.pop('KUGOU_API_PROXY', None)
+            elif name == 'qq':
+                env['FALLBACK_MODE'] = 'true' if scfg.get('fallbackMode', True) else 'false'
+                env['USE_GLOBAL_COOKIE'] = 'true' if scfg.get('useGlobalCookie', False) else 'false'
+            # ★ 三个 vendor 是第三方代码，自己 app.listen(port) 时不传 host 也不读 HOST，
+            #   实测默认绑到 `::`（IPv6 任意地址，比 0.0.0.0 还宽）——即使 server.py 没开
+            #   --lan 也等于把带登录态的接口开给整个网段。
+            #   这里用 NODE_OPTIONS 预加载一个 listen 守卫把默认值收到回环，
+            #   不走 patches/*.patch：补丁依赖精确上下文行号，上游一漂移就静默不生效。
+            #   要故意对局域网开放时显式设 ARIA_VENDOR_HOST=0.0.0.0 即可放行。
+            # ★ guard 路径必须用「相对路径 + 正斜杠」（2026-09-27 实测）：NODE_OPTIONS 会被
+            #   cmd(shell=True)→node 两层解析，带引号的中文绝对路径（如 D:\旧电脑\...）
+            #   被剥掉引号和反斜杠变成乱码路径 → preload MODULE_NOT_FOUND → 三个 vendor
+            #   冷启动全体秒崩（症状：设置页一直「自建服务未启动」+「已登录 uid 为空」）。
+            #   spawn 的 cwd 已是 vendor 目录（_eval/<vendor>/），上两级即项目根 scripts/。
+            _guard_abs = os.path.join(PROJECT_DIR, 'scripts', 'vendor-loopback-guard.cjs')
+            if os.path.isfile(_guard_abs) and env.get('ARIA_VENDOR_HOST', '127.0.0.1') != 'off':
+                _prev = env.get('NODE_OPTIONS', '')
+                env['NODE_OPTIONS'] = f'{_prev} --require ../../scripts/vendor-loopback-guard.cjs'.strip()
+            _kill_proc_tree(svc.proc)
+            try:
+                svc.proc = subprocess.Popen(
+                    cfg['start'], cwd=cfg['dir'], shell=True,
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                )
+            except Exception as e:
+                svc.alive = False
+                svc.err = f'启动进程失败：{e}'
+                return False
+        # 等待端口监听
+        dead = time.time() + _START_WAIT
+        while time.time() < dead:
+            if _probe_alive(name):
+                svc.alive = True
+                svc.err = ''
+                return True
+            if svc.proc is not None and svc.proc.poll() is not None:
+                svc.alive = False
+                svc.err = f'副进程启动后提前退出（code={svc.proc.poll()}）'
+                return False
+            time.sleep(0.4)
+        svc.alive = False
+        svc.err = f'等待端口 :{cfg["port"]} 响应超时'
+        return False
+    finally:
+        svc.starting = False
+
+
+def stop_service(name):
+    """停止指定平台的自建副进程。"""
+    if name not in _SERVICES:
+        return
     with _STATE_LOCK:
-        if _state_is_ok(name):
-            return True
-        node = _find_node()
-        if not node:
-            _STATE[name].alive = False
-            return False
-        env = dict(os.environ)
-        env.update(cfg.get('env', {}))
-        # ★ 三个 vendor 是第三方代码，自己 app.listen(port) 时不传 host 也不读 HOST，
-        #   实测默认绑到 `::`（IPv6 任意地址，比 0.0.0.0 还宽）——即使 server.py 没开
-        #   --lan 也等于把带登录态的接口开给整个网段。
-        #   这里用 NODE_OPTIONS 预加载一个 listen 守卫把默认值收到回环，
-        #   不走 patches/*.patch：补丁依赖精确上下文行号，上游一漂移就静默不生效。
-        #   要故意对局域网开放时显式设 ARIA_VENDOR_HOST=0.0.0.0 即可放行。
-        # ★ guard 路径必须用「相对路径 + 正斜杠」（2026-09-27 实测）：NODE_OPTIONS 会被
-        #   cmd(shell=True)→node 两层解析，带引号的中文绝对路径（如 D:\旧电脑\...）
-        #   被剥掉引号和反斜杠变成乱码路径 → preload MODULE_NOT_FOUND → 三个 vendor
-        #   冷启动全体秒崩（症状：设置页一直「自建服务未启动」+「已登录 uid 为空」）。
-        #   spawn 的 cwd 已是 vendor 目录（_eval/<vendor>/），上两级即项目根 scripts/。
-        _guard_abs = os.path.join(PROJECT_DIR, 'scripts', 'vendor-loopback-guard.cjs')
-        if os.path.isfile(_guard_abs) and env.get('ARIA_VENDOR_HOST', '127.0.0.1') != 'off':
-            _prev = env.get('NODE_OPTIONS', '')
-            env['NODE_OPTIONS'] = f'{_prev} --require ../../scripts/vendor-loopback-guard.cjs'.strip()
-        try:
-            _STATE[name].proc = subprocess.Popen(
-                cfg['start'], cwd=cfg['dir'], shell=True,
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-            )
-        except Exception:
-            _STATE[name].alive = False
-            return False
-    # 等待端口监听
-    dead = time.time() + _START_WAIT
-    while time.time() < dead:
-        if _probe_alive(name):
-            _STATE[name].alive = True
-            return True
-        time.sleep(0.4)
-    _STATE[name].alive = False
-    return False
+        svc = _STATE[name]
+        _kill_proc_tree(svc.proc)
+        svc.proc = None
+        svc.alive = False
+        svc.starting = False
+        _EXPOSE_CACHE.pop(name, None)
+
+
+def start_service(name, restart=False):
+    """同步启动（或重启）指定平台副进程，供设置页手动恢复。"""
+    if name not in _SERVICES:
+        return {'ok': False, 'err': '未知平台'}
+    cfg = _SERVICES[name]
+    if not os.path.isdir(cfg['dir']):
+        _STATE[name].err = f'缺少源码目录：{cfg["dir"]}'
+        return {'ok': False, 'alive': False, 'port': cfg['port'], 'err': _STATE[name].err}
+    if restart:
+        stop_service(name)
+    _STATE[name].err = ''
+    ok = ensure_running(name)
+    return {
+        'ok': bool(ok),
+        'alive': bool(ok),
+        'port': cfg['port'],
+        'err': '' if ok else (_STATE[name].err or f'启动 {cfg["label"]} 服务失败'),
+    }
 
 
 def shutdown_all():
@@ -298,25 +451,10 @@ def shutdown_all():
     offline，避免其它线程误以为还活着。"""
     with _STATE_LOCK:
         for name, svc in _STATE.items():
-            p = svc.proc
-            if p is not None and p.poll() is None:
-                try:
-                    if os.name == 'nt':
-                        subprocess.run(
-                            ['taskkill', '/PID', str(p.pid), '/T', '/F'],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-                        )
-                    else:
-                        p.terminate()
-                        try:
-                            p.wait(timeout=2)
-                        except Exception:
-                            p.kill()
-                except Exception:
-                    pass
+            _kill_proc_tree(svc.proc)
             svc.proc = None
             svc.alive = False
+            svc.starting = False
 
 
 atexit.register(shutdown_all)
@@ -392,10 +530,12 @@ def _proxy_raw(name, method, path_and_query, body=None, headers=None):
         path_and_query = f'{path_and_query}{sep}cookie={urllib.parse.quote(_STATE[name].cookie)}'
     elif name == 'netease' and _STATE[name].cookie:
         inject_cookie_header = _STATE[name].cookie
-        # ★ 带登录态的业务请求也必须携带唯一 _t：vendor apicache(2min) 按 URL 缓存、不含
-        #   Cookie 头，登录前缓存下的 /login/status、歌单等响应会被复用 → "扫码成功仍显示未登录"
-        sep2 = '&' if '?' in path_and_query else '?'
-        path_and_query = f'{path_and_query}{sep2}_t={_now_ms()}'
+        # ★ 带登录态的动态/鉴权请求携带唯一 _t 绕过 vendor apicache(2min)；
+        #   纯公共只读检索/歌词接口保留 apicache 命中，避免重复查词/搜索打满上游
+        pure_path = path_and_query.split('?', 1)[0]
+        if not pure_path.startswith(_NETEASE_CACHEABLE_PREFIXES):
+            sep2 = '&' if '?' in path_and_query else '?'
+            path_and_query = f'{path_and_query}{sep2}_t={_now_ms()}'
     url = f'{_STATE[name].base}{_encode_path_ascii(path_and_query)}'
     data = None
     hdrs = {'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Content-Type': 'application/json'}
@@ -407,7 +547,7 @@ def _proxy_raw(name, method, path_and_query, body=None, headers=None):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=_PROXY_TIMEOUT) as r:
+        with _LOCAL_OPENER.open(req, timeout=_PROXY_TIMEOUT) as r:
             raw = r.read()
             setc = r.headers.get_all('Set-Cookie') or []
             try:
@@ -480,15 +620,10 @@ def logout(name):
     _STATE[name].cookie = ''
     _STATE[name].tmp = ''
     _STATE[name].uid = ''
+    _STATE[name].nickname = ''
+    _STATE[name].vip = ''
     _invalidate_login_state(name)
     _persist_login()
-    # ★ 汽水的会话不在 Python 手里（vendor 自己落盘），只清本地标记等于没退出：
-    #   下次 /status 一问 vendor 仍是 authenticated，UI 会立刻又显示已登录。
-    if name == 'qishui':
-        try:
-            _proxy_raw(name, 'POST', f'/logout?_t={_now_ms()}', body={})
-        except Exception:
-            pass
     return {'ok': True}
 
 
@@ -499,16 +634,18 @@ def set_cookie(name, cookie=''):
         return {'ok': False, 'err': 'Cookie 为空'}
     _STATE[name].cookie = _sanitize_cookie_str(cookie) if name == 'netease' else cookie
     _STATE[name].tmp = ''
+    _STATE[name].nickname = ''
+    _STATE[name].vip = ''
     # 尝试回填 uid（收藏/歌单等需要）
     if name == 'kugou':
         _STATE[name].uid = _parse_kugou_cookie(cookie).get('userid', '')
     elif name == 'netease':
         _STATE[name].uid = _fetch_netease_uid(name)
     elif name == 'qq':
-        # QQ cookie 通常含 uin/euin；能解析则回填
+        # QQ cookie 通常含 uin/euin；能解析则回填（剥离 ptlogin 前缀 o）
         import re as _re
-        m = _re.search(r'(?:^|;)\s*uin\s*=\s*([^;]+)', cookie)
-        _STATE[name].uid = m.group(1).strip() if m else ''
+        m = _re.search(r'(?:^|;)\s*(?:qqmusic_uin|wxuin|uin)\s*=\s*([^;]+)', cookie)
+        _STATE[name].uid = _normalize_qq_uid(m.group(1)) if m else ''
     _invalidate_login_state(name)
     _persist_login()
     if not _STATE[name].uid:
@@ -702,7 +839,10 @@ def _poll_qq(name, key):
     if d.get('isOk'):
         session = d.get('session') or {}
         cookie = session.get('cookie') or ''
-        uin = str(session.get('uin') or session.get('loginUin') or '')
+        uin = _normalize_qq_uid(session.get('uin') or session.get('loginUin') or '')
+        euin = str(session.get('euin') or '').strip()
+        if cookie and euin and 'euin=' not in cookie:
+            cookie = f'{cookie}; euin={euin}'
         if cookie:
             _STATE[name].cookie = cookie
             _STATE[name].uid = uin
@@ -860,97 +1000,6 @@ def _join_setcookies(setc):
     return '; '.join(parts)
 
 
-# ---- 汽水（走自写 vendor：_eval/qishui-music-api/server.mjs + ly-music-source） ----
-# 与前三个平台不同，汽水的 HTTP 面是我们自己写的，所以这里的「登录流程」其实是
-# 薄薄一层转发：vendor 已经把 createQrLogin / pollQrLogin 包成了 /login/qr 与
-# /login/qr/check，Python 只做两件上游做不到的事：
-#   1) 把会话落盘的责任交还给 vendor（它的库只存内存），Python 不碰 cookie 内容；
-#   2) 给前端提供与前三个平台**完全一致**的返回形状（ok/img/key、ok/loggedIn/status），
-#      这样 selfhost-settings.js 的扫码弹窗一行都不用改就能多出一个平台。
-_QISHUI_QR_HINT = '请用汽水音乐 App 扫码授权（搜索与逐字歌词匿名可用，播放需登录）'
-
-
-def _get_qr_qishui(name):
-    status, data, _, _ = _proxy_raw(name, 'POST', f'/login/qr?_t={_now_ms()}', body={})
-    d = data if isinstance(data, dict) else {}
-    token = d.get('token') or ''
-    img = d.get('qrcode') or ''
-    if status >= 400 or not d.get('ok') or not token or not img:
-        return {'ok': False, 'err': d.get('err') or f'取码失败(status={status})'}
-    _STATE[name].tmp = token          # 轮询时前端会把 key 原样回传，这里只是兜底
-    return {'ok': True, 'platform': 'qishui', 'img': img, 'key': token, 'hint': _QISHUI_QR_HINT}
-
-
-def _poll_qishui(name, key):
-    key = key or {}
-    token = key.get('key') or key.get('token') or _STATE[name].tmp
-    if not token:
-        return {'ok': False, 'loggedIn': False, 'err': '缺少 token'}
-    status, data, _, _ = _proxy_raw(name, 'POST', f'/login/qr/check?_t={_now_ms()}',
-                                    body={'token': token})
-    d = data if isinstance(data, dict) else {}
-    if d.get('loggedIn'):
-        # ★ 标记而非真 cookie：真会话在 vendor 侧（.session.json）。此串只用于
-        #   _persist_login 的语义统一与「上次登录过」的展示，绝不参与任何请求注入。
-        _STATE[name].cookie = 'qishui-session'
-        _STATE[name].uid = str(d.get('uid') or '')
-        _STATE[name].tmp = ''
-        _invalidate_login_state(name)
-        _persist_login()
-        return {'ok': True, 'loggedIn': True, 'uid': _STATE[name].uid}
-    # ★ 必须先「校验」再「降级」。早期实现只看 d['loggedIn']，于是把 vendor 的业务
-    #   报错（{ok:false,err}）、副进程没起来（HTTP 502 + {'error':...}）、响应根本不是
-    #   JSON 这三种情况统统当成 status='waiting' 透传 —— 前端收到的是「一切正常，
-    #   请继续等」，用户扫完码看到的就是「没反应」。这里把失败原因如实带回，
-    #   前端才能显示出来并据此重试。
-    if status >= 400 or not isinstance(data, dict) or not data.get('ok'):
-        # 响应体不是 JSON（网关页/HTML 错误页）时 d 恒为空 dict，只能从原始体里取线索
-        if isinstance(data, str):
-            detail = data[:160].replace('\n', ' ').strip()
-        else:
-            detail = d.get('err') or d.get('error') or ''
-        return {'ok': False, 'loggedIn': False,
-                'err': detail or f'汽水登录校验失败（HTTP {status}）'}
-    # waiting / scanned / expired / failed 原样透传，前端 describeStatus 按字符串提示
-    return {'ok': True, 'loggedIn': False,
-            'status': d.get('status') or 'waiting', 'message': d.get('message') or ''}
-
-
-# 汽水登录态快照缓存：status_all 会被前端轮询，不能每次都把 /status 打到 vendor
-# （vendor 拿到 authenticated 后还会去打上游取 profile）。20s 与前端 5s 的状态
-# 轮询 + _probe_alive 的节奏匹配，又远小于一次扫码的耗时。
-_QISHUI_PR = {'at': 0.0, 'uid': '', 'loggedIn': False}
-_QISHUI_TTL = 20.0
-
-
-def _qishui_login_snapshot(name):
-    """问 vendor 要登录态。返回 (uid, loggedIn)。
-
-    ★ 为什么汽水不能沿用「cookie 非空即已登录」：那套判定的前提是 cookie 真的
-      会被注入到上游请求里（kugou/qq/netease 都是）。汽水的 cookie 是我们自己
-      编的标记串，注入无从谈起 —— 只有 vendor 自己知道会话还在不在。
-    """
-    now = time.time()
-    if now - _QISHUI_PR['at'] < _QISHUI_TTL:
-        return _QISHUI_PR['uid'], _QISHUI_PR['loggedIn']
-    uid, logged = '', False
-    try:
-        status, data, _, _ = _proxy_raw(name, 'GET', '/status')
-        d = data if isinstance(data, dict) else {}
-        logged = bool(d.get('authenticated'))
-        uid = str(d.get('uid') or '')
-    except Exception:
-        pass   # 探测异常保守判未登录：与 _verify_login 的「保守判有效」取向相反，
-               # 因为这里的误判代价是「多显示一次未登录」，而不是「假已登录」。
-    _QISHUI_PR.update({'at': now, 'uid': uid, 'loggedIn': logged})
-    if logged:
-        # 回填标记与 uid（覆盖「vendor 有会话但 Python 缓存被删/首次启动」的情形）
-        _STATE[name].cookie = _STATE[name].cookie or 'qishui-session'
-        if uid:
-            _STATE[name].uid = uid
-    return uid, logged
-
-
 # ==================== 酷狗每日签到领 VIP（源自 KGM-AUTO-CHECKIN，本地化） ====================
 # 与 GitHub Actions 版同接口：/user/detail 校验 → /youth/listen/song 听歌领
 # → /youth/vip ×8（每次间隔 30s）→ /user/vip/detail 查到期时间。周日顺带刷新 token。
@@ -1060,12 +1109,10 @@ def _resolve_uid(name):
     if name == 'kugou':
         return _parse_kugou_cookie(_STATE[name].cookie or '').get('userid', '')
     if name == 'qq':
-        return _STATE[name].uid
+        return _normalize_qq_uid(_STATE[name].uid)
     if name == 'netease':
         if not _STATE[name].uid and _STATE[name].cookie:
             _STATE[name].uid = _fetch_netease_uid(name)
-        return _STATE[name].uid
-    if name == 'qishui':
         return _STATE[name].uid
     return ''
 
@@ -1103,10 +1150,6 @@ def _invalidate_login_state(name):
     _LG_CACHE.pop(name, None)
     if name == 'netease':
         _NET_PR['at'] = 0.0
-    if name == 'qishui':
-        # 汽水同理：vendor /status 快照有 20s TTL，不清就会把「刚扫码成功」
-        # 覆盖成旧的 authenticated=False（前端 700ms 后重刷设置页正好撞上）。
-        _QISHUI_PR['at'] = 0.0
 
 
 def _verify_login(name):
@@ -1124,7 +1167,12 @@ def _verify_login(name):
                                         f'/user/detail?timestrap={int(time.time() * 1000)}')
             d = data if isinstance(data, dict) else {}
             dd = d.get('data') if isinstance(d.get('data'), dict) else {}
-            ok = bool(dd.get('nickname'))
+            nick = str(dd.get('nickname') or '')
+            ok = bool(nick)
+            if nick:
+                _STATE['kugou'].nickname = nick
+                if dd.get('is_vip') or dd.get('vip_type'):
+                    _STATE['kugou'].vip = 'vip'
         elif name == 'qq':
             # 需要 uin；c6.y.qq.com 校验 cookie，未登录响应 code != 0（vendor 已用 undici fetch 免 TLS 风控）
             uin = _resolve_uid(name)
@@ -1139,7 +1187,14 @@ def _verify_login(name):
         elif name == 'netease':
             # /login/status 拿得到 profile.userId 才算有效（proxy 对 netease 自动带 _t 防缓存）
             st, data, _ = proxy_request('netease', 'GET', '/login/status')
-            ok = bool(_extract_netease_profile(data).get('userId'))
+            prof = _extract_netease_profile(data)
+            ok = bool(prof.get('userId'))
+            if prof.get('nickname'):
+                _STATE['netease'].nickname = str(prof.get('nickname') or '')
+            try:
+                _STATE['netease'].vip = 'vip' if int(prof.get('vipType') or 0) > 0 else ''
+            except Exception:
+                pass
     except Exception:
         ok = True  # 保守：校验异常不判掉线，等下次 TTL 再验
     _LG_CACHE[name] = {'at': now, 'ok': ok}
@@ -1147,55 +1202,49 @@ def _verify_login(name):
 
 
 def status_all():
-    """快速返回三平台状态（仅探测端口，不阻塞拉起）；未启动的副进程异步后台拉起。"""
+    """快速返回四平台状态（仅探测端口，不阻塞拉起）；未启动的副进程异步后台拉起。"""
     out = {}
     for name, cfg in _SERVICES.items():
+        svc = _STATE[name]
         has_source = os.path.isdir(cfg['dir'])
-        # ★ 冷启动（proc=None 且 alive=False）→ 不探测，直接 alive=False
+        # ★ 冷启动（proc=None 且 alive=False 且非 starting）→ 不探测，直接 alive=False
         #   已有进程在跑或正在拉起 → 探测端口确认（最多 1s）
         alive = False
-        if has_source and (_STATE[name].proc is not None or _STATE[name].alive):
+        if has_source and (svc.proc is not None or svc.alive or svc.starting):
             alive = _probe_alive(name)
-        # 未启动但有源码 → 后台异步拉起，下次轮询即可就绪
-        if has_source and not alive and not _STATE[name].alive:
-            _STATE[name].alive = True  # 标记正在拉起，防重复 spawn
+        if alive:
+            svc.alive = True
+            svc.err = ''
+        else:
+            svc.alive = False
+        # 未启动但有源码（且尚未失败报错）→ 后台异步拉起，下次轮询即可就绪
+        if has_source and not alive and not svc.starting and not svc.err:
             _ensure_running_async(name)
-        # ★ 汽水：登录态由 vendor 自己持有（会话落盘在 vendor 目录），Python 侧
-        #   没有可校验的 cookie —— 直接问 vendor /status，别走下面那套
-        #   「cookie 非空 → _verify_login」的判定（那套对汽水只会恒判未登录，
-        #   因为标记串根本不会出现在任何上游请求里）。
-        if name == 'qishui':
-            uid, logged_in = _qishui_login_snapshot(name) if alive else ('', False)
-            if alive:
-                _STATE[name].alive = True  # 确认存活，供下次 _state_is_ok 复用
-            out[name] = {
-                'label': cfg['label'],
-                'alive': alive,
-                'loggedIn': logged_in,
-                'hasSource': has_source,
-                'uid': uid,
-                'exposed': _exposed_cached(name) if alive else False,
-            }
-            continue
-        uid = _resolve_uid(name) if alive and _STATE[name].cookie else ''
-        logged_in = bool(_STATE[name].cookie)
-        if alive and _STATE[name].cookie and uid:
+        uid = _resolve_uid(name) if alive and svc.cookie else ''
+        logged_in = bool(svc.cookie)
+        if alive and svc.cookie and uid:
             # ★ 有 cookie + uid 也做真实校验（TTL 30min 缓存，不阻塞）：
             #   酷狗 token / 网易云 cookie 会过期，仅凭"cookie 非空"会永远假"已登录"
             logged_in = _verify_login(name)
-        elif name == 'netease' and alive and _STATE[name].cookie and not uid:
+        elif name == 'netease' and alive and svc.cookie and not uid:
             # ★ cookie 在但 uid 解析不出 → 视为登录态失效，提示重新登录而非“缺少账号 uid”
             uid = _probe_netease_login(name)
             logged_in = bool(uid)
         out[name] = {
             'label': cfg['label'],
+            'port': cfg['port'],
             'alive': alive,
+            'starting': bool(svc.starting) if not alive else False,
+            'error': '' if alive else (svc.err or ''),
             'loggedIn': logged_in,
             'hasSource': has_source,
             'uid': uid,
+            'nickname': svc.nickname if logged_in else '',
+            'vip': svc.vip if logged_in else '',
             # 暴露面黑盒探针（带缓存，见 _exposed_cached）：True 表示该 vendor 仍可从
             # 本机局域网地址连上，即回环收口没生效。前端/诊断页据此报警。
             'exposed': _exposed_cached(name) if alive else False,
+            'config': get_service_config(name),
         }
     return out
 

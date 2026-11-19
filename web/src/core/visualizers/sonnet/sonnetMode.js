@@ -7,6 +7,11 @@
  */
 
 import { SonnetEngine, deriveCoverBackground } from './SonnetEngine.js';
+import { resolveSonnetAudioLevels } from './sonnetAudioLevels.js';
+/* ★ 2026-10-11 纯音乐（无歌词 ⇒ 虚拟 ♪ 行）：纯逻辑与 tempera 共用，见该文件头 */
+import {
+    INSTRUMENTAL_GRACE_SEC, buildVirtualInstrumentalLines, advanceInstrumental, instrumentalSongKey,
+} from '../instrumentalLines.js';
 import { sanitizeCssFontFamily } from '../../../utils/fontStacks.js';
 import { logCatch } from '../../../services/log.js';
 
@@ -23,6 +28,7 @@ let suspended = false;
 let lastLyricsRef = null;   /* 引用比较：切歌/重解析时自动重编译 program */
 let lastEmotionRef = null;  /* 引用比较：AI 情感词更新时刷新 wordColors */
 let lastFontKey = null;     /* 引用比较：全局字体设置变更时热切换（Pixi 字体烘焙进 TextStyle，CSS 变量无效） */
+let freqBuf = null;         /* 音频驱动用的可复用频谱缓冲（按 analyser.frequencyBinCount 尺寸，见 pushAudioLevels） */
 
 /** 情感词 → 上游 theme.wordColors 形状（[{word,color}]，TextViewBuilder isKeyword 消费） */
 function emotionWordsToColors(list) {
@@ -59,10 +65,9 @@ function applyStoredModeSettings() {
         const pv = (typeof globalThis !== 'undefined' && globalThis.appSettings
             && globalThis.appSettings.modeSettings && globalThis.appSettings.modeSettings.pv) || null;
         if (pv && engine) engine.applySettings(pv);
-        /* ★ 2026-09-30：跟随全局字体设置（用户实测「没有跟随字体设置」）。
-           pv.fontFamily 不存在时也强制用全局栈——文字视图烘焙进 TextStyle，
-           必须显式传入，CSS 变量对 Pixi canvas 无效。 */
-        if (engine) {
+        /* 仅当未显式指定模式字体时，再回落到全局字体栈 */
+        const explicitPvFont = pv && pv.fontFamily && pv.fontFamily !== 'default' && pv.fontFamily !== 'inherit';
+        if (engine && !explicitPvFont) {
             const stack = currentFontStack();
             if (stack) engine.fontFamily = stack;
         }
@@ -79,26 +84,93 @@ function audioTime() {
     return (baseMs + offset) / 1000;
 }
 
+/* ★ 2026-10-11 纯音乐（上游 songHandover.ts 的 decideSongCommit + VisualizerSonnet.tsx:89-107）：
+   无歌词的歌在 verse 里此前是**全黑空白** —— `setLyrics([])` → 0 段落 → 什么都不画。
+   判定与虚拟 ♪ 行的实现都在 `../instrumentalLines.js`（与 tempera 共用同一套纯逻辑，
+   理由见该文件头；上游两个 visualizer 的这段也是逐字相同，只差 id 前缀）。
+   这里只保留本模式的**别名与私有状态**：观察窗状态按模式各自持有——两个模式可能同时
+   存在（一个挂起一个活跃），共享状态会互踩。 */
+export const SONNET_INSTRUMENTAL_GRACE_SEC = INSTRUMENTAL_GRACE_SEC;
+
+let instrumentalState = { instrumental: false, watch: null };
+
+/** 上游 VisualizerSonnet.tsx:91-101 同参（60 条 / 每 8s 一条 / 长 6s；sonnet 的 id 前缀是
+    `virtual-staff-`，tempera 是 `virtual-block-`）。时间毫秒制，编译期归一为秒。 */
+export const buildSonnetVirtualStaffLines = (count = 60, stepSec = 8, holdSec = 6) => (
+    buildVirtualInstrumentalLines('virtual-staff-', count, stepSec, holdSec)
+);
+
+/** 共享判定函数的本模式出口（测试与调用方沿用 sonnet 名） */
+export const advanceSonnetInstrumental = advanceInstrumental;
+
+/* 当前歌曲身份：共享实现，本文件沿用原名以免无谓改动调用点 */
+const currentSongKey = instrumentalSongKey;
+
+/**
+ * 把共享频谱折算成三个频段量并推给引擎（bass / power / vocal，0~255）。
+ *
+ * ★ 上游对应的是 `audioBands` / `audioPower` 作为 props 一路传进运行时；本仓没有那条
+ *   React 链路，所以由这个逐帧循环充当宿主（等价于 VisualizerSonnet 的职责）。
+ * ★ 复用 core/equalizer.js:849 建的那颗 `window.playerAudioAnalyser`（fftSize=128），
+ *   **不新建音频节点**，也**不改它的 fftSize**（改了会连带改掉 306-energy-motion 的
+ *   低频口径）。精度代价与频段切分见 sonnetAudioLevels.js 的头注释。
+ * ★ 边界：原生 WASAPI 独占输出时音频不过 WebAudio 图 → 这里恒 0（与 306 同一条边界，不是坏）。
+ */
+function pushAudioLevels() {
+    if (!engine || typeof engine.setAudioLevels !== 'function') return;
+    try {
+        const an = (typeof window !== 'undefined') ? window.playerAudioAnalyser : null;
+        if (!an || typeof an.getByteFrequencyData !== 'function') { engine.setAudioLevels(null); return; }
+        /* 暂停/停止时不消费频谱：否则会挂着最后一帧的高值，画面僵在"正响着"的样子 */
+        const audio = document.getElementById('audioPlayer');
+        if (audio && audio.paused) { engine.setAudioLevels(null); return; }
+        const bins = an.frequencyBinCount;
+        if (!freqBuf || freqBuf.length !== bins) freqBuf = new Uint8Array(bins);
+        an.getByteFrequencyData(freqBuf);
+        const sampleRate = an.context && an.context.sampleRate;
+        engine.setAudioLevels(resolveSonnetAudioLevels(freqBuf, sampleRate, an.fftSize));
+    } catch (e) {
+        logCatch('sonnetMode', e);
+        /* 出错帧按静音处理：宁可不反应，也别让画面卡在上一帧的响度上 */
+        try { engine.setAudioLevels(null); } catch { /* 引擎已销毁 */ }
+    }
+}
+
 function tick() {
-    if (!engine) { rafId = null; return; }
-    /* ★ 2026-10-03 帧级异常不再中断 rAF（「verse 有时没有歌词」的兜底）：此前 tick 里
-       任何异常（setLyrics 编译、场景构建、字体解析…）都会跳过末尾的
-       requestAnimationFrame，rAF 链一断歌词就彻底不再更新且永不恢复。现在吞异常、
-       记日志、保证调度继续——单帧失败下一帧自愈。 */
+    if (!engine || suspended) { rafId = null; return; }
     try {
         tickBody();
     } catch (e) {
         logCatch('sonnetMode', e);
     }
-    rafId = requestAnimationFrame(tick);
+    if (!suspended) rafId = requestAnimationFrame(tick);
+    else rafId = null;
 }
 
 function tickBody() {
+        if (suspended) return;
         const current = (typeof globalThis.lyrics !== 'undefined' && Array.isArray(globalThis.lyrics))
             ? globalThis.lyrics : null;
+        let lyricsApplied = false;
         if (current !== lastLyricsRef) {
             lastLyricsRef = current;
             engine.setLyrics(current || []);
+            lyricsApplied = true;
+        }
+        /* ★ 2026-10-11 纯音乐：无歌词 ⇒ 喂虚拟 ♪ 行（见 buildSonnetVirtualStaffLines 的说明）。
+           只在**判定翻转**的那一帧重编译——setLyrics 会重建整个 program（段落/镜头/场景
+           全部作废重建），逐帧调用等于逐帧重建，会把 rAF 拖死。 */
+        const hasWords = !!(current && current.length);
+        const wasInstrumental = instrumentalState.instrumental;
+        instrumentalState = advanceSonnetInstrumental(instrumentalState, {
+            hasWords,
+            timeSec: audioTime(),
+            songKey: currentSongKey(),
+        });
+        if (instrumentalState.instrumental !== wasInstrumental) {
+            if (instrumentalState.instrumental) engine.setLyrics(buildSonnetVirtualStaffLines());
+            /* 离开纯音乐：本帧若已因「歌词引用变化」灌过同一份真实歌词，就不必再来一次 */
+            else if (!lyricsApplied) engine.setLyrics(current || []);
         }
         /* ★ AI 情感词 → theme.wordColors（上游 isKeyword 着色链路）：
            AI 分析完成时 aiEmotionWords 引用更新 → 引擎清场景用新色重建 */
@@ -119,6 +191,8 @@ function tickBody() {
                 engine.invalidateScenes();
             }
         } catch { /* 字体管理器未就绪 */ }
+        /* 音频驱动：必须在 update 之前灌，本帧的 MG 才能拿到当前响度 */
+        pushAudioLevels();
         engine.update(audioTime());
 }
 
@@ -159,6 +233,7 @@ export async function ensureSonnetEngine(container) {
         window.__sonnetEngineReady = true;
         window.__sonnetProbe = () => probe();
         window.__sonnetSuspend = suspendRaf;
+        window.__sonnetCtrl = { isRunning: isSonnetRunning, pause: suspendSonnetEngine, resume: resumeSonnetEngine };
     }
     containerElFix(container);
     if (!engine) {
@@ -187,10 +262,16 @@ export async function ensureSonnetEngine(container) {
             fontFamilyStack: null,
             fontWeight: null,
             wordColors: emotionWordsToColors(currentEmotionList()),
+            /* 动效强度：上游 Theme 字段。设置项「动态强度」到达时会覆盖它
+               （见 SonnetEngine.applySettings → applyStoredModeSettings），
+               这里先立上游默认值 'normal'，免得设置到达前它是 undefined
+               （undefined 会落回 1，碰巧等于 normal，但那不显式、也不可追踪）。 */
+            animationIntensity: 'normal',
         };
-        /* ★ 2026-09-29：全局字号档 1.25×——用户实测 support 词在全屏下偏小；
-           2026-09-30 提到 1.4×（「默认焦距太小」反馈） */
-        engine.lyricsFontScale = 1.4;
+        /* ★ 2026-10-11 回退到上游：上游 `lyricsFontScale` 是 tuning 调试项，
+           用户场景恒为 1（见 SonnetEngine.applySettings 的注释），字号一律交给
+           设置项「基础字号」。本地曾把它硬提到 1.25×→1.4×，等于整体放大字号。 */
+        engine.lyricsFontScale = 1;
         applyStoredModeSettings();
         await engine.init();
     } else {
@@ -233,9 +314,24 @@ export function updateSonnetEngine(timeSec) {
 /** 切走时挂起：停渲染省 GPU，引擎与场景缓存保留（切回秒恢复） */
 export function suspendSonnetEngine() {
     suspended = true;
-    /* ★ 2026-10-01 卡顿修复：此前只置模块 flag——engine 的 Pixi ticker 仍在每帧
-       全屏渲染（见 SonnetEngine.setPaused 注释）。真正停掉 ticker。 */
+    if (rafId !== null) {
+        try { cancelAnimationFrame(rafId); } catch { /* 句柄已失效 */ }
+        rafId = null;
+    }
     if (engine) engine.setPaused(true);
+}
+
+/** 从后台节流恢复诗镜渲染循环 */
+export function resumeSonnetEngine() {
+    if (!engine) return;
+    suspended = false;
+    engine.setPaused(false);
+    engine.update(audioTime());
+    startTicker();
+}
+
+export function isSonnetRunning() {
+    return !!(engine && !suspended);
 }
 
 /** 真正销毁（页面卸载/内存回收） */
@@ -263,4 +359,96 @@ export function isSonnetActive() {
  */
 export function getSonnetEngine() {
     return engine;
+}
+
+/**
+ * 海报抓帧前将 诗境(pv) 引擎定格到「当前句完整显形」的瞬间（全部字素入场完毕、未退场前）。
+ * 解决截帧恰好落在刚唱头两个字（如仅显示「一眨」）时海报缺少整句歌词的问题。
+ * @param {number} [targetLineIndex]
+ * @returns {(() => void)|null}
+ */
+export function stageSonnetForPoster(targetLineIndex) {
+    if (!engine || !engine.app || !engine.program) return null;
+    const prevTime = engine.currentTime || 0;
+    const prevSuspended = suspended;
+    let queryTime = prevTime;
+    const rawLyrics = (typeof globalThis.lyrics !== 'undefined' && Array.isArray(globalThis.lyrics))
+        ? globalThis.lyrics : [];
+    if (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && rawLyrics[targetLineIndex]) {
+        const isMs = rawLyrics.some((l) => l && typeof l.start === 'number' && l.start >= 1000);
+        const div = isMs ? 1000 : 1;
+        const item = rawLyrics[targetLineIndex];
+        const st = Number(item.start ?? item.time) / div;
+        const ed = item.end != null ? Number(item.end) / div : st + 3.0;
+        if (Number.isFinite(st)) {
+            queryTime = st + Math.max(0.05, ed - st) * 0.55;
+        }
+    }
+    const paragraphs = engine.program.paragraphs || [];
+    let bestTime = queryTime;
+    let matchedParaIdx = -1;
+    let matchedPara = null;
+    let matchedShotIdx = -1;
+    let matchedHit = null;
+    for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
+        const para = paragraphs[pIdx];
+        if (!para || !Array.isArray(para.shots)) continue;
+        let hitIdx = para.shots.findIndex((sh) => queryTime >= sh.startTime && queryTime <= sh.endTime);
+        if (hitIdx < 0 && queryTime >= para.startTime && queryTime <= para.endTime && para.shots.length > 0) {
+            hitIdx = 0;
+        }
+        if (hitIdx >= 0) {
+            matchedParaIdx = pIdx;
+            matchedPara = para;
+            matchedShotIdx = hitIdx;
+            matchedHit = para.shots[hitIdx];
+            const span = Math.max(0.1, matchedHit.endTime - matchedHit.startTime);
+            bestTime = Math.min(matchedHit.endTime - Math.min(0.12, span * 0.08), matchedHit.startTime + span * 0.86);
+            break;
+        }
+    }
+    const prevEnginePaused = !!engine.paused;
+    suspended = true;
+    engine.setPaused(true);
+    engine.renderAtTimeSync(bestTime);
+    if (matchedHit && matchedPara) {
+        const span = Math.max(0.1, matchedHit.endTime - matchedHit.startTime);
+        const nextShot = matchedPara.shots[matchedShotIdx + 1];
+        let exitCeiling = matchedHit.endTime - 0.04;
+        if (nextShot) {
+            const transDur = Math.min(0.24, Math.max(0.14, (nextShot.startTime - matchedHit.startTime) * 0.18));
+            exitCeiling = Math.min(exitCeiling, nextShot.startTime - transDur - 0.02);
+        }
+        if (matchedShotIdx === matchedPara.shots.length - 1 && matchedPara.transitionOut) {
+            exitCeiling = Math.min(exitCeiling, matchedPara.transitionOut.startTime - 0.02);
+        }
+        exitCeiling = Math.max(matchedHit.startTime + Math.min(0.1, span * 0.5), exitCeiling);
+
+        const scene = matchedParaIdx >= 0 ? engine.scenes?.get?.(matchedParaIdx) : null;
+        const shotView = scene?.shots?.get?.(matchedHit.id);
+        if (shotView?.segments) {
+            let maxStart = matchedHit.startTime;
+            let maxSettle = bestTime;
+            for (const seg of shotView.segments) {
+                if (!seg || seg.role === 'decoration') continue;
+                for (const g of seg.glyphs || []) {
+                    if (g?.isTextGlyph === false) continue;
+                    if (Number.isFinite(g?.startTime) && g.startTime > maxStart) maxStart = g.startTime;
+                    if (Number.isFinite(g?.settleTime) && g.settleTime > maxSettle) maxSettle = g.settleTime;
+                }
+            }
+            const fullRevealMin = Math.min(matchedHit.endTime - 0.03, maxStart + 0.04);
+            const settledTarget = Math.max(fullRevealMin, Math.min(exitCeiling, maxSettle + 0.02));
+            const targetTime = Math.max(bestTime, settledTarget);
+            if (Math.abs(targetTime - bestTime) > 0.01) {
+                bestTime = targetTime;
+                engine.renderAtTimeSync(bestTime);
+            }
+        }
+    }
+    return () => {
+        suspended = prevSuspended;
+        engine.renderAtTimeSync(audioTime());
+        engine.setPaused(prevEnginePaused);
+    };
 }

@@ -230,8 +230,13 @@ export class TunnelParticle3DLayer {
     this.perspective = 800;
     this.count = 60;
     this.color = 'rgba(255,255,255,';
+    this.style = 'default';
+    this.palette = null;
     this.dprCap = 2; /* ★ 性能分档：canvas 渲染 DPR 上限（低端设备降采样） */
   }
+
+  setStyle(style) { this.style = style || 'default'; }
+  setPalette(palette) { this.palette = palette || null; }
 
   setPerf(cfg = {}) {
     if (typeof cfg.dpr === 'number' && cfg.dpr > 0) {
@@ -282,11 +287,28 @@ export class TunnelParticle3DLayer {
 
     const sorted = [...this.particles].sort((a, b) => a.z - b.z);
     const cx = w / 2, cy = h / 2;
+    const isMondrian = this.style === 'mondrian';
+    const pal = this.palette;
+    const hexToRgba = (hex, a) => {
+      const m = String(hex || '').replace('#', '');
+      if (m.length !== 6) return `${this.color}${a.toFixed(3)})`;
+      return `rgba(${parseInt(m.slice(0, 2), 16)},${parseInt(m.slice(2, 4), 16)},${parseInt(m.slice(4, 6), 16)},${a.toFixed(3)})`;
+    };
+    const palCols = pal ? [pal.red, pal.blue, pal.yellow, pal.paper].filter(Boolean) : null;
 
-    for (const p of sorted) {
-      // 飘浮运动
-      p.y += Math.sin(timeSec * p.speed + p.x * 0.01) * 0.4;
-      p.x += Math.cos(timeSec * p.speed + p.y * 0.01) * 0.3;
+    for (let pi = 0; pi < sorted.length; pi++) {
+      const p = sorted[pi];
+      if (isMondrian) {
+        if (pi >= 20) continue; // 风格派克制点缀，只留少量几何小方块/十字标
+        if (pi % 2 === 0) p.x += (p.speed * 0.28);
+        else p.y -= (p.speed * 0.22);
+        if (p.x > 960) p.x = -960;
+        if (p.y < -540) p.y = 540;
+      } else {
+        // 飘浮运动
+        p.y += Math.sin(timeSec * p.speed + p.x * 0.01) * 0.4;
+        p.x += Math.cos(timeSec * p.speed + p.y * 0.01) * 0.3;
+      }
 
       // 透视投影
       const relZ = p.z - (camState.z || 0);
@@ -298,7 +320,17 @@ export class TunnelParticle3DLayer {
       const projSize = p.size * scale;
       const depthAlpha = p.opacity * Math.max(1 - Math.abs(relZ) / 1500, 0.1);
 
-      if (p.type === 'dot') {
+      if (isMondrian) {
+        const a = Math.min(0.28, depthAlpha * 0.45);
+        const col = palCols && palCols.length ? hexToRgba(palCols[pi % palCols.length], a) : `${this.color}${a.toFixed(3)})`;
+        ctx.fillStyle = col;
+        const s = Math.max(3, Math.round(projSize * 2.2));
+        if (p.type === 'dot') {
+          ctx.fillRect(Math.round(projX - s / 2), Math.round(projY - s / 2), s, s);
+        } else {
+          ctx.fillRect(Math.round(projX), Math.round(projY), Math.max(8, s * 3), 1.5);
+        }
+      } else if (p.type === 'dot') {
         ctx.fillStyle = `${this.color}${depthAlpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(projX, projY, Math.max(projSize, 0.5), 0, Math.PI * 2);

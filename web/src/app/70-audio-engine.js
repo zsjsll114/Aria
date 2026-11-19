@@ -6,21 +6,25 @@
 import { getBlurBgLayers } from '../infrastructure/dom.js';
 import { formatTime } from '../utils/formatters.js';
 import { volumePercentToDb, volumePercentToGain } from '../utils/volumeCurve.js';
+import { writeSavedVolume } from './10-config-state.js';
 import { audio } from './20-lyrics-render.js';
 import { saveSettings } from './180-boot-config.js';
-import { playIcon, progressTrack, totalTimeEl, volumeBar, volumeIcon, volumeTrack } from './30-dom-refs.js';
-import { getDuration } from './56-playback-misc.js';
-import { updateLyricsHighlight } from './57-wordcloud-camera.js';
+import { currentTimeEl, playIcon, progressEl, progressTrack, totalTimeEl, volumeBar, volumeIcon, volumeTrack } from './30-dom-refs.js';
+import { flyinAutoScaleFont, getDuration } from './56-playback-misc.js';
+import { clearStaleActiveLines, updateLyricsHighlight } from './57-wordcloud-camera.js';
 import { PAUSE_ICON_PATH, PLAY_ICON_PATH, updatePlaybackPosition } from './65-playback-position.js';
 import { nextTrack } from './95-track-loading.js';
+import { computeNextQueueDecision } from '../core/playlistQueue.js';
 import { fadeInVolume } from '../core/fadeController.js';
-import { logError } from '../services/log.js';
+import { logCatch, logError } from '../services/log.js';
 import { initStallDetector, startStallCheck, stopStallCheck, setBuffering } from '../core/stallDetector.js';
 /* ★ 帧时埋点（todos #21）：逐字高亮 rAF 是播放期间每帧都要跑的循环，
    滚动卡顿时它与 57 的弹簧循环谁是瓶颈，只能靠设备自己回传帧时区分。 */
 import { frame as probeFrame, registerLoop } from '../core/frameProbe.js';
 import { registerAudioListener, onRoleSwap } from '../core/dualDeck.js';
 import { crossfaderPhase, abortCrossfade, automixSwapJustCompleted } from '../core/automix/crossfader.js';
+import { bindProgressHoverTip, calcProgressPercent, hideProgressTimeTip, showProgressTimeTip } from '../core/progressPreview.js';
+import { isBackgroundThrottled } from '../core/backgroundThrottle.js';
 
 /* ★ 播放态 UI 同步（Automix 角色顶替专用入口）。
    为什么需要它：Automix 交接时 dualDeck.swapRoles() 会把常驻监听搬到新活跃
@@ -96,36 +100,26 @@ registerAudioListener('error', () => {
 
 /* 网络停滞 / 缓冲 / 恢复播放三个监听：见 core/stallDetector.js 的 initStallDetector */
 
-/* ★ 页面后台/前台切换自适应：防止后台音频卡顿，切回前台即刻同步画面 */
+/* ★ 页面后台/前台切换自适应：统一经由 syncForegroundLyricsNow() 对齐（与 287 协同去重），
+   避免两条 visibilitychange 链路竞态导致旧 .line.active 残留、飞入模式字号异常缩小。 */
+let _lastFgSyncAt = 0;
 if (typeof document !== 'undefined') {
             document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    /* 后台节流保护：保持音频平稳运行 */
-                } else {
-                    /* 切回前台：立即对齐歌词与进度条 */
-                    if (audio && !audio.paused && isPlaying) {
-                        currentTime = audio.currentTime * 1000;
-                        updateLyricsHighlight();
-                        updatePlaybackPosition();
-                        if (pvEngineInstance && currentViewMode === 'pv') {
-                        pvEngineInstance.update((currentTime + lyricOffset) / 1000);
-                    }
-                        if (tunnelEngineInstance && currentViewMode === 'tunnel') {
-                            tunnelEngineInstance.update((currentTime + lyricOffset) / 1000);
-                        }
-                        if (mainVisManager && mainVisManager.has(currentViewMode)) {
-                            mainVisManager.update((currentTime + lyricOffset) / 1000);
-                        }
-                        if (!isLyricsLoopRunning) {
-                            startLyricsLoop(); /* ★ lint 修复：方法名笔误 startLyricsAnimation → startLyricsLoop（从未定义会 ReferenceError） */
-                        }
-                    }
+                if (!document.hidden && !isBackgroundThrottled()) {
+                    syncForegroundLyricsNow();
                 }
             });
         }
 
 registerAudioListener('timeupdate', () => {
             currentTime = audio.currentTime * 1000;
+            if (isBackgroundThrottled()) {
+                syncBgActiveLineIndex(currentTime);
+                return;
+            }
+            /* ★ 性能（2026-11-19）：60fps 主 rAF 循环正在驱动时，禁止 timeupdate（~4Hz 异相回调）
+               重复调用视觉引擎 update()，消除周期性双更新与帧间隔抖动。 */
+            if (isLyricsLoopRunning) return;
             if (pvEngineInstance && currentViewMode === 'pv') {
                 pvEngineInstance.update((currentTime + lyricOffset) / 1000);
             }
@@ -148,8 +142,43 @@ globalThis.isLyricsLoopRunning = false;
 const HL_PROBE_SOURCE = 'lyricsLoop';
 registerLoop(HL_PROBE_SOURCE, '歌词逐字高亮循环');
 
+let _lyricsBgTimer = 0;
+
+function syncBgActiveLineIndex(tMs) {
+    const lyr = globalThis.lyrics;
+    if (!Array.isArray(lyr) || !lyr.length) return;
+    const t = tMs + (globalThis.lyricOffset || 0);
+    let idx = -1;
+    for (let i = 0; i < lyr.length; i++) {
+        const st = lyr[i] && (lyr[i].start !== undefined ? lyr[i].start : lyr[i].time);
+        if (typeof st === 'number' && st <= t) idx = i;
+        else if (typeof st === 'number' && st > t) break;
+    }
+    if (idx >= 0 && idx !== globalThis.activeLineIndex) {
+        globalThis.activeLineIndex = idx;
+    }
+}
+
 function lyricsAnimationLoop(ts) {
             if (!isLyricsLoopRunning) return;
+            /* 后台节流且桌面歌词开着时降频到 ~10Hz 轻量时间同步：
+               只推进 currentTime 与 activeLineIndex 供桌面歌词窗口，跳过主窗 DOM 与全部视觉引擎 */
+            if (isBackgroundThrottled()) {
+                let dtkOn = false;
+                try { dtkOn = typeof localStorage !== 'undefined' && localStorage.getItem('aria_dtk_enabled') === '1'; } catch { /* ignore */ }
+                if (dtkOn && audio.src && !audio.paused && isPlaying) {
+                    currentTime = audio.currentTime * 1000;
+                    syncBgActiveLineIndex(currentTime);
+                    _lyricsBgTimer = setTimeout(() => {
+                        _lyricsBgTimer = 0;
+                        lyricsAnimationLoop(performance.now());
+                    }, 100);
+                } else {
+                    isLyricsLoopRunning = false;
+                    lyricsRafId = null;
+                }
+                return;
+            }
             probeFrame(HL_PROBE_SOURCE, ts);
 
             /* ★ 接管只读显示模式：NPS 虚拟时钟驱动歌词高亮/进度（audio 未加载歌曲） */
@@ -205,6 +234,10 @@ function stopLyricsLoop() {
                 cancelAnimationFrame(lyricsRafId);
                 lyricsRafId = null;
             }
+            if (_lyricsBgTimer) {
+                clearTimeout(_lyricsBgTimer);
+                _lyricsBgTimer = 0;
+            }
         }
 
 /* 音频播放时启动歌词循环 */
@@ -235,7 +268,21 @@ registerAudioListener('ended', () => {
                 audio.currentTime = 0;
                 audio.play().catch(() => handleAudioPlayError());
             } else if (appSettings.playback.autoPlayNext) {
-                nextTrack();
+                const decision = computeNextQueueDecision({
+                    playlist,
+                    currentIndex: currentTrackIndex,
+                    playMode,
+                    delta: 1,
+                    reason: 'auto',
+                    autoPlayNext: true,
+                });
+                if (decision.kind === 'stop') {
+                    applyPlayingState();
+                } else {
+                    nextTrack();
+                }
+            } else {
+                applyPlayingState();
             }
         });
 
@@ -252,44 +299,82 @@ registerAudioListener('seeked', () => {
             }
         });
 
-/* 进度条点击跳转 */
-progressTrack?.addEventListener('click', (e) => {
+/* 进度条点击与拖拽定位 + 悬停时间预览 */
+let _isDraggingMainProgress = false;
+let _suppressMainProgressClick = false;
+function _seekMainProgressFromPointer(e) {
             if ((typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())) return; /* 接管只读：不可拖 */
             const duration = getDuration();
-            if (duration <= 0) return;
+            if (!progressTrack || duration <= 0) return;
             const rect = progressTrack.getBoundingClientRect();
-            const percent = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-            audio.currentTime = percent * (duration / 1000);
-            currentTime = audio.currentTime * 1000;
+            const percent = calcProgressPercent(e.clientX, rect);
+            const targetSec = percent * (duration / 1000);
+            audio.currentTime = targetSec;
+            currentTime = targetSec * 1000;
+            if (progressEl) progressEl.style.width = `${percent * 100}%`;
+            if (currentTimeEl) currentTimeEl.textContent = formatTime(currentTime);
+            showProgressTimeTip(progressTrack, e.clientX, duration);
             isUserScrolling = false;
             if (scrollTimeout) { clearTimeout(scrollTimeout); }
             updateLyricsHighlight();
             updatePlaybackPosition();
+        }
+bindProgressHoverTip(progressTrack, getDuration, () => (
+            _isDraggingVolume
+            || (typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())
+        ));
+progressTrack?.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 && e.button !== undefined) return;
+            if ((typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())) return;
+            if (getDuration() <= 0) return;
+            _isDraggingMainProgress = true;
+            _seekMainProgressFromPointer(e);
+            e.preventDefault();
+        });
+if (typeof document !== 'undefined') {
+            document.addEventListener('mousemove', (e) => {
+                if (_isDraggingMainProgress) _seekMainProgressFromPointer(e);
+            });
+            document.addEventListener('mouseup', () => {
+                if (!_isDraggingMainProgress) return;
+                _isDraggingMainProgress = false;
+                _suppressMainProgressClick = true;
+                hideProgressTimeTip();
+                requestAnimationFrame(() => { _suppressMainProgressClick = false; });
+            });
+        }
+progressTrack?.addEventListener('click', (e) => {
+            if (_suppressMainProgressClick) {
+                _suppressMainProgressClick = false;
+                return;
+            }
+            _seekMainProgressFromPointer(e);
         });
 
 /* 音量控制（对数曲线：手柄位置 → dB 均匀步进 → 声压，见 utils/volumeCurve.js） */
-/* ★ 音量持久化：播放中调音量（键盘/滑杆/接管）防抖写回
-   appSettings.playback.initialVolume——否则重启回到旧初始音量（用户反馈） */
+/* ★ 音量持久化：播放中调音量（键盘/滑杆/接管）立即写入 localStorage，并防抖同步后端配置 */
 let _volSaveTimer = null;
 function persistVolume(v) {
             try {
+                globalThis.__ariaVolumeTouched = true;
+                const rounded = Math.max(0, Math.min(100, Math.round(v)));
+                if (typeof writeSavedVolume === 'function') {
+                    writeSavedVolume(rounded);
+                }
                 if (typeof appSettings !== 'undefined' && appSettings.playback) {
-                    /* ★ 存整数：#setInitialVolume 是 step=1 的 range，点音量条会算出
-                       68.041237… 这种浮点，存进去后设置面板显示 68 而 appSettings 是 68.04，
-                       两边对不上（settings smoke 的 initSettingsMisc-vol-synced 就是钉这个）。
-                       实时增益仍用浮点 volume，只有持久化的这个旋钮取整。 */
-                    appSettings.playback.initialVolume = Math.round(v);
+                    appSettings.playback.lastVolume = rounded;
+                    delete appSettings.playback.initialVolume;
                 }
                 if (_volSaveTimer) clearTimeout(_volSaveTimer);
-                _volSaveTimer = setTimeout(() => { saveSettings(); }, 600);
-            } catch (e) { /* 忽略：持久化失败不影响播放 */ }
+                _volSaveTimer = setTimeout(() => { saveSettings(); }, 400);
+            } catch (e) { logCatch('audioEngine', e); }
         }
 
 function updateVolume(newVolume) {
             if ((typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())) return; /* 接管只读：音量不可调 */
             volume = Math.max(0, Math.min(100, newVolume));
             audio.volume = volumePercentToGain(volume);
-            volumeBar.style.width = `${volume}%`;
+            if (volumeBar) volumeBar.style.width = `${volume}%`;
             persistVolume(volume);
         }
 globalThis.updateVolume = updateVolume;
@@ -378,4 +463,44 @@ volumeIcon?.addEventListener('click', () => {
             }
         });
 
-export { handleAudioPlayError, lyricsAnimationLoop, startLyricsLoop, startStallCheck, stopLyricsLoop, stopStallCheck, updateVolume };
+function syncForegroundLyricsNow() {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (now - _lastFgSyncAt < 60) return;
+    _lastFgSyncAt = now;
+    stopLyricsLoop();
+    const tSec = (audio && Number.isFinite(audio.currentTime)) ? audio.currentTime : (currentTime / 1000 || 0);
+    currentTime = Math.max(0, tSec * 1000);
+    /* ★ 切回前台时先清掉全部残留 .line.active，再重置 activeLineIndex 强制重刷，
+       彻底防止后台同步改过索引后旧句残留叠加、飞入模式后续句变小。 */
+    clearStaleActiveLines(-1);
+    activeLineIndex = -1;
+    updateLyricsHighlight();
+    updatePlaybackPosition();
+    if (typeof document !== 'undefined') {
+        const pc = document.querySelector('.player-container');
+        if (pc && pc.classList.contains('view-flyin')) {
+            requestAnimationFrame(() => {
+                flyinAutoScaleFont(Array.isArray(lineElements) && activeLineIndex >= 0 ? lineElements[activeLineIndex] : null);
+            });
+        }
+    }
+    const effSec = (currentTime + (lyricOffset || 0)) / 1000;
+    if (mainVisManager && mainVisManager.has(currentViewMode)) {
+        const inst = mainVisManager.activeInstance;
+        if (inst && typeof inst.handleResize === 'function') {
+            try { inst.handleResize(); } catch { /* 视口重建安全降级 */ }
+        }
+        mainVisManager.update(effSec);
+    }
+    if (pvEngineInstance && currentViewMode === 'pv') {
+        pvEngineInstance.update(effSec);
+    }
+    if (tunnelEngineInstance && currentViewMode === 'tunnel') {
+        tunnelEngineInstance.update(effSec);
+    }
+    if (audio && audio.src && !audio.paused && isPlaying) {
+        startLyricsLoop();
+    }
+}
+
+export { handleAudioPlayError, lyricsAnimationLoop, startLyricsLoop, startStallCheck, stopLyricsLoop, stopStallCheck, syncForegroundLyricsNow, updateVolume };

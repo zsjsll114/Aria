@@ -1,6 +1,10 @@
 import { DimensionVisualizer } from './DimensionVisualizer.js';
 import { LetterpressVisualizer } from './LetterpressVisualizer.js';
 import { JizuraVisualizer } from './jizura/JizuraVisualizer.js';
+import { PrismVisualizer } from './PrismVisualizer.js';
+import { AstrolabeVisualizer } from './AstrolabeVisualizer.js';
+import { VitrailVisualizer } from './VitrailVisualizer.js';
+import { FocalCutVisualizer } from './FocalCutVisualizer.js';
 import { logCatch } from '../../services/log.js';
 
 
@@ -23,12 +27,15 @@ export class VisualizerManager {
 
   _registerBuiltins() {
     this.register('dimension', DimensionVisualizer);
-        this.register('letterpress', LetterpressVisualizer);
+    this.register('letterpress', LetterpressVisualizer);
     /* ★ 字面 · Jizura（2026-10-06）：JIZURA 引擎移植（MIT © 2026 hakoniwa）。
        注册在这里 = 自动获得容器/生命周期/歌词下发/每帧时钟/性能档/后台节流/设置分发
        （见 JizuraVisualizer 头注释），以及 220 的 switchView 通用分支。 */
     this.register('jizura', JizuraVisualizer);
-
+    this.register('prism', PrismVisualizer);
+    this.register('astrolabe', AstrolabeVisualizer);
+    this.register('vitrail', VitrailVisualizer);
+    this.register('focalcut', FocalCutVisualizer);
   }
 
   register(modeId, visualizerClass) {

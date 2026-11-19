@@ -151,6 +151,7 @@ export function geminiMaxOutput(model) {
  * @param {AbortSignal|null} [params.signal] AbortSignal
  * @param {number} [params.timeoutMs=60000] 超时时间
  * @param {string} [params.proxyToken] Gemini 反代令牌（缺省读 appSettings.ai.proxyToken）
+ * @param {boolean} [params.useProxy=true] 是否走反代
  * @returns {Promise<{ ok: boolean, text?: string, data?: any, error?: string, status?: number }>}
  */
 export async function geminiGenerateContent({
@@ -163,16 +164,21 @@ export async function geminiGenerateContent({
     isReasoningModel = false,
     signal = null,
     timeoutMs = 60000,
-    proxyToken = ''
+    proxyToken = '',
+    useProxy = true
 }) {
     const key = (apiKey || '').trim();
     if (!key || key.length < 5) {
         return { ok: false, error: '请先配置有效的 Gemini API 密钥' };
     }
-    const token = (proxyToken || (globalThis.appSettings && globalThis.appSettings.ai && globalThis.appSettings.ai.proxyToken) || '').trim();
+    const cleanBase = cleanApiBase(apiBase, useProxy);
+    const shouldSendProxyToken = Boolean(useProxy) && !cleanBase.startsWith(GEMINI_OFFICIAL_BASE);
+    const token = shouldSendProxyToken
+        ? (proxyToken || (globalThis.appSettings && globalThis.appSettings.ai && globalThis.appSettings.ai.proxyToken) || '').trim()
+        : '';
 
     const action = stream ? 'streamGenerateContent' : 'generateContent';
-    const url = buildGeminiUrl({ apiBase, model, apiKey: key, action, stream });
+    const url = buildGeminiUrl({ apiBase: cleanBase, model, apiKey: key, action, stream });
 
     /** @type {{maxOutputTokens:number, thinkingConfig?:any, temperature?:number}} */
     const genConfig = {
@@ -257,13 +263,17 @@ export async function geminiGenerateContent({
  * @param {string} params.apiBase
  * @param {string} [params.model]
  * @param {number} [params.timeoutMs=15000]
+ * @param {string} [params.proxyToken] Gemini 反代令牌
+ * @param {boolean} [params.useProxy=true] 是否走反代
  * @returns {Promise<{ ok: boolean, latency?: number, message: string, reply?: string }>}
  */
 export async function testGeminiConnection({
     apiKey,
     apiBase = GEMINI_DEFAULT_BASE,
     model = GEMINI_DEFAULT_MODEL,
-    timeoutMs = 15000
+    timeoutMs = 15000,
+    proxyToken = '',
+    useProxy = true
 }) {
     const key = (apiKey || '').trim();
     if (!key || key.length < 5) {
@@ -278,7 +288,9 @@ export async function testGeminiConnection({
         apiBase,
         model,
         stream: false,
-        timeoutMs
+        timeoutMs,
+        proxyToken,
+        useProxy
     });
 
     const latency = Date.now() - startTime;

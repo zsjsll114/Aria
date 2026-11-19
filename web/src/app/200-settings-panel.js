@@ -25,16 +25,17 @@ import { getPlaylists, playlistsHintEl } from './130-playlists.js';
 import { saveSettings } from './180-boot-config.js';
 import { perCharSynthesisWanted } from '../config/wordPerChar.js';
 import { stripSyntheticWords } from '../parsers/wordTiming.js';
-import { applyBackgroundSettings, applyInterfaceSettings, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor, setSettingValue } from './190-settings-fontsize.js';
-import { applyFontFamily, applyGlassStrength, setColorSwatchChannel, syncColorRowActive } from './210-color-multilang.js';
-import { buildAdvancedFontUI, initFontUploadBindings, loadFontFace, refreshAdvancedFontDropdowns, refreshFontDropdown, renderFontManagerUI, saveCustomFont, saveFontToDB } from './215-multilang-fonts.js';
+import { applyBackgroundSettings, applyModeSettings, applyThemeColor } from './190-settings-fontsize.js';
+import { applyFontFamily, applyGlassStrength, hydrateColorRows, setColorSwatchChannel, syncColorRowActive } from './210-color-multilang.js';
+import { buildAdvancedFontUI, initFontUploadBindings, refreshFontDropdown, renderFontManagerUI } from './215-multilang-fonts.js';
 import { downloadJSON, importData, initCustomDropdowns, initPerformanceSettings, initShortcutRecording, refreshSettingsUI, refreshShortcutUI, showSettingsHint } from './220-shortcuts-viewmode.js';
 import { initSelfhostSection } from './selfhost-settings.js';
-import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
-import { applyLyricSetting, applySharedSetting, ensureEmotionGlowSliders, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
+import { logInfo, logWarn, logCatch } from '../services/log.js';
+import { applyLyricSetting, applySharedSetting, buildAppearanceControls, showModeSection, bindAppearanceEvents, syncGlobalThemeSwatches, syncModeSectionValues, loadAiCacheFromDB } from './202-settings-appearance.js';
 import { initSettingsAI } from './201-settings-ai.js'; // AI 域平铺绑定入口（initSettingsPanel 调用）
 import { initNowPlayingSettings } from './232-nowplaying-follow.js'; // Now Playing 接管配置绑定（initSettingsMisc 调用；232→175→180→200 属既有分片环，运行时才解引用）
 import { renderSettingsNav, refreshSectionAnchors } from '../config/settingsNav.js'; // 设置声明式导航（分组侧栏唯一事实源）+ 节内锚点
+import { renderSettingsBody, notifyTabShow } from '../ui/settingsRenderer.js';
 import { conceal } from '../utils/motion.js'; // 分区交叉退场：演完才 display:none
 import { resetWordUpgradeTracker } from './293-word-upgrade.js'; // 开关联动后让当前这首歌重新走一次逐字升级
 
@@ -42,6 +43,22 @@ import { resetWordUpgradeTracker } from './293-word-upgrade.js'; // 开关联动
 const LYRIC_COLOR_FIELDS = ['highlightColor', 'highlightInactiveColor', 'inactiveColor'];
 
 /* ========== 全局选项卡与模式切换引擎 ========== */
+
+/* ★ 预览收口（2026-10-03）：设置面板的**每一条**退出路径都必须走它。
+   此前只有「点关闭按钮」调了 _hideAllPvPreviewContainers；ESC / 点遮罩 /
+   切到别的 Tab / 打开 OOBE 四条路都只把 isPlaying 置 false —— 而诗镜(verse)/
+   维度这类走 VisualizerManager 的预览**根本没被暂停**（previewEngine.stop()
+   里调 visManager.stop() 一直抛异常，见 VisualizerManager 新增的 stop()）。
+   于是关闭设置后它们仍在隐藏的 overlay 后面满帧渲染、烧 GPU 与帧预算。 */
+function pausePreview() {
+    if (!previewEngineInstance) return;
+    if (typeof previewEngineInstance.suspendPreviews === 'function') {
+        try { previewEngineInstance.suspendPreviews(); } catch (e) { logCatch('settingsPanel', e); }
+        return;
+    }
+    previewEngineInstance.isPlaying = false;
+    try { previewEngineInstance.updatePlayIcon(); } catch (e) { logCatch('settingsPanel', e); }
+}
 
 function initSettingsPanel() {
             /* ★ 预设色块的写入通道：函数体第一句就注册（read/writeColorField 是下面
@@ -57,6 +74,17 @@ function initSettingsPanel() {
             const bodyEl = typeof document !== 'undefined' ? document.getElementById('settingsBody') : null;
             const panel = typeof document !== 'undefined' ? document.getElementById('settingsPanel') : null;
             const bodyWrapper = typeof document !== 'undefined' ? document.getElementById('settingsBodyWrapper') : null;
+
+            /* ★ 由声明式 Schema + settingsRegistry 唯一事实源渲染全部 13 节 DOM + 色板水合 */
+            if (bodyEl) {
+                try {
+                    const initMode = (typeof currentViewMode !== 'undefined' && currentViewMode) ? currentViewMode : 'cover';
+                    renderSettingsBody(bodyEl, { initialTab: 'appearance', initialMode: initMode });
+                    hydrateColorRows(bodyEl);
+                } catch (e) {
+                    logWarn('settingsPanel', 'renderSettingsBody:', e);
+                }
+            }
 
             /* ★ 声明式导航侧栏（settingsNav.js 唯一事实源）：渲染分组导航 +
                事件委托——替换原 13 份复制粘贴的内联 onclick。点击仍走
@@ -86,30 +114,11 @@ function initSettingsPanel() {
                 });
             }
 
-                        /* ★ 预览收口（2026-10-03）：设置面板的**每一条**退出路径都必须走它。
-           此前只有「点关闭按钮」调了 _hideAllPvPreviewContainers；ESC / 点遮罩 /
-           切到别的 Tab / 打开 OOBE 四条路都只把 isPlaying 置 false —— 而诗镜(verse)/
-           维度这类走 VisualizerManager 的预览**根本没被暂停**（previewEngine.stop()
-           里调 visManager.stop() 一直抛异常，见 VisualizerManager 新增的 stop()）。
-           于是关闭设置后它们仍在隐藏的 overlay 后面满帧渲染、烧 GPU 与帧预算——
-           真机表现正是用户报的两条：「打开外观设置 verse/tempera/scroll 之后英文滚动
-           逐字歌词概率性变卡」与「预览框容器没被正确清掉，左半边不好操作」。 */
-        const pausePreview = () => {
-            if (!previewEngineInstance) return;
-            if (typeof previewEngineInstance.suspendPreviews === 'function') {
-                try { previewEngineInstance.suspendPreviews(); } catch (e) { logCatch('settingsPanel', e); }
-                return;
-            }
-            previewEngineInstance.isPlaying = false;
-            try { previewEngineInstance.updatePlayIcon(); } catch (e) { logCatch('settingsPanel', e); }
-        };
-
-        /* 打开/关闭 */
+            /* 打开/关闭 */
             openBtn?.addEventListener('click', () => {
                 overlay.classList.add('visible');
-                panel.classList.add('fullscreen-mode');
-                
                 const activeTab = tabsEl?.querySelector('.settings-tab.active')?.dataset?.tab || 'appearance';
+                panel.classList.add('fullscreen-mode');
                 if (bodyEl) {
                     bodyEl.querySelectorAll('.settings-section').forEach(s => {
                         if (s.dataset.section === activeTab) {
@@ -128,6 +137,7 @@ function initSettingsPanel() {
                     try { initPreviewEngine(); } catch(e) { logWarn('settingsPanel', e); }
                     try { buildAppearanceControls(); } catch(e) { logWarn('settingsPanel', e); }
                 }
+                try { notifyTabShow(activeTab); } catch (e) { logCatch('settingsPanel', e); }
             });
             closeBtn?.addEventListener('click', () => {
                 overlay.classList.remove('visible');
@@ -143,8 +153,10 @@ function initSettingsPanel() {
                     window.showAriaOobe(true);
                 }
             };
-            document.getElementById('btnOpenOobeGuide')?.addEventListener('click', triggerOobe);
             document.getElementById('btnOpenOobeGuide2')?.addEventListener('click', triggerOobe);
+            document.getElementById('btnOpenFontsFromInterface')?.addEventListener('click', () => {
+                if (window.switchSettingsTab) window.switchSettingsTab('fonts');
+            });
 
             /* 点击遮罩关闭 */
             overlay?.addEventListener('click', (e) => {
@@ -155,10 +167,11 @@ function initSettingsPanel() {
             });
             /* ESC 关闭 */
             if (typeof document !== "undefined") document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && overlay.classList.contains('visible')) {
-                    overlay.classList.remove('visible');
-                    pausePreview();
-                }
+                if (e.key !== 'Escape' || e.defaultPrevented || !overlay.classList.contains('visible')) return;
+                /* 顶层还有更高浮层（如自定义取色器/对话框）开着时，ESC 只关最顶层 */
+                if (document.querySelector('.color-picker-overlay.visible, .lyric-source-overlay.visible, .ai-models-overlay.visible, .view-mode-overlay.visible, .search-overlay.visible, .aria-dialog-overlay')) return;
+                overlay.classList.remove('visible');
+                pausePreview();
             });
 
             /* 设置选项卡的点击委托只留上面 navReady 那一份（同一个 tabsEl 上曾挂着第二个
@@ -175,6 +188,7 @@ function initSettingsPanel() {
             } catch(e) { logWarn('settingsPanel', e); }
             /* ★ AI 域平铺绑定入口（原模块加载即执行，收敛为函数后在此调用一次，等价于原加载时机后的首次初始化） */
             try { initSettingsAI(); } catch(e) { logWarn('settingsPanel', 'initSettingsAI:', e); }
+            try { loadAiCacheFromDB(); } catch (e) { logCatch('settingsPanel', e); }
 
 
                         /* ★ 初始化外观设置 PreviewEngine + 右侧控件 */
@@ -209,7 +223,14 @@ function initSettingsPanel() {
                     logInfo('settingsPanel', 'PreviewEngine 初始化完成');
                     const curMode = document.querySelector('#lyricStyleControls .appearance-mode-btn.active')?.dataset?.mode || activeMode;
                     if (previewEngineInstance) {
-                        try { previewEngineInstance.setMode(curMode); } catch (e) { logCatch('settingsPanel', e); }
+                        if (previewEngineInstance.currentMode !== curMode || !previewEngineInstance.lineElements || previewEngineInstance.lineElements.length === 0) {
+                            try { previewEngineInstance.setMode(curMode); } catch (e) { logCatch('settingsPanel', e); }
+                        } else {
+                            try {
+                                previewEngineInstance.applyAllVars();
+                                if (curMode === 'flyin') previewEngineInstance.flyinAutoScaleFont();
+                            } catch (e) { logCatch('settingsPanel', e); }
+                        }
                         /* ★ init 完成后重新同步控件值，确保预览 DOM 已就绪 */
                         try { buildAppearanceControls(); } catch (e) { logCatch('settingsPanel', e); }
                         try { syncModeSectionValues(curMode); } catch (e) { logCatch('settingsPanel', e); }
@@ -249,9 +270,15 @@ function initSettingsPanel() {
                 if (!tabName) return;
                 const tabsEl = typeof document !== 'undefined' ? document.getElementById('settingsTabs') : null;
                 const bodyEl = typeof document !== 'undefined' ? document.getElementById('settingsBody') : null;
+                const panelEl = typeof document !== 'undefined' ? document.getElementById('settingsPanel') : null;
+                if (panelEl) panelEl.classList.add('fullscreen-mode');
                 if (tabsEl) {
                     tabsEl.querySelectorAll('.settings-tab').forEach(t => {
-                        t.classList.toggle('active', t.dataset.tab === tabName);
+                        const isActive = t.dataset.tab === tabName;
+                        t.classList.toggle('active', isActive);
+                        if (isActive && typeof t.scrollIntoView === 'function') {
+                            try { t.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) { logCatch('settingsPanel', e); }
+                        }
                     });
                 }
                 if (bodyEl) {
@@ -304,7 +331,11 @@ function initSettingsPanel() {
                         try { initFontUploadBindings(); } catch (e) { logCatch('settingsPanel', e); }
                         try { refreshFontDropdown(); } catch (e) { logCatch('settingsPanel', e); }
                     }
+                    if (tabName === 'ai') {
+                        try { loadAiCacheFromDB(); } catch (e) { logCatch('settingsPanel', e); }
+                    }
                 }
+                try { notifyTabShow(tabName); } catch (e) { logCatch('settingsPanel', e); }
                 /* ★ 语言包应用：每个 Tab 的 DOM 都是动态渲染的，切换后对新节点补跑一次
                    静态文本映射。从原重复 Tab 处理器搬进来——放这里程序化跳转
                    （130-playlists 直接调 switchSettingsTab('selfhost')）才同样享受到。 */
@@ -365,6 +396,11 @@ function initSettingsPanel() {
                     }
                     applyThemeColor(value);
                     syncGlobalThemeSwatches(value);
+                    syncColorRowActive('themeColor', null, value);
+                    /* ★ 同步 PreviewEngine 全局与各模式主题色（silent=true 防止回流死循环） */
+                    if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance && typeof previewEngineInstance.setGlobalVar === 'function') {
+                        previewEngineInstance.setGlobalVar('themeColor', value, true);
+                    }
                     saveSettings();
                     return;
                 }
@@ -389,31 +425,27 @@ function initSettingsPanel() {
                         appSettings.interface.glassStrength = parseInt(value);
                         applyGlassStrength(appSettings.interface.glassStrength);
                     } else if (name === 'themeColor') {
-                        /* ★ 主题色必须保存到 interface.themeColor，并应用到页面控件 */
+                        /* ★ 主题色必须保存到 interface.themeColor 与全部模式，并同步全部色板行 */
                         appSettings.interface.themeColor = value;
-                        appSettings.modeSettings[mode].themeColor = value;
+                        Object.keys(appSettings.modeSettings).forEach(m => {
+                            if (appSettings.modeSettings[m]) appSettings.modeSettings[m].themeColor = value;
+                        });
                         applyThemeColor(value);
                         syncGlobalThemeSwatches(value);
-                    } else if (name === 'bgBlur') {
-                        appSettings.background.blur = parseInt(value);
-                        appSettings.modeSettings[mode][name] = value;
-                        applyBackgroundSettings();
-                    } else if (name === 'bgBrightness') {
-                        appSettings.background.brightness = parseFloat(value);
-                        appSettings.modeSettings[mode][name] = value;
-                        applyBackgroundSettings();
-                    } else if (name === 'swayEnabled') {
-                        appSettings.background.swayEnabled = value;
-                        appSettings.modeSettings[mode][name] = value;
-                        applyBackgroundSettings();
-                    } else if (name === 'swayAmp') {
-                        appSettings.background.swayAmp = parseInt(value);
-                        appSettings.modeSettings[mode][name] = value;
-                        applyBackgroundSettings();
-                    } else if (name === 'swayDuration') {
-                        appSettings.background.swayDuration = parseInt(value);
-                        appSettings.modeSettings[mode][name] = value;
-                        applyBackgroundSettings();
+                        syncColorRowActive('themeColor', null, value);
+                    } else if (name === 'bgBlur' || name === 'bgBrightness' || name === 'swayEnabled' || name === 'swayAmp' || name === 'swayDuration') {
+                        /* 模式独立背景覆写仅落盘 modeSettings[mode]，禁止回写污染全局 appSettings.background.* */
+                        const parsed = name === 'swayEnabled'
+                            ? Boolean(value)
+                            : (name === 'bgBrightness' ? parseFloat(value) : parseInt(value));
+                        appSettings.modeSettings[mode][name] = parsed;
+                        const pc = typeof document !== 'undefined' ? document.querySelector('.player-container:not(.preview-player)') : null;
+                        const activeMain = (typeof currentViewMode === 'string' && currentViewMode)
+                            || (pc && ['vitrail', 'astrolabe', 'prism', 'jizura', 'dimension', 'letterpress', 'pv', 'tempera', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'].find(m => pc.classList.contains(`view-${m}`)))
+                            || 'cover';
+                        if (activeMain === mode) {
+                            applyBackgroundSettings(appSettings.modeSettings[mode]);
+                        }
                     } else {
                         /* ★ 模式独立设置 — 写入当前模式的独立存储 */
                         /* fontSize 迁移：旧像素值 → 倍率 */
@@ -475,7 +507,7 @@ function initSettingsPanel() {
                         const playerContainer = typeof document !== 'undefined' ? document.querySelector('.player-container:not(.preview-player)') : null;
                         let mainMode = 'cover';
                         if (playerContainer) {
-                            const modes = ['jizura', 'dimension', 'letterpress', 'pv', 'tempera', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
+                            const modes = ['vitrail', 'astrolabe', 'prism', 'jizura', 'dimension', 'letterpress', 'pv', 'tempera', 'tunnel', 'flyin', 'wordcloud', 'lyrics', 'cover'];
                             for (const m of modes) {
                                 if (playerContainer.classList.contains(`view-${m}`)) {
                                     mainMode = m;
@@ -534,21 +566,11 @@ function initSettingsPanel() {
             } catch { return false; }
         }
 
-        /* ★ 剩余设置绑定（原 initSettingsPanel 内平铺，收敛为模块级函数；panel 为 initSettingsPanel 局部，函数内自取） */
+        /* ★ 剩余设置绑定（原 initSettingsPanel 内平铺，收敛为模块级函数） */
         function initSettingsMisc() {
-            const panel = typeof document !== "undefined" ? document.getElementById("settingsPanel") : null;
+            const overlay = typeof document !== "undefined" ? document.getElementById("settingsOverlay") : null;
 
             /* ========== 播放设置 ========== */
-            const sv = typeof document !== 'undefined' ? document.getElementById('setInitialVolume') : null;
-            const svVal = typeof document !== 'undefined' ? document.getElementById('setInitialVolumeVal') : null;
-            sv.value = appSettings.playback.initialVolume;
-            svVal.textContent = appSettings.playback.initialVolume;
-            sv?.addEventListener('input', () => {
-                svVal.textContent = sv.value;
-                appSettings.playback.initialVolume = parseInt(sv.value);
-                saveSettings();
-            });
-
             bindToggle('setPreservesPitch', appSettings.playback.preservesPitch, (v) => {
                 appSettings.playback.preservesPitch = v;
                 applyPreservesPitch(v);
@@ -640,61 +662,37 @@ function initSettingsPanel() {
                 saveSettings();
             });
 
-            /* ========== 歌词设置 ========== */
-            bindBtnGroup('setLyricFontSize', appSettings.lyrics.fontSize, (v) => {
-                appSettings.lyrics.fontSize = v;
-                applyLyricFontSize(v);
-                saveSettings();
-            });
-
-            const slb = typeof document !== 'undefined' ? document.querySelector('[data-var="blurLevel"]') : null;
-            const slbVal = typeof document !== 'undefined' ? document.querySelector('[data-val="blurLevel"]') : null;
-            if (slb && appSettings.lyrics) {
-                slb.value = appSettings.lyrics.blurLevel;
-                if (slbVal) slbVal.textContent = appSettings.lyrics.blurLevel;
-            }
-            slb?.addEventListener('input', () => {
-                if (slbVal) slbVal.textContent = slb.value;
-                appSettings.lyrics.blurLevel = parseInt(slb.value);
-                applyLyricBlurLevel(appSettings.lyrics.blurLevel);
-                saveSettings();
-            });
-
-            /* ★ 歌词三色的色板行原先在「歌词」分页里（容器 id setHighlightColor /
-               setHighlightInactiveColor / setInactiveColor），约束 22 的色板重构把那三行
-               搬进了外观分页的各模式板块、并删掉了容器 id，这三处 bindColorRow 当场变成
-               静默空转。点击现在由 210 的一颗 document 级委托统一接管，写入目标见
-               writeColorField 的 LYRIC_COLOR_FIELDS 分支——不再有「按 id 找容器」这一步。 */
-
-            bindBtnGroup('setLyricAlign', appSettings.lyrics.align || 'left', (v) => {
-                appSettings.lyrics.align = v;
-                applyLyricAlign(v);
-                saveSettings();
-            });
-
-            bindToggle('setShowTranslation', appSettings.lyrics.showTranslation, (v) => {
-                appSettings.lyrics.showTranslation = v;
-                saveSettings();
-                if (lyrics.length > 0) renderLyrics(lyrics);
-            });
-            bindToggle('setShowRomaji', appSettings.lyrics.showRomaji, (v) => {
-                appSettings.lyrics.showRomaji = v;
-                saveSettings();
-                if (lyrics.length > 0) renderLyrics(lyrics);
-            });
-            bindToggle('setAutoScroll', appSettings.lyrics.autoScroll, (v) => {
-                appSettings.lyrics.autoScroll = v;
-                saveSettings();
-            });
+            /* ★ 歌词显示与三色色板全部归属外观分页各模式板块，点击由 210 委托处理，不在此处重复绑定 */
 
             /* ========== 背景设置 ========== */
+            const propagateGlobalBg = (modeKey, prevVal, nextVal, tol = 0) => {
+                const msAll = appSettings.modeSettings;
+                if (!msAll || typeof msAll !== 'object') return;
+                for (const [m, ms] of Object.entries(msAll)) {
+                    if (!ms || typeof ms !== 'object') continue;
+                    const cur = ms[modeKey];
+                    const matches = cur === undefined
+                        || (tol > 0 ? Math.abs(Number(cur) - Number(prevVal)) <= tol : cur === prevVal || String(cur) === String(prevVal));
+                    if (matches) {
+                        ms[modeKey] = nextVal;
+                        if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance?.modeVars?.[m]) {
+                            previewEngineInstance.modeVars[m][modeKey] = nextVal;
+                        }
+                    }
+                }
+                if (typeof previewEngineInstance !== 'undefined' && previewEngineInstance?.applyModeVars) {
+                    try { previewEngineInstance.applyModeVars(); } catch (e) { logCatch('settingsPanel', e); }
+                }
+            };
             bindToggle('setDynamicBg', appSettings.background.dynamicBg, (v) => {
                 appSettings.background.dynamicBg = v;
                 applyBackgroundSettings();
                 saveSettings();
             });
             bindToggle('setSwayEnabled', appSettings.background.swayEnabled, (v) => {
+                const prev = appSettings.background.swayEnabled;
                 appSettings.background.swayEnabled = v;
+                propagateGlobalBg('swayEnabled', prev, v);
                 applyBackgroundSettings();
                 saveSettings();
             });
@@ -705,7 +703,10 @@ function initSettingsPanel() {
             ssaVal.textContent = appSettings.background.swayAmp + '°';
             ssa?.addEventListener('input', () => {
                 ssaVal.textContent = ssa.value + '°';
-                appSettings.background.swayAmp = parseInt(ssa.value);
+                const prev = appSettings.background.swayAmp;
+                const next = parseInt(ssa.value);
+                appSettings.background.swayAmp = next;
+                propagateGlobalBg('swayAmp', prev, next);
                 applyBackgroundSettings();
                 saveSettings();
             });
@@ -716,7 +717,10 @@ function initSettingsPanel() {
             ssdVal.textContent = appSettings.background.swayDuration + 's';
             ssd?.addEventListener('input', () => {
                 ssdVal.textContent = ssd.value + 's';
-                appSettings.background.swayDuration = parseInt(ssd.value);
+                const prev = appSettings.background.swayDuration;
+                const next = parseInt(ssd.value);
+                appSettings.background.swayDuration = next;
+                propagateGlobalBg('swayDuration', prev, next);
                 applyBackgroundSettings();
                 saveSettings();
             });
@@ -727,7 +731,10 @@ function initSettingsPanel() {
             sbbVal.textContent = appSettings.background.blur + 'px';
             sbb?.addEventListener('input', () => {
                 sbbVal.textContent = sbb.value + 'px';
-                appSettings.background.blur = parseInt(sbb.value);
+                const prev = appSettings.background.blur;
+                const next = parseInt(sbb.value);
+                appSettings.background.blur = next;
+                propagateGlobalBg('bgBlur', prev, next);
                 applyBackgroundSettings();
                 saveSettings();
             });
@@ -738,7 +745,10 @@ function initSettingsPanel() {
             sbbrVal.textContent = appSettings.background.brightness;
             sbbr?.addEventListener('input', () => {
                 sbbrVal.textContent = sbbr.value;
-                appSettings.background.brightness = parseFloat(sbbr.value);
+                const prev = appSettings.background.brightness;
+                const next = parseFloat(sbbr.value);
+                appSettings.background.brightness = next;
+                propagateGlobalBg('bgBrightness', prev, next, 0.005);
                 applyBackgroundSettings();
                 saveSettings();
             });
@@ -877,57 +887,11 @@ function initSettingsPanel() {
                 saveSettings();
             });
 
-            bindToggle('setCompactMode', appSettings.interface.compactMode, (v) => {
-                appSettings.interface.compactMode = v;
-                applyInterfaceSettings();
-                saveSettings();
-            });
-
             /* 「主题强调色」这一行在界面分页、不在任何 [data-mode-section] 里，
                所以它是全局作用域：字段名 data-var="themeColor" → interface.themeColor。
                点击走 210 的委托，这里只把「哪颗亮着」按当前值摆正（水合时
                data-active 是出厂值，用户存过自定义色就必须按 appSettings 反推）。 */
             syncColorRowActive('themeColor', null, appSettings.interface.themeColor);
-
-            /* 导入自定义字体 */
-            const importFontBtn = typeof document !== 'undefined' ? document.getElementById('setImportFont') : null;
-            const importFontFile = typeof document !== 'undefined' ? document.getElementById('setImportFontFile') : null;
-            importFontBtn?.addEventListener('click', () => importFontFile.click());
-            importFontFile?.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                importFontFile.value = '';
-                /* 生成字体标识 */
-                const baseName = file.name.replace(/\.[^.]+$/, '');
-                const fontKey = 'custom_' + Date.now();
-                const family = 'CustomFont_' + fontKey;
-                const label = baseName;
-                try {
-                    const buffer = await file.arrayBuffer();
-                    const ok = await loadFontFace(fontKey, family, buffer);
-                    if (!ok) {
-                        showSettingsHint('字体加载失败，文件可能已损坏');
-                        return;
-                    }
-                    await saveFontToDB(fontKey, family, label, buffer);
-                    customFonts[fontKey] = { key: fontKey, family, label, buffer };
-                    refreshFontDropdown();
-                    refreshAdvancedFontDropdowns();
-                    /* 自动选中新导入的字体 */
-                    setSettingValue('fontFamily', fontKey);
-                    const dd = typeof document !== 'undefined' ? document.getElementById('dropdown-fontFamily') : null;
-                    const trigger = dd.querySelector('.setting-dropdown-trigger');
-                    const menu = dd.querySelector('.setting-dropdown-menu');
-                    trigger.textContent = label;
-                    menu.querySelectorAll('.setting-dropdown-item').forEach(i => i.classList.remove('selected'));
-                    const newItem = menu.querySelector(`[data-value="${fontKey}"]`);
-                    if (newItem) newItem.classList.add('selected');
-                    showSettingsHint(`已导入字体：${label}`);
-                } catch (err) {
-                    logError('settingsPanel', '导入字体失败:', err);
-                    showSettingsHint('导入字体失败');
-                }
-            });
 
             /* ========== 高级字体设置 ========== */
             const advFontsToggle = typeof document !== 'undefined' ? document.getElementById('setAdvancedFonts') : null;
@@ -960,14 +924,10 @@ function initSettingsPanel() {
 
             /* ========== 音效设置 ========== */
 
-document.getElementById('setOpenEq')?.addEventListener('click', () => {
-                panel.classList.remove('visible');
+            document.getElementById('setOpenEq')?.addEventListener('click', () => {
+                overlay?.classList.remove('visible');
+                pausePreview();
                 if (typeof openEqPanel === 'function') openEqPanel();
-            });
-
-            bindToggle('setVolumeNorm', appSettings.audio.volumeNorm, (v) => {
-                appSettings.audio.volumeNorm = v;
-                saveSettings();
             });
 
             /* ★ 空间音频（P2，2026-10-05）：开关 + 三档强度（light|medium|strong）
@@ -1164,16 +1124,14 @@ document.getElementById('setImportFile')?.addEventListener('change', (e) => {
             });
 
 document.getElementById('setClearSearch')?.addEventListener('click', () => {
-                /* ★ 补 qishui（此前漏掉 → 清缓存后 searchPageCache.qishui 变成 undefined，
-                   该源的缓存判断会从「无缓存」变成「未知键」）。
-                   注意：**不动 searchSource** —— 清缓存不该顺手把用户选的音源换掉。 */
-                lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '', qishui: '' };
-                searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null, qishui: null };
+                lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '' };
+                searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null };
                 /* 这里原先还有一句 `searchPagingBusy = false;`。2026-10-03 把"翻页在飞"
                    标志从全局单变量改成挂在 cache 对象上（cache.busy）后就不需要了：
                    上一行把旧 cache 整个丢掉，标记随之消失；搜索飞行中的旧请求在
                    finally 里写的也是那个已被丢弃的对象，不会误伤新搜索。 */
                 searchResultsCache = [];
+                Aria.__clearSongView?.(searchResultsEl);
                 if (searchResultsEl) searchResultsEl.innerHTML = '';
                 showSettingsHint('搜索缓存已清除');
             });
@@ -1257,7 +1215,7 @@ function initAboutLinks() {
         link.dataset.bound = '1';
         link.addEventListener('click', (ev) => {
             ev.preventDefault();
-            openExternalUrl(link.href);
+            openExternalUrl(link.getAttribute('href') || link.href);
         });
     });
     /* 版本 chip：点击复制版本号（上游参考项目 help-tab 同款交互） */

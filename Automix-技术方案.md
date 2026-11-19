@@ -77,6 +77,17 @@ analyzeTrack(url | blob) → Promise<{ introPoint, outroPoint, bpm, meanEnergy, 
    - `fingerprint`：文件长度 + 抽样字节 hash（在线源用 trackId + 比特率代替）。
 5. 缓存 IndexedDB `automix/v1/{trackId}:{fingerprint}`。
 
+> **2026-10-11 追加（包络不再丢掉）**：第 3 步那份 RMS 包络以前**算完就丢**（`analyzeEnvelope` 只返回标量），
+> 于是任何「按音乐强弱驱动画面」的消费方都只能重新解码整首歌。现在它把 `energy`（原始 RMS Float32Array）
+> 与 `energyRate`（帧率）一并返回 —— 而 analyzer 是**整体缓存该函数的返回值**（只 `delete frameMs`），
+> 所以包络自动随第 5 步进缓存，**analyzer 一行没改**。
+> 消费方：JIZURA 模式（`08_planner.js:607-608` → `09_render.js:113` → 6 处
+> `env.energy != null ? 按能量缩放 : 假噪声摆动`），适配层再按 95 分位归一成 0~1。
+> 体积 ≈ 19KB/首（50ms 一帧、4 分钟歌）；IndexedDB 结构化克隆直存，无 JSON 序列化路径
+> （`storageManager` 报体积只用 `navigator.storage.estimate()`，不会被膨胀成假数字）。
+> ⚠ 升级前已缓存的条目**没有**这两个字段，消费方必须按「没有」处理（JIZURA 侧即走噪声兜底，
+> 观感与升级前一致）；要拿到包络得让那首歌重新分析一次（清空「混音分析缓存」）。
+
 **边界情况**：解码失败（损坏/DRM）→ 返回 null，scheduler 对该曲降级为原生 `ended` 行为，永不阻塞播放主链。
 
 ### 3.2 `core/automix/scheduler.js` — 预载与起播决策

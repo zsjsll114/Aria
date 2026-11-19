@@ -31,6 +31,8 @@ import { getActiveAudio, registerAudioListener } from '../core/dualDeck.js';
 import { logInfo, logWarn, logCatch } from '../services/log.js';
 import { translatePhrase } from '../core/i18n.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
+import { ensureDropdownShell, mountDropdown } from '../ui/settingsPrimitives.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 import {
     SYSTEM_DEFAULT_ID,
     normalizeOutputDevices,
@@ -46,7 +48,6 @@ const DD_ID = 'dropdown-audioOutput';
 
 let _list = normalizeOutputDevices(null);
 let _currentId = SYSTEM_DEFAULT_ID;
-let _docCloseBound = false;
 
 /**
  * 原生输出后端（原生独占接管时由 app/298 挂上；网页版也挂着，但 active() 恒 false）。
@@ -74,59 +75,15 @@ function labelOf(item) {
     return item.label || (translatePhrase('输出设备') + ' ' + item.slot);
 }
 
-/** 建立（或取回）trigger + menu。幂等：220 只补不重建的前提就是这里已建好 */
-function ensureShell(dd) {
-    let trigger = dd.querySelector('.setting-dropdown-trigger');
-    if (trigger) return trigger;
-
-    trigger = document.createElement('div');
-    trigger.className = 'setting-dropdown-trigger';
-    /* ★ 告诉 220 的开合事件唯一挂载点「本 trigger 已自行绑定」，避免双 handler 互相抵消 */
-    trigger._ariaToggleBound = true;
-    trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        document.querySelectorAll('.setting-dropdown.open').forEach((d) => {
-            if (d !== dd) d.classList.remove('open');
-        });
-        dd.classList.toggle('open');
-    });
-
-    const menu = document.createElement('div');
-    menu.className = 'setting-dropdown-menu';
-
-    dd.appendChild(trigger);
-    dd.appendChild(menu);
-
-    /* 点空白收起：220 的全局监听只在设置面板初始化时挂一次，本分片要在
-       「面板还没被打开过」时也自洽，所以自备一个（同语义重复挂无害） */
-    if (!_docCloseBound) {
-        _docCloseBound = true;
-        document.addEventListener('click', () => {
-            document.querySelectorAll('.setting-dropdown.open').forEach((d) => d.classList.remove('open'));
-        });
-    }
-    return trigger;
-}
-
-function renderMenu(menu) {
-    menu.textContent = '';
-    for (const item of _list) {
-        const el = document.createElement('div');
-        el.className = 'setting-dropdown-item' + (item.id === _currentId ? ' selected' : '');
-        el.textContent = labelOf(item);
-        el.dataset.value = item.id;
-        el.addEventListener('click', () => { void selectDevice(item.id); });
-        menu.appendChild(el);
-    }
-}
-
 function syncUI() {
     const dd = document.getElementById(DD_ID);
     if (!dd) return;
-    const trigger = ensureShell(dd);
-    const menu = dd.querySelector('.setting-dropdown-menu');
-    trigger.textContent = labelOf(_list.find((it) => it.id === _currentId) || _list[0]);
-    if (menu) renderMenu(menu);
+    ensureDropdownShell(dd);
+    const options = _list.map((it) => ({ value: it.id, label: labelOf(it) }));
+    mountDropdown(dd, options, _currentId, {
+        placeholder: labelOf(_list[0]),
+        onSelect: (opt) => { void selectDevice(opt.value); },
+    });
 }
 
 function hintForError(code) {
@@ -329,5 +286,12 @@ if (A) {
     /* EQ 图建好或拆掉后由 core/equalizer.js 调用：有效 target 从 element 变成 ctx（或反向） */
     A.set('__audioOutputReapply', () => { void applySink(_currentId, { quiet: true }); });
 }
+
+registerSettingsHook('audio', {
+    id: 'audio-output',
+    order: 10,
+    onMount: () => { void refresh(); },
+    onShow: () => { void refresh(); },
+});
 
 export { refresh as refreshAudioOutput, applySink as applyAudioSink };

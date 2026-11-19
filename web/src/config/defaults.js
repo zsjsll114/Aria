@@ -16,7 +16,7 @@ export const playerConfig = {
     songTitle: '嘘つきは恋のはじまり',
     songArtist: '洛天依',
     coverUrl: 'https://p2.music.126.net/8i-fh32MJD0mbOAAoiaCNw==/109951170729335255.jpg',
-    initialVolume: 80,
+    defaultVolume: 80,
     enableBlurBackground: true
 };
 
@@ -27,7 +27,7 @@ export const DEFAULT_SHORTCUTS = {
 };
 export const DEFAULT_SETTINGS = {
     playback: {
-        initialVolume: 80,
+        lastVolume: 80,
         defaultPlayMode: 'sequence',
         defaultRate: 1,
         preservesPitch: true,
@@ -112,6 +112,7 @@ export const DEFAULT_SETTINGS = {
         language: 'zh-CN',
         glassStrength: 40,
         compactMode: false,
+        bottomBarCollapsed: false,
         /* 「动效强度」滑杆（todos #6）：0~100，null = 跟随性能等级（不覆盖任何 vfx 键）。
            刻意挂在 interface 下——180 的 loadSettings 只全量展开 interface/shortcuts，
            顶层新键不补合并块就会重启后被静默丢掉（AGENTS.md 约束 11）。 */
@@ -133,7 +134,6 @@ export const DEFAULT_SETTINGS = {
     },
     audio: {
         defaultEqPreset: 'default',
-        volumeNorm: false,
         /* ★ 虚拟声场（P1，2026-10-05，方案 §8 用户拍板）：
            ① 默认关（false）；② 档位枚举 off|light|medium，**无 high**（不上跨耳抵消）。
            落地见 core/spatialTuning.js（档位→参数的唯一源）与 core/equalizer.js 插点。 */
@@ -212,7 +212,55 @@ export const DEFAULT_SETTINGS = {
             highlightColor: '#ffffff', showTranslation: true, showRomaji: true,
             themeColor: DEFAULT_ACCENT, graphicColor: DEFAULT_ACCENT, bgBlur: 60, bgBrightness: 0.35,
             swayEnabled: true, swayAmp: 12, swayDuration: 16, fontFamily: 'default',
-            preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, emotionGlow: 10
+            preset: 'dream', cameraSpeed: 1.0, cameraZoom: 1.0, showHud: true, showParticles: true, showDecorations: true, aiColorSync: true, emotionGlow: 10,
+            /* ★ 2026-10-11 接通「动效强度」：上游 `Theme.animationIntensity`
+               （合法值只有 calm | normal | chaotic）会被乘以运动与相机的整体幅度
+               （0.65 / 1 / 1.35，见 sonnetMotion 的 resolveSonnetAnimationScale，消费点在上游
+               sonnetShotFrame.ts:79-80 与 sonnetPostProcess.ts:48）。此前 verse 的 theme
+               对象**根本没有这个字段** → 恒等于 normal 那一档，机制是死的。
+               'normal' 就是上游默认值，所以开箱观感不变；改这个键要同步 vfxRecipe 的
+               MODE_FIELD_POOL（否则存不进分享码）。 */
+            animationIntensity: 'normal',
+            /* ★ 2026-10-11 后期处理组（上游 DEFAULT_SONNET_TUNING，folia types.ts:573-580）。
+               **主开关默认 false**：上游 `resolveSonnetPostProcessProfile` 用它门控
+               noise / contrast / lens* / printEffects(rgbShift·halftone·vignette) **全部**，
+               也就是说 folia 默认画面是"干净"的。本仓曾硬编码 true + 非零
+               rgbShift/halftone/grain —— 薄线装饰在没有文字压场的时刻（开场、长间隔）
+               经这几层就是雪花/故障感。现默认档与上游逐字一致，用户可在面板里打开并逐项调强度。
+               改这些键要同步 vfxRecipe 的 schema 与 MODE_FIELD_POOL（否则存不进分享码）。 */
+            postProcessEnabled: false,
+            postProcessGrain: 0.2,
+            postProcessContrast: 0,
+            postProcessRgbShift: 0,
+            postProcessHalftone: 0,
+            postProcessVignette: 0.85,
+            postProcessLensDistortion: 0.3,
+            postProcessLensDispersion: 0.6,
+            /* ★ 2026-10-11 画面元素开关（上游 SonnetTuning 里本仓缺失的那几个）。
+               上游同类键共 6 个，这里只接 4 个：`showBackgroundMg` / `showBackgroundDecor`
+               与本仓既有的「显示巨型背景字与几何构图」「显示星芒微粒」**管的是同一批 MG 层**
+               （见 SonnetEngine._updateScene 的 settingsFlags 分支），再接一遍就是两套开关打架。 */
+            showOnlyText: false,
+            showGuide: true,
+            showGiantDecorativeText: true,
+            showFixedGeo: true,
+            /* ★ 2026-10-11 三个数值旋钮（上游 SonnetSettingsPanel 的「动态与构图」组，
+               滑杆域 min 0 / max 2 / step 0.05）：
+               cameraIntensity 乘进相机幅度；typographyMotion 乘进运动幅度**并发光强度**
+               （resolveSonnetPostProcessProfile 的 glowStrength = 2.8 + motion*1.8）；
+               mgDensity 决定背景短线密度 `Math.round(4 + mgDensity * 5)`（上游
+               sonnetSceneBuilder.ts:106，本仓此前把它硬编码成 0.5）。 */
+            cameraIntensity: 1,
+            typographyMotion: 1,
+            mgDensity: 1,
+            /* ★ 2026-10-11 外层边框三档（上游 `outerFrameMode`）：none 全隐 /
+               frame 只画四角角标 / full 再叠场景里那行竖排 `[ THEME ] NAME`
+               （上游 sonnetSceneBuilder.ts:95 的 `showOuterMetadata`）。 */
+            outerFrameMode: 'full',
+            /* ★ 2026-10-11 Aria 扩展（上游没有这个键）：间奏标记也走 `♪` 谱面。
+               **默认 false = 与上游逐字一致**（上游只认 `♪`）。打开后 `MUSIC`/`MUSIC-`/
+               `♪♪`/纯点号行（`…`）都会被当谱面行，详见 instrumentalLines.isSonnetStaffSegment */
+            interludeStaff: false
         },
         tunnel: {
             align: 'center', fontSize: 1.1, blurLevel: 5,
@@ -254,7 +302,22 @@ export const DEFAULT_SETTINGS = {
                而 `J.designSize = (aspect) => …` 按 aspect 返回硬编码尺寸（16:9 → 1920×1080），
                全程没人读 project.res。曾经它是个"改了没反应"的面板项（用户报障），
                真正控制像素量的旋钮是 perf（DPR/渲染倍率）。 */
-            style: 'noir', mood: null, aspect: '16:9', fps: 24, fast: null,
+            /* ★ 2026-10-11 style 默认 'ai'（AI 推荐）：AI 分析完自动挑一套风格 + 心情，
+               不必用户手选（用户原话："不要一直让用户手动调预设和心情，选一个"）。
+               语义三档：'ai' = 按 AI 分析结果选（`jizuraPreset.js`）；'auto' = 引擎抽签
+               （J.omakase）；其它 = 27 套里手选一套。**没有分析结果时 'ai' 回落 'auto'**，
+               所以默认换档不会让谁看到异常（观感等同旧的「自动匹配」）。
+               `fps`：输出帧率，本模式按它做帧节流（JizuraVisualizer._stepHz/_frameIndex），
+               面板给 12/24/30/60；「动画节拍」选「一拍两格」时固定按 24（koma 决定步长）。 */
+            style: 'ai', mood: null, aspect: '16:9', fps: 24, fast: null,
+            /* ★ extra：追加分（2026-10-11）。上游 `J.defaultProject().extra` 是 **false**，
+               它决定「首次公开版之后新增的部件与 12 套风格能否被抽签选中」——
+               闸门是引擎 11q_sets.js:51-57 的 `J.randomOk`（严格 `=== true`）。
+               我们默认 **true**：实测抽签池 486/910 → 855/910，转场 5/27 → 25/27，
+               关掉就退回"每首歌来回那几种转场"的重复感（用户 2026-10-11 报障的原话是
+               "jizura 的分镜比原版少了很多、太容易重复"）。
+               面板开关名「追加部件」；改这个键必须同步 vfxRecipe 的 MODE_FIELD_POOL。 */
+            extra: true,
             /* ★ beat：动画节拍。'every' = **逐帧**（每个输出帧一张，节拍 = fps）；
                'onTwos' = 引擎原味「一拍两格」（koma=12，12 张/秒）。
                默认 'every' —— 上游默认是 onTwos，实测画面变化率只有 32/s 且单帧仅 4.2ms，
@@ -291,6 +354,36 @@ export const DEFAULT_SETTINGS = {
             cameraIntensity: 1.0, glyphMotion: 1.0,
             textInversion: true, showBlocks: true, showDecor: true,
             showCornerMarks: true, enableTransitions: true
+        },
+        prism: {
+            fontSize: 1.0, highlightColor: '#7ce8ff', themeColor: DEFAULT_ACCENT,
+            fontFamily: 'default', showTranslation: true, showRomaji: true,
+            prismPreset: 'auto', prismCutRate: 'phrase',
+            prismRefraction: 0.75, prismDispersion: 0.68, prismCaustics: 0.72,
+            prismCamera: 0.85, prismHud: true
+        },
+        astrolabe: {
+            fontSize: 1.0, highlightColor: '#f5efe4', themeColor: DEFAULT_ACCENT,
+            fontFamily: 'default', showTranslation: true, showRomaji: true,
+            astrolabePreset: 'auto', astrolabeCutRate: 'phrase',
+            astrolabeInversion: true, astrolabeHatch: 0.75,
+            astrolabeContrast: 0.80, astrolabeCamera: 0.85, astrolabeCropMarks: true,
+            astrolabeGrain: true, astrolabePrintLevel: 'balanced'
+        },
+        vitrail: {
+            fontSize: 1.0, highlightColor: '#f3d58b', themeColor: DEFAULT_ACCENT,
+            fontFamily: 'default', showTranslation: true, showRomaji: true,
+            vitrailPreset: 'auto', vitrailArchitecture: 'auto',
+            vitrailCamera: 0.85, vitrailLighting: 0.90,
+            vitrailReflection: true, vitrailParticles: true,
+            vitrailParallax: true, vitrailQuality: 'auto'
+        },
+        focalcut: {
+            fontSize: 1.0, highlightColor: '', themeColor: DEFAULT_ACCENT,
+            fontFamily: 'default', showTranslation: true, showRomaji: true,
+            focalcutPolarity: 'auto', focalcutCutRate: 'normal',
+            focalcutSplitLens: true, focalcutCamera: 0.90,
+            focalcutGuides: true, focalcutRackFocus: true
         }
     },
     ai: {

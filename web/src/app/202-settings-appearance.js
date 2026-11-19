@@ -8,14 +8,16 @@ import { renderLyrics } from './20-lyrics-render.js';
 import { aiThemeCache } from './40-playback-state.js';
 import { saveSettings } from './180-boot-config.js';
 import { applyBackgroundSettings, applyHighlightColor, applyLyricAlign, applyLyricBlurLevel, applyLyricFontSize, applyModeSettings, applyThemeColor } from './190-settings-fontsize.js';
-import { applyFontFamily, applyGlassStrength } from './210-color-multilang.js';
+import { applyFontFamily, applyGlassStrength, syncColorRowActive } from './210-color-multilang.js';
 import { saveCustomFont } from './215-multilang-fonts.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
 import { aiCacheGetAll } from '../services/aiCache.js';
 import { DEFAULT_SETTINGS } from '../config/defaults.js'; // 模式设置默认值兜底
-import { isPresetAccent } from '../config/themePalette.js'; // 预设色唯一登记处
+import { normalizeFontKey } from '../core/settingsStore.js';
+import { bindDropdownToggle, closeAllDropdowns, syncDropdownSelection } from '../ui/settingsPrimitives.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { refreshSectionAnchors } from '../config/settingsNav.js'; // 节内锚点（阶段 2 收尾）
+import { bindWorkshopCapsule, syncWorkshopHeader, syncModeOverrideBadges } from '../ui/settingsRenderer.js';
 
 /* 外观面板容器引用（原为 initSettingsPanel 内局部，重构提升到本模块共享） */
 let appearanceControlsEl = null;
@@ -106,51 +108,33 @@ function applyLyricSetting(name, value) {
                         appSettings.interface.glassStrength = parseInt(value);
                         applyGlassStrength(appSettings.interface.glassStrength);
                         break;
-                    case 'fontFamily':
-                        const reverseFontMap = {
-                            'inherit': 'default', 'monospace': 'mono',
-                            "'SimHei', sans-serif": 'hei',
-                            "'Microsoft YaHei', sans-serif": 'default'
-                        };
-                        const fontKey = reverseFontMap[value];
+                    case 'fontFamily': {
+                        const fontKey = normalizeFontKey(value);
                         if (fontKey) {
                             appSettings.interface.fontFamily = fontKey;
                             applyFontFamily(fontKey);
                         }
                         break;
+                    }
                 }
             }
 
-                                    /* ★ 构建与同步右侧参数控制面板（7大模式独立隔离存储） */
-            /* ★ 为每个模式板块动态注入「情感词发光强度」滑块（位置在高亮颜色上方） */
-            function ensureEmotionGlowSliders() {
-                const controls = appearanceControlsEl || (typeof document !== 'undefined' ? document.getElementById('lyricStyleControls') : null);
-                if (!controls) return;
-                controls.querySelectorAll('[data-mode-section]').forEach(sec => {
-                    if (sec.querySelector('input[data-var="emotionGlow"]')) return;
-                    const row = document.createElement('div');
-                    row.className = 'setting-row';
-                    row.innerHTML = `<div><div class="setting-label">情感词发光强度</div></div><div class="setting-control"><input type="range" class="setting-slider" data-var="emotionGlow" min="0" max="30" step="1" value="10"><span class="setting-value" data-val="emotionGlow">10px</span></div></div>`;
-                    const highlightRow = sec.querySelector('[data-var="highlightColor"]')?.closest('.setting-row');
-                    if (highlightRow && highlightRow.parentNode) {
-                        highlightRow.parentNode.insertBefore(row, highlightRow);
-                    } else {
-                        sec.appendChild(row);
-                    }
-                });
-            }
-
+            /* ★ 构建与同步右侧参数控制面板（13 模式按 4 家族 + 3 层收纳） */
             function buildAppearanceControls() {
                 const controls = appearanceControlsEl || (typeof document !== 'undefined' ? document.getElementById('lyricStyleControls') : null);
                 if (!controls) return;
+                controls.scrollTop = 0;
                 appearanceControlsEl = controls;
-                ensureEmotionGlowSliders();
 
                 const activeMode = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode || 'cover';
 
-                /* 更新视图模式 Segment 按钮激活状态 */
+                /* 更新视图模式按钮激活状态 + 顶部单行胶囊 */
                 controls.querySelectorAll('.appearance-mode-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.mode === activeMode);
+                });
+                bindWorkshopCapsule(controls, (nextMode) => {
+                    const targetBtn = controls.querySelector(`.appearance-mode-btn[data-mode="${CSS.escape(nextMode)}"]`);
+                    if (targetBtn) targetBtn.click();
                 });
 
                 /* 显示激活模式的板块并绑定事件与值 */
@@ -168,6 +152,7 @@ function applyLyricSetting(name, value) {
             function showModeSection(mode) {
                 const controls = appearanceControlsEl || (typeof document !== 'undefined' ? document.getElementById('lyricStyleControls') : null);
                 if (!controls) return;
+                controls.scrollTop = 0;
                 const sections = controls.querySelectorAll('[data-mode-section]');
                 sections.forEach(sec => {
                     if (sec.dataset.modeSection === mode) {
@@ -178,6 +163,7 @@ function applyLyricSetting(name, value) {
                         sec.style.display = 'none';
                     }
                 });
+                try { syncWorkshopHeader(mode); } catch (e) { logCatch('settingsAppearance', e); }
                 /* ★ 节内锚点（阶段 2 收尾）：锚点按"当前可见的模式区块"派生，
                    不在这里重算就会留着上一个模式的组标题。 */
                 try { refreshSectionAnchors(); } catch (e) { logCatch('settingsAppearance', e); }
@@ -249,6 +235,10 @@ function applyLyricSetting(name, value) {
                                     if (isGlobal) previewEngineInstance.setGlobalVar(varName, _lastVal);
                                     else previewEngineInstance.setModeVar(varName, _lastVal);
                                 }
+                                if (varName === 'bgBlur' || varName === 'bgBrightness' || varName === 'swayAmp' || varName === 'swayDuration') {
+                                    const curM = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode;
+                                    syncModeOverrideBadges(curM);
+                                }
                             });
                         }
                     });
@@ -290,6 +280,55 @@ function applyLyricSetting(name, value) {
                             if (isGlobal) previewEngineInstance.setGlobalVar(varName, val);
                             else previewEngineInstance.setModeVar(varName, val);
                         }
+                        if (varName === 'swayEnabled') {
+                            const curM = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode;
+                            syncModeOverrideBadges(curM);
+                        }
+                    });
+                });
+
+                /* 独立背景与字体覆写 → 一键恢复跟随全局 */
+                controls.querySelectorAll('[data-ws-reset-override]').forEach(resetBtn => {
+                    if (resetBtn._hasWsReset) return;
+                    resetBtn._hasWsReset = true;
+                    resetBtn.addEventListener('click', () => {
+                        const targetM = resetBtn.getAttribute('data-ws-reset-override');
+                        if (!targetM) return;
+                        const bg = (appSettings && appSettings.background) || DEFAULT_SETTINGS.background || {};
+                        if (!appSettings.modeSettings) appSettings.modeSettings = {};
+                        const ms = appSettings.modeSettings[targetM] || (appSettings.modeSettings[targetM] = {});
+                        const ovTier = resetBtn.closest('[data-ws-override-mode]');
+                        if (ovTier?.querySelector('[data-var="bgBlur"]')) {
+                            ms.bgBlur = bg.blur ?? 60;
+                            ms.bgBrightness = bg.brightness ?? 0.35;
+                            ms.swayEnabled = bg.swayEnabled !== false;
+                            ms.swayAmp = bg.swayAmp ?? 12;
+                            ms.swayDuration = bg.swayDuration ?? 16;
+                        }
+                        ms.fontFamily = 'default';
+                        if (previewEngineInstance && previewEngineInstance.modeVars && previewEngineInstance.modeVars[targetM]) {
+                            const pmv = previewEngineInstance.modeVars[targetM];
+                            if (ovTier?.querySelector('[data-var="bgBlur"]')) {
+                                pmv.bgBlur = ms.bgBlur;
+                                pmv.bgBrightness = ms.bgBrightness;
+                                pmv.swayEnabled = ms.swayEnabled;
+                                pmv.swayAmp = ms.swayAmp;
+                                pmv.swayDuration = ms.swayDuration;
+                            }
+                            pmv.fontFamily = 'default';
+                            if (previewEngineInstance.currentMode === targetM && typeof previewEngineInstance.setModeVar === 'function') {
+                                previewEngineInstance.setModeVar('fontFamily', 'default');
+                                if (typeof previewEngineInstance.applyModeVars === 'function') {
+                                    previewEngineInstance.applyModeVars();
+                                }
+                            }
+                        }
+                        saveSettings();
+                        applyBackgroundSettings();
+                        applyModeSettings();
+                        syncModeSectionValues(targetM);
+                        syncModeOverrideBadges(targetM);
+                        showSettingsHint('已恢复跟随全局设置');
                     });
                 });
 
@@ -302,16 +341,9 @@ function applyLyricSetting(name, value) {
                      220 已经遍历所有 .setting-dropdown 挂过触发器的开合，
                      这里再挂一份会与它互相 toggle 抵消（表现为点一下打不开）。 */
                 controls.querySelectorAll('.setting-dropdown[data-var]').forEach(dd => {
+                    if (dd.dataset.var === 'fontFamily' || dd.classList.contains('appearance-font-dropdown')) return;
                     const trigger = dd.querySelector('.setting-dropdown-trigger');
-                    if (trigger && !trigger._ariaToggleBound) {
-                        trigger._ariaToggleBound = true;
-                        trigger.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const willOpen = !dd.classList.contains('open');
-                            document.querySelectorAll('.setting-dropdown.open').forEach(d => d.classList.remove('open'));
-                            dd.classList.toggle('open', willOpen);
-                        });
-                    }
+                    bindDropdownToggle(dd, trigger);
                     if (dd._hasAppEvent) return;
                     dd._hasAppEvent = true;
                     const varName = dd.dataset.var;
@@ -324,7 +356,7 @@ function applyLyricSetting(name, value) {
                             items.forEach(i => i.classList.remove('selected'));
                             item.classList.add('selected');
                             if (trigger) trigger.textContent = item.textContent;
-                            dd.classList.remove('open');
+                            closeAllDropdowns(null);
                             const val = item.dataset.value;
                             if (previewEngineInstance) {
                                 if (isGlobal) previewEngineInstance.setGlobalVar(varName, val);
@@ -340,6 +372,8 @@ function applyLyricSetting(name, value) {
                     sel._hasAppEvent = true;
                     sel.addEventListener('change', () => {
                         if (previewEngineInstance) previewEngineInstance.setModeVar('fontFamily', sel.value || 'inherit');
+                        const curM = (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode;
+                        syncModeOverrideBadges(curM);
                     });
                 });
 
@@ -363,6 +397,9 @@ function applyLyricSetting(name, value) {
                                     previewEngineInstance.setModeVar('fontFamily', fontKey);
                                     const curM = previewEngineInstance.currentMode || 'cover';
                                     syncModeSectionValues(curM);
+                                } else if (fontKey) {
+                                    const curM = currentViewMode || 'cover';
+                                    syncModeOverrideBadges(curM);
                                 }
                             } catch (err) {
                                 logError('settingsPanel', '导入字体失败:', err);
@@ -374,20 +411,11 @@ function applyLyricSetting(name, value) {
                 });
             }
 
-            /* ★ 同步全局主题色色块 */
+            /* ★ 同步全局主题色色块（两处行 #setAppearanceThemeColor 与 #setThemeColor 同频） */
             function syncGlobalThemeSwatches(color) {
                 const targetColor = color || (appSettings.interface && appSettings.interface.themeColor) || '#E8BE6A';
-                const controls = appearanceControlsEl || (typeof document !== 'undefined' ? document.getElementById('lyricStyleControls') : null);
-                if (!controls) return;
-                controls.querySelectorAll('.appearance-global-section .color-swatch[data-var="themeColor"]').forEach(sw => {
-                    if (sw.dataset.color === '__custom__') {
-                        /* 这行原先是把 6 个预设色又抄了一遍数组来判断——色板一改就静默失配
-                           （用户选了新预设，「自定义」那颗却跟着亮）。改成查唯一登记处。 */
-                        sw.classList.toggle('active', !isPresetAccent(targetColor));
-                    } else {
-                        sw.classList.toggle('active', sw.dataset.color === targetColor);
-                    }
-                });
+                if (typeof document === 'undefined') return;
+                syncColorRowActive('themeColor', null, targetColor);
             }
 
             /* ★ 同步模式板块的控件值为当前配置值 */
@@ -436,63 +464,37 @@ function applyLyricSetting(name, value) {
                         btns[0].classList.add('active');
                     }
                 });
-                /* 下拉的回显（2026-10-07 补）：没有这一支，用户切模式/重开面板后
-                   trigger 仍停在 HTML 里写死的初始值，与真实设置不一致。 */
+                /* 下拉的回显：走统一 syncDropdownSelection 原语 */
                 section.querySelectorAll('.setting-dropdown[data-var]').forEach(dd => {
                     const vn = dd.dataset.var;
+                    if (vn === 'fontFamily' || dd.classList.contains('appearance-font-dropdown')) return;
                     const val = mv[vn];
                     if (val === undefined || val === null) return;
-                    const items = [...dd.querySelectorAll('.setting-dropdown-item')];
-                    const hit = items.find(i => String(i.dataset.value) === String(val));
-                    if (!hit) return;
-                    items.forEach(i => i.classList.remove('selected'));
-                    hit.classList.add('selected');
-                    const trigger = dd.querySelector('.setting-dropdown-trigger');
-                    if (trigger) trigger.textContent = hit.textContent;
+                    syncDropdownSelection(dd, val);
                 });
 
-                section.querySelectorAll('.color-swatch').forEach(sw => {
-                    const vn = sw.dataset.var;
-                    if (mv[vn] !== undefined) sw.classList.toggle('active', sw.dataset.color === String(mv[vn]));
+                section.querySelectorAll('.setting-color-row[data-var]').forEach(row => {
+                    const vn = row.dataset.var;
+                    if (vn && mv[vn] !== undefined) syncColorRowActive(vn, targetMode, mv[vn]);
                 });
                 section.querySelectorAll('.setting-toggle[data-var]').forEach(tg => {
                     const vn = tg.dataset.var;
                     if (mv[vn] !== undefined) tg.classList.toggle('on', !!mv[vn]);
                 });
-                
+
                 // 同步毛玻璃字体下拉菜单状态
                 section.querySelectorAll('.appearance-font-dropdown, .setting-dropdown[data-var="fontFamily"]').forEach(dd => {
-                    const trigger = dd.querySelector('.setting-dropdown-trigger');
-                    const menu = dd.querySelector('.setting-dropdown-menu');
                     const varName = dd.dataset.var || 'fontFamily';
-                    const rawVal = mv[varName];
-                    const targetVal = (rawVal === 'inherit' || !rawVal) ? 'default' : rawVal;
-                    if (menu) {
-                        let matched = false;
-                        menu.querySelectorAll('.setting-dropdown-item').forEach(item => {
-                            const isMatch = (item.dataset.value === targetVal || (item.dataset.value === 'default' && targetVal === 'inherit'));
-                            item.classList.toggle('selected', isMatch);
-                            if (isMatch) {
-                                if (trigger) {
-                                    trigger.textContent = item.textContent;
-                                    trigger.dataset.value = item.dataset.value;
-                                    trigger.removeAttribute('title');
-                                }
-                                matched = true;
-                            }
-                        });
-                        if (!matched && menu.firstElementChild && trigger) {
-                            menu.firstElementChild.classList.add('selected');
-                            trigger.textContent = menu.firstElementChild.textContent;
-                            trigger.dataset.value = menu.firstElementChild.dataset.value;
-                            trigger.removeAttribute('title');
-                        }
-                    }
+                    const targetVal = normalizeFontKey(mv[varName]);
+                    syncDropdownSelection(dd, targetVal, null, { fallbackFirst: true });
+                    const trigger = dd.querySelector('.setting-dropdown-trigger');
+                    if (trigger) trigger.removeAttribute('title');
                 });
 
                 section.querySelectorAll('.appearance-font-select[data-var="fontFamily"]').forEach(sel => {
                     if (mv.fontFamily) sel.value = mv.fontFamily;
                 });
+                try { syncModeOverrideBadges(targetMode); } catch (e) { logCatch('settingsAppearance', e); }
             }
             
 /* 启动时从 IndexedDB 加载缓存到内存 */
@@ -515,7 +517,6 @@ function applyLyricSetting(name, value) {
 export {
     applyLyricSetting,
     applySharedSetting,
-    ensureEmotionGlowSliders,
     buildAppearanceControls,
     showModeSection,
     bindAppearanceEvents,

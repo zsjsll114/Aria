@@ -1,25 +1,17 @@
 /* ============================================================
- * 287-bg-throttle.js — 窗口不可见时自动轻量的接线层（todos #18）
+ * 287-bg-throttle.js — 后台/失焦自动省电降载接线层
  *
- * 判定与协调全在 core/backgroundThrottle.js，本分片只负责「把每个绘制循环
- * 翻译成一组 get/isBusy/pause/resume」，全部用这些引擎**现成**的接口，
- * 一行业务逻辑都不写进引擎文件（共享 rAF 闸属下一轮侵入式重构，本轮不撞车）。
- *
- * 实测过的外部可停性（详见交付报告）：
- *   ✓ 主歌词 rAF（70-audio-engine 导出 startLyricsLoop/stopLyricsLoop）
- *   ✓ PVEngine 摄像机 rAF（实例自带 start/stop + isRunning）
- *   ✓ VisualizerManager.activeInstance（VisualizerBase 统一 start/stop + isRunning）
- *   ✓ previewEngine（自带 pause/start + isPlaying，且它内部是**另一套**引擎实例）
- *   △ PVBackground 丝绸 canvas：**没有**公开停口，只能掐它自己持有的 animId/
- *     _silkTimer 再用私有 _startSilkLoop 重开 —— 已按「缺任一即不动」写，
- *     将来它加了公开 API 只需替换这两个函数。
- *   ✗ 57-wordcloud-camera 的常驻弹簧 rAF（开关是模块内 let，外面读不到）
- *   ✗ 60-mobile-dual-page 的逐字进度 rAF（busy 标志 _mlpRafId 未导出）
- *   ✗ TunnelEngine（自持循环早先已被删空，本来就不耗帧，不注册）
- * 前两项要等分片补导出，已进交付报告的接线清单。
+ * 游戏等全屏/无边框窗口遮挡 Aria 时（!document.hasFocus()），浏览器不会自动
+ * 触发 document.hidden，所以所有重 GPU/CPU 渲染目标统一挂进 TIER_IDLE，
+ * 失去焦点 500ms 或最小化后全部立即休眠，仅保留音频播放与轻量 10Hz 桌面歌词同步。
  * ============================================================ */
 import { audio } from './20-lyrics-render.js';
-import { startLyricsLoop, stopLyricsLoop } from './70-audio-engine.js';
+import { startLyricsLoop, stopLyricsLoop, syncForegroundLyricsNow } from './70-audio-engine.js';
+import { isLyricsFxLoopRunning, snapLyricsWaveOnResume, startLyricsFxLoop, stopLyricsFxLoop } from './57-wordcloud-camera.js';
+import { isMobileLyricProgressRunning, startMobileLyricProgress, stopMobileLyricProgress } from './60-mobile-dual-page.js';
+import { isMvUpscaleRunning, startMvUpscale, stopMvUpscale } from './103-mv-upscale.js';
+import { isEnergyMotionRunning, pauseEnergyMotion, resumeEnergyMotion } from './306-energy-motion.js';
+import { probeInfo, startHeartbeat, stopHeartbeat } from '../core/frameProbe.js';
 import { logCatch, logInfo } from '../services/log.js';
 import {
     TIER_HIDDEN,
@@ -34,20 +26,16 @@ function g(key) {
     return (typeof globalThis !== 'undefined' && globalThis[key]) || null;
 }
 
-/* 桌面歌词窗口靠主窗口的 activeLineIndex/currentTime 供给内容（250 每 120ms 推一次），
-   而这两个值由主歌词 rAF 推进 —— 桌面歌词开着时停主循环等于把另一个**可见**窗口冻住，
-   所以那种情况下主歌词循环不降档（其余装饰循环照停）。 */
 function desktopLyricsOn() {
     try {
         return typeof localStorage !== 'undefined' && localStorage.getItem('aria_dtk_enabled') === '1';
     } catch (e) {
-        /* 隐私模式/配额下读不到就当作没开：宁可少降一档，不可冻住桌面歌词 */
         logCatch('bgThrottle', e);
         return false;
     }
 }
 
-/* ---- 1. 主歌词 rAF：逐字高亮 + 进度 + 各引擎 update 的总闸 ---- */
+/* ---- 1. 主歌词循环（仅真正最小化/后台不可见 TIER_HIDDEN 暂停；失焦但窗口可见不冻结歌词） ---- */
 registerThrottleTarget({
     id: 'lyricsLoop',
     tier: TIER_HIDDEN,
@@ -58,46 +46,27 @@ registerThrottleTarget({
     skipWhen: () => desktopLyricsOn(),
 });
 
-/* ---- 2. PV 摄像机视差 rAF ---- */
+/* ---- 2. 诗镜（Sonnet Pixi WebGL + rAF） ---- */
 registerThrottleTarget({
-    id: 'pvCamera',
+    id: 'sonnetEngine',
     tier: TIER_HIDDEN,
-    get: () => g('pvEngineInstance'),
-    isBusy: inst => !!inst && inst.isRunning === true,
-    pause: inst => inst.stop(),
-    /* PVEngine.stop() 把翻译层写成 opacity:0 + display:none，而 start() 只恢复 display：
-       从外面补一次显隐，否则回前台后要等到下一句带翻译的歌词才重新看得见。 */
-    resume: (inst) => {
-        inst.start();
-        const ta = inst.translationArea;
-        if (ta && ta.style && ta.textContent && ta.textContent.trim()) ta.style.opacity = '1';
-    },
+    get: () => g('__sonnetCtrl'),
+    isBusy: ctrl => !!(ctrl && ctrl.isRunning()),
+    pause: ctrl => ctrl.pause(),
+    resume: ctrl => ctrl.resume(),
 });
 
-/* ---- 3. PV 丝绸背景 canvas（全屏 2D 重绘，整台机器最贵的一帧预算）---- */
-function pauseSilk(bg) {
-    /* 没有 _startSilkLoop 就没有对称的恢复手段：这种情况一律不动它
-       （core 复查 isBusy 仍为真，会自动放弃记账，不会把「暂停」变成「关掉」） */
-    if (!bg || typeof bg._startSilkLoop !== 'function') return;
-    if (bg.animId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(bg.animId);
-    if (bg._silkTimer && typeof clearTimeout === 'function') clearTimeout(bg._silkTimer);
-    bg.animId = null;
-    bg._silkTimer = null;
-}
-
+/* ---- 3. 凝彩（Tempera Pixi WebGL + rAF） ---- */
 registerThrottleTarget({
-    id: 'pvSilkBackground',
-    tier: TIER_IDLE,
-    get: () => {
-        const pv = g('pvEngineInstance');
-        return (pv && pv.background) || null;
-    },
-    isBusy: bg => !!(bg && (bg.animId || bg._silkTimer)),
-    pause: pauseSilk,
-    resume: bg => { if (bg && typeof bg._startSilkLoop === 'function') bg._startSilkLoop(); },
+    id: 'temperaRuntime',
+    tier: TIER_HIDDEN,
+    get: () => g('__temperaCtrl'),
+    isBusy: ctrl => !!(ctrl && ctrl.isRunning()),
+    pause: ctrl => ctrl.pause(),
+    resume: ctrl => ctrl.resume(),
 });
 
-/* ---- 4. 当前视觉模式的自持循环（浮空 Dimension 有，活字/霓虹没有）---- */
+/* ---- 4. VisualizerManager 当前实例（琉璃龛 WebGL2 / 棱镜 / 画册 / 穿行 / 镜幕 / 活字 / 字面） ---- */
 registerThrottleTarget({
     id: 'activeVisualizer',
     tier: TIER_HIDDEN,
@@ -110,14 +79,89 @@ registerThrottleTarget({
     resume: inst => inst.start(),
 });
 
-/* ---- 5. 外观设置里的预览引擎（独立实例，与主画面互不影响）---- */
+/* ---- 5. 外观设置预览引擎 ---- */
 registerThrottleTarget({
     id: 'appearancePreview',
-    tier: TIER_HIDDEN,
+    tier: TIER_IDLE,
     get: () => g('previewEngineInstance'),
     isBusy: inst => !!inst && inst.isPlaying === true,
     pause: inst => inst.pause(),
     resume: inst => inst.start(),
+});
+
+/* ---- 6. 音频能量动态呼吸（每帧 FFT + CSS 变量变更） ---- */
+registerThrottleTarget({
+    id: 'energyMotion',
+    tier: TIER_IDLE,
+    get: () => null,
+    isBusy: () => isEnergyMotionRunning(),
+    pause: () => pauseEnergyMotion(),
+    resume: () => resumeEnergyMotion(),
+});
+
+/* ---- 7. MV 画质增强 WebGL2 多 pass 着色器 ---- */
+registerThrottleTarget({
+    id: 'mvUpscale',
+    tier: TIER_HIDDEN,
+    get: () => null,
+    isBusy: () => isMvUpscaleRunning(),
+    pause: () => stopMvUpscale(),
+    resume: () => {
+        if (typeof document !== 'undefined' && document.body && document.body.classList.contains('mv-bg-on')) {
+            startMvUpscale();
+        }
+    },
+});
+
+/* ---- 8. MV 背景视频解码（后台隐藏暂停硬解，回前台按音频进度对齐续播） ---- */
+registerThrottleTarget({
+    id: 'mvBgVideo',
+    tier: TIER_HIDDEN,
+    get: () => (typeof document !== 'undefined' ? document.getElementById('mvBgVideo') : null),
+    isBusy: v => !!(v && v.src && !v.paused),
+    pause: v => { try { v.pause(); } catch (e) { logCatch('bgThrottle', e); } },
+    resume: v => {
+        if (!v || !v.src) return;
+        if (typeof document !== 'undefined' && document.body && !document.body.classList.contains('mv-bg-on')) return;
+        if (audio && audio.paused) return;
+        try {
+            if (audio && Number.isFinite(audio.currentTime) && Math.abs((v.currentTime || 0) - audio.currentTime) > 0.6) {
+                v.currentTime = audio.currentTime;
+            }
+            const p = v.play();
+            if (p && typeof p.catch === 'function') p.catch(e => logCatch('bgThrottle', e));
+        } catch (e) { logCatch('bgThrottle', e); }
+    },
+});
+
+/* ---- 9. 默认/歌词模式弹簧与纵波常驻 rAF ---- */
+registerThrottleTarget({
+    id: 'lyricsFxLoop',
+    tier: TIER_HIDDEN,
+    get: () => null,
+    isBusy: () => isLyricsFxLoopRunning(),
+    pause: () => stopLyricsFxLoop(),
+    resume: () => startLyricsFxLoop(),
+});
+
+/* ---- 10. 窄屏双页逐字进度 rAF ---- */
+registerThrottleTarget({
+    id: 'mobileLyricProgress',
+    tier: TIER_HIDDEN,
+    get: () => null,
+    isBusy: () => isMobileLyricProgressRunning(),
+    pause: () => stopMobileLyricProgress(),
+    resume: () => startMobileLyricProgress(),
+});
+
+/* ---- 11. 全局帧时采样心跳 rAF ---- */
+registerThrottleTarget({
+    id: 'frameProbeHeartbeat',
+    tier: TIER_IDLE,
+    get: () => null,
+    isBusy: () => !!probeInfo().heartbeatOn,
+    pause: () => stopHeartbeat(),
+    resume: () => startHeartbeat(),
 });
 
 installBackgroundThrottle({
@@ -128,18 +172,21 @@ installBackgroundThrottle({
     silent: true,
 });
 
-/* 封面背景的摇摆是 CSS 动画（190-settings-fontsize 用内联 animation 简写挂在
-   .blur-background 上），rAF 停不停它照跑不误 —— 而这一层是 150% 面积 + blur(60px)
-   的全屏合成，正是无 GPU 设备上最贵的一笔。暂停手法与既有的
-   `.blur-background.paused { animation-play-state: paused }`（暂停时不摇摆）完全一致，
-   只多两处必要项：① 锚到 html#ariaRoot（硬约束 12：纯类选择器比特异性会被组件侧
-   !important 顶掉）；② 必须带 !important —— animation 简写会把 animation-play-state
-   一并重置为 running，普通作者规则压不过内联样式。 */
+/* 后台/失焦时冻结所有无限 CSS 动画并撤掉高开销合成器层提升（will-change） */
 function injectThrottleStyle() {
     if (typeof document === 'undefined' || document.getElementById('bg-throttle-style')) return;
     const css = [
-        'html#ariaRoot.is-bg-throttled .blur-background {',
+        'html#ariaRoot.is-bg-throttled .blur-background,',
+        'html#ariaRoot.is-bg-throttled .pv-fluid-img,',
+        'html#ariaRoot.is-bg-throttled .pv-fluid-blob,',
+        'html#ariaRoot.is-bg-throttled .tunnel-bg-streaks,',
+        'html#ariaRoot.is-bg-throttled .visualizer-stage *,',
+        'html#ariaRoot.is-bg-throttled .vinyl-disc,',
+        'html#ariaRoot.is-bg-throttled .vinyl-tonearm,',
+        'html#ariaRoot.is-bg-throttled .fc-beam,',
+        'html#ariaRoot.is-bg-throttled .fc-shutter {',
         '    animation-play-state: paused !important;',
+        '    will-change: auto !important;',
         '}',
     ].join('\n');
     const node = document.createElement('style');
@@ -150,10 +197,15 @@ function injectThrottleStyle() {
 
 try { injectThrottleStyle(); } catch (e) { logCatch('bgThrottle', e); }
 
-/* 留痕：这类「画面为什么不动了」的疑问只能靠一条日志回答，不然第一个反馈会是「播放器坏了」 */
-onBackgroundThrottleChange(() => {
+onBackgroundThrottleChange((snap) => {
     try {
         const s = backgroundThrottleSnapshot();
         logInfo('bgThrottle', `档位 ${s.tier || 'normal'} · 已停 ${s.paused.length ? s.paused.join('/') : '无'}`);
+        /* ★ 2026-11-19：回到前台时彻底校准歌词行、纵波位置与视觉引擎尺寸/时钟，
+           修复切后台再切回来时歌词停滞、纵波飞跃、视觉模式尺寸错乱等异常。 */
+        if (snap && !snap.tier) {
+            try { snapLyricsWaveOnResume(); } catch (e) { logCatch('bgThrottle', e); }
+            try { syncForegroundLyricsNow(); } catch (e) { logCatch('bgThrottle', e); }
+        }
     } catch (e) { logCatch('bgThrottle', e); }
 });

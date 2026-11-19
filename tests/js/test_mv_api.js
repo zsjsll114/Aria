@@ -10,7 +10,7 @@
  *      （curl `SEC_E_WRONG_PRINCIPAL`）→ 升上去 TLS 直接失败；Chromium 里表现为
  *      `<video>` 既不 error 也不出帧、只显示 poster ⇒ 用户报的「mv 不播放只显示封面」。
  *      现在按 host 保留原协议（见 upHttps）。网易 vod / QQ 的 https 实测可用，照旧升。
- *   ③ 能力声明必须**保守**：汽水底层库零 video 方法，报 true 会让搜索页多出一排
+ *   ③ 能力声明必须**保守**：不支持 MV 的源报 false，避免搜索页多出一排
  *      永远空着的卡片（而不是明确说"该源不支持"）。
  * ============================================================ */
 import { test } from 'node:test';
@@ -143,8 +143,8 @@ test('三家有 MV 能力的源报 true（前端键与后端键两种写法都�
     }
 });
 
-test('汽水 / 酷我 / 本地 / 空值一律报 false', () => {
-    for (const s of ['qishui', 'soda', 'kuwo', 'local', '', null]) {
+test('酷我 / 本地 / 空值一律报 false', () => {
+    for (const s of ['kuwo', 'local', '', null]) {
         assert.equal(mvSearchSupported(s), false, `${String(s)} 不应支持 MV`);
     }
 });
@@ -469,7 +469,7 @@ test('resolveMvForSong：酷狗自带 mvhash → 零请求直接返回', async (
 });
 
 test('resolveMvForSong：不支持 MV 的源 / 缺歌名 / 空源 → null', async () => {
-    assert.equal(await resolveMvForSong('qishui', { title: '晴天', singer: '周杰伦' }), null);
+    assert.equal(await resolveMvForSong('kuwo', { title: '晴天', singer: '周杰伦' }), null);
     assert.equal(await resolveMvForSong('tencent', { title: '', singer: '周杰伦' }), null);
     assert.equal(await resolveMvForSong('', { title: '晴天', singer: '周杰伦' }), null);
 });
@@ -486,6 +486,6 @@ test('searchMvsForWord：空关键词 → 空数组（不发请求）', async ()
     assert.deepEqual(await searchMvsForWord('netease', '   '), []);
 });
 
-test('searchMvsForWord：不支持 MV 的源（汽水）→ 空数组', async () => {
-    assert.deepEqual(await searchMvsForWord('qishui', '晴天', { artists: [{ name: '周杰伦' }] }), []);
+test('searchMvsForWord：不支持 MV 的源（酷我）→ 空数组', async () => {
+    assert.deepEqual(await searchMvsForWord('kuwo', '晴天', { artists: [{ name: '周杰伦' }] }), []);
 });

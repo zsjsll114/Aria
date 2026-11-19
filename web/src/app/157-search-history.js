@@ -54,6 +54,8 @@ let _hotSource = '';
 let _hotFetching = false;
 let _suggestSeq = 0;       /* 联想词竞态序号：只认最后一次输入 */
 let _suggestTimer = 0;
+let _suggestActiveIdx = -1;
+let _rawTypedWord = '';
 
 function isEn() {
     return Boolean(globalThis.AriaI18n && globalThis.AriaI18n.getLanguage() === 'en-US');
@@ -106,6 +108,7 @@ function highlightHtml(text, word) {
 /** 联想词面板：竖排列表 + 放大镜 + 命中高亮。 */
 function renderSuggest(word, list) {
     if (!panelAlive()) return;
+    _suggestActiveIdx = -1;
     let html = labelHtml(isEn() ? 'Suggestions' : '联想词', '');
     html += list.map(kw => `<div class="suggest-item" data-kw="${escapeHtml(kw)}">`
         + '<svg class="suggest-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" '
@@ -145,6 +148,7 @@ function renderIdle() {
 }
 
 function hideSearchHistory() {
+    _suggestActiveIdx = -1;
     if (searchHistoryEl) searchHistoryEl.style.display = 'none';
 }
 
@@ -239,6 +243,7 @@ function updateSearchView() {
         }
         return;
     }
+    Aria.__clearSongView?.(searchResultsEl);
     if (searchResultsEl) searchResultsEl.innerHTML = '';
     const hintEl = document.getElementById('searchHint');
     if (hintEl) { hintEl.textContent = ''; hintEl.style.opacity = '0'; }
@@ -262,7 +267,34 @@ function syncSearchClearBtn() {
     searchClearBtn.style.display = hasVal ? 'inline-flex' : 'none';
 }
 
-searchInput?.addEventListener('input', () => { updateSearchView(); syncSearchClearBtn(); });
+searchInput?.addEventListener('input', () => {
+    _suggestActiveIdx = -1;
+    _rawTypedWord = searchInput.value;
+    updateSearchView();
+    syncSearchClearBtn();
+});
+searchInput?.addEventListener('keydown', (e) => {
+    if (e.isComposing || !searchHistoryEl || searchHistoryEl.style.display === 'none') return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = Array.from(searchHistoryEl.querySelectorAll('.suggest-item'));
+    if (!items.length) return;
+    e.preventDefault();
+    if (_suggestActiveIdx === -1) _rawTypedWord = searchInput.value;
+    if (e.key === 'ArrowDown') {
+        _suggestActiveIdx = _suggestActiveIdx >= items.length - 1 ? -1 : _suggestActiveIdx + 1;
+    } else {
+        _suggestActiveIdx = _suggestActiveIdx <= -1 ? items.length - 1 : _suggestActiveIdx - 1;
+    }
+    items.forEach((el, idx) => el.classList.toggle('is-kb-active', idx === _suggestActiveIdx));
+    if (_suggestActiveIdx >= 0 && items[_suggestActiveIdx]) {
+        const pickedEl = items[_suggestActiveIdx];
+        searchInput.value = pickedEl.dataset.kw || '';
+        pickedEl.scrollIntoView({ block: 'nearest' });
+    } else {
+        searchInput.value = _rawTypedWord;
+    }
+    syncSearchClearBtn();
+});
 searchInput?.addEventListener('focus', () => { syncSearchClearBtn(); });
 searchInput?.addEventListener('blur', () => {
     /* 延迟少许同步，避免点击清空按钮时因失焦提前隐藏导致 click 未触发 */

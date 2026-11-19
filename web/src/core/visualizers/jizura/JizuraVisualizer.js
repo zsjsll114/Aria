@@ -25,12 +25,14 @@ import { VisualizerBase } from '../VisualizerBase.js';
 import { logCatch, logInfo } from '../../../services/log.js';
 import {
     JIZURA_FX_DEFAULTS, JIZURA_TAG, applyJizuraFontOverride, buildJizuraPlan, collectJizuraFx,
-    computeWordSyncOverrides, currentTrackBpm, currentTrackEntry, getJizuraEngine, jizuraPlanKey,
+    computeWordSyncOverrides, currentTrackAnalysis, currentTrackEntry, getJizuraEngine, jizuraPlanKey,
     perfOptionsFor, planLineAt, trackFingerprint,
 } from './jizuraBridge.js';
 import {
     PERF_LEVELS, createPerfGovernor, qualityStartLevel, qualityToDprCap,
 } from './jizuraPerf.js';
+/* ★ 2026-10-11 「AI 推荐」(style='ai')：按 AI 分析结果挑一套风格 + 心情（纯逻辑，见该文件） */
+import { jizuraPresetSignature, recommendJizuraPreset } from './jizuraPreset.js';
 
 const TAG = JIZURA_TAG;
 
@@ -58,6 +60,9 @@ export class JizuraVisualizer extends VisualizerBase {
         this._governor = null;
         this._level = null;
         this._dprCap = 1;
+        /* ── 「AI 推荐」缓存（style='ai'）：按 AI 分析结果签名缓存，见 _resolvePreset ── */
+        this._preset = null;
+        this._presetSig = '';
         /* ── 帧节流 ── */
         this._lastFrameIdx = -1;
         this._forceFrame = true;
@@ -68,13 +73,18 @@ export class JizuraVisualizer extends VisualizerBase {
         /* ── 尺寸缓存（不每帧 getBoundingClientRect：真机上那是强制重排）── */
         this._rect = null;
         this._resizeObserver = null;
-        /* ── 真实 BPM（只读已缓存的分析结果；见 bridge 的 currentTrackBpm）── */
-        this._bpm = 0;
-        this._bpmKey = '';
+        /* ── 已缓存的曲目分析（真实 BPM 卡点网格 + 能量包络）。只读缓存、每首歌查一次；
+              异步到达后置脏重建。见 bridge 的 currentTrackAnalysis。 ── */
+        this._analysis = null;
+        this._analysisKey = '';
         /* 模式专有参数（由 applySettings 从 modeSettings.jizura 下发） */
         this.modeOptions = {
             style: '',            /* 空 = 用上游默认 noir；'auto' = 走 J.omakase 抽签 */
             mood: null,
+            /* extra：追加分（首版之后新增的部件与 12 套风格）是否参与抽签。
+               上游 defaultProject 里是 false，我们默认 true —— 抽签池 486/910 → 855/910，
+               转场 5/27 → 25/27（实测，见 jizuraBridge.js 里对 11q_sets.js 的说明）。 */
+            extra: true,
             aspect: '16:9',
             res: 1080,
             fps: 24,
@@ -149,6 +159,8 @@ export class JizuraVisualizer extends VisualizerBase {
            （res 参与画幅计算）—— 这里统一收敛成数字，别把 '1080' 漏进去。 */
         if (s.style !== undefined && next.style !== s.style) { next.style = String(s.style); dirty = true; }
         if (s.mood !== undefined) { const m = s.mood ? String(s.mood) : null; if (next.mood !== m) { next.mood = m; dirty = true; } }
+        /* 追加分开关（面板是 data-var 的 toggle，写布尔）：它决定抽签池的大小 → 变了要重建 plan */
+        if (s.extra !== undefined) { const e = s.extra !== false; if (next.extra !== e) { next.extra = e; dirty = true; } }
         if (s.aspect !== undefined && next.aspect !== s.aspect) { next.aspect = String(s.aspect); dirty = true; }
         if (s.res !== undefined) { const r = Number(s.res) || 1080; if (next.res !== r) { next.res = r; dirty = true; } }
         if (s.fps !== undefined) { const f = Number(s.fps) || 24; if (next.fps !== f) { next.fps = f; dirty = true; } }
@@ -179,6 +191,41 @@ export class JizuraVisualizer extends VisualizerBase {
         }
         if (dirty) this._planKey = '';
         this._forceFrame = true;
+    }
+
+    /* ------------------------------------------------------------ AI 推荐 */
+
+    /**
+     * ★ 2026-10-11 AI 分析结果变化时同步 plan 指纹。
+     * `setLyrics(lines, aiData)` 就是 AI 主题进来的人口（VisualizerBase.js:67-71；
+     * 调用方传的是 `currentAiTheme`，见 20-lyrics-render.js:558 与 220-shortcuts-viewmode.js:916），
+     * 所以在这里取一次签名最省事：分析异步完成 / 换歌都会再调一次 ⇒ 指纹变 ⇒ 下一帧重建 plan
+     * （不必每帧算签名，也不想在渲染热路径上分配对象）。
+     */
+    setLyrics(lines = [], aiData = {}) {
+        super.setLyrics(lines, aiData);
+        this.modeOptions.aiPreset = jizuraPresetSignature(this.aiData);
+        this._preset = null;   /* 推荐结果作废：下次重建时按新分析结果重算 */
+    }
+
+    /**
+     * `style === 'ai'`（面板「AI 推荐」）时的推荐结果；其它档返回 null。
+     * 没有分析结果时返回 null，调用方回落 `'auto'`（引擎抽签）——所以默认档用 'ai'
+     * 也不会让谁看到异常：未分析时观感等同「自动匹配」。
+     * @returns {{style:string, mood:string|null, reason:string}|null}
+     */
+    _resolvePreset() {
+        if (this.modeOptions.style !== 'ai') return null;
+        const sig = jizuraPresetSignature(this.aiData);
+        if (this._presetSig === sig && this._preset) return this._preset;
+        const styleIds = (this.J && this.J.STYLE_ORDER) || [];
+        const rec = recommendJizuraPreset(this.aiData, styleIds);
+        this._preset = (rec && rec.style) ? rec : null;
+        this._presetSig = sig;
+        if (this._preset) {
+            logInfo(TAG, `AI 推荐：风格 ${this._preset.style} / 心情 ${this._preset.mood || '不限'}（依据 ${this._preset.reason}）`);
+        }
+        return this._preset;
     }
 
     /* ------------------------------------------------------------ 每帧 */
@@ -261,13 +308,36 @@ export class JizuraVisualizer extends VisualizerBase {
             /* onTwos 一律配 24（引擎的原生时基）——koma>0 时步长由 koma 决定，
                此时把 fps 调到 60 只是多画重复帧，纯浪费。 */
             const fps = onTwos ? 24 : (Number(this.modeOptions.fps) || 24);
+            /* ★ 2026-10-11 「AI 推荐」(style='ai')：按 AI 分析结果选一套风格（jizuraPreset.js，
+               确定性、同歌同结果）。用户显式选了「情绪倾向」则用户优先；**还没有分析结果时
+               回落 'auto'**（引擎抽签 = 「自动匹配」那条路），所以默认档用 'ai' 也不会异常。 */
+            let style = this.modeOptions.style;
+            let mood = this.modeOptions.mood || null;
+            if (style === 'ai') {
+                const preset = this._resolvePreset();
+                if (preset) {
+                    style = preset.style;
+                    if (!mood) mood = preset.mood;
+                } else {
+                    style = 'auto';
+                }
+            }
+            /* 已缓存的曲目分析：bpm → 卡点网格（由 bridge 按它自建）；energy/energyRate →
+               能量包络（驱动 6 处"按音乐强弱缩放"的部件）。都没有就不传，引擎走自估/噪声兜底。 */
+            const analysis = this._analysis;
             const opts = {
                 ...this.modeOptions,
+                /* ★ 解析后的**具体** style / mood 覆盖面板原值（'ai' 不是引擎认识的风格 id） */
+                style,
+                mood,
                 title: ai.title || '',
                 artist: ai.artist || '',
-                bpm: this._bpm,
+                bpm: analysis ? analysis.bpm : 0,
                 fps,
                 fx,
+                analyses: analysis && analysis.energy
+                    ? { energy: analysis.energy, energyRate: analysis.energyRate }
+                    : undefined,
             };
             let plan = buildJizuraPlan(this.J, this.lines, opts);
             let syncedLines = 0;
@@ -298,10 +368,13 @@ export class JizuraVisualizer extends VisualizerBase {
             this._rect = null;
             this._layout(true);
             logInfo(TAG, `plan 重建：${plan.cuts.length} cut / ${plan.lines.length} 行 / lang=${plan.lang} / ${plan.W}×${plan.H}`
-                + ` / bpm=${this._bpm || '自估'} / ${onTwos ? '一拍两格' : fps + 'fps 逐帧'}`
+                + ` / bpm=${(analysis && analysis.bpm) || '自估'}`
+                + ` / 能量包络=${analysis && analysis.energy ? analysis.energy.length + ' 帧' : '无'}`
+                + ` / ${onTwos ? '一拍两格' : fps + 'fps 逐帧'}`
+                + ` / 风格=${style}${mood ? '/' + mood : ''}${this.modeOptions.style === 'ai' ? '（AI 推荐）' : ''}`
                 + ` / 逐字同步 ${syncedLines} 行`
                 + (syncStats ? `（其中 ${syncStats.reduced} 行因窗口不足减块、${syncStats.skipped} 行跳过）` : ''));
-            void this._kickBpmLookup();
+            void this._kickAnalysisLookup();
             return true;
         } catch (e) {
             /* 单首歌画不出来不该让整个模式哑掉：记日志、本帧不画，下首歌再试 */
@@ -378,10 +451,14 @@ export class JizuraVisualizer extends VisualizerBase {
      *
      * @returns {(() => void)|null} 还原函数；返回 null 表示本次不补（调用方照原样抓）
      */
-    stageForPoster() {
+    stageForPoster(targetLineIndex) {
         if (this._destroyed || !this.J || !this.plan || !this.ctx) return null;
-        const idx = this.activeLineIndex;
-        const line = (idx >= 0 && this.lines && this.lines[idx]) ? this.lines[idx] : null;
+        const lines = Array.isArray(this.lines) ? this.lines : [];
+        const fallbackIdx = (this.activeLineIndex >= 0 && lines[this.activeLineIndex]) ? this.activeLineIndex : 0;
+        const idx = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && lines[targetLineIndex])
+            ? targetLineIndex
+            : fallbackIdx;
+        const line = lines[idx] || null;
         if (!line) return null;
         const startSec = Number(line.start) / 1000;
         const endSec = Number(line.end) / 1000;
@@ -400,12 +477,17 @@ export class JizuraVisualizer extends VisualizerBase {
             (c) => c && planLine && Number(c.line) === Number(planLine.index));
         let t = Math.max(startSec, visEnd - step);
         if (cuts.length) {
-            const cut = cuts.find((c) => now >= c.start && now < c.end) || cuts[cuts.length - 1];
+            const scoreCut = (c) => {
+                const len = Array.isArray(c.words) ? c.words.length : String(c.text || '').length;
+                const dur = Math.max(0, (Number(c.end) || 0) - (Number(c.start) || 0));
+                return len * 100 + dur;
+            };
+            const cut = cuts.reduce((best, c) => (scoreCut(c) > scoreCut(best) ? c : best), cuts[0]);
             const inDur = Number(cut.inDur) || 0;
             const outDur = Number(cut.outDur) || 0;
             const holdStart = Number(cut.start) + inDur;
             const holdEnd = Math.max(holdStart, Number(cut.end) - outDur);
-            t = Math.max(startSec, Math.max(holdStart, Math.min(holdEnd, (holdStart + holdEnd) / 2)));
+            t = Math.max(startSec, Math.max(holdStart, holdEnd - Math.min(0.08, (holdEnd - holdStart) * 0.08)));
         }
         const prevIdx = this._lastFrameIdx;
         try {
@@ -422,24 +504,33 @@ export class JizuraVisualizer extends VisualizerBase {
     }
 
     /**
-     * 查一次"当前曲目已缓存的 BPM"，拿到就按真实节拍重建 plan。
+     * 查一次「当前曲目已缓存的分析」（BPM 卡点网格 + 能量包络），拿到就按真实数据重建 plan。
      * 每首歌只查一次（用指纹去重）；异步返回后若值真变了才置脏，
      * 否则每帧重建 plan 会把帧预算烧光（实测一次 plan 重建 = 建纸纹 + 抽签，100ms 级）。
      */
-    async _kickBpmLookup() {
+    async _kickAnalysisLookup() {
         if (this._destroyed) return;
         const entry = currentTrackEntry();
         if (!entry) return;
         const fp = trackFingerprint(entry);
-        if (!fp || fp === this._bpmKey) return;
-        this._bpmKey = fp;
+        if (!fp || fp === this._analysisKey) return;
+        this._analysisKey = fp;
         try {
-            const bpm = await currentTrackBpm(entry);
-            if (this._destroyed || !bpm || bpm === this._bpm) return;
-            this._bpm = bpm;
-            this._planKey = '';        /* 置脏：下一帧按真实节拍重建 */
+            const a = await currentTrackAnalysis(entry);
+            if (this._destroyed) return;
+            /* 只有"真的多了点什么"才置脏：bpm 变了，或能量包络从无到有。
+               缓存里什么都查不到（bpm=0 / energy=null）时保持原样 ——
+               白重建一次 plan 的代价是建纸纹 + 重新抽签，100ms 级。 */
+            const prev = this._analysis;
+            const sameBpm = (prev ? prev.bpm : 0) === a.bpm;
+            const sameEnergy = !!(prev && prev.energy) === !!a.energy;
+            if (sameBpm && sameEnergy) return;
+            this._analysis = a;
+            this._planKey = '';        /* 置脏：下一帧按真实分析重建 */
             this._forceFrame = true;
-            logInfo(TAG, `取到已缓存的 BPM=${bpm}，按真实节拍重建卡点网格`);
+            logInfo(TAG, `取到已缓存的分析：bpm=${a.bpm || '无'}`
+                + ` / 能量包络=${a.energy ? a.energy.length + ' 帧 @ ' + a.energyRate.toFixed(1) + 'fps' : '无'}`
+                + '，按真实数据重建');
         } catch (e) {
             logCatch(TAG, e);
         }

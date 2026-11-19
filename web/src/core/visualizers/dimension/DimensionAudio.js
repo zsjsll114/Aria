@@ -1,8 +1,15 @@
 /**
  * DimensionAudio.js
- * 3D 浮空空间模式 - 安全音频频谱与节奏分析器 (非侵入式，杜绝阻塞音频播放)
+ * 3D 浮空空间模式 — 真实频谱优先的音频能量分析器（非侵入式）
+ *
+ * 数据来源见 spectrumTap.js：
+ *   window.playerAudioAnalyser（EQ 图末端）→ captureStream 独立 tap → 合成节拍兜底。
+ * ★ 有 AnalyserNode 时**永远使用真实数据**，即使这一帧全是 0（安静段落），
+ *   不再因为"能量太低"切回合成节拍——那正是用户看到的"粒子不跟真实频谱"。
+ * ★ 合成节拍只在完全没有采集通道时使用，保证老环境/受限环境画面仍然活着。
  */
 import { logCatch } from '../../../services/log.js';
+import { getLiveAnalyser, releaseSpectrumTap } from './spectrumTap.js';
 
 export class DimensionAudio {
     constructor() {
@@ -12,16 +19,18 @@ export class DimensionAudio {
         this.treble = 0;
         this.overall = 0;
         this.peakEnergy = 0;
-        
+
         this.lastTime = 0;
         this.simPhase = 0;
+        /** @type {HTMLAudioElement|null} */
+        this.audioElement = null;
     }
 
     /**
-     * 连接音频（非侵入式）
+     * 连接音频（保持无害引用，不劫持媒体节点）
+     * @param {HTMLAudioElement|null} audioElement
      */
     connect(audioElement) {
-        // 保持无害引用，不劫持媒体节点
         this.audioElement = audioElement;
     }
 
@@ -37,6 +46,10 @@ export class DimensionAudio {
             this.treble *= 0.85;
             this.overall *= 0.85;
             this.peakEnergy *= 0.85;
+            const paused = this.freqData;
+            for (let i = 0; i < paused.length; i++) {
+                paused[i] = Math.round((paused[i] || 0) * 0.85);
+            }
             return;
         }
 
@@ -46,14 +59,19 @@ export class DimensionAudio {
         let rawOverall = 0;
         let gotRealData = false;
 
-        // 尝试从全局已有的 Web Audio Analyser 读取数据
-        if (typeof window !== 'undefined' && window.playerAudioAnalyser) {
+        const audioEl = this.audioElement
+            || (typeof window !== 'undefined' ? (window.audio || document.querySelector('audio')) : null);
+        const analyser = getLiveAnalyser(/** @type {HTMLAudioElement|null} */ (audioEl));
+        if (analyser) {
             try {
-                window.playerAudioAnalyser.getByteFrequencyData(this.freqData);
-                let bassSum = 0, midSum = 0, trebleSum = 0, totalSum = 0;
+                if (this.freqData.length !== analyser.frequencyBinCount) {
+                    this.freqData = new Uint8Array(analyser.frequencyBinCount);
+                }
+                analyser.getByteFrequencyData(this.freqData);
                 const len = this.freqData.length;
+                let bassSum = 0, midSum = 0, trebleSum = 0, totalSum = 0;
                 for (let i = 0; i < len; i++) {
-                    const v = this.freqData[i] / 255;
+                    const v = (this.freqData[i] || 0) / 255;
                     totalSum += v;
                     if (i < 4) bassSum += v;
                     else if (i < 20) midSum += v;
@@ -61,23 +79,30 @@ export class DimensionAudio {
                 }
                 rawBass = bassSum / 4;
                 rawMid = midSum / 16;
-                rawTreble = trebleSum / (len - 20);
-                rawOverall = totalSum / len;
-                if (rawOverall > 0.02) gotRealData = true;
-            } catch (e) { logCatch('DimensionAudio', e); }
+                rawTreble = trebleSum / Math.max(1, len - 20);
+                rawOverall = totalSum / Math.max(1, len);
+                gotRealData = true;
+
+                /* 高频在音乐里天然弱：只对"画出来"的频段做感知提亮，
+                   bass/mid/treble 的统计仍用未提亮的原始值。 */
+                for (let i = 0; i < len; i++) {
+                    const gain = 1 + (i / Math.max(1, len - 1)) * 0.9;
+                    this.freqData[i] = Math.min(255, Math.round((this.freqData[i] || 0) * gain));
+                }
+
+            } catch (e) {
+                logCatch('DimensionAudio', e);
+                gotRealData = false;
+            }
         }
 
-        // 高度拟真、平滑富有动感的节奏发生器（保证所有音源动效拉满）
         if (!gotRealData) {
             const dt = Math.max(0.016, Math.min(0.1, currentTime - this.lastTime));
             this.lastTime = currentTime;
             this.simPhase += dt * 3.8;
 
-            // 低频强劲鼓点 (Bass Punch)
             const beatPulse = Math.pow((Math.sin(this.simPhase * 2.0) + 1) * 0.5, 3.5);
-            // 中频旋律波 (Mid Melody)
             const midWave = (Math.sin(this.simPhase * 4.2) + 1) * 0.5 * 0.7;
-            // 高频闪烁 (Treble Shimmer)
             const trebleWave = (Math.cos(this.simPhase * 7.5) + 1) * 0.5 * 0.5;
 
             rawBass = 0.3 + beatPulse * 0.7;
@@ -85,7 +110,6 @@ export class DimensionAudio {
             rawTreble = 0.2 + trebleWave * 0.5;
             rawOverall = (rawBass + rawMid + rawTreble) / 3;
 
-            // 填充合成频域数组以供音柱使用
             for (let i = 0; i < this.freqData.length; i++) {
                 const fPhase = this.simPhase * 2.5 + i * 0.4;
                 const fVal = Math.max(0.1, Math.min(1.0, Math.sin(fPhase) * 0.5 + 0.5)) * (rawBass * 0.6 + rawMid * 0.4);
@@ -93,7 +117,7 @@ export class DimensionAudio {
             }
         }
 
-        // 平滑低通滤波
+        /* 平滑低通滤波（AnalyserNode 自己也平滑，这里只补一层防抖） */
         const smooth = 0.22;
         this.bass += (rawBass - this.bass) * smooth;
         this.mid += (rawMid - this.mid) * smooth;
@@ -106,5 +130,6 @@ export class DimensionAudio {
 
     destroy() {
         this.audioElement = null;
+        releaseSpectrumTap();
     }
 }

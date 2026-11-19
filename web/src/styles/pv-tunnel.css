@@ -43,11 +43,11 @@
     transform: translateX(-50%) !important;
     z-index: 90 !important;
     margin: 0 !important;
-    background: rgba(18, 14, 30, 0.78) !important;
-    backdrop-filter: blur(28px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    background: rgba(14, 16, 22, 0.44) !important;
+    backdrop-filter: blur(26px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.13) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
     border-radius: 24px !important;
 }
 
@@ -334,19 +334,23 @@
         1px 2px 6px rgba(0,0,0,0.26),
         0 0 2px rgba(0,0,0,0.20);
 }
-/* 非情感字落在反色块上（浅块深字）：保持莫兰迪深墨但不真黑  */
+/* 非情感字落在反色块上（浅块深字）：保持高对比深炭墨并带柔亮边缘以提升可读性 */
 .tunnel-block-invert .tunnel-char-nonemotion-morandi.active,
 .tunnel-block-invert .tunnel-char-nonemotion-morandi.passed,
 .tunnel-block-invert .tunnel-char-nonemotion-morandi.sung {
-    color: #3c3a48 !important;
+    color: #1c1b24 !important;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.36);
 }
-/* invert 整体深色墨改成柔和深灰（避免真黑乏味） */
+/* invert 整体深色墨：高对比柔深炭墨（避免真黑死板，同时确保在奶油/马卡龙浅块上清晰锐利） */
 .tunnel-block-invert .tunnel-char.active {
-    color: #2f2d3a !important;
+    color: #1a1922 !important;
+    text-shadow:
+        0 1px 2px rgba(255, 255, 255, 0.38),
+        1px 2px 6px rgba(0, 0, 0, 0.14);
 }
 .tunnel-block-invert .tunnel-char.passed,
 .tunnel-block-invert .tunnel-char.sung {
-    color: rgba(60, 56, 72, 0.70) !important;
+    color: rgba(26, 25, 34, 0.78) !important;
 }
 
 /* 主墨色（全局）：也把反色上限从真黑改成莫兰迪柔深灰 */
@@ -497,123 +501,212 @@
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 8px rgba(0, 0, 0, 0.25);
 }
 
-/* 13. 视图选择弹窗 mock 预览 */
+/* 13. 视图选择弹窗预览：蒙德里安 / 版画 / 诗镜 */
 .view-mode-preview-tunnel {
     position: relative;
     width: 100%;
     height: 150px;
     overflow: hidden;
-    background: linear-gradient(160deg, #3b4351, #1c2330 70%);
+    background: #08090c;
 }
 
-/* 蒙德里安风格色块：直角、莫兰迪配色，部分块内部叠加倾斜栅格线 */
-.vm-t-block {
+.vm-m-grid {
     position: absolute;
-    border-radius: 0;
-    opacity: 0.94;
-}
-.vm-t-block.b1 { left: 4%; top: 8%; width: 34%; height: 40%; background: #8190A0; }
-.vm-t-block.b2 { left: 40%; top: 8%; width: 26%; height: 26%; background: #B8C5D0; }
-.vm-t-block.b3 { left: 68%; top: 8%; width: 28%; height: 52%; background: #829590; }
-.vm-t-block.b4 { left: 4%; top: 52%; width: 40%; height: 40%; background: #897D8E; }
-.vm-t-block.b5 { left: 46%; top: 36%; width: 20%; height: 30%; background: #C4B2A8; }
-.vm-t-block.b6 { left: 68%; top: 62%; width: 28%; height: 30%; background: #9E9EAE; }
-
-.vm-t-blocks .vm-t-block.b1,
-.vm-t-blocks .vm-t-block.b3,
-.vm-t-blocks .vm-t-block.b4 {
-    background-image: repeating-linear-gradient(12deg, rgba(0,0,0,0.12) 0 1px, transparent 1px 10px);
+    inset: 0;
+    display: grid;
+    grid-template-columns: 18% 54% 28%;
+    grid-template-rows: 26% 48% 26%;
+    gap: 2.5px;
+    background: #060709;
 }
 
-/* 词块：散布在不同色块上（不挤在角落），贴合对齐 + 倾斜微差 */
-.view-mode-preview-tunnel .vm-t-word {
-    position: absolute;
-    font-size: 15px;
-    font-weight: 800;
-    color: rgba(255, 255, 255, 0.92);
-    letter-spacing: 0.5px;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+.vm-m-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    overflow: hidden;
+    position: relative;
 }
-.vm-t-word.w1 { left: 10%; top: 18%; transform: rotate(-3deg); }
-.vm-t-word.w2 { left: 15%; top: 42%; }
-.vm-t-word.w3 { right: 14%; top: 22%; transform: rotate(4deg); }
-.vm-t-word.w4 { right: 21%; top: 50%; }
-.vm-t-word.w5 { left: 46%; top: 62%; }
-/* --- 凝彩 · Tempera 模式卡预览（网点色块挖窗意象，2026-09-30） --- */
 
+.vm-m-cell.c-red      { grid-column: 1; grid-row: 1 / span 2; background: #c9372c; }
+.vm-m-cell.c-hatch    {
+    grid-column: 2; grid-row: 1;
+    background:
+        repeating-linear-gradient(0deg, rgba(236, 229, 211, 0.12) 0 1px, transparent 1px 8px),
+        repeating-linear-gradient(90deg, rgba(236, 229, 211, 0.12) 0 1px, transparent 1px 8px),
+        #1e2027;
+    justify-content: flex-start;
+}
+.vm-m-cell.c-cream    { grid-column: 3; grid-row: 1 / span 2; background: #efe7d6; }
+.vm-m-cell.c-dark-l   { grid-column: 1; grid-row: 3; background: #14161b; }
+.vm-m-cell.c-hero     { grid-column: 2; grid-row: 2; background: #13151b; }
+.vm-m-cell.c-blue     { grid-column: 3; grid-row: 3; background: #1f4c96; }
+.vm-m-cell.c-gold     {
+    display: none;
+}
+.vm-m-cell.c-charcoal { grid-column: 2; grid-row: 3; background: #e8b838; justify-content: flex-start; }
+
+.vm-m-tag {
+    font: 700 7.5px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.2em;
+    color: rgba(239, 231, 214, 0.58);
+}
+
+.vm-m-txt {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+}
+.vm-m-txt.dark  { color: #13151b; }
+.vm-m-txt.light { color: #f4efe4; }
+.vm-m-txt.dim   { color: rgba(239, 231, 214, 0.45); font-size: 12px; }
+
+.vm-m-hero-txt {
+    font-size: 19px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #f4efe4;
+    white-space: nowrap;
+}
+.vm-m-hero-txt .accent {
+    color: #13151b;
+    background: #e8b838;
+    padding: 1px 5px;
+    margin-left: 4px;
+}
+
+.vm-m-sub {
+    font: 800 8px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.18em;
+    color: #13151b;
+}
+
+/* --- 版画 · Tempera 模式卡预览（网点印刷 + 色块挖窗 + 反色排版） --- */
 .view-mode-preview-tempera {
-    background: #191a1e;
+    background: radial-gradient(95% 90% at 38% 45%, #23242b 0%, #14151a 100%);
     position: relative;
     overflow: hidden;
 }
-.view-mode-preview-tempera .vm-tc-field {
+
+.vm-tempera-svg {
     position: absolute;
-    border-radius: 2px;
-}
-.view-mode-preview-tempera .vm-tc-field.f1 {
-    left: 8%; top: 14%; width: 52%; height: 44%;
-    background: #E8BE6A;
-    transform: rotate(-6deg);
-}
-.view-mode-preview-tempera .vm-tc-field.f2 {
-    right: 6%; bottom: 10%; width: 44%; height: 52%;
-    background: #4a4e57;
-    transform: rotate(5deg);
-}
-.view-mode-preview-tempera .vm-tc-hole {
-    position: absolute;
-    left: 40%; top: 32%; width: 34px; height: 34px;
-    border-radius: 50%;
-    background: #191a1e;
-    box-shadow: 0 0 0 2px rgba(244, 244, 245, 0.55);
-}
-.view-mode-preview-tempera .vm-tc-word {
-    position: absolute;
-    left: 14%; bottom: 16%;
-    color: #f4f4f5;
-    font-weight: 700;
-    font-size: 15px;
-    letter-spacing: 2px;
-    mix-blend-mode: difference;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
 
-.vm-t-word.dim { color: rgba(255, 255, 255, 0.42); }
-.vm-t-word.active {
-    color: #E8BE6A;
-    text-shadow: 0 0 8px rgba(232, 190, 106, 0.85);
-    scale: 1.16;
+.vm-tc-plate {
+    position: absolute;
+    left: 22px;
+    top: 12px;
+    z-index: 3;
+    font: 700 7.5px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.2em;
+    color: rgba(246, 240, 228, 0.65);
 }
 
-/* sonnet 预览卡：黑底 + 巨字冲击 + 支撑词散布 */
+.vm-tc-word {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    font-weight: 900;
+    font-size: 24px;
+    letter-spacing: 0.14em;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.vm-tc-word .ink {
+    color: #16171c;
+    text-shadow: 0 1px 0 rgba(255, 245, 220, 0.45);
+}
+
+.vm-tc-word .paper {
+    color: #faf5ea;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* --- 诗镜 · Verse 模式卡预览（暗琥珀影院 + 瑞士框线 + 色散巨字） --- */
 .view-mode-preview-sonnet {
+    position: relative;
     overflow: hidden;
-    background: linear-gradient(165deg, #17151c, #060509 75%);
+    background: radial-gradient(92% 85% at 54% 46%, #2a211b 0%, #14100e 58%, #080606 100%);
 }
+
+.vm-sonnet-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
 .view-mode-preview-sonnet .vm-s-giant {
     position: absolute;
-    right: 6%;
-    top: 12%;
-    font-size: 54px;
+    right: 16px;
+    top: 6px;
+    font-size: 86px;
     font-weight: 900;
-    color: rgba(255, 255, 255, 0.95);
-    text-shadow: 0 0 14px rgba(232, 190, 106, 0.5);
-    letter-spacing: 2px;
+    line-height: 1;
+    color: rgba(255, 244, 224, 0.08);
+    pointer-events: none;
+    user-select: none;
 }
-.view-mode-preview-sonnet .vm-s-word {
+
+.view-mode-preview-sonnet .vm-s-vert {
     position: absolute;
-    font-size: 12px;
+    left: 24px;
+    top: 22px;
+    writing-mode: vertical-rl;
+    font-size: 10px;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.85);
-    text-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+    letter-spacing: 0.24em;
+    color: rgba(246, 236, 220, 0.56);
+    z-index: 2;
 }
-.view-mode-preview-sonnet .vm-s-word.w1 { left: 8%; top: 20%; writing-mode: vertical-rl; }
-.view-mode-preview-sonnet .vm-s-word.w2 {
-    left: 12%;
-    bottom: 16%;
-    color: #E8BE6A;
-    text-shadow: 0 0 10px rgba(232, 190, 106, 0.8);
+
+.view-mode-preview-sonnet .vm-s-hero {
+    position: absolute;
+    left: 52%;
+    top: 50%;
+    transform: translate(-50%, -56%);
+    font-size: 25px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    color: #fffcf6;
+    text-shadow:
+        -1.5px 0 rgba(70, 210, 255, 0.65),
+        1.5px 0 rgba(255, 76, 132, 0.65),
+        0 0 18px rgba(255, 232, 185, 0.48);
+    z-index: 3;
 }
-.view-mode-preview-sonnet .vm-s-word.w3 { right: 10%; bottom: 24%; color: rgba(255, 255, 255, 0.4); }
+
+.view-mode-preview-sonnet .vm-s-hero .hl {
+    color: #f3c86f;
+    text-shadow:
+        -1.5px 0 rgba(70, 210, 255, 0.55),
+        1.5px 0 rgba(255, 76, 132, 0.55),
+        0 0 20px rgba(243, 200, 111, 0.85);
+}
+
+.view-mode-preview-sonnet .vm-s-sub {
+    position: absolute;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    font: 600 7.5px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.24em;
+    color: rgba(246, 236, 220, 0.55);
+    white-space: nowrap;
+    z-index: 3;
+}
 
 /* 详展信息标签（视图切换弹窗内） */
 .view-mode-detail {
@@ -826,19 +919,54 @@
    位置/尺寸/颜色/透明度全部平滑渐变（引擎复用块元素并更新目标样式，不重建 DOM） */
 .t-m-block {
     position: absolute;
+    box-sizing: border-box;
     border-radius: 0 !important;
     overflow: hidden;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    /* v4 风格派粗墨线：相邻两格各出半线宽拼成整线；颜色由引擎写 borderColor */
+    border: calc(var(--m-line, 7px) / 2) solid #060607;
+    /* 轻微手刷质感：顶亮底暗的极淡渐变，避免纯平色块的「PPT 感」 */
+    background-image: linear-gradient(170deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,0.10) 100%);
     transition:
-        opacity 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        background-color 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        left 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        top 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        width 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        height 1.6s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        background-color 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        border-color 1.2s ease,
+        left 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        top 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        width 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        height 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+        transform 1.2s cubic-bezier(0.65, 0, 0.35, 1);
     /* 不用 t-m-block-in：动画 fill 会覆盖内联 opacity，破坏按透明度淡入淡出/过渡 */
     /* 首屏平滑由 .tunnel-layer-mosaic 的 t-m-layer-in 承担 */
+}
+
+.tunnel-layer-mosaic {
+    --m-line: clamp(4px, 0.6vw, 10px);
+}
+/* 纸面颗粒：整层叠一张极淡噪点，让色块像丝网印刷而不是纯色矢量 */
+.tunnel-layer-mosaic::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.10;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+/* 中央画布格：内侧暗角，把视线收向歌词 */
+.t-m-block[data-tone="4"] {
+    box-shadow: inset 0 0 12vmin rgba(0,0,0,0.35);
+}
+/* 原色/纸格：细微内高光，模拟油彩厚涂边缘 */
+.t-m-block[data-tone="1"],
+.t-m-block[data-tone="2"],
+.t-m-block[data-tone="3"],
+.t-m-block[data-tone="6"] {
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 -2.5vmin 4vmin rgba(0,0,0,0.10);
+}
+html#ariaRoot body.perf-low .tunnel-layer-mosaic::after,
+html#ariaRoot.is-software-renderer .tunnel-layer-mosaic::after {
+    display: none;
 }
 
 /* 蒙德里安风格装饰 SVG 层：★ 装饰层已移除，整体隐藏 */
@@ -877,18 +1005,7 @@
     opacity: 1;
 }
 
-/* ★ 色块之间的衔接：消除硬边，用柔和的半透明边缘 */
-.t-m-block::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: inherit;
-    opacity: 0.4;
-    filter: blur(12px);
-    transform: scale(1.25);
-    pointer-events: none;
-    z-index: -1;
-}
+/* ★ v4 风格派：硬边才是蒙德里安——原先的模糊柔边伪元素已移除 */
 
 .t-m-rect { border-radius: 6px; }
 .t-m-circle { border-radius: 50%; }
@@ -1145,4 +1262,225 @@
     /* ★ 入场收紧到 0.26s：首词能随唱响立即浮现，不再等 0.7s 才显形 */
     animation: t-block-mosaic-enter 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: var(--t-enter-delay, 0ms);
+}
+
+/* ==========================================================================
+   27. 格律 · Mondrian 风格派歌词视觉体系（2026-11-18）
+   告别模糊渐变光晕/3D歪斜残影，改为「硬边词格 + 三原色点睛 + 网格标尺」
+   ========================================================================== */
+.tunnel-view-container.is-mondrian-mode {
+    --m-red: #C8372D;
+    --m-blue: #1F4A92;
+    --m-yellow: #EDB92E;
+    --m-paper: #ECE5D3;
+    --m-deep: #15161A;
+    --m-mid: #23252B;
+    --m-ink: #060607;
+}
+
+/* 移除 3D 模糊残影层与网点纹理，保持画布与歌词硬朗干净 */
+.tunnel-view-container.is-mondrian-mode .tunnel-layer-depth,
+.tunnel-view-container.is-mondrian-mode .tunnel-bg-streaks {
+    display: none !important;
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-flash-overlay {
+    background: var(--m-paper);
+    mix-blend-mode: normal;
+}
+
+/* 词块入场：直角闸门快切（零模糊） */
+@keyframes t-block-mondrian-enter {
+    from {
+        clip-path: inset(0 0 100% 0);
+        translate: 0 8px;
+        opacity: 0;
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+        translate: 0 0;
+        opacity: 1;
+    }
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-mosaic-enter {
+    animation: t-block-mondrian-enter 0.20s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--t-enter-delay, 0ms);
+}
+
+/* 词块级唱响步进与色块框（仅在唱响后显现，绝不提前露空框） */
+.tunnel-view-container.is-mondrian-mode .tunnel-block {
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.24s ease;
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero::before {
+    content: '';
+    position: absolute;
+    inset: -0.04em -0.07em;
+    z-index: -1;
+    border: max(1.5px, 0.036em) solid var(--m-ink);
+    box-shadow: 0.065em 0.065em 0 var(--m-ink);
+    pointer-events: none;
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.20s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.16s ease,
+                opacity 0.14s ease;
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion[data-m-tone="red"]::before {
+    background: var(--m-red);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion[data-m-tone="blue"]::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="blue"]::before {
+    background: var(--m-blue);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="yellow"]::before {
+    background: var(--m-yellow);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion.is-singing::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion.has-sung::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero.is-singing::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero.has-sung::before {
+    opacity: 1;
+    transform: scaleX(1);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion.is-singing::before,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero.is-singing::before {
+    transform: translate(-0.025em, -0.025em) scaleX(1);
+    box-shadow: 0.095em 0.095em 0 var(--m-ink);
+}
+
+/* 普通词块底边进度标尺 */
+.tunnel-view-container.is-mondrian-mode .tunnel-block:not(.tunnel-block-emotion):not(.tunnel-block-hero)::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.07em;
+    height: max(2px, 0.052em);
+    background: var(--m-yellow);
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+    pointer-events: none;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 0.2s ease,
+                opacity 0.16s ease;
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block:not(.tunnel-block-emotion):not(.tunnel-block-hero).is-singing::after {
+    opacity: 1;
+    transform: scaleX(1);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block:not(.tunnel-block-emotion):not(.tunnel-block-hero).has-sung::after {
+    opacity: 0.45;
+    transform: scaleX(1);
+    background: var(--m-paper);
+}
+
+/* 字符三态：零模糊硬影 + 风格派高对比墨色 */
+.tunnel-view-container.is-mondrian-mode .tunnel-char {
+    filter: none !important;
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-char.active {
+    color: var(--m-yellow);
+    scale: 1.09;
+    translate: 0 -0.03em;
+    text-shadow: 0.04em 0.04em 0 var(--m-ink);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-char.passed,
+.tunnel-view-container.is-mondrian-mode .tunnel-char.sung {
+    color: var(--m-paper);
+    scale: 1;
+    translate: 0 0;
+    text-shadow: 0.03em 0.03em 0 rgba(0, 0, 0, 0.72);
+}
+
+/* 红/蓝词格内保持纯净高对比白字 */
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion .tunnel-char.active,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="blue"] .tunnel-char.active {
+    color: #ffffff;
+    text-shadow: 0.035em 0.035em 0 var(--m-ink);
+}
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion .tunnel-char.passed,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-emotion .tunnel-char.sung,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="blue"] .tunnel-char.passed,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="blue"] .tunnel-char.sung {
+    color: #ffffff;
+    text-shadow: 0.025em 0.025em 0 rgba(0, 0, 0, 0.55);
+}
+
+/* 黄底词格内使用深墨字保证可读性 */
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="yellow"] .tunnel-char.active,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="yellow"] .tunnel-char.passed,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-hero[data-m-tone="yellow"] .tunnel-char.sung {
+    color: var(--m-ink);
+    text-shadow: 0.02em 0.02em 0 rgba(255, 255, 255, 0.35);
+}
+
+/* 若落到浅纸 background block 上的反色词块 */
+.tunnel-view-container.is-mondrian-mode .tunnel-block-invert .tunnel-char.active,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-invert .tunnel-char.passed,
+.tunnel-view-container.is-mondrian-mode .tunnel-block-invert .tunnel-char.sung {
+    color: var(--m-ink) !important;
+    text-shadow: none !important;
+}
+
+/* 分镜网格结构标尺（上下细线 + 对角原色方点） */
+.t-m-shot-frame {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+.t-m-rule {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: max(1px, 0.12vh);
+    background: color-mix(in srgb, var(--m-paper) 34%, transparent);
+    transform-origin: left center;
+    animation: t-m-rule-draw 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.t-m-rule-top { top: 0; }
+.t-m-rule-bottom { bottom: 0; transform-origin: right center; }
+@keyframes t-m-rule-draw {
+    from { transform: scaleX(0); opacity: 0; }
+    to   { transform: scaleX(1); opacity: 1; }
+}
+.t-m-pip {
+    position: absolute;
+    width: clamp(4px, 0.52vw, 8px);
+    height: clamp(4px, 0.52vw, 8px);
+    border: 1px solid var(--m-ink);
+}
+.t-m-pip-a {
+    left: 0;
+    top: -3px;
+    background: var(--m-red);
+}
+.t-m-pip-b {
+    right: 0;
+    bottom: -3px;
+    background: var(--m-yellow);
+}
+
+/* 翻译条：风格派铭牌 */
+.tunnel-view-container.is-mondrian-mode .tunnel-translation-area .flyin-translation-text:not(:empty) {
+    display: inline-block;
+    padding: 5px 14px;
+    background: color-mix(in srgb, var(--m-deep) 88%, #000);
+    border: 2px solid var(--m-ink);
+    border-left: 5px solid var(--m-yellow);
+    box-shadow: 3px 3px 0 var(--m-ink);
+    color: var(--m-paper);
+    text-shadow: none;
+    letter-spacing: 0.05em;
+}
+.preview-player.view-tunnel .t-m-shot-frame {
+    display: none;
+}
+
+/* 性能降级（锚在 #ariaRoot 上） */
+html#ariaRoot body.perf-low .tunnel-view-container.is-mondrian-mode .tunnel-block-mosaic-enter,
+html#ariaRoot.is-software-renderer .tunnel-view-container.is-mondrian-mode .tunnel-block-mosaic-enter {
+    animation-duration: 0.01ms;
 }

@@ -10,10 +10,11 @@
 
 import { clamp01, easeSonnetInOut } from './sonnetMotion.js';
 
-/* ★ 2026-09-30：mono-glitch 权重加倍（用户实测「没有错误特效来切镜」——上游三选一
-   均分，glitch 命中率仅 1/3，观感上几乎见不到撕裂）。上游 kind 池 1:1 保留，此处只调分布。 */
+/* ★ 2026-10-11 回退到上游（用户「切镜不像」）：上游 `resolveBoundaryKind` 直接用
+   `SONNET_TRANSITION_KINDS[mixed % length]`（三类**等权**，见 sonnetTransitions.ts:16）。
+   此前本地把抽取池换成 `['mono-glitch','fast-blur','mono-glitch','camera-pull']`
+   （glitch 占一半，理由是「见不到撕裂」），分布与原版不同 → 切镜观感不像。 */
 export const SONNET_TRANSITION_KINDS = ['fast-blur', 'mono-glitch', 'camera-pull'];
-const SONNET_BOUNDARY_KIND_POOL = ['mono-glitch', 'fast-blur', 'mono-glitch', 'camera-pull'];
 
 export const IDLE_SONNET_TRANSITION_FRAME = Object.freeze({
     x: 0, y: 0, scale: 1, rotation: 0, alpha: 1, blur: 0, glitch: 0, glitchSeed: 0,
@@ -21,7 +22,7 @@ export const IDLE_SONNET_TRANSITION_FRAME = Object.freeze({
 
 const resolveBoundaryKind = (seed, boundaryIndex) => {
     const mixed = (seed ^ Math.imul(boundaryIndex + 1, 0x9e3779b1)) >>> 0;
-    return SONNET_BOUNDARY_KIND_POOL[mixed % SONNET_BOUNDARY_KIND_POOL.length];
+    return SONNET_TRANSITION_KINDS[mixed % SONNET_TRANSITION_KINDS.length];
 };
 
 export const resolveSonnetTransitionEffectFrame = (kind, phase, progress, seed) => {
@@ -33,7 +34,9 @@ export const resolveSonnetTransitionEffectFrame = (kind, phase, progress, seed) 
         return {
             x: 0, y: 0, scale: 1, rotation: 0,
             alpha: phase === 'exit' ? 1 - amount : 1 - amount * 0.82,
-            blur: amount * 20,
+            /* ★ 2026-10-11 回退 20→14（上游 sonnetTransitions.ts:28 即 `amount * 14`）：
+               本地曾把模糊峰值调到 20（注释说「切镜无动画感」），观感比原版更糊。 */
+            blur: amount * 14,
             glitch: 0, glitchSeed: 0,
         };
     }
@@ -83,7 +86,10 @@ export const resolveSonnetShotTransitionFrame = (shots, activeShotIndex, time, e
     if (activeShotIndex > 0) {
         const previous = shots[activeShotIndex - 1];
         /* ★ 2026-09-30 窗口加长（用户实测切镜无动画感）：0.14-0.24s 人眼难感知 → 0.3-0.5s */
-        const duration = Math.min(0.5, Math.max(0.3, (current.startTime - previous.startTime) * 0.18));
+        /* ★ 2026-10-11 回退 0.3~0.5s → 上游的 0.14~0.24s（sonnetTransitions.ts:82）：
+           本地把每个分镜边界的转场窗口拉长了一倍（注释说「0.14-0.24s 人眼难感知」），
+           结果切镜比原版软得多。 */
+        const duration = Math.min(0.24, Math.max(0.14, (current.startTime - previous.startTime) * 0.18));
         if (time <= current.startTime + duration) {
             return resolveSonnetEnterTransitionFrame(
                 resolveBoundaryKind(seed, activeShotIndex - 1),
@@ -97,7 +103,7 @@ export const resolveSonnetShotTransitionFrame = (shots, activeShotIndex, time, e
 
     const next = shots[activeShotIndex + 1];
     if (!next) return IDLE_SONNET_TRANSITION_FRAME;
-    const duration = Math.min(0.5, Math.max(0.3, (next.startTime - current.startTime) * 0.18));
+    const duration = Math.min(0.24, Math.max(0.14, (next.startTime - current.startTime) * 0.18));
     const transitionStart = next.startTime - duration;
     if (time < transitionStart) return IDLE_SONNET_TRANSITION_FRAME;
     return resolveSonnetTransitionEffectFrame(

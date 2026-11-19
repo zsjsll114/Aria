@@ -129,11 +129,11 @@ rem   so the default package carries only git-tracked fonts and the rest goes to
 rem   dist\AriaFonts-Extra.zip (README explains how to restore). --with-local-fonts = FAT.
 if defined WITH_LOCAL_FONTS (
     echo       fonts: FAT mode ^(all of web\src\font into the main package^)
-    robocopy "%ROOT%web" "%OUT%\web" /E /NFL /NDL /NJH /NJS /NP >nul
+    robocopy "%ROOT%web" "%OUT%\web" /E /XF _shot_*.png /NFL /NDL /NJH /NJS /NP >nul
     if errorlevel 8 (echo [ERROR] web copy failed & goto fail)
     goto fonts_done
 )
-robocopy "%ROOT%web" "%OUT%\web" /E /XD "%ROOT%web\src\font" /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%ROOT%web" "%OUT%\web" /E /XD "%ROOT%web\src\font" /XF _shot_*.png /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (echo [ERROR] web copy failed & goto fail)
 
 set "GIT_EXE="
@@ -188,8 +188,9 @@ if not defined NODE_SRC for /f "delims=" %%i in ('where node 2^>nul') do if not 
 if not defined NODE_SRC (echo [ERROR] no node.exe source - place one at dist_runtime\node.exe & goto fail)
 copy /y "%NODE_SRC%" "%OUT%\runtime\node.exe" >nul
 
-rem --- shazam sidecar: script + minimal node_modules ---
+rem --- shazam sidecar + vendor loopback guard ---
 copy /y "%ROOT%scripts\shazam-server.mjs" "%OUT%\scripts\shazam-server.mjs" >nul
+if exist "%ROOT%scripts\vendor-loopback-guard.cjs" copy /y "%ROOT%scripts\vendor-loopback-guard.cjs" "%OUT%\scripts\vendor-loopback-guard.cjs" >nul
 robocopy "%ROOT%node_modules\shazamio-core" "%OUT%\node_modules\shazamio-core" /E /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (echo [ERROR] shazamio-core copy failed & goto fail)
 robocopy "%ROOT%node_modules\@ffmpeg-installer" "%OUT%\node_modules\@ffmpeg-installer" /E /NFL /NDL /NJH /NJS /NP >nul

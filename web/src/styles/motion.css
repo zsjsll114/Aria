@@ -161,6 +161,10 @@ html#ariaRoot .settings-body { position: relative; }
 html#ariaRoot .settings-section.is-leaving {
     position: absolute;
     left: 0; right: 0; top: 0;
+    /* 避免退场中的长分页（如界面 1735px）撑爆共享滚动容器，导致切到短分页时闪出幽灵滚动条；
+       减掉 --dy-out（+2px 余量），防止 ariaConcealOut 的 translateY 把 100% 高度顶出垂直溢出 */
+    max-height: calc(100% - var(--dy-out, 8px) - 2px);
+    overflow: hidden;
     pointer-events: none;
     z-index: 1;
 }

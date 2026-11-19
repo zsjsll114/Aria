@@ -144,6 +144,7 @@ export class DimensionVisualizer extends VisualizerBase {
 
     startLoop() {
         if (this.rafId) cancelAnimationFrame(this.rafId);
+        this.lastFrameTime = performance.now();
         const loop = (now) => {
             const dt = Math.min(0.1, (now - this.lastFrameTime) / 1000);
             this.lastFrameTime = now;
@@ -318,12 +319,18 @@ export class DimensionVisualizer extends VisualizerBase {
         if (settings.fontSize && this.viewContainer) {
             this.viewContainer.style.setProperty('--dim-font-size', `${Math.max(60, settings.fontSize * 1.8)}px`);
         }
-        if (settings.fontFamily && this.viewContainer) {
-            const resolved = (typeof window !== 'undefined' && typeof window.resolveFontFamily === 'function')
-                ? window.resolveFontFamily(settings.fontFamily)
-                : settings.fontFamily;
-            this.viewContainer.style.setProperty('--dim-font-family', resolved);
-            this.viewContainer.style.setProperty('--vis-font-family', resolved);
+        if (settings.fontFamily !== undefined && this.viewContainer) {
+            const fk = settings.fontFamily;
+            if (!fk || fk === 'default' || fk === 'inherit') {
+                this.viewContainer.style.removeProperty('--dim-font-family');
+                this.viewContainer.style.removeProperty('--vis-font-family');
+            } else {
+                const resolved = (typeof window !== 'undefined' && typeof window.resolveFontFamily === 'function')
+                    ? window.resolveFontFamily(fk)
+                    : fk;
+                this.viewContainer.style.setProperty('--dim-font-family', resolved);
+                this.viewContainer.style.setProperty('--vis-font-family', resolved);
+            }
         }
         if (settings.emotionGlow !== undefined && this.viewContainer) {
             this.viewContainer.style.setProperty('--emotion-glow', `${parseFloat(settings.emotionGlow) || 10}px`);
@@ -818,5 +825,63 @@ export class DimensionVisualizer extends VisualizerBase {
         if (this.audio) this.audio.destroy();
         this.entities = [];
         super.destroy();
+    }
+
+    /**
+     * 海报抓帧补态：将目标行全部字符一次点亮并把镜头摆正到句心，避免斜切句尾被裁。
+     * @param {number} [targetLineIndex]
+     * @returns {(() => void)|null}
+     */
+    stageForPoster(targetLineIndex) {
+        if (!this.entities || !this.entities.length) return null;
+        const prevIdx = this.currentLineIndex;
+        const prevTx = this.targetWordTrackingX;
+        const prevTy = this.targetWordTrackingY;
+        const prevWx = this.wordTrackingX;
+        const prevWy = this.wordTrackingY;
+        const idx = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && targetLineIndex < this.entities.length)
+            ? targetLineIndex
+            : Math.max(0, Math.min(this.entities.length - 1, prevIdx >= 0 ? prevIdx : 0));
+        const ent = this.entities[idx];
+        const charRestore = [];
+        if (idx !== prevIdx) {
+            this.onLineChange(idx, ent ? ent.line : null);
+        }
+        this.targetWordTrackingX = 0;
+        this.targetWordTrackingY = 0;
+        this.wordTrackingX = 0;
+        this.wordTrackingY = 0;
+        if (this.camera) {
+            const isEven = (idx % 2 === 0);
+            const targetZ = -idx * LINE_DEPTH_SPACING;
+            this.camera.pos.x = isEven ? -40 : 40;
+            this.camera.pos.y = isEven ? -15 : 15;
+            this.camera.pos.z = targetZ;
+            this.camera.rot.x = 0;
+            this.camera.rot.y = 0;
+            this.camera.rot.z = 0;
+        }
+        if (ent && ent.domEl && Array.isArray(ent.domEl._dimChars)) {
+            for (const c of ent.domEl._dimChars) {
+                if (!c || !c.el) continue;
+                charRestore.push([c.el, c.el.classList.contains('active'), c.el.classList.contains('sung')]);
+                c.el.classList.add('active', 'sung');
+            }
+        }
+        this.renderFrame(0);
+        return () => {
+            for (const [el, wasA, wasS] of charRestore) {
+                el.classList.toggle('active', wasA);
+                el.classList.toggle('sung', wasS);
+            }
+            this.targetWordTrackingX = prevTx;
+            this.targetWordTrackingY = prevTy;
+            this.wordTrackingX = prevWx;
+            this.wordTrackingY = prevWy;
+            if (prevIdx !== idx && prevIdx >= 0) {
+                this.onLineChange(prevIdx, this.entities[prevIdx]?.line || null);
+            }
+            this.renderFrame(0);
+        };
     }
 }

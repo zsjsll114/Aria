@@ -3,7 +3,8 @@
 用户定的语义（2026-09-27 重设计，覆盖旧「静止自动进入」版）：
   · **没有自动进入**：删掉鼠标/事件静止检测，等多久都不会自己淡出；
   · 进入/退出只有两个显式开关：右上角 zenModeBtn 与 Z 键；
-  · 专注态下 top-action-buttons 整组隐藏，但 #zenModeBtn 豁免（唯一的常驻退出入口）；
+  · 专注态下 top-action-buttons 内其它按钮隐藏、#zenModeBtn 留在容器最右侧且容器收缩；
+  · 再次点击 #zenModeBtn 可无障碍切回并完整恢复 .top-action-buttons 宽度与按钮原位；
   · info scope 只藏 .song-info-container——封面（.cover-area）留在画面并由
     coverShiftToCenter 以 FLIP 平移到视口中心，退出回原位；
   · queue scope 默认开：#plmPanel 与 #playlistManagerToggle 一起隐藏；
@@ -35,16 +36,24 @@ def probe(page):
             return cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05 ? 'hidden' : 'shown';
         };
         const cover = document.querySelector('.cover-area');
+        const bar = document.querySelector('.top-action-buttons');
         const btn = document.getElementById('zenModeBtn');
-        /* top 组容器不再整组隐藏（逐按钮隐藏），量一个「普通按钮」代表组内状态 */
         const normalTopBtn = document.querySelector('.top-action-buttons > *:not(#zenModeBtn)');
+        const barRect = bar ? bar.getBoundingClientRect() : null;
+        const btnRect = btn ? btn.getBoundingClientRect() : null;
         return {
             zen: document.documentElement.classList.contains('is-zen'),
             scope: document.documentElement.getAttribute('data-zen-scope') || '',
             normalTopBtn: vis('.top-action-buttons > *:not(#zenModeBtn)'),
             normalTopBtnTag: normalTopBtn ? (normalTopBtn.id || normalTopBtn.className) : 'MISSING',
             zenBtn: vis('#zenModeBtn'),
-            zenBtnFixed: btn ? btn.style.position : 'MISSING',
+            zenBtnPos: btn ? getComputedStyle(btn).position : 'MISSING',
+            barWidth: barRect ? Math.round(barRect.width) : 0,
+            barRight: barRect ? Math.round(barRect.right) : 0,
+            btnLeft: btnRect ? Math.round(btnRect.left) : 0,
+            btnRight: btnRect ? Math.round(btnRect.right) : 0,
+            btnInsideViewport: !!(btnRect && btnRect.right <= window.innerWidth && btnRect.left >= 0),
+            btnInBar: !!(bar && btn && btn.parentElement === bar),
             info: vis('.player-container .song-info-container'),
             cover: vis('.cover-area'),
             queuePanel: vis('#plmPanel'),
@@ -71,6 +80,8 @@ def main():
                ariaOobeOverlay 完成 build 后即被 remove（000-tooltip 的机制）。
                只改 style 不行——282 的弹窗守卫按 class/DOM 存在性判定，
                hasBlockingModal() 恒真会让按钮/Z 键全被拒（测不出正路）。 */
+            const perf = document.getElementById('performanceDialog');
+            if (perf) perf.remove();
             const oobe = document.getElementById('ariaOobeOverlay');
             if (oobe) oobe.remove();
             const w = document.getElementById('welcomeOverlay');
@@ -78,19 +89,26 @@ def main():
             /* 清掉持久化的 zen 偏好，回到出厂默认断言 */
             if (appSettings.interface) appSettings.interface.zen = {};
         }""")
+        # 清掉可能已触发的软件渲染降级标记后的残余弹窗
+        page.wait_for_timeout(1200)
+        page.evaluate("document.getElementById('performanceDialog')?.remove()")
 
         # —— 1. 无自动进入：静置 5 秒仍不在专注态 ——
         page.wait_for_timeout(5000)
         idle = probe(page)
         check("no_idle_autocenter", idle["zen"] is False, {"zen": idle["zen"]})
 
-        # —— 2. 右上角按钮进入：is-zen + 按钮平移到右上角常驻 + 队列/控件隐藏 + 封面下移 ——
-        page.evaluate("document.getElementById('zenModeBtn').click()")
+        # —— 2. 真实鼠标点击右上角按钮进入：容器收缩 + 按钮留在最右侧 + 队列/控件隐藏 + 封面下移 ——
+        page.locator("#zenModeBtn").click()
         zen1 = probe(page)
         check("button_enters_zen", zen1["zen"] is True and zen1["btnPressed"] == "true", zen1)
-        check("top_others_hidden_btn_fixed",
+        check("top_others_hidden_bar_contracted_btn_rightmost",
               zen1["normalTopBtn"] == "hidden" and zen1["zenBtn"] == "shown"
-              and zen1["zenBtnFixed"] == "fixed", zen1)
+              and zen1["zenBtnPos"] != "fixed" and zen1["btnInBar"]
+              and zen1["btnInsideViewport"]
+              and zen1["barWidth"] < idle["barWidth"] * 0.4
+              and abs(zen1["barRight"] - zen1["btnRight"]) <= 12
+              and abs(zen1["barRight"] - idle["barRight"]) <= 4, zen1)
         check("info_text_hidden_cover_shown",
               zen1["info"] == "hidden" and zen1["cover"] == "shown", zen1)
         check("queue_fab_and_panel_hidden",
@@ -98,13 +116,16 @@ def main():
         check("cover_shifted_down",
               "translateY" in zen1["coverTransform"], {"transform": zen1["coverTransform"]})
 
-        # —— 3. 再点按钮退出：封面回原位、按钮回组内 ——
-        page.evaluate("document.getElementById('zenModeBtn').click()")
+        # —— 3. 再次真实鼠标点击按钮退出：封面回原位、容器展开与按钮恢复原样式 ——
+        page.locator("#zenModeBtn").click()
         zen2 = probe(page)
         check("button_exits_zen", zen2["zen"] is False and zen2["btnPressed"] == "false", zen2)
         check("cover_restored", "translateY" not in zen2["coverTransform"],
               {"transform": zen2["coverTransform"]})
-        check("top_restored", zen2["normalTopBtn"] == "shown" and zen2["zenBtnFixed"] != "fixed", zen2)
+        check("top_restored",
+              zen2["normalTopBtn"] == "shown" and zen2["zenBtnPos"] != "fixed"
+              and abs(zen2["barWidth"] - idle["barWidth"]) <= 2
+              and abs(zen2["btnLeft"] - idle["btnLeft"]) <= 2, zen2)
 
         # —— 4. Z 键切换 ——
         page.evaluate("""() => {

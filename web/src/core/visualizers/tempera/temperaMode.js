@@ -6,6 +6,12 @@
 import { compileTemperaProgram } from './temperaProgram.js';
 import { ensureWordColorContrast, luminanceOfColor } from './temperaPalette.js';
 import { TemperaPixiRuntime } from './createTemperaPixiRuntime.js';
+/* ★ 2026-10-11 纯音乐（无歌词 ⇒ 虚拟 ♪ 行）：判定与生成器与 verse 共用同一套纯逻辑
+   —— 上游 VisualizerTempera.tsx:87-101 与 VisualizerSonnet.tsx:89-107 这段**逐字相同**，
+   只差 id 前缀（tempera `virtual-block-` / sonnet `virtual-staff-`）。见该文件头。 */
+import {
+    buildVirtualInstrumentalLines, advanceInstrumental, instrumentalSongKey,
+} from '../instrumentalLines.js';
 
 /* ★ 2026-10-01 歌词基准字号倍率（主画面与预览共用；改动会触发单例重建生效）
    1.9→2.1：用户二轮反馈「还是太小」（此前他看到的可能是预览 404 假象，但宁可再大） */
@@ -42,6 +48,9 @@ let paused = false;
 let lastLyricsRef = null;
 let lastEmotionRef = null;
 let swapping = false;
+/* 纯音乐观察窗（空歌词 + 播放推进 ≥3s ⇒ 纯音乐，喂虚拟 ♪ 行）。按歌重置，
+   语义与上游 songHandover.decideSongCommit 一致，见 instrumentalLines.js 头部。 */
+let instrumentalState = { instrumental: false, watch: null };
 
 /* MotionValue 等价物：runtime 每帧 renderFrame 读 currentTime.get()（秒） */
 const currentTimeBox = {
@@ -64,10 +73,14 @@ function currentLyrics() {
 function currentSongSeed() {
     const meta = (typeof globalThis !== 'undefined' && globalThis.currentSongData) || {};
     const stack = currentFontStack() || '';
+    /* ★ 2026-10-11 纯音乐参与 seed：判定翻转必须让 seed 变化，否则下面的 swapSong 直通
+       提交（`context.seed === runtime.songSeed`）——而**空歌词的数组引用可能整首歌不变**，
+       靠引用分支永远不会重建。 */
+    const instrumental = instrumentalState.instrumental ? '|inst' : '';
     /* 字体栈参与 seed：换字体 → seed 变化 → swapSong 真重建（否则同 seed 直通提交，
        场景里烘焙的旧字体不刷新） */
     return String(meta.mid || meta.id || meta.song || meta.title || 'aria-tempera')
-        + '|' + (stack ? stack.length + ':' + stack.slice(0, 40) : 'default');
+        + '|' + (stack ? stack.length + ':' + stack.slice(0, 40) : 'default') + instrumental;
 }
 
 /* ★ Aria 行形状 → folia tempera 输入（2026-09-30）：
@@ -129,7 +142,11 @@ function buildTheme() {
        明度贴近背景即隐身——按背景明度把词色推开 ≥96（保色相）。 */
     const bgLum = luminanceOfColor(backgroundColor);
     return {
-        animationIntensity: 'standard',
+        /* ★ 2026-10-11 修正非法枚举值：上游 `Theme.animationIntensity` 只有
+           calm | normal | chaotic（见 src/types.ts）。此前写的是 'standard' ——
+           它落不进任何一个分支，于是 multiply 恒为 1（效果上等于 normal，但值是错的，
+           一旦以后有人按枚举做校验/序列化就会出问题）。 */
+        animationIntensity: 'normal',
         backgroundColor,
         primaryColor: '#f4f4f5',
         /* ★ 2026-10-01 夜修「背景变黑白灰」：settings 面板的 highlightColor 默认值
@@ -155,6 +172,7 @@ function buildTheme() {
    （tuning 直通 + 字号倍率经重建生效） */
 let temperaSettings = null;
 let temperaRebuildTimer = null;
+let lastAppliedFontStack = null;
 
 export function applyTemperaSettings(settings) {
     if (!settings) return;
@@ -163,7 +181,9 @@ export function applyTemperaSettings(settings) {
        字号变化才重建。merge 前取旧值比较。 */
     const prevFont = temperaSettings ? temperaSettings.fontFamily : undefined;
     temperaSettings = { ...(temperaSettings || {}), ...settings };
-    const fontChanged = settings.fontFamily !== undefined && settings.fontFamily !== prevFont;
+    const nextStack = currentFontStack();
+    const fontChanged = (settings.fontFamily !== undefined && settings.fontFamily !== prevFont)
+        || Boolean(runtime && nextStack && lastAppliedFontStack && nextStack !== lastAppliedFontStack);
     if (typeof document !== 'undefined' && settings.highlightColor) {
         document.documentElement.style.setProperty('--tempera-accent', settings.highlightColor);
     }
@@ -206,14 +226,22 @@ function currentFontStack() {
 
 function buildSongContext() {
     const meta = (typeof globalThis !== 'undefined' && globalThis.currentSongData) || {};
-    const normLines = normalizeTemperaLines(currentLyrics());
-    return {
+    /* ★ 2026-10-11 纯音乐：歌词为空且已确认纯音乐 ⇒ 用 60 条虚拟 ♪ 行
+       （上游 VisualizerTempera.tsx:104 `committedLines.length > 0 ? committedLines : virtualLines`）。
+       归一化（毫秒判定 / words 映射）由下面的 normalizeTemperaLines 照旧处理。 */
+    const sourceLines = instrumentalState.instrumental
+        ? buildVirtualInstrumentalLines('virtual-block-')
+        : currentLyrics();
+    const normLines = normalizeTemperaLines(sourceLines);
+    const context = {
         seed: currentSongSeed(),
         program: compileTemperaProgram(normLines, 'tempera'),
         theme: buildTheme(),
         coverColors: (globalThis.coverPalette
             && [globalThis.coverPalette.primary, globalThis.coverPalette.secondary, globalThis.coverPalette.accent].filter(Boolean)) || [],
     };
+    lastAppliedFontStack = (context.theme && context.theme.fontFamily) || null;
+    return context;
 }
 
 /** 进入凝彩模式：懒建 runtime 并接上歌词。返回 Promise<runtime> */
@@ -314,20 +342,40 @@ export async function ensureTemperaRuntime(container) {
         };
     }
     startTicker();
+    if (typeof window !== 'undefined') {
+        window.__temperaCtrl = { isRunning: isTemperaRunning, pause: suspendTemperaRuntime, resume: resumeTemperaRuntime };
+    }
     return runtime;
 }
 
 function startTicker() {
     if (rafId !== null) return;
     const tick = () => {
-        if (!runtime) { rafId = null; return; }
-        if (!paused) {
+        if (!runtime || paused) { rafId = null; return; }
+        {
             const current = currentLyrics();
             if (current !== lastLyricsRef && !swapping) {
                 lastLyricsRef = current;
                 /* 换曲/歌词重解析：swapSong 两帧交接（确定性 seed 变化才真切换） */
                 const context = buildSongContext();
                 if (context.seed !== runtime.songSeed && typeof runtime.swapSong === 'function') {
+                    swapping = true;
+                    Promise.resolve(runtime.swapSong(context)).catch(() => {}).finally(() => { swapping = false; });
+                }
+            }
+            /* ★ 2026-10-11 纯音乐（无歌词）：判定翻转时**显式走一次上面的 swapSong 交接**
+               ——空歌词的数组引用可能整首歌都不变，引用分支永远不会触发；而翻转已写进
+               currentSongSeed（`|inst`），所以这里的 seed 比对必然成立。 */
+            const inst = advanceInstrumental(instrumentalState, {
+                hasWords: current.length > 0,
+                timeSec: audioTime(),
+                songKey: instrumentalSongKey(),
+            });
+            const instFlipped = inst.instrumental !== instrumentalState.instrumental;
+            instrumentalState = inst;
+            if (instFlipped && !swapping && typeof runtime.swapSong === 'function') {
+                const context = buildSongContext();
+                if (context.seed !== runtime.songSeed) {
                     swapping = true;
                     Promise.resolve(runtime.swapSong(context)).catch(() => {}).finally(() => { swapping = false; });
                 }
@@ -345,7 +393,8 @@ function startTicker() {
             }
             currentTimeBox.value = audioTime();
         }
-        rafId = requestAnimationFrame(tick);
+        if (!paused) rafId = requestAnimationFrame(tick);
+        else rafId = null;
     };
     rafId = requestAnimationFrame(tick);
 }
@@ -358,9 +407,25 @@ export function updateTemperaEngine(timeSec) {
 /** 切走时挂起：runtime 内部 app.stop()，场景与纹理缓存保留（切回秒恢复） */
 export function suspendTemperaRuntime() {
     paused = true;
-    if (runtime) {
-        try { runtime.setPaused(true); } catch (e) { /* ignore */ }
+    if (rafId !== null) {
+        try { cancelAnimationFrame(rafId); } catch { /* ignore */ }
+        rafId = null;
     }
+    if (runtime) {
+        try { runtime.setPaused(true); } catch { /* ignore */ }
+    }
+}
+
+/** 从后台节流恢复凝彩渲染循环 */
+export function resumeTemperaRuntime() {
+    if (!runtime) return;
+    paused = false;
+    try { runtime.setPaused(false); } catch { /* ignore */ }
+    startTicker();
+}
+
+export function isTemperaRunning() {
+    return !!(runtime && !paused);
 }
 
 /** 真正销毁（页面卸载/内存回收） */
@@ -383,6 +448,103 @@ export function destroyTemperaRuntime() {
  */
 export function getTemperaRuntime() {
     return runtime;
+}
+
+/**
+ * 海报抓帧前将 版画(tempera) 渲染到当前（或指定）歌词行完全显形的保持瞬间。
+ * @param {number} [targetLineIndex]
+ * @returns {(() => void)|null}
+ */
+export function stageTemperaForPoster(targetLineIndex) {
+    if (!runtime || runtime.destroyed || typeof runtime.renderOnce !== 'function') return null;
+    const prevPaused = paused;
+    let targetSec = currentTimeBox.value;
+    const lines = currentLyrics();
+    const isMs = lines.some((l) => l && typeof l.start === 'number' && l.start >= 1000);
+    const div = isMs ? 1000 : 1;
+    let line = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0) ? lines[targetLineIndex] : null;
+    if (!line && lines.length) {
+        line = lines.find((l) => {
+            const st = Number(l?.start ?? l?.time) / div;
+            const ed = l?.end != null ? Number(l.end) / div : st + 3.0;
+            return targetSec >= st && targetSec <= ed;
+        }) || lines[Math.max(0, Math.min(lines.length - 1, Number(globalThis.activeLineIndex) || 0))];
+    }
+    let prevCtx = null;
+    if (line && typeof runtime.commitSongContext === 'function') {
+        const normSingle = normalizeTemperaLines([line]);
+        if (normSingle.length) {
+            const fullProg = compileTemperaProgram(normSingle, 'tempera-poster', { wholeLineLyrics: true });
+            const shot0 = fullProg.paragraphs?.[0]?.shots?.[0] || null;
+            if (shot0) {
+                prevCtx = {
+                    seed: runtime.songSeed,
+                    program: runtime.options.program,
+                    theme: runtime.options.theme,
+                    coverColors: runtime.options.coverColors,
+                };
+                runtime.commitSongContext({
+                    seed: 'tempera-poster-' + String(targetLineIndex ?? 'cur'),
+                    program: fullProg,
+                    theme: prevCtx.theme,
+                    coverColors: prevCtx.coverColors,
+                });
+                const span = Math.max(0.2, shot0.endTime - shot0.startTime);
+                targetSec = shot0.startTime + span * 0.72;
+            }
+        }
+    }
+    if (!prevCtx && line) {
+        const st = Number(line.start ?? line.time) / div;
+        const ed = line.end != null ? Number(line.end) / div : st + 3.0;
+        const span = Math.max(0.2, ed - st);
+        targetSec = st + span * 0.72;
+    }
+    paused = true;
+    try { runtime.setPaused(true); } catch (e) { /* poster capture freeze */ }
+    currentTimeBox.value = targetSec;
+    try {
+        runtime.renderOnce();
+        let activeShot = null;
+        if (runtime.sceneCache) {
+            for (const sc of runtime.sceneCache.values()) {
+                if (!sc || !Array.isArray(sc.shots)) continue;
+                const hit = sc.shots.find((sh) => sh?.shot && targetSec >= sh.shot.startTime && targetSec <= sh.shot.endTime)
+                    || (typeof sc.activeShotIndex === 'number' ? sc.shots[sc.activeShotIndex] : null);
+                if (hit) {
+                    activeShot = hit;
+                    break;
+                }
+            }
+        }
+        if (activeShot && activeShot.shot) {
+            let maxStart = activeShot.shot.startTime;
+            for (const g of activeShot.glyphs || []) {
+                const gst = g?.motion?.startTime;
+                if (Number.isFinite(gst) && gst > maxStart) maxStart = gst;
+            }
+            const maxSettle = Number.isFinite(activeShot.revealDoneTime)
+                ? Math.max(maxStart, activeShot.revealDoneTime)
+                : maxStart;
+            const safeEnd = Math.max(activeShot.shot.startTime + 0.05, activeShot.shot.endTime - 0.02);
+            const betterSec = Math.max(targetSec, Math.min(safeEnd, Math.max(maxStart + 0.16, maxSettle + 0.02)));
+            if (Math.abs(betterSec - targetSec) > 0.01) {
+                currentTimeBox.value = betterSec;
+                runtime.renderOnce();
+            }
+        }
+    } catch (e) { /* poster capture render fallback */ }
+    return () => {
+        paused = prevPaused;
+        if (prevCtx && !runtime.destroyed && typeof runtime.commitSongContext === 'function') {
+            try { runtime.commitSongContext(prevCtx); } catch (e) { /* ignore */ }
+        }
+        currentTimeBox.value = audioTime();
+        try {
+            runtime.setPaused(prevPaused);
+            if (!prevPaused) runtime.renderOnce();
+        } catch (e) { /* ignore */ }
+    };
 }
 
 /** 独立实例（设置页预览窗）：与主单例互不影响。返回 { setTime, setPaused, destroy } */export async function createDetachedTemperaRuntime(container, lyrics, meta = {}) {

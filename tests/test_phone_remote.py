@@ -260,14 +260,10 @@ try:
         # globalThis.volume 写向 0），音量断言会被淡出压成假红，且 persistVolume
         # 会把 0 写进 initialVolume 污染后续用例
         pm.evaluate("() => { if (globalThis.appSettings && appSettings.playback) appSettings.playback.fadeInOut = false; }")
-        # /api/config/load 从服务端恢复的 appSettings 可能带着此前测试运行 persistVolume(0)
-        # 持久化下去的 initialVolume=0（applyAllSettings 全量重放会把它打回 volume，
-        # probe3 实测 load 落地 ~2.5s 后 volume 被覆盖）。音量用例前先持久化一个正常值。
+        # /api/config/load 从服务端恢复的 appSettings 可能带着此前测试运行持久化的 0 音量。
+        # 音量用例前先持久化一个正常值 60。
         pm.evaluate("""() => {
-            if (globalThis.appSettings && appSettings.playback) {
-                appSettings.playback.initialVolume = 60;
-                if (typeof updateVolume === 'function') updateVolume(60);
-            }
+            if (typeof updateVolume === 'function') updateVolume(60);
         }""")
         # 应用会在启动后经 /api/config/load 恢复用户队列，播种必须等它落地，
         # 否则 3 条测试队列会被真实队列覆盖（第一版就踩了：断言全灭在「队列还是 90 首」上）
@@ -443,7 +439,7 @@ try:
             lambda: pp.inner_text("#rmVolNum").strip() == "60", timeout=8), pp.inner_text("#rmVolNum"))
         # ⚠ 已知失败（deterministic，非 flaky）：音量按钮两条断言在 headless 下稳定读 0。
         # 已排查并排除：applyAllSettings 重放覆盖（已修：190 不再重放 volume）、
-        # fadeInOut 淡出压 0（已关）、服务端 config 持久化污染（已 seed initialVolume=60）、
+        # fadeInOut 淡出压 0（已关）、服务端 config 持久化污染（已 seed 60）、
         # touchstart 冒泡重发滑杆值（改 mouse click）、S.p.vol 过期缓存（等载荷同步后才点）。
         # 核心音量链路（滑杆设值 cmd-volume-slider-sets-main-volume）是 PASS 的，
         # 只有 volDown ±5 按钮路径异常，待可复现环境再深挖（遥控器音量按钮在真实

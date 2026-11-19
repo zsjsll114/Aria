@@ -111,7 +111,8 @@ export async function analyzeTrack(track, deps = {}) {
 
         const result = analyzeEnvelope(samples, sampleRate);
         result.durationMs = durationMs; /* 以解码器口径为准（包络按帧取整过） */
-        delete result.frameMs; /* 内部实现细节，不进缓存不外泄 */
+        delete result.frameMs; /* 内部实现细节，不进缓存不外泄（帧率信息由 energyRate 携带，
+                                  见 envelope.js 的 analyzeEnvelope —— JIZURA 的能量包络要用） */
         await automixCacheSet(key, result);
         logInfo('automix.analyzer', `分析完成: ${track.title || key} bpm=${result.bpm ? result.bpm.toFixed(1) : 'null'} outro=${(result.outroPointMs / 1000).toFixed(1)}s`);
         return result;

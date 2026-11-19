@@ -59,13 +59,30 @@ export const POSTER_FRAMES = [
 
 export const POSTER_DEFAULT_FRAME = 'square';
 
+/** 海报工坊扩展画幅（保留 POSTER_FRAMES 三项兼容旧契约，额外增设 3:4 画报） */
+/** @type {any[]} */
+export const POSTER_STUDIO_FRAMES = [
+	POSTER_FRAMES[1],
+	{
+		id: 'portrait', label: '画报', hint: '3:4 · 小红书 / 海报',
+		w: 1080, h: 1440,
+		infoH: 204, cover: 108, padX: 56, infoOverlay: true,
+	},
+	POSTER_FRAMES[2],
+	POSTER_FRAMES[0],
+].filter(Boolean);
+
 /**
- * 取帧参数；未知 id 回落到默认帧（默认帧必在表里）。
+ * 取帧参数（支持工坊扩展 `portrait`）；未知 id 回落到默认帧（默认帧必在表里）。
  * @param {string} [id]
  * @returns {Record<string, any>}
  */
 export function posterFrameFor(id) {
-	return /** @type {any} */ (POSTER_FRAMES.find(f => f.id === id) || POSTER_FRAMES.find(f => f.id === POSTER_DEFAULT_FRAME));
+	return /** @type {any} */ (
+		POSTER_FRAMES.find(f => f && f.id === id)
+		|| POSTER_STUDIO_FRAMES.find(f => f && f.id === id)
+		|| POSTER_FRAMES.find(f => f && f.id === POSTER_DEFAULT_FRAME)
+	);
 }
 
 /**
@@ -73,7 +90,12 @@ export function posterFrameFor(id) {
  * ★ 反过来，歌词 / 飞白 / 词云的整行文字横跨画面宽度，裁一下就切字 —— 必须内嵌。
  */
 export const FULL_BLEED_MODES = new Set([
-    'cover', 'pv', 'tempera', 'tunnel', 'dimension', 'letterpress', 'neon', 'jizura',
+    'cover', 'pv', 'tempera', 'tunnel', 'dimension', 'letterpress', 'neon', 'jizura', 'prism', 'astrolabe', 'vitrail', 'focalcut',
+]);
+
+/** 存在横向整行排版的模式：在 safe 适配下优先保持完整画宽，不切掉首尾字符 */
+export const TEXT_SAFE_MODES = new Set([
+    'cover', 'lyrics', 'flyin', 'wordcloud', 'letterpress', 'dimension', 'tempera', 'astrolabe', 'jizura',
 ]);
 
 /** @param {string} [mode] @returns {boolean} */
@@ -214,13 +236,14 @@ function infoGeometry(frame, W, _H, infoY) {
  * @param {number} viewW 捕获画面宽（CSS px）
  * @param {number} viewH 捕获画面高（CSS px）
  * @param {string} [mode] 当前视图模式（决定铺满还是内嵌，见 `FULL_BLEED_MODES`）
+ * @param {{fit?: string}} [opts]
  * @returns {PosterLayout}
  */
-export function layoutFor(frameId, viewW, viewH, mode) {
+export function layoutFor(frameId, viewW, viewH, mode, opts = {}) {
 	const f = posterFrameFor(frameId);
 	const vw = Math.max(1, Math.round(Number(viewW) || 1));
 	const vh = Math.max(1, Math.round(Number(viewH) || 1));
-	const full = isFullBleedMode(mode);
+	const fullByMode = isFullBleedMode(mode);
 	const isNative = f.id === 'native' || !f.w || !f.h;
 
 	if (isNative) {
@@ -243,8 +266,20 @@ export function layoutFor(frameId, viewW, viewH, mode) {
 	const infoH = Math.min(f.infoH, Math.round(H * 0.26));
 	/** @type {any} */
 	const base = { ...f, infoH };
-	/* 主体可用区 = 整幅减掉信息栏。全屏类模式直接铺满整幅（信息栏叠上去）。 */
+	/* 主体可用区 = 整幅减掉信息栏。 */
 	const availH = H - infoH;
+	const fit = opts && opts.fit ? String(opts.fit) : 'auto';
+	let full = fullByMode;
+	if (fit === 'contain') {
+		full = false;
+	} else if (fit === 'cover') {
+		full = true;
+	} else if (fit === 'safe') {
+		const cropWidthRatio = (availH * (vw / vh)) / W;
+		if (TEXT_SAFE_MODES.has(String(mode || '')) || cropWidthRatio > 1.15) {
+			full = false;
+		}
+	}
 	return {
 		frameId: f.id, W, H, hasBackdrop: true, infoOverlay: true, radius: 0,
 		fullBleed: full,
@@ -261,7 +296,9 @@ export function layoutFor(frameId, viewW, viewH, mode) {
 /** @param {string} frameId @returns {string} */
 export function frameTag(frameId) {
 	const f = posterFrameFor(frameId);
-	return f.id === 'story' ? '9x16' : (f.id === 'square' ? '1x1' : 'full');
+	if (f.id === 'story') return '9x16';
+	if (f.id === 'portrait') return '3x4';
+	return f.id === 'square' ? '1x1' : 'full';
 }
 
 /* ============================ 纯函数：文本 / 颜色 / 文件名 ============================ */
@@ -496,7 +533,12 @@ export function drawPoster(ctx, opts) {
 			ctx.restore();
 			void bs;
 			ctx.save();
-			ctx.fillStyle = 'rgba(6,6,8,0.26)';
+			ctx.fillStyle = 'rgba(6,6,8,0.22)';
+			ctx.fillRect(0, 0, W, H);
+			const aura = ctx.createRadialGradient(W / 2, H * 0.36, 0, W / 2, H * 0.36, Math.max(W, H) * 0.65);
+			aura.addColorStop(0, withAlpha(accent, 0.22));
+			aura.addColorStop(1, 'rgba(6,6,8,0)');
+			ctx.fillStyle = aura;
 			ctx.fillRect(0, 0, W, H);
 			ctx.restore();
 		}
@@ -516,15 +558,31 @@ export function drawPoster(ctx, opts) {
 		ctx.restore();
 	}
 
-	/* ③b 边缘收敛：内嵌模式下主体与铺底之间会有一条几何缝。
-	   这里用一圈极淡的暗角（径向渐变）把注意力压回画面中心，
-	   缝在暗角里自然消失 —— 比任何描边都干净。 */
+	/* ③b 边缘收敛：内嵌模式下柔和化上下接缝，消去硬切横边感，并压暗角落聚焦中心。 */
 	if (L.hasBackdrop && !L.fullBleed) {
 		ctx.save();
+		if (view && hr.h < L.info.y - 8) {
+			const edge = Math.min(48, Math.max(22, Math.round(hr.h * 0.08)));
+			if (hr.y > 4) {
+				const topFade = ctx.createLinearGradient(0, hr.y, 0, hr.y + edge);
+				topFade.addColorStop(0, 'rgba(8,8,10,0.48)');
+				topFade.addColorStop(1, 'rgba(8,8,10,0)');
+				ctx.fillStyle = topFade;
+				ctx.fillRect(hr.x, hr.y, hr.w, edge);
+			}
+			const botY = hr.y + hr.h;
+			if (botY < L.info.y - 4) {
+				const botFade = ctx.createLinearGradient(0, botY - edge, 0, botY);
+				botFade.addColorStop(0, 'rgba(8,8,10,0)');
+				botFade.addColorStop(1, 'rgba(8,8,10,0.52)');
+				ctx.fillStyle = botFade;
+				ctx.fillRect(hr.x, botY - edge, hr.w, edge);
+			}
+		}
 		const g = ctx.createRadialGradient(W / 2, H * 0.44, Math.min(W, H) * 0.32,
 			W / 2, H * 0.44, Math.max(W, H) * 0.78);
 		g.addColorStop(0, 'rgba(6,6,8,0)');
-		g.addColorStop(1, 'rgba(6,6,8,0.55)');
+		g.addColorStop(1, 'rgba(6,6,8,0.52)');
 		ctx.fillStyle = g;
 		ctx.fillRect(0, 0, W, H);
 		ctx.restore();
@@ -756,7 +814,8 @@ export function clearPosterImageCache() { _imgCache.clear(); _logoPromise = null
 /**
  * `composePoster` 的入参（全部标可选；`view` 的存在性由函数内守卫校验）。
  * @typedef {object} PosterComposeOpts
- * @property {'native'|'square'|'story'} [frame]
+ * @property {'native'|'square'|'portrait'|'story'} [frame]
+ * @property {string} [fit]
  * @property {(HTMLCanvasElement|HTMLImageElement) & {naturalWidth?:number, naturalHeight?:number}} [view] 由 `domSnapshot.snapshotElement` 得来的真实画面
  * @property {string} [mode] 当前视图模式（决定铺满 / 内嵌，见 `FULL_BLEED_MODES`）
  * @property {number} [dpr=2]
@@ -785,7 +844,7 @@ export async function composePoster(opts) {
 	const frame = posterFrameFor(o.frame);
 	const viewW = o.view.width || o.view.naturalWidth || 1280;
 	const viewH = o.view.height || o.view.naturalHeight || 720;
-	const layout = layoutFor(frame.id, viewW, viewH, o.mode);
+	const layout = layoutFor(frame.id, viewW, viewH, o.mode, o.fit ? { fit: o.fit } : {});
 	const dpr = Math.max(1, Math.min(3, Number(o.dpr) || 2));
 
 	const canvas = document.createElement('canvas');
@@ -802,6 +861,549 @@ export async function composePoster(opts) {
 	const info = drawPoster(ctx, Object.assign({}, o, { layout, cover: cover || null, logo: logo || null, view: o.view }));
 	const blob = await canvasToBlob(canvas, o.mime || 'image/png', o.quality);
 	return { blob, canvas, frame, layout, info, coverLoaded: !!cover, logoLoaded: !!logo };
+}
+
+export const POSTER_STYLES = [
+	{ id: 'stage', label: '实景拾光', hint: '完整保留视觉画面与氛围' },
+	{ id: 'vinyl', label: '黑胶唱片', hint: '旋转唱片封面 + 完整诗意歌词' },
+	{ id: 'editorial', label: '极简诗笺', hint: '高定杂志留白 + 整句金句排版' },
+	{ id: 'film', label: '光影胶片', hint: '银幕宽画幅画面 + 双语台词字幕' },
+];
+
+/**
+ * 按精确画布像素宽度折行（绝不从词中强切超界）。
+ * @param {any} ctx
+/**
+ * @param {any} ctx
+ * @param {string} text
+ * @param {number} maxW
+ * @returns {string[]}
+ */
+export function wrapTextByPixelWidth(ctx, text, maxW) {
+	const s = String(text || '').replace(/\s+/g, ' ').trim();
+	if (!s) return [];
+	if (!ctx || typeof ctx.measureText !== 'function' || maxW <= 20) return [s];
+	if (ctx.measureText(s).width <= maxW) return [s];
+	const lines = [];
+	let cur = '';
+	const chars = Array.from(s);
+	for (let i = 0; i < chars.length; i++) {
+		const ch = chars[i] || '';
+		const next = cur + ch;
+		if (cur && ctx.measureText(next).width > maxW) {
+			/* 英文单词尽量在空格处断行，避免把完整单词拦腰截断 */
+			const spaceIdx = cur.lastIndexOf(' ');
+			if (spaceIdx > Math.floor(cur.length * 0.45) && /[A-Za-z0-9]/.test(ch)) {
+				lines.push(cur.slice(0, spaceIdx).trimEnd());
+				cur = (cur.slice(spaceIdx + 1) + ch).trimStart();
+			} else {
+				lines.push(cur.trimEnd());
+				cur = ch.trimStart();
+			}
+		} else {
+			cur = next;
+		}
+	}
+	if (cur.trim()) lines.push(cur.trim());
+	return lines.length ? lines : [s];
+}
+
+/**
+ * @param {any} ctx
+ * @param {number} W
+ * @param {number} footYc
+ * @param {number} padX
+ * @param {string} font
+ * @param {string} footText
+ * @param {number} footSize
+ * @param {any} logo
+ * @param {string} color
+ * @param {number} [logoAlpha]
+ * @returns {boolean}
+ */
+function drawFooterBrand(ctx, W, footYc, padX, font, footText, footSize, logo, color, logoAlpha = 0.8) {
+	ctx.save();
+	ctx.font = `600 ${footSize}px ${font}`;
+	ctx.textAlign = 'right';
+	ctx.textBaseline = 'middle';
+	const footW = ctx.measureText(footText).width;
+	const rightX = W - padX;
+	const ls = Math.round(footSize * 1.35);
+	let drewLogo = false;
+	if (logo) {
+		const lx = rightX - footW - Math.round(ls * 0.42) - ls;
+		try {
+			ctx.save();
+			ctx.globalAlpha = logoAlpha;
+			roundRectPath(ctx, lx, footYc - ls / 2, ls, ls, Math.round(ls * 0.24));
+			ctx.clip();
+			const lsz = srcSize(logo, ls, ls);
+			const lr = coverRect2(lsz.w, lsz.h, lx, footYc - ls / 2, ls, ls);
+			ctx.drawImage(logo, lr.x, lr.y, lr.w, lr.h);
+			ctx.restore();
+			drewLogo = true;
+		} catch (e) { logCatch('poster', e); }
+	}
+	ctx.fillStyle = color;
+	ctx.fillText(footText, rightX, footYc);
+	ctx.restore();
+	return drewLogo;
+}
+
+/**
+ * @param {any} ctx
+ * @param {any[]} entries
+ * @param {number} maxW
+ * @param {number} maxH
+ * @param {number} startOrigSize
+ * @param {string} font
+ * @param {boolean} showTranslation
+ */
+function fitStyledLyricEntries(ctx, entries, maxW, maxH, startOrigSize, font, showTranslation) {
+	const clean = Array.isArray(entries)
+		? entries.filter((e) => e && String(e.original || e.text || '').trim())
+		: [];
+	if (!clean.length) return { origSize: startOrigSize, transSize: Math.round(startOrigSize * 0.56), blocks: [], totalH: 0 };
+
+	for (let sz = startOrigSize; sz >= 22; sz -= 2) {
+		const trSz = Math.max(16, Math.round(sz * 0.54));
+		const lineH = Math.round(sz * 1.44);
+		const trLineH = Math.round(trSz * 1.45);
+		const blockGap = Math.round(sz * 0.48);
+		const blocks = [];
+		let totalH = 0;
+
+		for (let i = 0; i < clean.length; i++) {
+			const e = clean[i];
+			const origText = String(e.original || e.text || '').trim();
+			const transText = showTranslation && e.translation && String(e.translation).trim() !== '//'
+				? String(e.translation).trim()
+				: '';
+			ctx.font = `700 ${sz}px ${font}`;
+			const origLines = wrapTextByPixelWidth(ctx, origText, maxW);
+			ctx.font = `400 ${trSz}px ${font}`;
+			const transLines = transText ? wrapTextByPixelWidth(ctx, transText, maxW) : [];
+			const bh = origLines.length * lineH + (transLines.length ? Math.round(sz * 0.22) + transLines.length * trLineH : 0);
+			blocks.push({ origLines, transLines, bh, lineH, trLineH, trGap: Math.round(sz * 0.22) });
+			totalH += bh + (i > 0 ? blockGap : 0);
+		}
+		if (totalH <= maxH || sz === 22) {
+			return { origSize: sz, transSize: trSz, blockGap, blocks, totalH };
+		}
+	}
+	return { origSize: startOrigSize, transSize: Math.round(startOrigSize * 0.54), blockGap: 14, blocks: [], totalH: 0 };
+}
+
+/**
+ * 海报工坊高定卡片合成绘制（支持 实景拾光 / 黑胶唱片 / 极简诗笺 / 光影胶片）。
+ * ★ 铁律：无论歌词多长、选择几句，一律完整显示整句，不裁切文字。
+ * @param {any} ctx
+ * @param {Record<string, any>} opts
+ * @returns {{drewView:boolean, drewBackdrop:boolean, drewLogo:boolean, style:string}}
+ */
+export function drawStyledPoster(ctx, opts = {}) {
+	const style = String(opts.style || 'stage');
+	const frame = posterFrameFor(opts.frame);
+	const view = opts.view || null;
+	const vs = view ? srcSize(view, 1280, 720) : { w: 1280, h: 720 };
+	const vw = vs.w;
+	const vh = vs.h;
+
+	if (style === 'stage') {
+		const L = layoutFor(frame.id, vw, vh, opts.mode, { fit: opts.fit || 'safe' });
+		const res = drawPoster(ctx, /** @type {any} */ (Object.assign({}, opts, { layout: L })));
+		return Object.assign({}, res, { style: 'stage' });
+	}
+
+	const isNative = frame.id === 'native' || !frame.w || !frame.h;
+	const W = isNative ? 1080 : frame.w;
+	const H = isNative ? Math.max(1080, Math.min(1620, Math.round(1080 * (vh / Math.max(1, vw))) + 220)) : frame.h;
+	const padX = Math.round(W * 0.08);
+	const font = opts.fontFamily || POSTER_FONT;
+	const accent = parseColor(opts.accent) ? opts.accent : '#E8BE6A';
+	const tone = opts.tone === 'light' && style === 'editorial' ? 'light' : 'dark';
+	const song = opts.song || {};
+	const cover = opts.cover || null;
+	const logo = opts.logo || null;
+	const badge = opts.showBadge === false ? '' : String(opts.badge || '');
+	const footer = String(opts.footer || 'Aria');
+	const lines = Array.isArray(opts.lines) ? opts.lines : [];
+	const showTrans = opts.showTranslation !== false;
+
+	const title = String(song.title || song.name || song.song || '未知曲目');
+	const artist = String(song.artist || song.singer || '未知歌手');
+	const album = song.album ? String(song.album) : '';
+
+	ctx.fillStyle = tone === 'light' ? '#f6f3ec' : '#0b0c10';
+	ctx.fillRect(0, 0, W, H);
+
+	let drewBackdrop = false;
+	const bgSrc = style === 'vinyl' ? (cover || view) : (view || cover);
+	if (tone === 'dark' && bgSrc) {
+		ctx.save();
+		try { ctx.filter = `blur(${Math.round(Math.min(W, H) * 0.06)}px) saturate(1.22) brightness(${style === 'film' ? 0.36 : 0.42})`; } catch (e) { logCatch('poster', e); }
+		try {
+			const br = coverRect2(srcSize(bgSrc, W, H).w, srcSize(bgSrc, W, H).h, 0, 0, W, H);
+			ctx.drawImage(bgSrc, br.x, br.y, br.w, br.h);
+			drewBackdrop = true;
+		} catch (e) { logCatch('poster', e); }
+		ctx.restore();
+		ctx.save();
+		const g = ctx.createRadialGradient(W * 0.5, H * 0.28, W * 0.08, W * 0.5, H * 0.55, Math.max(W, H) * 0.85);
+		g.addColorStop(0, withAlpha(accent, style === 'vinyl' ? 0.20 : 0.12));
+		g.addColorStop(1, 'rgba(8,8,11,0.82)');
+		ctx.fillStyle = g;
+		ctx.fillRect(0, 0, W, H);
+		ctx.restore();
+	} else if (tone === 'light') {
+		ctx.save();
+		const g = ctx.createRadialGradient(W * 0.2, H * 0.14, 20, W * 0.5, H * 0.5, Math.max(W, H) * 0.88);
+		g.addColorStop(0, withAlpha(accent, 0.14));
+		g.addColorStop(1, 'rgba(246,243,236,0)');
+		ctx.fillStyle = g;
+		ctx.fillRect(0, 0, W, H);
+		ctx.restore();
+	}
+
+	const footY = H - Math.round(W * 0.065);
+	const footSize = Math.max(18, Math.round(W * 0.02));
+	const metaSize = Math.max(20, Math.round(W * 0.024));
+	const titleSize = Math.max(26, Math.round(W * 0.032));
+	const innerW = W - padX * 2;
+	let drewLogo = false;
+
+	if (style === 'vinyl') {
+		const isTall = H / W >= 1.25;
+		const discR = Math.round(W * (isTall ? 0.26 : 0.21));
+		const discCx = Math.round(W * 0.5);
+		const discCy = Math.round(H * (isTall ? 0.26 : 0.27));
+
+		/* 黑胶外碟盘 + 同心唱片纹 */
+		ctx.save();
+		const glow = ctx.createRadialGradient(discCx, discCy, discR * 0.55, discCx, discCy, discR * 1.38);
+		glow.addColorStop(0, withAlpha(accent, 0.26));
+		glow.addColorStop(1, 'rgba(0,0,0,0)');
+		ctx.fillStyle = glow;
+		ctx.beginPath();
+		ctx.arc(discCx, discCy, discR * 1.38, 0, Math.PI * 2);
+		ctx.fill();
+
+		ctx.beginPath();
+		ctx.arc(discCx, discCy, discR, 0, Math.PI * 2);
+		ctx.fillStyle = '#111216';
+		ctx.fill();
+
+		for (let r = discR * 0.94; r >= discR * 0.58; r -= Math.max(5, Math.round(discR * 0.055))) {
+			ctx.beginPath();
+			ctx.arc(discCx, discCy, r, 0, Math.PI * 2);
+			ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+			ctx.lineWidth = 1.2;
+			ctx.stroke();
+		}
+
+		/* 高光扇形折射 */
+		const sheen = ctx.createLinearGradient(discCx - discR, discCy - discR, discCx + discR, discCy + discR);
+		sheen.addColorStop(0, 'rgba(255,255,255,0.12)');
+		sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+		sheen.addColorStop(0.55, 'rgba(255,255,255,0)');
+		sheen.addColorStop(1, 'rgba(255,255,255,0.08)');
+		ctx.beginPath();
+		ctx.arc(discCx, discCy, discR, 0, Math.PI * 2);
+		ctx.fillStyle = sheen;
+		ctx.fill();
+
+		/* 内圈封面贴标 */
+		const labelR = Math.round(discR * 0.54);
+		ctx.beginPath();
+		ctx.arc(discCx, discCy, labelR, 0, Math.PI * 2);
+		ctx.clip();
+		if (cover) {
+			const csz = srcSize(cover, labelR * 2, labelR * 2);
+			const cr = coverRect2(csz.w, csz.h, discCx - labelR, discCy - labelR, labelR * 2, labelR * 2);
+			ctx.drawImage(cover, cr.x, cr.y, cr.w, cr.h);
+		} else {
+			ctx.fillStyle = mixColor(accent, '#101218', 0.65);
+			ctx.fillRect(discCx - labelR, discCy - labelR, labelR * 2, labelR * 2);
+		}
+		ctx.restore();
+
+		/* 唱片中心孔 */
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(discCx, discCy, Math.max(10, Math.round(discR * 0.09)), 0, Math.PI * 2);
+		ctx.fillStyle = '#0b0c10';
+		ctx.fill();
+		ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+		ctx.lineWidth = 2;
+		ctx.stroke();
+		ctx.restore();
+
+		/* 完整歌词排版区（居于黑胶与底部信息栏之间） */
+		const lyricTop = discCy + discR + Math.round(W * 0.055);
+		const infoTop = H - Math.round(W * 0.21);
+		const availH = Math.max(120, infoTop - lyricTop - 24);
+		const baseSz = lines.length >= 3 ? Math.round(W * 0.036) : Math.round(W * 0.044);
+		const fitted = fitStyledLyricEntries(ctx, lines, innerW, availH, baseSz, font, showTrans);
+		let y = lyricTop + Math.max(0, Math.round((availH - fitted.totalH) / 2));
+
+		ctx.save();
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'top';
+		for (let i = 0; i < fitted.blocks.length; i++) {
+			const b = fitted.blocks[i];
+			if (!b) continue;
+			ctx.font = `700 ${fitted.origSize}px ${font}`;
+			ctx.fillStyle = '#ffffff';
+			for (const ln of b.origLines) {
+				ctx.fillText(ln, W / 2, y);
+				y += b.lineH;
+			}
+			if (b.transLines.length) {
+				y += b.trGap;
+				ctx.font = `400 ${fitted.transSize}px ${font}`;
+				ctx.fillStyle = 'rgba(255,255,255,0.58)';
+				for (const ln of b.transLines) {
+					ctx.fillText(ln, W / 2, y);
+					y += b.trLineH;
+				}
+			}
+			y += fitted.blockGap || 0;
+		}
+		ctx.restore();
+
+		/* 底部曲目信息 & 品牌水印 */
+		ctx.save();
+		ctx.fillStyle = 'rgba(255,255,255,0.09)';
+		ctx.fillRect(padX, infoTop, innerW, 1);
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'top';
+		ctx.font = `700 ${titleSize}px ${font}`;
+		ctx.fillStyle = '#ffffff';
+		const titleStr = wrapTextByPixelWidth(ctx, title, innerW * 0.68)[0] || title;
+		ctx.fillText(titleStr, padX, infoTop + 26);
+		ctx.font = `400 ${metaSize}px ${font}`;
+		ctx.fillStyle = 'rgba(255,255,255,0.6)';
+		const subStr = album ? `${artist} · ${album}` : artist;
+		const subFit = wrapTextByPixelWidth(ctx, subStr, innerW * 0.68)[0] || artist;
+		ctx.fillText(subFit, padX, infoTop + 26 + Math.round(titleSize * 1.38));
+		if (badge) {
+			ctx.textAlign = 'right';
+			ctx.font = `700 ${footSize}px ${font}`;
+			ctx.fillStyle = withAlpha(accent, 0.92);
+			ctx.fillText(badge, W - padX, infoTop + 30);
+		}
+		ctx.restore();
+		drewLogo = drawFooterBrand(ctx, W, footY, padX, font, footer, footSize, logo, 'rgba(255,255,255,0.52)');
+		return { drewView: !!view, drewBackdrop, drewLogo, style };
+	}
+
+	if (style === 'editorial') {
+		const isLight = tone === 'light';
+		const fg = isLight ? '#18181b' : '#f4f4f6';
+		const subFg = isLight ? 'rgba(24,24,27,0.62)' : 'rgba(255,255,255,0.58)';
+		const ruleFg = isLight ? 'rgba(24,24,27,0.12)' : 'rgba(255,255,255,0.10)';
+		const thumbSize = Math.round(W * 0.13);
+		const topY = Math.round(W * 0.085);
+
+		/* 顶部歌曲头图卡 */
+		ctx.save();
+		roundRectPath(ctx, padX, topY, thumbSize, thumbSize, Math.round(thumbSize * 0.14));
+		ctx.fillStyle = mixColor(accent, isLight ? '#ffffff' : '#000000', 0.65);
+		ctx.fill();
+		ctx.clip();
+		if (cover) {
+			const csz = srcSize(cover, thumbSize, thumbSize);
+			const cr = coverRect2(csz.w, csz.h, padX, topY, thumbSize, thumbSize);
+			ctx.drawImage(cover, cr.x, cr.y, cr.w, cr.h);
+		}
+		ctx.restore();
+
+		ctx.save();
+		const textX = padX + thumbSize + Math.round(W * 0.032);
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'top';
+		ctx.font = `700 ${titleSize}px ${font}`;
+		ctx.fillStyle = fg;
+		ctx.fillText(wrapTextByPixelWidth(ctx, title, innerW - thumbSize - 60)[0] || title, textX, topY + Math.round(thumbSize * 0.18));
+		ctx.font = `400 ${metaSize}px ${font}`;
+		ctx.fillStyle = subFg;
+		ctx.fillText(wrapTextByPixelWidth(ctx, album ? `${artist} · ${album}` : artist, innerW - thumbSize - 60)[0] || artist, textX, topY + Math.round(thumbSize * 0.56));
+		if (badge) {
+			ctx.textAlign = 'right';
+			ctx.font = `700 ${footSize}px ${font}`;
+			ctx.fillStyle = isLight ? mixColor(accent, '#000000', 0.25) : accent;
+			ctx.fillText(badge, W - padX, topY + Math.round(thumbSize * 0.22));
+		}
+		ctx.textAlign = 'left';
+		ctx.textBaseline = 'top';
+		ctx.fillStyle = ruleFg;
+		ctx.fillRect(padX, topY + thumbSize + Math.round(W * 0.055), innerW, 1);
+
+		/* 引号与竖线 */
+		const qTop = topY + thumbSize + Math.round(W * 0.095);
+		ctx.font = `700 ${Math.round(W * 0.11)}px Georgia, serif`;
+		ctx.fillStyle = withAlpha(accent, isLight ? 0.42 : 0.36);
+		ctx.fillText('“', padX - 6, qTop - Math.round(W * 0.015));
+
+		const lyricTop = qTop + Math.round(W * 0.08);
+		const bottomLimit = H - Math.round(W * 0.13);
+		const availH = Math.max(140, bottomLimit - lyricTop);
+		const baseSz = lines.length >= 3 ? Math.round(W * 0.041) : Math.round(W * 0.052);
+		const fitted = fitStyledLyricEntries(ctx, lines, innerW - 22, availH, baseSz, font, showTrans);
+		let y = lyricTop + Math.max(0, Math.round((availH - fitted.totalH) * 0.36));
+
+		/* 左侧情绪色强调细竖线 */
+		ctx.fillStyle = withAlpha(accent, 0.85);
+		ctx.fillRect(padX, y + 6, 5, Math.max(36, fitted.totalH - 12));
+
+		for (let i = 0; i < fitted.blocks.length; i++) {
+			const b = fitted.blocks[i];
+			if (!b) continue;
+			ctx.font = `700 ${fitted.origSize}px ${font}`;
+			ctx.fillStyle = fg;
+			for (const ln of b.origLines) {
+				ctx.fillText(ln, padX + 26, y);
+				y += b.lineH;
+			}
+			if (b.transLines.length) {
+				y += b.trGap;
+				ctx.font = `400 ${fitted.transSize}px ${font}`;
+				ctx.fillStyle = subFg;
+				for (const ln of b.transLines) {
+					ctx.fillText(ln, padX + 26, y);
+					y += b.trLineH;
+				}
+			}
+			y += fitted.blockGap || 0;
+		}
+		ctx.fillStyle = ruleFg;
+		ctx.fillRect(padX, H - Math.round(W * 0.105), innerW, 1);
+		ctx.restore();
+
+		drewLogo = drawFooterBrand(ctx, W, footY, padX, font, footer, footSize, logo, subFg, isLight ? 0.9 : 0.78);
+		return { drewView: false, drewBackdrop, drewLogo, style };
+	}
+
+	/* style === 'film'（光影胶片）：完整不裁切现场截图窗 + 电影台词完整句区 + 底部题注 */
+	const filmPadX = Math.round(W * 0.055);
+	const filmW = W - filmPadX * 2;
+	const filmTop = Math.round(W * 0.065);
+	const filmBoxH = Math.round(Math.min(H * 0.48, filmW * 0.68));
+	const viewRect = view ? containRect(vw, vh, filmPadX, filmTop, filmW, filmBoxH) : { x: filmPadX, y: filmTop, w: filmW, h: filmBoxH };
+
+	ctx.save();
+	if (view) {
+		ctx.drawImage(view, viewRect.x, viewRect.y, viewRect.w, viewRect.h);
+		/* 上下柔和银幕渐隐收边 */
+		const fgGrad = ctx.createLinearGradient(0, viewRect.y + viewRect.h - 48, 0, viewRect.y + viewRect.h + 4);
+		fgGrad.addColorStop(0, 'rgba(11,12,16,0)');
+		fgGrad.addColorStop(1, 'rgba(11,12,16,0.92)');
+		ctx.fillStyle = fgGrad;
+		ctx.fillRect(viewRect.x, viewRect.y + viewRect.h - 48, viewRect.w, 54);
+	} else if (cover) {
+		const cr = coverRect2(srcSize(cover, filmW, filmBoxH).w, srcSize(cover, filmW, filmBoxH).h, filmPadX, filmTop, filmW, filmBoxH);
+		ctx.drawImage(cover, cr.x, cr.y, cr.w, cr.h);
+	}
+	ctx.restore();
+
+	const subTop = (view ? viewRect.y + viewRect.h : filmTop + filmBoxH) + Math.round(W * 0.042);
+	const bottomInfoTop = H - Math.round(W * 0.175);
+	const subAvailH = Math.max(100, bottomInfoTop - subTop - 18);
+	const baseSz = lines.length >= 3 ? Math.round(W * 0.036) : Math.round(W * 0.042);
+	const fitted = fitStyledLyricEntries(ctx, lines, innerW, subAvailH, baseSz, font, showTrans);
+	let sy = subTop + Math.max(0, Math.round((subAvailH - fitted.totalH) / 2));
+
+	ctx.save();
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'top';
+	for (let i = 0; i < fitted.blocks.length; i++) {
+		const b = fitted.blocks[i];
+		if (!b) continue;
+		ctx.font = `700 ${fitted.origSize}px ${font}`;
+		ctx.fillStyle = '#ffffff';
+		for (const ln of b.origLines) {
+			ctx.fillText(ln, W / 2, sy);
+			sy += b.lineH;
+		}
+		if (b.transLines.length) {
+			sy += b.trGap;
+			ctx.font = `400 ${fitted.transSize}px ${font}`;
+			ctx.fillStyle = 'rgba(255,255,255,0.62)';
+			for (const ln of b.transLines) {
+				ctx.fillText(ln, W / 2, sy);
+				sy += b.trLineH;
+			}
+		}
+		sy += fitted.blockGap || 0;
+	}
+
+	/* 底部胶片演职员栏 */
+	ctx.fillStyle = 'rgba(255,255,255,0.08)';
+	ctx.fillRect(padX, bottomInfoTop, innerW, 1);
+	const smCover = Math.round(W * 0.075);
+	const smY = bottomInfoTop + Math.round((H - bottomInfoTop - smCover) * 0.36);
+	if (cover) {
+		ctx.save();
+		roundRectPath(ctx, padX, smY, smCover, smCover, Math.round(smCover * 0.16));
+		ctx.clip();
+		const cr = coverRect2(srcSize(cover, smCover, smCover).w, srcSize(cover, smCover, smCover).h, padX, smY, smCover, smCover);
+		ctx.drawImage(cover, cr.x, cr.y, cr.w, cr.h);
+		ctx.restore();
+	}
+	const txX = cover ? padX + smCover + 20 : padX;
+	ctx.textAlign = 'left';
+	ctx.font = `700 ${Math.round(titleSize * 0.9)}px ${font}`;
+	ctx.fillStyle = '#ffffff';
+	ctx.fillText(wrapTextByPixelWidth(ctx, title, innerW * 0.62)[0] || title, txX, smY + 4);
+	ctx.font = `400 ${Math.round(metaSize * 0.92)}px ${font}`;
+	ctx.fillStyle = 'rgba(255,255,255,0.58)';
+	ctx.fillText(wrapTextByPixelWidth(ctx, album ? `${artist} · ${album}` : artist, innerW * 0.62)[0] || artist, txX, smY + Math.round(titleSize * 1.15));
+	if (badge) {
+		ctx.textAlign = 'right';
+		ctx.font = `700 ${footSize}px ${font}`;
+		ctx.fillStyle = withAlpha(accent, 0.9);
+		ctx.fillText(badge, W - padX, smY + 6);
+	}
+	ctx.restore();
+
+	drewLogo = drawFooterBrand(ctx, W, H - Math.round(W * 0.045), padX, font, footer, Math.round(footSize * 0.94), logo, 'rgba(255,255,255,0.48)');
+	return { drewView: !!view, drewBackdrop, drewLogo, style };
+}
+
+/**
+ * 工坊合成入口：复用缓存封面/Logo，快速渲染指定风格与画幅。
+ * @param {Record<string, any>} opts
+ */
+export async function composeStudioPoster(opts = {}) {
+	if (typeof document === 'undefined') throw new Error('composeStudioPoster 需要浏览器环境');
+	const frame = posterFrameFor(opts.frame);
+	const view = opts.view || null;
+	const style = String(opts.style || 'stage');
+	const vs = view ? srcSize(view, 1280, 720) : { w: 1280, h: 720 };
+	let W = frame.w;
+	let H = frame.h;
+	if (style === 'stage') {
+		const L = layoutFor(frame.id, vs.w, vs.h, opts.mode, { fit: opts.fit || 'safe' });
+		W = L.W; H = L.H;
+	} else if (frame.id === 'native' || !W || !H) {
+		W = 1080;
+		H = Math.max(1080, Math.min(1620, Math.round(1080 * (vs.h / Math.max(1, vs.w))) + 220));
+	}
+	const dpr = Math.max(1, Math.min(2.5, Number(opts.dpr) || 2));
+	const canvas = document.createElement('canvas');
+	canvas.width = Math.round(W * dpr);
+	canvas.height = Math.round(H * dpr);
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error('无法创建 2D 上下文');
+	ctx.scale(dpr, dpr);
+
+	const cover = opts.cover !== undefined
+		? opts.cover
+		: await cached(`cover:${opts.coverUrl || ''}`, () => loadCoverImage(opts.coverUrl || '', opts.coverTimeoutMs));
+	const logo = opts.logo !== undefined ? opts.logo : await cached('logo', () => loadLogoImage());
+	const info = drawStyledPoster(ctx, Object.assign({}, opts, { cover: cover || null, logo: logo || null, view }));
+	const blob = opts.skipBlob ? null : await canvasToBlob(canvas, opts.mime || 'image/png', opts.quality);
+	return { blob, canvas, frame, info, coverLoaded: !!cover, logoLoaded: !!logo };
 }
 
 /** 存到本地（`<a download>`，Tauri / 浏览器都稳）。 */

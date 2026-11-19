@@ -130,9 +130,12 @@
             filter: blur(60px) brightness(0.35);
             z-index: -2;
             opacity: 0;
-            transition: opacity 0.8s var(--e-exit);
+            visibility: hidden;
+            transition: opacity 0.8s var(--e-exit), visibility 0s linear 0.8s;
             transform-origin: center center;
             animation: bgSway 16s ease-in-out infinite;
+            animation-play-state: paused;
+            contain: strict;
         }
         @keyframes bgSway {
             0%, 100% { transform: rotate(calc(var(--sway-amp, 12deg) * -1)) scale(1.1); }
@@ -141,10 +144,22 @@
 
         .blur-background.visible {
             opacity: 1;
+            visibility: visible;
+            transition: opacity 0.8s var(--e-enter-soft), visibility 0s linear 0s;
+            animation-play-state: running;
         }
         /* 暂停时背景摇摆也停止 */
         .blur-background.paused {
             animation-play-state: paused;
+        }
+        /* ★ 2026-11-19：全屏自绘视觉模式（Vitrail/FocalCut/Prism/Folio/Letterpress/Jizura/Dimension/PV/Tunnel/Tempera）
+           彻底暂停并隐藏底层 150% 面积的高斯模糊背景（.blur-background 是 .player-container 的前置兄弟节点，
+           过去各模式 CSS 里写的 `.player-container.view-* .blur-background` 从未匹配过，导致 150% 全屏模糊在后台白烧 GPU） */
+        body.vis-opaque-bg:not(.mv-bg-on) .blur-background,
+        body.vis-opaque-bg:not(.mv-bg-on) .color-overlay {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            animation-play-state: paused !important;
         }
 
         /* ========== MV 动态背景（搜索结果里点 MV 卡片 → 铺满整窗循环播放） ==========
@@ -205,7 +220,10 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             z-index: -3;
-            background: #000;
+            background:
+                radial-gradient(ellipse 85% 70% at 22% 28%, rgba(var(--aria-accent-rgb, 110, 145, 255), 0.16) 0%, transparent 62%),
+                radial-gradient(ellipse 75% 65% at 78% 74%, rgba(var(--aria-accent-rgb, 110, 145, 255), 0.09) 0%, transparent 65%),
+                linear-gradient(155deg, #11131b 0%, #090b10 54%, #0d0f17 100%);
             pointer-events: none;
         }
 
@@ -489,9 +507,17 @@
 
         .empty-hint {
             text-align: center;
-            color: rgba(255, 255, 255, 0.4);
+            color: rgba(255, 255, 255, 0.56);
             font-size: 13px;
-            padding: 40px 20px;
+            margin: 14px auto;
+            max-width: 440px;
+            padding: 28px 20px;
+            border-radius: 16px;
+            background: rgba(14, 16, 22, 0.44);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
         }
 
         .song-artist {
@@ -720,58 +746,114 @@
         }
 
         /* 加载音乐按钮 */
-        /* 右上角圆形操作按钮 */
+        /* 右上角分组操作坞 */
         .top-action-buttons {
             position: absolute;
             /* 桌面端在标题栏下方让出安全距离（--titlebar-top-offset 由 aria-desktop 作用域注入） */
-            top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px));
-            right: clamp(10px, 2vw, 30px);
+            top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 26px));
+            right: clamp(12px, 2vw, 28px);
             display: flex;
-            gap: 10px;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 6px;
+            border-radius: var(--aria-radius-full);
+            background: rgba(14, 16, 22, 0.42);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(28px) saturate(180%);
+            -webkit-backdrop-filter: blur(28px) saturate(180%);
             z-index: 10;
+            transition: var(--t-base);
+        }
+
+        /* 亮色封面或高亮穿行背景下保持通透毛玻璃并适度压深底色，兼顾对比度与模糊层次 */
+        html#ariaRoot.aria-bright-backdrop .top-action-buttons {
+            background: rgba(12, 14, 20, 0.56);
+            border-color: rgba(255, 255, 255, 0.22);
+            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(28px) saturate(180%);
+            -webkit-backdrop-filter: blur(28px) saturate(180%);
         }
 
         .icon-action-btn {
             position: relative;
-            width: 40px;
-            height: 40px;
+            flex-shrink: 0;
+            width: 34px;
+            height: 34px;
             border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: rgba(255, 255, 255, 0.85);
+            background: transparent;
+            border: 1px solid transparent;
+            color: rgba(255, 255, 255, 0.88);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: var(--t-base);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+        }
+
+        /* 组间分隔符与节奏：发现内容 / 我的资料 / 播放增强 / 外观与设置 */
+        .top-action-buttons .icon-action-btn.tb-group-start {
+            margin-left: 11px;
+        }
+        .top-action-buttons .icon-action-btn.tb-group-start::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 50%;
+            width: 1px;
+            height: 16px;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.18);
+            pointer-events: none;
+        }
+
+        /* 主次视觉层级：搜索 / 切换样式 / 设置给予更强识读锚点 */
+        .top-action-buttons #openViewModeBtn {
+            width: 36px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.10);
+            border-color: rgba(255, 255, 255, 0.16);
+            color: #fff;
+        }
+        .top-action-buttons #openSettingsBtn {
+            width: 36px;
+            height: 36px;
+            background: rgba(var(--aria-accent-rgb), 0.18);
+            border-color: rgba(var(--aria-accent-rgb), 0.42);
+            color: var(--aria-accent);
+        }
+        .top-action-buttons #openSettingsBtn:hover {
+            background: rgba(var(--aria-accent-rgb), 0.30);
+            border-color: rgba(var(--aria-accent-rgb), 0.65);
+            color: #fff;
         }
 
         .icon-action-btn:hover {
-            background: rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.18);
             color: #fff;
-            transform: scale(1.1);
+            transform: scale(1.06);
         }
 
         .icon-action-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.94);
         }
 
         /* ★ 开关类按钮的「已启用」高亮态（如右上角 Now Playing 接管开关） */
         .icon-action-btn.on {
             background: var(--aria-accent);
             border-color: transparent;
-            color: #fff;
-            box-shadow: 0 2px 10px rgba(64, 140, 255, 0.45);
+            color: #101218;
+            box-shadow: 0 2px 12px rgba(var(--aria-accent-rgb), 0.42);
         }
         .icon-action-btn.on:hover {
             background: var(--aria-accent);
-            color: #fff;
+            color: #101218;
         }
 
         .icon-action-btn svg {
             display: block;
+            width: 17px;
+            height: 17px;
         }
 
         /* 悬停提示气泡（已移交全局 #aria-tip 统一渲染，此处仅保留占位样式） */
@@ -1513,6 +1595,257 @@
             backdrop-filter: blur(6px);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
         }
+
+/* ========== 主画布视觉统一（封面兜底 / view-cover 排版节奏 / 右侧空状态） ========== */
+.cover-area {
+    border-radius: 18px;
+}
+
+.cover-fallback {
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 50% 42%, rgba(var(--aria-accent-rgb, 140, 170, 255), 0.22) 0%, rgba(255, 255, 255, 0.04) 48%, rgba(12, 14, 20, 0.92) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.46);
+    pointer-events: none;
+    transition: opacity 0.35s var(--e-enter-soft);
+    z-index: 0;
+}
+
+.cover-area.has-cover .cover-fallback {
+    opacity: 0;
+}
+
+.cover-area.is-empty .song-cover {
+    opacity: 0 !important;
+}
+
+.cover-area .song-cover {
+    background: rgba(16, 18, 26, 0.45);
+    border-radius: 18px;
+}
+
+@media (min-width: 701px) {
+    .player-container.view-cover:not(.preview-player) {
+        gap: clamp(32px, 4.2vw, 68px);
+        padding: clamp(24px, 4vh, 48px) clamp(28px, 4vw, 56px) clamp(24px, 4vh, 48px) clamp(44px, 5.2vw, 84px);
+    }
+
+    .player-container.view-cover:not(.preview-player) .player-controls-wrapper {
+        width: clamp(328px, 27vw, 404px);
+        min-width: 328px;
+        max-width: 404px;
+        align-items: stretch;
+    }
+
+    .player-container.view-cover:not(.preview-player) .cover-area {
+        width: min(clamp(210px, 22vw, 316px), 34vh);
+        height: min(clamp(210px, 22vw, 316px), 34vh);
+        max-width: 100%;
+        align-self: center;
+        margin-bottom: clamp(18px, 2.4vh, 28px);
+        box-shadow: 0 22px 54px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .player-container.view-cover:not(.preview-player) .song-info-container {
+        height: auto;
+        min-height: 54px;
+        margin-bottom: clamp(14px, 1.8vh, 22px);
+    }
+
+    .player-container.view-cover:not(.preview-player) .song-title {
+        font-size: clamp(20px, 1.75vw, 25px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.24;
+        color: #fff;
+        margin-bottom: 5px;
+    }
+
+    .player-container.view-cover:not(.preview-player) .song-artist {
+        font-size: clamp(13px, 1.05vw, 15px);
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.62);
+        line-height: 1.35;
+    }
+}
+
+.player-container.view-cover:not(.preview-player) .controls-area {
+    padding: 16px 18px 14px;
+    border-radius: 20px;
+    background: rgba(14, 16, 22, 0.44);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    margin-bottom: 0;
+}
+
+.player-container.view-cover:not(.preview-player) .progress-container {
+    margin-bottom: 14px;
+}
+
+.player-container.view-cover:not(.preview-player) .playback-controls {
+    gap: 18px;
+    margin-bottom: 14px;
+}
+
+.player-container.view-cover:not(.preview-player) .control-button {
+    width: 40px;
+    height: 40px;
+    color: rgba(255, 255, 255, 0.84);
+}
+
+.player-container.view-cover:not(.preview-player) .play-button {
+    width: 48px;
+    height: 48px;
+    background: #fff;
+    color: #16181f;
+    opacity: 1;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.14);
+    transition: background var(--d-fast) var(--e-enter-soft),
+                box-shadow var(--d-fast) var(--e-enter-soft),
+                transform var(--d-fast) var(--e-enter-soft);
+}
+
+.player-container.view-cover:not(.preview-player) .play-button:hover {
+    background: #fff;
+    color: #0e1016;
+    transform: scale(1.06);
+    box-shadow: 0 6px 20px rgba(var(--aria-accent-rgb, 255, 255, 255), 0.26),
+                0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.player-container.view-cover:not(.preview-player) .play-button:active {
+    transform: scale(0.95);
+}
+
+.player-container.view-cover:not(.preview-player) .volume-container {
+    margin-bottom: 0;
+    gap: 10px;
+}
+
+.lyrics-empty-state[hidden],
+.les-btn[hidden] {
+    display: none !important;
+}
+
+.player-container:not(.view-cover):not(.view-lyrics) .lyrics-empty-state {
+    display: none !important;
+}
+
+.lyrics-empty-state {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 36px;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.les-card {
+    width: min(440px, 100%);
+    padding: 30px 28px 26px;
+    border-radius: 24px;
+    background: rgba(14, 16, 22, 0.44);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(20px) saturate(145%);
+    -webkit-backdrop-filter: blur(20px) saturate(145%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+}
+
+.les-emblem {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 4px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(var(--aria-accent-rgb, 140, 170, 255), 0.14);
+    border: 1px solid rgba(var(--aria-accent-rgb, 140, 170, 255), 0.24);
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.les-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+}
+
+.les-desc {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.62);
+    line-height: 1.55;
+    max-width: 340px;
+    margin-bottom: 6px;
+}
+
+.les-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.les-btn {
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.90);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--d-fast) var(--e-enter-soft),
+                border-color var(--d-fast) var(--e-enter-soft),
+                transform var(--d-fast) var(--e-enter-soft),
+                box-shadow var(--d-fast) var(--e-enter-soft);
+}
+
+.les-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.les-btn:active {
+    transform: scale(0.96);
+}
+
+.les-btn-primary {
+    background: var(--aria-accent);
+    border-color: transparent;
+    color: #101218;
+    box-shadow: 0 4px 16px rgba(var(--aria-accent-rgb, 255, 255, 255), 0.28);
+}
+
+.les-btn-primary:hover {
+    background: var(--aria-accent);
+    filter: brightness(1.06);
+    color: #101218;
+    border-color: transparent;
+}
 
 
 

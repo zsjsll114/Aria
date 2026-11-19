@@ -10,6 +10,9 @@ import { setSettingValue } from './190-settings-fontsize.js';
 import { applyFontFamily, applyModeFontFamily } from './210-color-multilang.js';
 import { resolveDtkFontFamily } from './250-desktop-lyrics.js';
 import { showSettingsHint } from './220-shortcuts-viewmode.js';
+import { normalizeFontKey } from '../core/settingsStore.js';
+import { mountDropdown } from '../ui/settingsPrimitives.js';
+import { syncModeOverrideBadges } from '../ui/settingsRenderer.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { esc } from '../utils/formatters.js';
 
@@ -339,105 +342,44 @@ function getPreviewFontFamily(fontKey) {
             return FONT_FAMILY_MAP[fontKey] || 'inherit';
         }
 
-/* 初始化单个语言字体下拉 */
-function initAdvFontDropdown(langCode) {
-            const dd = typeof document !== 'undefined' ? document.getElementById(`dropdown-advFont-${langCode}`) : null;
+/* 应用单个语言字体的选择状态并持久化 */
+function applyAdvFontSelection(langCode, optVal) {
+            if (!appSettings.interface.advancedFonts.fonts) {
+                appSettings.interface.advancedFonts.fonts = {};
+            }
+            appSettings.interface.advancedFonts.fonts[langCode] = optVal;
+            const preview = typeof document !== 'undefined' ? document.getElementById(`advFontPreview-${langCode}`) : null;
+            if (preview) preview.style.setProperty('font-family', getPreviewFontFamily(optVal), 'important');
+            applyAdvancedFonts();
+            saveSettings();
+        }
+
+function renderAdvFontDropdown(dd, langCode) {
             if (!dd) return;
             const adv = appSettings.interface.advancedFonts;
             const currentVal = (adv.fonts && adv.fonts[langCode]) || 'default';
             const options = getAllFontOptions();
-
-            const trigger = document.createElement('div');
-            trigger.className = 'setting-dropdown-trigger';
-            const currentOpt = options.find(o => o.value === currentVal);
-            trigger.textContent = currentOpt ? currentOpt.label : '默认（全局字体）';
-
-            const menu = document.createElement('div');
-            menu.className = 'setting-dropdown-menu';
-            options.forEach(opt => {
-                const item = document.createElement('div');
-                item.className = 'setting-dropdown-item' + (opt.value === currentVal ? ' selected' : '');
-                item.textContent = opt.label;
-                item.dataset.value = opt.value;
-                item?.addEventListener('click', () => {
-                    trigger.textContent = opt.label;
-                    menu.querySelectorAll('.setting-dropdown-item').forEach(i => i.classList.remove('selected'));
-                    item.classList.add('selected');
-                    /* 更新设置 */
-                    if (!appSettings.interface.advancedFonts.fonts) {
-                        appSettings.interface.advancedFonts.fonts = {};
-                    }
-                    appSettings.interface.advancedFonts.fonts[langCode] = opt.value;
-                    /* 更新预览字体（!important 防止被全局字体规则覆盖） */
-                    const preview = typeof document !== 'undefined' ? document.getElementById(`advFontPreview-${langCode}`) : null;
-                    if (preview) preview.style.setProperty('font-family', getPreviewFontFamily(opt.value), 'important');
-                    /* 应用高级字体 */
-                    applyAdvancedFonts();
-                    saveSettings();
-                    dd.classList.remove('open');
-                });
-                menu.appendChild(item);
+            mountDropdown(dd, options, currentVal, {
+                placeholder: '默认（全局字体）',
+                onSelect: (opt) => applyAdvFontSelection(langCode, opt.value),
             });
+            const preview = typeof document !== 'undefined' ? document.getElementById(`advFontPreview-${langCode}`) : null;
+            if (preview) preview.style.setProperty('font-family', getPreviewFontFamily(currentVal), 'important');
+        }
 
-            /* ★ 双 handler 防重：initCustomDropdowns（220:512）会给所有
-               .setting-dropdown 的触发器补绑开合事件（_ariaToggleBound 约定）——
-               两处都绑会让一次点击 toggle 两次 = 开了又关（"点不开"的根因） */
-            if (!trigger._ariaToggleBound) {
-                trigger._ariaToggleBound = true;
-                trigger?.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    document.querySelectorAll('.setting-dropdown.open').forEach(d => {
-                        if (d !== dd) d.classList.remove('open');
-                    });
-                    dd.classList.toggle('open');
-                });
-            }
-
-            dd.appendChild(trigger);
-            dd.appendChild(menu);
+/* 初始化单个语言字体下拉 */
+function initAdvFontDropdown(langCode) {
+            const dd = typeof document !== 'undefined' ? document.getElementById(`dropdown-advFont-${langCode}`) : null;
+            renderAdvFontDropdown(dd, langCode);
         }
 
 /* 刷新高级字体下拉（自定义字体增删后调用） */
 function refreshAdvancedFontDropdowns() {
             const container = typeof document !== 'undefined' ? document.getElementById('advancedFontsSection') : null;
             if (!container) return;
-            /* 重建所有下拉 */
             for (const langCode of Object.keys(LANG_INFO)) {
                 const dd = typeof document !== 'undefined' ? document.getElementById(`dropdown-advFont-${langCode}`) : null;
-                if (!dd) continue;
-                const trigger = dd.querySelector('.setting-dropdown-trigger');
-                const menu = dd.querySelector('.setting-dropdown-menu');
-                if (!trigger || !menu) continue;
-                const adv = appSettings.interface.advancedFonts;
-                const currentVal = (adv.fonts && adv.fonts[langCode]) || 'default';
-                const options = getAllFontOptions();
-                menu.innerHTML = '';
-                options.forEach(opt => {
-                    const item = document.createElement('div');
-                    item.className = 'setting-dropdown-item' + (opt.value === currentVal ? ' selected' : '');
-                    item.textContent = opt.label;
-                    item.dataset.value = opt.value;
-                    item?.addEventListener('click', () => {
-                        trigger.textContent = opt.label;
-                        menu.querySelectorAll('.setting-dropdown-item').forEach(i => i.classList.remove('selected'));
-                        item.classList.add('selected');
-                        if (!appSettings.interface.advancedFonts.fonts) {
-                            appSettings.interface.advancedFonts.fonts = {};
-                        }
-                        appSettings.interface.advancedFonts.fonts[langCode] = opt.value;
-                        const preview = typeof document !== 'undefined' ? document.getElementById(`advFontPreview-${langCode}`) : null;
-                        if (preview) preview.style.setProperty('font-family', getPreviewFontFamily(opt.value), 'important');
-                        applyAdvancedFonts();
-                        saveSettings();
-                        dd.classList.remove('open');
-                    });
-                    menu.appendChild(item);
-                });
-                const currentOpt = options.find(o => o.value === currentVal);
-                trigger.textContent = currentOpt ? currentOpt.label : '默认（全局字体）';
-                /* 同步更新预览文本字体 */
-                const preview = typeof document !== 'undefined' ? document.getElementById(`advFontPreview-${langCode}`) : null;
-                if (preview) preview.style.setProperty('font-family', getPreviewFontFamily(currentVal), 'important');
+                if (dd) renderAdvFontDropdown(dd, langCode);
             }
         }
 
@@ -871,155 +813,90 @@ function refreshFontDropdown() {
                 ? `'${customFonts[val].family}', sans-serif`
                 : FONT_PREVIEW_FAMILY[val] || 'inherit');
             if (typeof document === 'undefined') return;
-            const dds = Array.from(document.querySelectorAll('.setting-dropdown[data-var="fontFamily"], .setting-dropdown[data-setting="fontFamily"], .setting-dropdown[data-var="dlFontFamily"], #dropdown-fontFamily, #dropdown-fontFamily-main, .appearance-font-dropdown'));
+            const dds = Array.from(document.querySelectorAll('.setting-dropdown[data-var="fontFamily"], .setting-dropdown[data-setting="fontFamily"], .setting-dropdown[data-var="dlFontFamily"], #dropdown-fontFamily-main, .appearance-font-dropdown'));
             const uniqueDds = Array.from(new Set(dds));
             uniqueDds.forEach(dd => {
-                let trigger = dd.querySelector('.setting-dropdown-trigger');
-                if (!trigger) {
-                    trigger = document.createElement('div');
-                    trigger.className = 'setting-dropdown-trigger';
-                    dd.appendChild(trigger);
-                }
-                let menu = dd.querySelector('.setting-dropdown-menu');
-                if (!menu) {
-                    menu = document.createElement('div');
-                    menu.className = 'setting-dropdown-menu';
-                    dd.appendChild(menu);
-                }
-
-                /* ★ 开合事件统一由 initCustomDropdowns（220-shortcuts-viewmode.js）幂等挂载，
-                   本函数只维护内容（trigger 文本 / menu 选项），避免 addEventListener 与
-                   onclick 双重绑定互相"开→关"抵消导致下拉无法弹出 */
                 const isDtkDropdown = dd.getAttribute('data-var') === 'dlFontFamily';
                 const isAppearanceModeDropdown = !isDtkDropdown && (dd.hasAttribute('data-var') || dd.classList.contains('appearance-font-dropdown') || Boolean(dd.closest('[data-mode-section]')));
                 const parentModeSec = dd.closest('[data-mode-section]');
                 const modeName = parentModeSec ? parentModeSec.dataset.modeSection : null;
 
-                /* 获取当前配置值 */
-                let currentVal = 'default';
+                /* 获取当前配置值，统一经 normalizeFontKey 归一化 */
+                let rawVal = 'default';
                 if (isDtkDropdown) {
-                    const raw = appSettings.interface && appSettings.interface.desktopLyrics && appSettings.interface.desktopLyrics.fontFamily;
-                    currentVal = (raw === 'inherit' || !raw) ? 'default' : raw;
+                    rawVal = appSettings.interface && appSettings.interface.desktopLyrics && appSettings.interface.desktopLyrics.fontFamily;
                 } else if (isAppearanceModeDropdown && modeName && appSettings.modeSettings && appSettings.modeSettings[modeName]) {
-                    const raw = appSettings.modeSettings[modeName].fontFamily;
-                    currentVal = (raw === 'inherit' || !raw) ? 'default' : raw;
+                    rawVal = appSettings.modeSettings[modeName].fontFamily;
                 } else if (isAppearanceModeDropdown && previewEngineInstance && previewEngineInstance.modeVars) {
                     const curM = previewEngineInstance.currentMode || currentViewMode || 'cover';
-                    const raw = previewEngineInstance.modeVars[curM] && previewEngineInstance.modeVars[curM].fontFamily;
-                    currentVal = (raw === 'inherit' || !raw) ? 'default' : raw;
+                    rawVal = previewEngineInstance.modeVars[curM] && previewEngineInstance.modeVars[curM].fontFamily;
                 } else {
-                    const raw = appSettings.interface && appSettings.interface.fontFamily;
-                    currentVal = (raw === 'inherit' || !raw) ? 'default' : raw;
+                    rawVal = appSettings.interface && appSettings.interface.fontFamily;
                 }
+                const currentVal = normalizeFontKey(rawVal);
 
-                menu.innerHTML = '';
-                /* ★ 外观/桌面歌词设置下拉框才有"跟随字体设置"，字体设置下拉框用"默认" */
-                const allOpts = (isAppearanceModeDropdown || isDtkDropdown)
-                    ? [
-                        { value: 'default', label: isDtkDropdown ? '默认（跟随全局字体）' : '跟随字体设置' },
-                        { value: 'serif', label: '宋体' },
-                        { value: 'kai', label: '楷体' },
-                        { value: 'hei', label: '黑体' },
-                        { value: 'fangsong', label: '仿宋' },
-                        { value: 'mono', label: '等宽字体' }
-                    ]
-                    : [
-                        { value: 'default', label: '默认' },
-                        { value: 'serif', label: '宋体' },
-                        { value: 'kai', label: '楷体' },
-                        { value: 'hei', label: '黑体' },
-                        { value: 'fangsong', label: '仿宋' },
-                        { value: 'mono', label: '等宽字体' }
-                    ];
+                const defaultLabel = (isAppearanceModeDropdown || isDtkDropdown)
+                    ? (isDtkDropdown ? '默认（跟随全局字体）' : '跟随字体设置')
+                    : '默认';
+                const allOpts = [
+                    { value: 'default', label: defaultLabel },
+                    { value: 'serif', label: '宋体' },
+                    { value: 'kai', label: '楷体' },
+                    { value: 'hei', label: '黑体' },
+                    { value: 'fangsong', label: '仿宋' },
+                    { value: 'mono', label: '等宽字体' },
+                ];
                 Object.values(customFonts).forEach(cf => {
-                    /* ★ 可变字体标注（用户实测：16.9MB 的 -VF 全屏大字渲染成本高，
-                       全局掉帧）——label 明示 + tooltip 提示开销，引导低端设备用静态
-                       字重版 */
                     const isVf = isVariableFontFace(cf.label, cf.family, cf.fileName);
-                    /* ★ 可变字体后缀双语（2026-09-22）：英文界面下用 " (Variable)"，
-                       字体名本身保留原 label（自定义字体文件名不做翻译） */
                     const vfSuffix = (globalThis.AriaI18n && globalThis.AriaI18n.getLanguage() === 'en-US') ? ' (Variable)' : '（可变字体）';
                     allOpts.push({ value: cf.key, label: isVf ? `${cf.label}${vfSuffix}` : cf.label, vf: isVf });
                 });
 
-                const onSelectFont = (fontVal, fontLabel) => {
-                    trigger.textContent = fontLabel;
-                    trigger.dataset.value = fontVal;
-                    trigger.removeAttribute('title');
-                    menu.querySelectorAll('.setting-dropdown-item').forEach(i => i.classList.remove('selected'));
-                    dd.classList.remove('open');
+                const advEnabled = Boolean(appSettings.interface && appSettings.interface.advancedFonts && appSettings.interface.advancedFonts.enabled);
 
+                const applySelection = (fontVal) => {
                     if (isDtkDropdown) {
                         if (!appSettings.interface) appSettings.interface = {};
                         if (!appSettings.interface.desktopLyrics) appSettings.interface.desktopLyrics = {};
                         appSettings.interface.desktopLyrics.fontFamily = fontVal;
                         try {
-                            /* ★ 写给歌词窗口的必须是完整 CSS 字体栈（短键歌词窗口解析不了），
-                               resolveDtkFontFamily 统一处理短键/自定义字体/旧完整串三类值 */
                             const resolved = resolveDtkFontFamily(fontVal, customFonts);
-                            if (resolved) {
-                                localStorage.setItem('aria_dtk_fontfamily', resolved);
-                            } else {
-                                localStorage.removeItem('aria_dtk_fontfamily');
-                            }
+                            if (resolved) localStorage.setItem('aria_dtk_fontfamily', resolved);
+                            else localStorage.removeItem('aria_dtk_fontfamily');
                             saveSettings();
-                        } catch (e) { /* ignore */ }
+                        } catch (e) { logCatch('fonts', e); }
                     } else if (isAppearanceModeDropdown) {
                         const targetMode = modeName || (previewEngineInstance && previewEngineInstance.currentMode) || currentViewMode || 'cover';
                         if (!appSettings.modeSettings) appSettings.modeSettings = {};
                         if (!appSettings.modeSettings[targetMode]) appSettings.modeSettings[targetMode] = {};
                         appSettings.modeSettings[targetMode].fontFamily = fontVal;
-                        if (previewEngineInstance) {
-                            previewEngineInstance.setModeVar('fontFamily', fontVal);
-                        }
-                        if (currentViewMode === targetMode) {
-                            /* ★ 模式字体独立生效，**且只作用于播放器容器**（不写根节点）：
-                               default/inherit 表示「跟随字体设置」= 清除容器级覆盖。
-                               此前调 applyFontFamily 会写 documentElement，等于顺手把设置页
-                               控件与标题栏的字体也改了 —— 用户原话：「在歌曲模式里切换字体，
-                               却像是切换了全局字体（设置页的字体变了）」。 */
-                            applyModeFontFamily(fontVal);
-                        }
+                        if (previewEngineInstance) previewEngineInstance.setModeVar('fontFamily', fontVal);
+                        if (currentViewMode === targetMode) applyModeFontFamily(fontVal);
                         saveSettings();
+                        syncModeOverrideBadges(targetMode);
                     } else {
                         setSettingValue('fontFamily', fontVal);
                     }
                 };
 
-                allOpts.forEach(opt => {
-                    const item = document.createElement('div');
-                    const isSel = (opt.value === currentVal || (opt.value === 'default' && (currentVal === 'inherit' || !currentVal)));
-                    item.className = 'setting-dropdown-item' + (isSel ? ' selected' : '');
-                    item.textContent = opt.label;
-                    item.dataset.value = opt.value;
-                    /* ★ 所见即所得：选项本身用对应字体渲染 */
-                    item.style.fontFamily = previewFamilyOf(opt.value);
-                    item.onclick = (e) => {
-                        e.stopPropagation();
-                        item.classList.add('selected');
-                        onSelectFont(opt.value, opt.label);
-                    };
-                    menu.appendChild(item);
+                mountDropdown(dd, allOpts, currentVal, {
+                    placeholder: defaultLabel,
+                    decorateItem: (opt, item) => {
+                        item.style.fontFamily = previewFamilyOf(opt.value);
+                    },
+                    decorateTrigger: (opt, trigger) => {
+                        const active = opt || allOpts[0];
+                        trigger.removeAttribute('title');
+                        trigger.removeAttribute('data-tooltip');
+                        if (active && active.vf) {
+                            trigger.setAttribute('data-tooltip', `${active.label}（可变字体：全屏大字渲染开销较高，低端设备建议换用静态字重版本）`);
+                        } else if (!isAppearanceModeDropdown && !isDtkDropdown && advEnabled) {
+                            trigger.setAttribute('data-tooltip', '已开启多语言字体匹配：全局字体作为未配置语言的回退字体');
+                        }
+                        trigger.style.fontFamily = previewFamilyOf(active ? active.value : 'default');
+                    },
+                    onSelect: (opt) => applySelection(opt.value),
                 });
-
-                const activeOpt = allOpts.find(o => o.value === currentVal || (o.value === 'default' && (currentVal === 'inherit' || !currentVal))) || allOpts[0];
-                trigger.textContent = activeOpt ? activeOpt.label : ((isAppearanceModeDropdown || isDtkDropdown) ? (isDtkDropdown ? '默认（跟随全局字体）' : '跟随字体设置') : '默认');
-                trigger.dataset.value = activeOpt ? activeOpt.value : 'default';
-                /* ★ 消除双重 tooltip：绝不设原生 title（否则会弹系统原生灰底框），需要提示统一走 data-tooltip */
-                trigger.removeAttribute('title');
-                trigger.removeAttribute('data-tooltip');
-                /* ★ 可变字体选中时提示渲染开销 */
-                if (activeOpt && activeOpt.vf) {
-                    trigger.setAttribute('data-tooltip', `${activeOpt.label}（可变字体：全屏大字渲染开销较高，低端设备建议换用静态字重版本）`);
-                }
-                /* ★ trigger 用当前选中字体渲染（所见即所得） */
-                trigger.style.fontFamily = previewFamilyOf(activeOpt ? activeOpt.value : 'default');
-
-                /* ★ 多语言字体匹配开启时不拦截全局字体下拉：以 data-tooltip 提示作用域 */
-                const advEnabled = appSettings.interface && appSettings.interface.advancedFonts && appSettings.interface.advancedFonts.enabled;
-                if (!isAppearanceModeDropdown && !isDtkDropdown && advEnabled) {
-                    trigger.setAttribute('data-tooltip', '已开启多语言字体匹配：全局字体作为未配置语言的回退字体');
-                }
             });
         }
 

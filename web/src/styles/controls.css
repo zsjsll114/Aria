@@ -150,3 +150,78 @@
         /* ========== 视图切换按钮（已移至右上角） ========== */
         /* ★ 用户反馈：切换样式按钮不应有 selected/主题色样式（仅 hover 微亮），删除此规则 */
 
+        /* ========== 加载中 / 网络重缓冲视觉反馈（仅表现流光提示，不占用交互） ========== */
+        @keyframes ariaTrackShimmer {
+            0% { background-position: -70% 0; }
+            100% { background-position: 170% 0; }
+        }
+
+        @keyframes ariaPlayPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(var(--aria-accent-rgb, 255, 255, 255), 0.42);
+            }
+            50% {
+                box-shadow: 0 0 0 7px rgba(var(--aria-accent-rgb, 255, 255, 255), 0);
+            }
+        }
+
+        body.aria-audio-loading .progress-track::after,
+        body.aria-audio-buffering .progress-track::after,
+        body.aria-audio-loading .bottom-progress-track::after,
+        body.aria-audio-buffering .bottom-progress-track::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 3;
+            background-image: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(var(--aria-accent-rgb, 255, 255, 255), 0.85) 50%,
+                transparent 100%
+            );
+            background-size: 42% 100%;
+            background-repeat: no-repeat;
+            animation: ariaTrackShimmer 1.15s linear infinite;
+        }
+
+        body.aria-audio-loading .play-button,
+        body.aria-audio-buffering .play-button,
+        body.aria-audio-loading .bottom-play-btn,
+        body.aria-audio-buffering .bottom-play-btn {
+            animation: ariaPlayPulse 1.4s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.aria-audio-loading .progress-track::after,
+            body.aria-audio-buffering .progress-track::after,
+            body.aria-audio-loading .bottom-progress-track::after,
+            body.aria-audio-buffering .bottom-progress-track::after,
+            body.aria-audio-loading .play-button,
+            body.aria-audio-buffering .play-button,
+            body.aria-audio-loading .bottom-play-btn,
+            body.aria-audio-buffering .bottom-play-btn {
+                animation: none;
+            }
+        }
+
+        html#ariaRoot.is-software-renderer body.aria-audio-loading .progress-track::after,
+        html#ariaRoot.is-software-renderer body.aria-audio-buffering .progress-track::after,
+        html#ariaRoot.is-software-renderer body.aria-audio-loading .bottom-progress-track::after,
+        html#ariaRoot.is-software-renderer body.aria-audio-buffering .bottom-progress-track::after,
+        html#ariaRoot body.perf-minimal.aria-audio-loading .progress-track::after,
+        html#ariaRoot body.perf-minimal.aria-audio-buffering .progress-track::after,
+        html#ariaRoot body.perf-minimal.aria-audio-loading .bottom-progress-track::after,
+        html#ariaRoot body.perf-minimal.aria-audio-buffering .bottom-progress-track::after,
+        html#ariaRoot.is-software-renderer body.aria-audio-loading .play-button,
+        html#ariaRoot.is-software-renderer body.aria-audio-buffering .play-button,
+        html#ariaRoot.is-software-renderer body.aria-audio-loading .bottom-play-btn,
+        html#ariaRoot.is-software-renderer body.aria-audio-buffering .bottom-play-btn,
+        html#ariaRoot body.perf-minimal.aria-audio-loading .play-button,
+        html#ariaRoot body.perf-minimal.aria-audio-buffering .play-button,
+        html#ariaRoot body.perf-minimal.aria-audio-loading .bottom-play-btn,
+        html#ariaRoot body.perf-minimal.aria-audio-buffering .bottom-play-btn {
+            animation: none;
+        }
+

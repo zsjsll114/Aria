@@ -127,7 +127,7 @@ function fmtCount(n) {
 
 /* ---------------- 能力声明 ---------------- */
 
-/** 该源是否支持搜索出 MV。汽水底层库没有任何 video 方法（见 docs/搜索扩展…§二），一律 false。 */
+/** 该源是否支持搜索出 MV。 */
 /** @param {string} source @returns {boolean} */
 export function mvSearchSupported(source) {
     const k = selfhostKeyOf(source);

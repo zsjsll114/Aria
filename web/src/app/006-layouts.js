@@ -23,9 +23,44 @@ Aria.__setSongView = function (mode) {
     writePref('aria_song_view', Aria.__songView === 'grid');
 };
 
-Aria.__applySongViewTo = function (el) {
+Aria.__applySongViewTo = function (el, enabled) {
     if (!el) return;
-    el.classList.toggle('song-grid-view', Aria.__songView === 'grid');
+    if (enabled === false || Aria.__songView !== 'grid') {
+        el.classList.remove('song-grid-view');
+        return;
+    }
+    const q = typeof el.querySelector === 'function' ? el.querySelector.bind(el) : null;
+    const hasGridPayload = q ? Boolean(q('.result-item, .sk-grid')) : false;
+    const hasNonSongBoard = q ? Boolean(q('.rank-board-grid') || (q('.playlist-item') && !hasGridPayload)) : false;
+    el.classList.toggle('song-grid-view', hasGridPayload && !hasNonSongBoard);
+};
+
+Aria.__clearSongView = function (el, resetScroll = true) {
+    if (!el) return;
+    el.classList.remove('song-grid-view');
+    if (resetScroll) el.scrollTop = 0;
+};
+
+Aria.__syncAllSongViews = function () {
+    if (typeof document === 'undefined') return;
+    const isGrid = Aria.__songView === 'grid';
+    document.querySelectorAll('[data-song-view-btn]').forEach((btn) => {
+        btn.className = 'view-toggle-btn' + (isGrid ? ' active' : '');
+        btn.title = isGrid ? '当前：宫格视图，点击切回列表' : '当前：列表视图，点击切换宫格';
+        btn.innerHTML = isGrid ? VIEW_ICOS.grid : VIEW_ICOS.list;
+    });
+    document.querySelectorAll('.song-grid-view, #rankList, #favoritesList, #playlistsList, #selfFavList, #searchResults').forEach((el) => {
+        Aria.__applySongViewTo(el);
+    });
+};
+
+Aria.__mountSongView = function (listEl) {
+    if (!listEl) return;
+    const head = listEl.querySelector('.rank-list-head');
+    if (head && !head.querySelector('[data-song-view-btn]')) {
+        head.appendChild(Aria.__songViewBtn(listEl));
+    }
+    Aria.__applySongViewTo(listEl);
 };
 
 const VIEW_ICOS = {
@@ -36,6 +71,7 @@ const VIEW_ICOS = {
 Aria.__songViewBtn = function (listEl) {
     const b = document.createElement('button');
     b.type = 'button';
+    b.setAttribute('data-song-view-btn', '1');
     const paint = () => {
         const isGrid = Aria.__songView === 'grid';
         b.className = 'view-toggle-btn' + (isGrid ? ' active' : '');
@@ -48,6 +84,7 @@ Aria.__songViewBtn = function (listEl) {
         Aria.__setSongView(Aria.__songView === 'grid' ? 'list' : 'grid');
         Aria.__applySongViewTo(listEl);
         paint();
+        Aria.__syncAllSongViews();
     });
     return b;
 };

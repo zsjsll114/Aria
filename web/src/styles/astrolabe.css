@@ -1,0 +1,183 @@
+/* ============================================================
+ * web/src/styles/astrolabe.css — 「画册 · Folio」（mode: astrolabe）全屏舞台样式与不变量
+ *
+ * 严格满足 tests/js/test_view_mode_stage.js 的全屏舞台不变量：
+ *   1. 显式 display:none 隐藏 .player-controls-wrapper 与 .lyrics-area-wrapper
+ *   2. 舞台绝对定位铺满 .player-container，底部浮动播放控件栏与右上角工具栏保持交互
+ * ============================================================ */
+
+.player-container.view-astrolabe {
+    flex-direction: column;
+    padding-bottom: 0;
+    background: #111318 !important;
+}
+
+.player-container.view-astrolabe .visualizer-stage-astrolabe {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.player-container.view-astrolabe .player-controls-wrapper,
+.player-container.view-astrolabe .lyrics-area-wrapper {
+    display: none !important;
+}
+
+body:not(.mv-bg-on) .player-container.view-astrolabe .blur-background,
+body:not(.mv-bg-on) .player-container.view-astrolabe .color-overlay {
+    display: none !important;
+}
+
+.player-container.view-astrolabe .top-action-buttons {
+    display: flex !important;
+    position: absolute !important;
+    top: calc(var(--titlebar-top-offset, 0px) + clamp(10px, 2vh, 30px)) !important;
+    right: clamp(10px, 2vw, 30px) !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-astrolabe .bottom-control-bar {
+    display: flex !important;
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 90 !important;
+    margin: 0 !important;
+    background: rgba(14, 16, 22, 0.44) !important;
+    backdrop-filter: blur(26px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+    pointer-events: auto !important;
+}
+
+.player-container.view-astrolabe .flyin-translation-area {
+    display: block !important;
+    position: absolute !important;
+    bottom: 140px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90% !important;
+    max-width: 720px !important;
+    text-align: center !important;
+    z-index: 85 !important;
+    pointer-events: none !important;
+    transition: opacity 0.32s ease !important;
+}
+
+.visualizer-stage-astrolabe,
+.vis-astrolabe-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    user-select: none;
+}
+
+.vis-astrolabe-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+}
+
+.vis-astrolabe-subtitles {
+    position: absolute;
+    left: 50%;
+    bottom: 112px;
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: min(86vw, 1080px);
+    text-align: center;
+    pointer-events: none;
+}
+
+.vis-astrolabe-sub-romaji {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(245, 239, 228, 0.78);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.72);
+    line-height: 1.35;
+}
+
+.vis-astrolabe-sub-trans {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: rgba(245, 239, 228, 0.94);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.80);
+    line-height: 1.4;
+}
+
+/* 模式选择卡片预览图：瑞士天体破框圆盘 + 正负形反色 */
+.view-mode-preview-astrolabe {
+    position: relative;
+    background: radial-gradient(90% 90% at 24% 38%, #1a2030 0%, #0e1118 70%, #080a0f 100%);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.vm-astro-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.vm-astro-meta {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    z-index: 3;
+    font: 700 8px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.22em;
+    color: rgba(242, 235, 220, 0.68);
+    border-left: 2px solid #d94e34;
+    padding-left: 6px;
+}
+
+.vm-astro-word {
+    position: relative;
+    z-index: 3;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 20px;
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    transform: translateX(-14px);
+}
+
+.vm-astro-word .light {
+    color: #f4eee2;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+.vm-astro-word .inv {
+    color: #12141b;
+    padding: 0 2px;
+}
+
+.vm-astro-cap {
+    position: absolute;
+    left: 14px;
+    bottom: 13px;
+    z-index: 3;
+    font: 600 7px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.24em;
+    color: rgba(242, 235, 220, 0.44);
+}

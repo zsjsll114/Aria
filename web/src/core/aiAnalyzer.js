@@ -11,7 +11,7 @@ import { hasRealWordTiming, realWordsOf } from '../parsers/wordTiming.js'; // �
 import { aiCacheGet, aiCacheSet } from '../services/aiCache.js';
 import { applyAITheme } from './themeEngine.js';
 import { t } from './i18n.js';
-import { cleanApiBase, buildGeminiUrl, GEMINI_DEFAULT_BASE, GEMINI_DEFAULT_MODEL } from '../services/aiClient.js';
+import { cleanApiBase, buildGeminiUrl, GEMINI_DEFAULT_MODEL } from '../services/aiClient.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 
 /** 获取歌词纯文本（从 state.lyrics 数组中提取）
@@ -111,6 +111,7 @@ export function getLyricsTextForAI() {
  * @returns {any}
  */
 export function buildAIRequest(provider, apiKey, apiBase, model, systemPrompt, userPrompt, stream, isReasoningModel, useProxy = true) {
+    const useGeminiProxy = provider === 'gemini' && useProxy !== false;
     /* ★ 模型原生最大输出 Token：按「provider + 模型名」回落模型上限，
        Gemini 3.5 Flash Lite / 3.5 Flash 放开到 65536，其余 8192。
        注意用「回退默认后的最终模型名」（mdl）判断，与调用方传空 model 时行为一致 */
@@ -120,7 +121,7 @@ function modelMaxOutput(mdl) {
     }
     const providerCfg = /** @type {Record<string, any>} */ (AI_PROVIDERS)[provider] || AI_PROVIDERS.openai;
     if (provider === 'gemini') {
-        const base = cleanApiBase(apiBase || GEMINI_DEFAULT_BASE, useProxy);
+        const base = cleanApiBase(apiBase, useGeminiProxy);
         const mdl = (model || GEMINI_DEFAULT_MODEL).trim();
         const action = stream ? 'streamGenerateContent' : 'generateContent';
         const url = buildGeminiUrl({ apiBase: base, model: mdl, apiKey, action, stream });
@@ -145,7 +146,7 @@ function modelMaxOutput(mdl) {
         const proxyToken = (globalThis.appSettings && globalThis.appSettings.ai && globalThis.appSettings.ai.proxyToken || '').trim();
         /** @type {Record<string, string>} */
         const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
-        if (proxyToken) headers['x-proxy-token'] = proxyToken;
+        if (useGeminiProxy && proxyToken) headers['x-proxy-token'] = proxyToken;
         return { url, headers, body: JSON.stringify(body) };
     } else {
         let base = (apiBase || providerCfg.defaultBase).replace(/\/+$/, '');
@@ -424,8 +425,8 @@ export function buildSystemPrompt(opts = {}) {
 {
     "mood": "情绪关键词（如：梦幻、忧郁、热烈、赛博朋克）",
     "description": "主题描述（中文，15-30个字，第一人称听众视角的文学性意识流句子）",
-    "primary_color": "主色调十六进制代码（如：#FF5733）",
-    "secondary_color": "辅助色十六进制代码（如：#C70039）",
+    "primary_color": "主色调十六进制代码（低饱和高级感，S≤0.75，如：#B8867D）",
+    "secondary_color": "辅助色十六进制代码（与主色同色系或邻近色，如：#7D9BB8）",
     "text_shadow": "文字阴影强度（low, medium, high）",
     "animation_speed": "动画速度系数（0.8-1.5，1.0为正常速度，<1.0为慢速，>1.0为快速）",
     "background_blur": "背景模糊半径（如：40px, 60px, 80px）",
@@ -437,7 +438,7 @@ export function buildSystemPrompt(opts = {}) {
         "focal_keywords": ["核心重点大字1", "核心重点大字2"]
     },
     "emotion_words": [
-        {"word": "歌词中富有感情色彩的词语", "color": "#FF6B6B", "emotion": "情感类型", "line": 0}
+        {"word": "歌词中富有感情色彩的词语", "color": "#8FA8B8", "emotion": "情感类型", "line": 0}
     ]
 }
 
@@ -445,7 +446,12 @@ export function buildSystemPrompt(opts = {}) {
 - 返回至少 20 个、至多 40 个（必须是歌词中出现的原文，去掉 L 行号前缀和时间标记，与歌词文字完全一致）
 - 优先从 ★ 标记的高潮行与【高潮时间轴】范围内选取
 - 同一个词只需出现一次（着色会覆盖全文匹配处），不要重复
-- 每个词分配能反映其情感的十六进制颜色（悲伤→冷蓝，热情→暖红，希望→明亮黄绿），与主色调有区分度
+- 每个词分配能反映其情感的十六进制颜色，整组必须像一套精心调配的高级色板，而非随机荧光色：
+  · 饱和度不超过 75%（S≤0.75），带一点灰度更高级；严禁高饱和荧光纯色（如 #FF0000、#00FF00）
+  · 亮度落在 52%~80%（深色背景上清晰可读，又不刺眼）
+  · 以 primary_color 为锚，整组走同色系/邻近色加少量互补点缀，色相两两间隔至少 28°，避免一堆几乎相同的颜色
+  · 情感靠色相与冷暖倾向表达（悲伤→冷蓝灰、热情→暖红棕、希望→明亮黄绿），但都用降饱和的雅致版本
+  · 低饱和高级感示例：忧郁 #8FA8B8、炽热 #C98A7D、希望 #B8C98A、梦幻 #A79FC9
 - line 字段填该词首次出现的行号（仅作定位参考）
 - 不要选虚词（the/a/an/to/me/and/of/in/on/的/了/是/在）
 - 拉丁文：每个 word 必须是完整独立单词，不得含空格/标点/撇号/连字符；短语应拆成多个条目
@@ -477,8 +483,8 @@ export function buildEmotionSystemPrompt(opts = {}) {
 {
     "mood": "情绪关键词（如：梦幻、忧郁、热烈、赛博朋克）",
     "description": "主题描述（中文，15-30个字，第一人称听众视角的文学性意识流句子）",
-    "primary_color": "主色调十六进制代码（如：#FF5733）",
-    "secondary_color": "辅助色十六进制代码（如：#C70039）",
+    "primary_color": "主色调十六进制代码（低饱和高级感，S≤0.75，如：#B8867D）",
+    "secondary_color": "辅助色十六进制代码（与主色同色系或邻近色，如：#7D9BB8）",
     "text_shadow": "文字阴影强度（low, medium, high）",
     "animation_speed": "动画速度系数（0.8-1.5，1.0为正常速度，<1.0为慢速，>1.0为快速）",
     "background_blur": "背景模糊半径（如：40px, 60px, 80px）",
@@ -490,7 +496,7 @@ export function buildEmotionSystemPrompt(opts = {}) {
         "focal_keywords": ["核心重点大字1", "核心重点大字2"]
     },
     "emotion_words": [
-        {"word": "歌词中富有感情色彩的词语", "color": "#FF6B6B", "emotion": "情感类型", "line": 0}
+        {"word": "歌词中富有感情色彩的词语", "color": "#8FA8B8", "emotion": "情感类型", "line": 0}
     ]
 }
 
@@ -498,7 +504,12 @@ export function buildEmotionSystemPrompt(opts = {}) {
 - 返回至少 20 个、至多 40 个（必须是歌词中出现的原文，去掉 L 行号前缀和时间标记，与歌词文字完全一致）
 - 优先从 ★ 标记的高潮行与【高潮时间轴】范围内选取
 - 同一个词只需出现一次（着色会覆盖全文匹配处），不要重复
-- 每个词分配能反映其情感的十六进制颜色（悲伤→冷蓝，热情→暖红，希望→明亮黄绿），与主色调有区分度
+- 每个词分配能反映其情感的十六进制颜色，整组必须像一套精心调配的高级色板，而非随机荧光色：
+  · 饱和度不超过 75%（S≤0.75），带一点灰度更高级；严禁高饱和荧光纯色（如 #FF0000、#00FF00）
+  · 亮度落在 52%~80%（深色背景上清晰可读，又不刺眼）
+  · 以 primary_color 为锚，整组走同色系/邻近色加少量互补点缀，色相两两间隔至少 28°，避免一堆几乎相同的颜色
+  · 情感靠色相与冷暖倾向表达（悲伤→冷蓝灰、热情→暖红棕、希望→明亮黄绿），但都用降饱和的雅致版本
+  · 低饱和高级感示例：忧郁 #8FA8B8、炽热 #C98A7D、希望 #B8C98A、梦幻 #A79FC9
 - line 字段填该词首次出现的行号（仅作定位参考）
 - 不要选虚词（the/a/an/to/me/and/of/in/on/的/了/是/在）
 - 拉丁文：每个 word 必须是完整独立单词，不得含空格/标点/撇号/连字符；短语应拆成多个条目

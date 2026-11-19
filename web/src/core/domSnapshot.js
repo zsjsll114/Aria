@@ -241,14 +241,25 @@ function _plan(src, clone, out, hiddenSet, rootRef, gcs) {
 		   单独拿去 hide 就会让字消失（行为二分：全 hide → 0，无 hide → 1261，
 		   后 7 条 → 1185），而这 7 条里没有任何一条是 `.lyrics-area-wrapper` 的祖先。 */
 		out.plan.push([clone, 'display:none !important;']);
+		if (!out.hiddenClones) out.hiddenClones = [];
+		if (!out.hiddenSrcSet) out.hiddenSrcSet = new Set();
+		if (clone !== out.cloneRoot) out.hiddenClones.push(clone);
+		out.hiddenSrcSet.add(src);
 		return;
 	}
 	if (out.trackSrc && src === out.trackSrc) out.trackClone = clone;
 	let css = '';
 	try { css = cssTextFromComputed(cs, INLINE_PROPS, { keepPosition: src === rootRef }); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
-	/* 泄漏哨兵：源里是 fixed 定位且可见的元素。它们在 SVG 里"无处安放"，一个都不该留着。 */
+	/* 泄漏哨兵：源里是 fixed 定位且可见的元素。它们在 SVG 里"无处安放"，一个都不该留着。
+	   排除 `keepSet`（alsoKeep 画面层）及 `onlyRoot` 内部的视觉模式舞台/画布容器。 */
 	try {
-		if (String(getComputedStyle(src).getPropertyValue('position') || '').trim() === 'fixed') out.fixed.push(src);
+		const inKeep = Boolean(out.keepSet && out.keepSet.has(src));
+		const clsId = `${src.id || ''} ${typeof src.className === 'string' ? src.className : ''}`;
+		const inVisualStage = Boolean(out.onlyRoot && out.onlyRoot !== src && out.onlyRoot.contains(src)
+			&& (src.tagName === 'CANVAS' || /stage|layer|canvas|backdrop|wireframe|visual|prism|tunnel|vitrail|tempera|sonnet|dim|jizura|astrolabe|letterpress/i.test(clsId)));
+		if (!inKeep && !inVisualStage && String(getComputedStyle(src).getPropertyValue('position') || '').trim() === 'fixed') {
+			out.fixed.push(src);
+		}
 	} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 	out.plan.push([clone, css]);
 	const sk = src.children;
@@ -301,6 +312,37 @@ export function collectSubtrees(root, selectors) {
 }
 
 /**
+ * 把一段 inline style 里匹配到的外部 `url(...)` 替换为 `resolvedMap` 中对应的 `data:` URL，
+ * 未拿到（值为 `null`）的外部 URL 置为 `none`。兼容无引号、单引号与双引号三种写法。
+ *
+ * ★★ 此前 `split('url(' + u + ')')` 不匹配 `getComputedStyle` 必然带上的双引号
+ *    `url("https://...")`，导致 `.blur-background` 背景图在 SVG 里永远失效（背景变纯黑）。
+ * @param {string} style
+ * @param {Map<string, string|null>} resolvedMap
+ * @returns {{style:string, replaced:number, failed:number}}
+ */
+export function replaceCssUrls(style, resolvedMap) {
+	if (!style || typeof style !== 'string' || !style.includes('url(')) {
+		return { style: style || '', replaced: 0, failed: 0 };
+	}
+	let replaced = 0;
+	let failed = 0;
+	const next = style.replace(/url\((['"]?)([^'")]+)\1\)/g, (full, _q, rawUrl) => {
+		const u = String(rawUrl || '').trim();
+		if (!u || u.startsWith('data:') || u.startsWith('#')) return full;
+		if (!resolvedMap || !resolvedMap.has(u)) return full;
+		const du = resolvedMap.get(u);
+		if (du) {
+			replaced++;
+			return `url("${du}")`;
+		}
+		failed++;
+		return 'none';
+	});
+	return { style: next, replaced, failed };
+}
+
+/**
  * 内联 `background-image: url(...)`。
  * ★ 这是「海报没背景」的根因：App 的模糊封面底是背景图层，用的是
  *   `background-image: url(https://…)`。SVG 作为独立图片加载时**不会去联网取外部资源**，
@@ -315,22 +357,18 @@ async function _inlineBackgroundImages(cloneRoot) {
 	for (const el of nodes) {
 		const style = el.getAttribute('style') || '';
 		if (!style.includes('url(')) continue;
-		const urls = [...style.matchAll(/url\((['"]?)([^'")]+)\1\)/g)].map(m => m[2]);
-		let next = style;
+		const urls = [...style.matchAll(/url\((['"]?)([^'")]+)\1\)/g)].map(m => String(m[2] || '').trim());
 		for (const u of urls) {
 			if (!u || u.startsWith('data:') || u.startsWith('#')) continue;
-			let du = cache.get(u);
-			if (du === undefined) {
-				du = await _fetchAsDataUrl(u);
-				cache.set(u, du);
+			if (!cache.has(u)) {
+				cache.set(u, await _fetchAsDataUrl(u));
 			}
-			if (du) { next = next.split(`url(${u})`).join(`url("${du}")`); replaced++; }
-			else { failed++; }
 		}
-		/* 取不到的背景直接摘掉：留着会让 SVG 去联网（必然失败），不如干净地没有 */
-		if (next !== style) {
-			next = next.replace(/url\((['"]?)(?![d#])[^'")]*\1\)/g, 'none');
-			el.setAttribute('style', next);
+		const res = replaceCssUrls(style, cache);
+		replaced += res.replaced;
+		failed += res.failed;
+		if (res.style !== style) {
+			el.setAttribute('style', res.style);
 		}
 	}
 	return { bgReplaced: replaced, bgFailed: failed };
@@ -344,16 +382,23 @@ export function clearDataUrlCache() { _dataUrlCache.clear(); }
 
 /** @param {string} raw @returns {Promise<string|null>} */
 async function _fetchAsDataUrl(raw) {
-	if (_dataUrlCache.has(raw)) return _dataUrlCache.get(raw);
+	if (_dataUrlCache.has(raw)) {
+		const cachedVal = _dataUrlCache.get(raw);
+		if (!cachedVal) _failedUrls.push(String(raw).slice(0, 120));
+		return cachedVal;
+	}
 	let fetchUrl = raw;
 	try {
 		const abs = new URL(raw, location.href);
 		fetchUrl = abs.origin === location.origin ? abs.href : `/proxy?url=${encodeURIComponent(abs.href)}`;
 	} catch { /* 解析不了就原样试 */ }
+	const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+	const timer = ac ? setTimeout(() => { try { ac.abort(); } catch { /* 忽略中止异常 */ } }, 3800) : null;
 	try {
-		const pr = await fetch(fetchUrl);
+		const pr = await fetch(fetchUrl, ac ? { signal: ac.signal } : undefined);
 		if (!pr.ok) throw new Error(`fetch ${pr.status}`);
 		const b = await pr.blob();
+		if (!b || b.size === 0) throw new Error('empty blob');
 		/* ★ 大图必须缩：内联进 SVG 的是 base64，体积是原图的 1.33 倍，
 		   而整份 SVG 会作为 data: URL 交给浏览器解析 —— 实测一张 1.7MB 的 PNG
 		   能把 SVG 顶到 18MB，解析明显变慢。长边压到 1600、转 JPEG 就足够海报用了。 */
@@ -368,6 +413,7 @@ async function _fetchAsDataUrl(raw) {
 			f.readAsDataURL(b);
 		});
 		const out = (du && du.length > 64) ? du : null;
+		if (!out) _failedUrls.push(String(raw).slice(0, 120));
 		_dataUrlCache.set(raw, out);
 		return out;
 	} catch (/** @type {any} */ e) {
@@ -375,6 +421,8 @@ async function _fetchAsDataUrl(raw) {
 		logCatch('domSnapshot', e);
 		_dataUrlCache.set(raw, null);
 		return null;
+	} finally {
+		if (timer !== null) clearTimeout(timer);
 	}
 }
 
@@ -416,9 +464,41 @@ const _failedUrls = [];
  *   每张海报都为它们走一遍网络抓取 + base64 内联，是「生成一张 10 秒」的主要来源。
  *   被隐藏的节点反正看不见，跳过它们只是省时间，产物一模一样。
  */
-/** @param {any} el @param {any} scope @returns {boolean} */
-function _inScope(el, scope) {
-	return !scope || scope === el || scope.contains(el);
+/** @param {any} el @param {any} scope @param {Set<any>|null} [keepSet] @returns {boolean} */
+function _inScope(el, scope, keepSet) {
+	return !scope || scope === el || scope.contains(el) || Boolean(keepSet && keepSet.has(el));
+}
+
+/**
+ * @param {any} el
+ * @param {Set<any>|null|undefined} hiddenSrcSet
+ * @param {any} srcRoot
+ * @returns {boolean}
+ */
+function _isInHiddenSubtree(el, hiddenSrcSet, srcRoot) {
+	if (!hiddenSrcSet || !hiddenSrcSet.size || !el) return false;
+	let cur = el;
+	while (cur) {
+		if (hiddenSrcSet.has(cur)) return true;
+		if (cur === srcRoot) break;
+		cur = cur.parentElement;
+	}
+	return false;
+}
+
+/**
+ * @param {any} srcEl
+ * @returns {boolean}
+ */
+function _isCanvasHiddenOrEmpty(srcEl) {
+	try {
+		if (!srcEl || !srcEl.width || !srcEl.height) return true;
+		const cs = getComputedStyle(srcEl);
+		if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return true;
+		const r = srcEl.getBoundingClientRect();
+		if (r.width <= 1 || r.height <= 1) return true;
+	} catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
+	return false;
 }
 
 /**
@@ -514,16 +594,25 @@ async function _reencodeImageDataUrl(url, maxEdge, quality) {
  * @param {any} srcRoot
  * @param {any} cloneRoot
  * @param {any} scope
+ * @param {Set<any>|null} [hiddenSrcSet]
+ * @param {Set<any>|null} [keepSet]
  * @returns {Promise<any>} {canvases, ok, blank}
  */
-async function _replaceCanvases(srcRoot, cloneRoot, scope) {
+async function _replaceCanvases(srcRoot, cloneRoot, scope, hiddenSrcSet, keepSet) {
 	const s = srcRoot.querySelectorAll('canvas');
 	const c = cloneRoot.querySelectorAll('canvas');
 	const n = Math.min(s.length, c.length);
 	let ok = 0;
 	let blank = 0;
 	for (let i = 0; i < n; i++) {
-		if (!_inScope(s[i], scope)) continue;
+		if (!_inScope(s[i], scope, keepSet)) continue;
+		if (_isInHiddenSubtree(s[i], hiddenSrcSet, srcRoot) || _isCanvasHiddenOrEmpty(s[i])) {
+			const img = document.createElement('img');
+			img.setAttribute('style', `${c[i].getAttribute('style') || ''}display:none !important;`);
+			img.setAttribute('src', TRANSPARENT_PIXEL);
+			c[i].parentNode.replaceChild(img, c[i]);
+			continue;
+		}
 		/* 先问引擎要（WebGL 唯一出路），再退到浏览器自带的 toDataURL */
 		let url = snapshotCanvas(s[i]);
 		const fromProvider = !!url;
@@ -544,12 +633,22 @@ async function _replaceCanvases(srcRoot, cloneRoot, scope) {
 		if (!fromProvider && usable && s[i].width * s[i].height > 0 && s[i].height * s[i].width <= 4e6) {
 			try {
 				const t = document.createElement('canvas');
-				t.width = 8; t.height = 8;
+				t.width = 24; t.height = 24;
 				const tx = /** @type {CanvasRenderingContext2D} */ (t.getContext('2d'));
-				tx.drawImage(s[i], 0, 0, 8, 8);
-				const d = tx.getImageData(0, 0, 8, 8).data;
+				tx.drawImage(s[i], 0, 0, 24, 24);
+				const d = tx.getImageData(0, 0, 24, 24).data;
 				let any = false;
-				for (let k = 3; k < d.length; k += 4) { if (/** @type {number} */ (d[k]) > 6) { any = true; break; } }
+				for (let k = 3; k < d.length; k += 4) { if (/** @type {number} */ (d[k]) > 2) { any = true; break; } }
+				if (!any) {
+					const ctx2d = s[i].getContext('2d');
+					if (ctx2d) {
+						const raw = ctx2d.getImageData(0, 0, s[i].width, s[i].height).data;
+						const stepPx = Math.max(1, Math.floor((s[i].width * s[i].height) / 6000));
+						for (let k = 3; k < raw.length; k += stepPx * 4) {
+							if (/** @type {number} */ (raw[k]) > 2) { any = true; break; }
+						}
+					}
+				}
 				if (!any) usable = false;
 			} catch { /* 读不了就按可用处理：宁可当可用，也别把有内容的画布误判成空白 */ }
 		}
@@ -566,16 +665,22 @@ async function _replaceCanvases(srcRoot, cloneRoot, scope) {
  * @param {any} srcRoot
  * @param {any} cloneRoot
  * @param {any} scope
+ * @param {Set<any>|null} [hiddenSrcSet]
+ * @param {Set<any>|null} [keepSet]
  * @returns {Promise<any>} {images, inlined, failed}
  */
-async function _inlineImages(srcRoot, cloneRoot, scope) {
+async function _inlineImages(srcRoot, cloneRoot, scope, hiddenSrcSet, keepSet) {
 	const s = srcRoot.querySelectorAll('img');
 	const c = cloneRoot.querySelectorAll('img');
 	const n = Math.min(s.length, c.length);
 	let inlined = 0;
 	let failed = 0;
 	for (let i = 0; i < n; i++) {
-		if (!_inScope(s[i], scope)) continue;
+		if (!_inScope(s[i], scope, keepSet)) continue;
+		if (_isInHiddenSubtree(s[i], hiddenSrcSet, srcRoot)) {
+			c[i].setAttribute('src', TRANSPARENT_PIXEL);
+			continue;
+		}
 		const raw = (s[i] && (s[i].currentSrc || s[i].src || '')) || '';
 		if (!raw) { c[i].setAttribute('src', TRANSPARENT_PIXEL); failed++; continue; }
 		if (raw.startsWith('data:')) { inlined++; continue; }
@@ -843,7 +948,16 @@ export async function snapshotElement(root, opts = {}) {
 	const clone = /** @type {Element} */ (root.cloneNode(true));
 	/** stats 是边扫描边填的临时统计袋（plan/fixed 为配对数组，末尾会置 undefined 释放） */
 	/** @type {any} */
-	const stats = { count: 0, hidden: 0, plan: [], fixed: [], trackSrc: opts.trackElement || null };
+	const stats = {
+		count: 0,
+		hidden: 0,
+		plan: [],
+		fixed: [],
+		hiddenClones: [],
+		hiddenSrcSet: new Set(),
+		cloneRoot: clone,
+		trackSrc: opts.trackElement || null,
+	};
 	if (opts.debug) stats.debugEls = [];
 	if (opts.onlyWithin) {
 		try {
@@ -899,7 +1013,6 @@ export async function snapshotElement(root, opts = {}) {
 			try { el.setAttribute('style', css); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
 		}
 		stats.plan = undefined;
-		stats.keepSet = undefined;
 		/* 几何对账：源 vs 克隆体，逐对读矩形。见 `_plan` 里 `debugEls` 的说明。 */
 		if (stats.debugEls && stats.debugEls.length) {
 			const list = [];
@@ -954,7 +1067,6 @@ export async function snapshotElement(root, opts = {}) {
 		}
 		stats.trackSrc = undefined;
 		stats.trackClone = undefined;
-		stats.keepSet = undefined;
 		/* 根节点尺寸已在读样式**之前**钉死（见上）—— 这里不再重复设置：
 		   写回阶段用的是 computed 值，其中 width/height/margin 已经是钉死后的正确值。 */
 	} catch (/** @type {any} */ e) {
@@ -963,22 +1075,38 @@ export async function snapshotElement(root, opts = {}) {
 
 	try {
 		const scope = stats.onlyRoot || null;
+		const keepSet = stats.keepSet || null;
+		const hiddenSrcSet = stats.hiddenSrcSet || null;
 		/* ★ 分段量体积：SVG 一大，出图就慢，而"大"可能来自四个完全不同的地方
 		   （内联样式本身 / canvas 快照 / <img> / background-image）。
 		   没有分段数字就只能凭猜优化。 */
 		const sizeOf = () => { try { return new XMLSerializer().serializeToString(clone).length; } catch { return 0; } };
 		stats.lenPlan = sizeOf();
 
-		const cv = await _replaceCanvases(root, clone, scope);
-		stats.canvases = cv.canvases;
-		stats.blankCanvases = cv.blank;
-		stats.lenCanvas = sizeOf();
-
-		const im = await _inlineImages(root, clone, scope);
+		const im = await _inlineImages(root, clone, scope, hiddenSrcSet, keepSet);
 		stats.images = im.images;
 		stats.inlined = im.inlined;
 		stats.failedImages = im.failed;
 		stats.lenImgs = sizeOf();
+
+		const cv = await _replaceCanvases(root, clone, scope, hiddenSrcSet, keepSet);
+		stats.canvases = cv.canvases;
+		stats.blankCanvases = cv.blank;
+		stats.lenCanvas = sizeOf();
+
+		/* 样式已读完写回、canvas/img 索引映射已完成：剔除 display:none 隐藏克隆子树
+		   （如 settingsOverlay 等 ~750KB 弹窗 DOM），既跳过 bg 扫描又大幅缩小 SVG。 */
+		if (Array.isArray(stats.hiddenClones)) {
+			for (const hc of stats.hiddenClones) {
+				if (hc && hc !== clone && hc.parentNode) {
+					try { hc.parentNode.removeChild(hc); } catch (/** @type {any} */ e) { logCatch('domSnapshot', e); }
+				}
+			}
+		}
+		stats.hiddenClones = undefined;
+		stats.hiddenSrcSet = undefined;
+		stats.keepSet = undefined;
+		stats.cloneRoot = undefined;
 
 		const bg = await _inlineBackgroundImages(clone);
 		stats.bgReplaced = bg.bgReplaced;

@@ -34,6 +34,7 @@ import {
 import { loadPixi } from '../loadPixi.js';
 import { setTemperaTransitionBlur } from './temperaSceneFilters.js';
 import { resolveTemperaPalette } from './temperaPalette.js';
+import { clampSonnetScreenContainerTransform } from '../sonnet/sonnetViewportFit.js';
 import {
     clamp01,
     easeTemperaEnter,
@@ -559,6 +560,23 @@ export class TemperaPixiRuntime {
         view.container.alpha = 1 - exit;
         view.container.scale.set((1 + (frame.scale - 1) * camera) * (1 - exit * 0.08));
         view.container.rotation = frame.rotation * camera;
+        if (view.contentBounds && view.shot.endTime > view.shot.startTime && exit <= 0.05 && enter >= 0.95) {
+            const clamped = clampSonnetScreenContainerTransform(view.contentBounds, {
+                width,
+                height,
+                marginX: Math.max(36, width * 0.065),
+                marginY: Math.max(32, height * 0.075),
+                pivotX: width / 2,
+                pivotY: height / 2,
+                x: view.container.x,
+                y: view.container.y,
+                scale: view.container.scale.x,
+                rotation: view.container.rotation,
+            });
+            view.container.scale.set(clamped.scale);
+            view.container.x = clamped.x;
+            view.container.y = clamped.y;
+        }
 
         // Two ends on purpose. The graphics' entrance stagger is paced against the lyric this
         // shot carries; the steady flow creep runs for the shot's whole visible life, which is

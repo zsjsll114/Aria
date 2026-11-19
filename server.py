@@ -32,13 +32,13 @@ try:
 except Exception:
     pass
 
-PORT = 8001
+PORT = int(os.environ.get('ARIA_PORT', '8001') or '8001')
 
 # ★ 版本号唯一来源（single source of truth）。
 #   package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml 的版本号
 #   都由 scripts/sync_version.py 从这里同步出去，CI 用 --check 门禁防漂移。
 #   改版本只许改这一行，别去动那三处。
-SERVER_VERSION = '2.1.0'
+SERVER_VERSION = '3.0.0'
 
 # ★ 监听地址：默认只绑本机回环（127.0.0.1）。
 #   历史行为是绑 ""（等价 0.0.0.0 全接口），意味着同网段任何设备都能直接访问
@@ -105,6 +105,7 @@ import json
 import threading
 import time
 import atexit
+from collections import OrderedDict
 
 # ==================== 音频缓存写入互斥 ====================
 # 同一首歌的 .tmp 缓存同一时刻只允许一个线程写。
@@ -192,11 +193,31 @@ def _qq_music_cookie():
         return ''
 
 
-def _qq_song_id(songmid):
-    """songmid → 数字 songid（lyric_download 只认数字 id）。匿名可查。"""
+_QQ_ID_MID_CACHE = OrderedDict()
+_QQ_ID_MID_LOCK = threading.Lock()
+_QQ_ID_MID_MAX = 512
+
+
+def _qq_song_detail(songmid='', songid=''):
+    """查询 QQ 官方 get_song_detail_yqq 并双向缓存 id <-> mid，供 QRC 歌词与 /api/qq/mid 共用。"""
+    mid_k = f'mid:{songmid}' if songmid else ''
+    id_k = f'id:{songid}' if songid else ''
+    with _QQ_ID_MID_LOCK:
+        for k in (mid_k, id_k):
+            if k and k in _QQ_ID_MID_CACHE:
+                _QQ_ID_MID_CACHE.move_to_end(k)
+                return _QQ_ID_MID_CACHE[k]
+    sid_int = 0
+    if songid:
+        try:
+            sid_int = int(str(songid).strip())
+        except ValueError:
+            sid_int = 0
+    if not songmid and not sid_int:
+        return {}
     payload = {'comm': {'uin': '0', 'format': 'json', 'ct': 24, 'cv': 0},
                'req': {'module': 'music.pf_song_detail_svr', 'method': 'get_song_detail_yqq',
-                       'param': {'song_type': 0, 'song_mid': songmid, 'song_id': 0}}}
+                       'param': {'song_type': 0, 'song_mid': songmid or '', 'song_id': sid_int}}}
     url = ('https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data='
            + urllib.parse.quote(json.dumps(payload)))
     h = {'User-Agent': UA_DESKTOP, 'Referer': 'https://y.qq.com/'}
@@ -204,10 +225,27 @@ def _qq_song_id(songmid):
     if cookie:
         h['Cookie'] = cookie
     req = urllib.request.Request(url, headers=h)
-    with urllib.request.urlopen(req, timeout=8) as r:
+    with urllib.request.urlopen(req, timeout=6) as r:
         data = json.loads(r.read().decode('utf-8', 'replace'))
     info = ((data.get('req') or {}).get('data') or {}).get('track_info') or {}
-    return str(info.get('id') or '')
+    out = {'id': str(info.get('id') or sid_int or ''), 'mid': str(info.get('mid') or songmid or '')}
+    if out['id'] and out['mid']:
+        with _QQ_ID_MID_LOCK:
+            _QQ_ID_MID_CACHE[f"mid:{out['mid']}"] = out
+            _QQ_ID_MID_CACHE[f"id:{out['id']}"] = out
+            while len(_QQ_ID_MID_CACHE) > _QQ_ID_MID_MAX:
+                _QQ_ID_MID_CACHE.popitem(last=False)
+    return out
+
+
+def _qq_song_id(songmid):
+    """songmid → 数字 songid（lyric_download 只认数字 id）。匿名可查。"""
+    return str(_qq_song_detail(songmid=songmid).get('id') or '')
+
+
+def _qq_song_mid(songid):
+    """数字 songid → songmid，供缺 mid 时不依赖公网 vkeys 直通自建 QQ 服务。"""
+    return str(_qq_song_detail(songid=songid).get('mid') or '')
 
 
 def _qq_fetch_qrc(songmid='', songid=''):
@@ -250,43 +288,54 @@ def _probe_audio_url(url, extra_headers=None):
     """轻量探测音频URL可播性: Range 读首2KB即断，不落盘不转发。
     返回 {ok, status, contentType, total}；total 为完整文件字节数
     （从 Content-Range 'bytes 0-2047/N' 或 Content-Length 解析，未知则 0）。
-    调用方可用 total 与期望时长估算是否"试听预览"（VIP 未开通时常见）。"""
+    对偶发超时/网络抖动重试 1 次（HTTP 4xx/5xx 不重试），减少慢 CDN 握手误判成试听/不可播。"""
     h = {'User-Agent': UA_DESKTOP, 'Accept': '*/*', 'Range': 'bytes=0-2047'}
     if extra_headers:
         h.update(extra_headers)
-    try:
-        req = urllib.request.Request(url, headers=h)
-        with urllib.request.urlopen(req, timeout=5) as r:
-            data = r.read(2048)
-            ctype = (r.headers.get('Content-Type') or '').lower()
-            # 2xx 且有数据且非HTML错误页才算可播
-            ok = len(data) > 0 and r.status in (200, 206) and 'text/html' not in ctype
-            total = 0
-            cr = r.headers.get('Content-Range') or ''
-            m = __import__('re').search(r'/\s*(\d+)\s*$', cr)
-            if m:
-                total = int(m.group(1))
-            elif r.status == 200:
-                cl = r.headers.get('Content-Length')
-                if cl and cl.isdigit():
-                    total = int(cl)
-            return {'ok': ok, 'status': r.status,
-                    'contentType': r.headers.get('Content-Type', ''),
-                    'total': total}
-    except Exception as e:
-        return {'ok': False, 'err': str(e)[:160]}
+    last_err = ''
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers=h)
+            with urllib.request.urlopen(req, timeout=3.5) as r:
+                data = r.read(2048)
+                ctype = (r.headers.get('Content-Type') or '').lower()
+                # 2xx 且有数据且非HTML错误页才算可播
+                ok = len(data) > 0 and r.status in (200, 206) and 'text/html' not in ctype
+                total = 0
+                cr = r.headers.get('Content-Range') or ''
+                m = __import__('re').search(r'/\s*(\d+)\s*$', cr)
+                if m:
+                    total = int(m.group(1))
+                elif r.status == 200:
+                    cl = r.headers.get('Content-Length')
+                    if cl and cl.isdigit():
+                        total = int(cl)
+                return {'ok': ok, 'status': r.status,
+                        'contentType': r.headers.get('Content-Type', ''),
+                        'total': total}
+        except urllib.error.HTTPError as e:
+            return {'ok': False, 'status': e.code, 'err': str(e)[:160]}
+        except Exception as e:
+            last_err = str(e)[:160]
+            if attempt == 0:
+                continue
+    return {'ok': False, 'err': last_err}
 
 
 def _is_preview_probe(result, expected_sec):
-    """用 total 字节数与期望时长粗判试听预览：total 已知且明显短于整曲（<55% 时长按 128kbps 折算）时判定为试听。"""
+    """用 total 字节数与期望时长粗判试听预览：
+    - expected_sec >= 60 时，低于按 128kbps 估算总长的 42%（~54kbps）判定为试听（避免 64~96kbps 完整 M4A 误判）；
+    - expected_sec >= 75 时，总字节不足 580KB（约 30s 试听体积）直接判定为试听。"""
     total = int((result or {}).get('total') or 0)
     if total <= 0:
         return False
     expected_sec = int(expected_sec or 0)
     if expected_sec < 60:
         return False  # 短歌不做试听判定，避免误伤
+    if expected_sec >= 75 and total < 580000:
+        return True
     bytes_full = expected_sec * 16 * 1024  # 128kbps 满时长约 16KB/秒
-    return total < bytes_full * 0.55
+    return total < bytes_full * 0.42
 
 
 # ==================== 部分缓存(.tmp)真实总长记录 ====================
@@ -644,6 +693,10 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
         #   /api/qq/lyric?mid=<songmid>[&songid=<数字id>]
         if self.path.startswith('/api/qq/lyric'):
             self._handle_qq_lyric()
+            return
+
+        if self.path.startswith('/api/qq/mid'):
+            self._handle_qq_mid()
             return
 
         if self.path.startswith('/api/qq/resolve'):
@@ -1382,6 +1435,23 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
                                      skip_cache=skip_cache)
         self._send_json_response(result)
 
+    def _handle_qq_mid(self):
+        """数字 songid -> songmid，避免缺 mid 的 QQ 曲目被迫依赖公网 vkeys 才调得到自建服务。"""
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        songid = (params.get('id', [''])[0] or params.get('songid', [''])[0] or '').strip()
+        if not songid:
+            self._send_json_response({'ok': False, 'err': 'missing id'})
+            return
+        try:
+            mid = _qq_song_mid(songid)
+            if mid:
+                self._send_json_response({'ok': True, 'mid': mid, 'id': str(songid)})
+            else:
+                self._send_json_response({'ok': False, 'err': 'mid_not_found'})
+        except Exception as e:
+            self._send_json_response({'ok': False, 'err': str(e)[:160]})
+
     def _handle_qq_lyric(self):
         """QQ 逐字歌词 + 翻译 + 罗马音（解密实现见 qq_qrc.py）。
 
@@ -1520,6 +1590,17 @@ class LyricServerHandler(http.server.SimpleHTTPRequestHandler):
 
         if action == 'status':
             self._send_json_response(selfhost_service.status_all())
+        elif action == 'config':
+            if method == 'POST':
+                restart = bool(body.get('restart'))
+                cfg = body.get('config') if isinstance(body.get('config'), dict) else body
+                self._send_json_response(
+                    selfhost_service.set_service_config(platform, cfg, restart=restart))
+            else:
+                self._send_json_response({'ok': True, 'config': selfhost_service.get_service_config(platform)})
+        elif action in ('start', 'restart'):
+            self._send_json_response(
+                selfhost_service.start_service(platform, restart=(action == 'restart')))
         elif action == 'qr':
             qr_type = None
             if platform == 'qq':
@@ -2008,28 +2089,31 @@ atexit.register(_shutdown_server_process)
 
 if __name__ == '__main__':
     # ★ 构建时间戳：取自 server.py 本身的最后修改时间，写入 version.json / build_info.json
-    #   供 Web 端与 Tauri 桌面端并行读取与版本校验
-    try:
-        from datetime import datetime as _dt
-        _mtime = os.path.getmtime(os.path.abspath(__file__))
-        _build_stamp = _dt.fromtimestamp(_mtime).strftime('%Y年%m月%d日 %H:%M:%S')
-        _iso_stamp = _dt.fromtimestamp(_mtime).isoformat()
-        _base_dir = _PROJECT_DIR
-        
-        _ver_info = {
-            "build_time": _build_stamp,
-            "timestamp": _iso_stamp,
-            "server_version": SERVER_VERSION,
-            "tauri_supported": True
-        }
-        for _fname in ('build_info.json', 'version.json'):
-            try:
-                with open(os.path.join(_base_dir, _fname), 'w', encoding='utf-8') as _vf:
-                    json.dump(_ver_info, _vf, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-    except Exception:
-        _build_stamp = '未知'
+    #   供 Web 端与 Tauri 桌面端并行读取与版本校验（隔离测试模式下跳过，避免污染工作区文件）
+    if not os.environ.get('ARIA_USER_DATA_DIR', '').strip():
+        try:
+            from datetime import datetime as _dt
+            _mtime = os.path.getmtime(os.path.abspath(__file__))
+            _build_stamp = _dt.fromtimestamp(_mtime).strftime('%Y年%m月%d日 %H:%M:%S')
+            _iso_stamp = _dt.fromtimestamp(_mtime).isoformat()
+            _base_dir = _PROJECT_DIR
+
+            _ver_info = {
+                "build_time": _build_stamp,
+                "timestamp": _iso_stamp,
+                "server_version": SERVER_VERSION,
+                "tauri_supported": True
+            }
+            for _fname in ('build_info.json', 'version.json'):
+                try:
+                    with open(os.path.join(_base_dir, _fname), 'w', encoding='utf-8') as _vf:
+                        json.dump(_ver_info, _vf, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+        except Exception:
+            _build_stamp = '未知'
+    else:
+        _build_stamp = '测试隔离'
 
     # 尝试绑定端口，如遇 WinError 10048 自动清理并自愈重试
     httpd = None
@@ -2038,7 +2122,7 @@ if __name__ == '__main__':
             httpd = ReusableThreadingTCPServer((BIND_HOST, PORT), LyricServerHandler)
             break
         except OSError as e:
-            if getattr(e, 'winerror', None) == 10048 or '10048' in str(e):
+            if (getattr(e, 'winerror', None) == 10048 or '10048' in str(e)) and os.environ.get('ARIA_NO_PORT_KILL', '').strip() != '1':
                 print(f"[!] 端口 {PORT} 被占用，正在自动清理旧实例 (重试 {attempt + 1}/3)...")
                 _kill_port_occupant(PORT)
                 time.sleep(1.0)

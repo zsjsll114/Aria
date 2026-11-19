@@ -5,9 +5,9 @@
 import { state } from '../infrastructure/state.js';
 import { getBlurBgLayers } from '../infrastructure/dom.js';
 
-/* ★ 嶌新的倍率字号系统 */
-const FONT_BASE_ORIGINAL = 24;
-const FONT_BASE_SUB = 16;
+/* ★ 基准字号 (1.0x = 原 1.50x 体量) */
+const FONT_BASE_ORIGINAL = 36;
+const FONT_BASE_SUB = 24;
 
 /** @param {number} size @returns {void} */
 export function applyLyricFontSize(size) {

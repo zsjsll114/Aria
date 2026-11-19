@@ -19,20 +19,10 @@ export const SONNET_SHOT_KINDS = [
     'quiet-tableau',
 ];
 
-/* ★ 2026-10-02（用户实测「大背景图形（花/六棱柱/石墨烯）比以前少，快没了」）：
-   大型几何 MG 只在 type-impact / fragment-collage 两类镜头绘制（sonnetShotMgFull
-   的 kind 分支），7 类均选时命中仅 2/7。选择池按 2:1 加权两类大图镜头，
-   chooseWithoutRepeat 仍防连续重复。 */
-const SONNET_SHOT_KIND_POOL = [
-    'editorial-column',
-    'type-impact', 'type-impact',
-    'fragment-collage', 'fragment-collage',
-    'tracking-ribbon',
-    'mask-reveal',
-    'poster-blocks',
-    'quiet-tableau',
-];
-
+/* ★ 2026-10-11 回退到上游（用户「分镜不像」）：镜头种类一律从上游的 `SONNET_SHOT_KINDS`
+   七类**等权**抽取（见 buildShots）。本地曾另建一张加权池 `SONNET_SHOT_KIND_POOL`
+   （type-impact / fragment-collage 各占 2 席 → 9 席里占 4 席），把「大背景图形」的出现率
+   从上游的 2/7(29%) 抬到 4/9(44%)；代价是其余 5 类镜头被挤薄、分镜分配与原版不同。 */
 export const SONNET_TRANSITION_KINDS = ['fast-blur', 'mono-glitch', 'camera-pull'];
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -151,17 +141,13 @@ const groupShotLines = (lines) => {
             groupStartTime = line.line.start;
         } else {
             const durationSoFar = line.renderEndTime - groupStartTime;
-            // 组镜 ≤4 行、总跨度 ≤6s，背景 MG 才能复用
-            // ★ 2026-10-02 组最短时长下限（用户水印取证「lines=49 挤在 21s → 每 1.6s
-            //   硬切一镜 → 构图随机跳/甩出画面」）：行间隔过密时常规上限会造出 <2s 的
-            //   碎片镜——每镜机位/缩放随机，碎片镜=画面每秒乱跳。组龄 <2.5s（且 <8 行）
-            //   时强制续组，宁可超 6s 上限也不产出碎片镜。
-            const groupAge = line.line.start - groupStartTime;
-            /* ★ 2026-10-02 上限 8→5（用户实测「有的歌词重叠」）：布局函数按 ≤4 块设计，
-               续组到 6-8 行时排布会挤在一起重叠。5 行是上下限的折中（碎片场景仍能
-               把 <2.5s 的残组并住，又不会挤爆布局）。 */
-            const tooShortToCut = groupAge < 2.5 && currentGroup.length < 5;
-            if (!tooShortToCut && (currentGroup.length >= 4 || durationSoFar > 6.0)) {
+            /* ★ 2026-10-11 回退到上游（用户「分镜不像」）：上游 sonnetProgram.ts:138 是
+               `if (currentGroup.length < 4 && durationSoFar <= 6.0)` —— 组镜 ≤4 行、总跨度
+               ≤6s（为的是复用背景 MG）。本地曾在此之上加了两条：`tooShortToCut`
+               （组龄 <2.5s 时强制续组、宁可超 6s）与组行数上限 4→5。
+               两者都直接改变分镜的切点与每组行数 → 「分镜不像原版」，故一并撤掉。
+               （下面的写法与上游条件等价，只是保持「先判该切」的既有形态。） */
+            if (currentGroup.length >= 4 || durationSoFar > 6.0) {
                 groups.push(currentGroup);
                 currentGroup = [line];
                 groupStartTime = line.line.start;
@@ -176,29 +162,14 @@ const groupShotLines = (lines) => {
 
 const buildShots = (lines, kind, paragraphIndex, seed, previousKind) => {
     let lastKind = previousKind;
-    /* ★ 2026-10-02 碎片镜合并（组最短时长的段落边界兜底）：段落末尾的残组可能
-       只有 1-2 行（<1s）——每镜机位/缩放随机，碎片镜=画面秒级乱跳。时长 <2.5s
-       的镜并入前一镜（cue/行索引/时间窗全部带走，机位沿用前一镜）。 */
-    const mergeShortShots = (shots) => {
-        const merged = [];
-        for (const shot of shots) {
-            const prev = merged[merged.length - 1];
-            /* ★ 2026-10-02 合并后行数上限 6（同组上限收紧，防布局重叠）：超上限的
-               短镜宁可保留为独立短镜（会有一次快切），也不挤爆布局。 */
-            const mergedLineCount = prev ? prev.lineIndices.length + shot.lineIndices.length : 0;
-            if (prev && shot.endTime - shot.startTime < 2.5 && mergedLineCount <= 6) {
-                prev.endTime = shot.endTime;
-                prev.lineIndices.push(...shot.lineIndices);
-                if (Array.isArray(shot.cues)) prev.cues.push(...shot.cues);
-            } else {
-                merged.push(shot);
-            }
-        }
-        return merged;
-    };
-    return mergeShortShots(groupShotLines(lines).map((group, shotIndex) => {
+    /* ★ 2026-10-11 回退到上游（用户「分镜不像」）：
+       ① 撤掉本地新增的 `mergeShortShots`（把时长 <2.5s 的镜头并进前一镜、并沿用其机位）——
+          上游 buildShots 直接 map，没有这一步；它会直接改变分镜的数量与边界。
+       ② 镜头种类回到上游的 `SONNET_SHOT_KINDS` **等权**池（本地加权池见文件头注释）。
+       （上游这里还有 `resolveSonnetDebugShotKind()` 的调试覆盖，本模式未移植 sonnetDebug.ts，保持不加。） */
+    return groupShotLines(lines).map((group, shotIndex) => {
         const signature = group.map(item => item.line.original || '').join('|');
-        let shotKind = chooseWithoutRepeat(SONNET_SHOT_KIND_POOL, `${seed}:${paragraphIndex}:${shotIndex}:${signature}`, lastKind);
+        let shotKind = chooseWithoutRepeat(SONNET_SHOT_KINDS, `${seed}:${paragraphIndex}:${shotIndex}:${signature}`, lastKind);
         const wordCount = group.reduce((sum, item) => sum + item.segments.filter(s => s.isWordLike).length, 0);
         // 段落语义微调：breath 首镜安静定格；chorus 绝不定格
         if (kind === 'breath' && shotIndex === 0 && wordCount <= 2) shotKind = 'quiet-tableau';
@@ -227,7 +198,7 @@ const buildShots = (lines, kind, paragraphIndex, seed, previousKind) => {
                 rotation: (((random >>> 24) & 255) / 255 - 0.5) * 0.08,
             },
         };
-    }));
+    });
 };
 
 /**

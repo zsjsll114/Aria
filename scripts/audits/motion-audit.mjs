@@ -16,6 +16,7 @@ const STYLES = 'web/src/styles';
 /* 表现层：动效本身就是内容，不受壳层纪律约束 */
 const EXPRESSIVE = new Set([
     'pv.css', 'pv-tunnel.css', 'visualizers.css', 'letterpress.css', 'neon.css',
+    'vitrail.css', 'astrolabe.css', 'prism.css', 'focalcut.css',
     'appearance.css', 'motion.css',
 ]);
 

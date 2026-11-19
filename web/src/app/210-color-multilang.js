@@ -78,16 +78,16 @@ export function setColorSwatchChannel(channel) {
 
 /** 把一行里「哪颗色块算当前值」的 active 态摆正；值不在预设里就点亮「自定义」那颗 */
 function applyRowActive(row, currentColor) {
+    const normCur = String(currentColor || '').trim().toLowerCase();
     let matched = false;
     row.querySelectorAll('.color-swatch').forEach(sw => {
-        const isMatch = sw.dataset.color === currentColor;
+        const swCol = String(sw.dataset.color || '').trim().toLowerCase();
+        const isMatch = swCol !== '__custom__' && swCol === normCur;
         sw.classList.toggle('active', isMatch);
         if (isMatch) matched = true;
     });
-    if (!matched) {
-        const customSw = row.querySelector('.color-swatch.custom');
-        if (customSw) customSw.classList.add('active');
-    }
+    const customSw = row.querySelector('.color-swatch.custom');
+    if (customSw) customSw.classList.toggle('active', !matched);
 }
 
 /**
@@ -141,7 +141,10 @@ function onColorSwatchClick(e) {
             openColorPicker(init, (color) => {
                 try { commitSwatch(row, field, mode, color); }
                 catch (err) { logCatch('colorMultilang', err); }
-            });
+            }, cur ? () => {
+                try { commitSwatch(row, field, mode, cur); }
+                catch (err) { logCatch('colorMultilang', err); }
+            } : null);
             return;
         }
         commitSwatch(row, field, mode, swatch.dataset.color);
@@ -191,15 +194,29 @@ function hexToHsv(hex) {
             return [h, s, v];
         }
 
-function openColorPicker(initialColor, callback) {
+function normalizeHexColor(raw) {
+    let v = String(raw || '').trim();
+    if (!v) return null;
+    if (!v.startsWith('#')) v = '#' + v;
+    if (/^#[0-9a-fA-F]{3}$/.test(v)) {
+        v = '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    }
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : null;
+}
+
+function openColorPicker(initialColor, callback, onCancel = null) {
             const overlay = typeof document !== 'undefined' ? document.getElementById('colorPickerOverlay') : null;
-            const hexInput = typeof document !== 'undefined' ? document.getElementById('colorPickerHex') : null;
+            const hexInput = /** @type {HTMLInputElement|null} */ (typeof document !== 'undefined' ? document.getElementById('colorPickerHex') : null);
             const preview = typeof document !== 'undefined' ? document.getElementById('hsvPreview') : null;
-            const svCanvas = typeof document !== 'undefined' ? document.getElementById('hsvSvCanvas') : null;
-            const hueCanvas = typeof document !== 'undefined' ? document.getElementById('hsvHueCanvas') : null;
+            const svCanvas = /** @type {HTMLCanvasElement|null} */ (typeof document !== 'undefined' ? document.getElementById('hsvSvCanvas') : null);
+            const hueCanvas = /** @type {HTMLCanvasElement|null} */ (typeof document !== 'undefined' ? document.getElementById('hsvHueCanvas') : null);
             const closeBtn = typeof document !== 'undefined' ? document.getElementById('colorPickerCloseBtn') : null;
+            const cancelBtn = typeof document !== 'undefined' ? document.getElementById('colorPickerCancelBtn') : null;
+            const confirmBtn = typeof document !== 'undefined' ? document.getElementById('colorPickerConfirmBtn') : null;
+            if (!overlay || !svCanvas || !hueCanvas || !hexInput || !preview) return;
             const svCtx = svCanvas.getContext('2d');
             const hueCtx = hueCanvas.getContext('2d');
+            if (!svCtx || !hueCtx) return;
             colorPickerCallback = callback;
 
             /* 同步 canvas 内部分辨率与 CSS 显示尺寸，避免圆形指示器被拉伸成椭圆 */
@@ -215,8 +232,9 @@ function openColorPicker(initialColor, callback) {
                 hueCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
             };
 
-            let [hue, sat, val] = hexToHsv(initialColor);
-            let currentColor = initialColor;
+            const startColor = normalizeHexColor(initialColor) || '#ffffff';
+            let [hue, sat, val] = hexToHsv(startColor);
+            let currentColor = startColor;
 
             function drawSV() {
                 const rect = svCanvas.getBoundingClientRect();
@@ -262,13 +280,35 @@ function openColorPicker(initialColor, callback) {
                 hueCtx.fillStyle = 'rgba(0,0,0,0.5)';
                 hueCtx.fillRect(hx - 1, 0, 2, h);
             }
-            function updateColor() {
+            /** @type {number | null} */
+            let pendingRaf = null;
+            let finished = false;
+            let hasPreviewed = false;
+            function scheduleLiveCallback() {
+                if (!colorPickerCallback || finished) return;
+                if (pendingRaf !== null) return;
+                if (typeof requestAnimationFrame === 'function') {
+                    pendingRaf = requestAnimationFrame(() => {
+                        pendingRaf = null;
+                        if (!finished && colorPickerCallback) {
+                            hasPreviewed = true;
+                            colorPickerCallback(currentColor);
+                        }
+                    });
+                } else {
+                    hasPreviewed = true;
+                    colorPickerCallback(currentColor);
+                }
+            }
+
+            function updateColor(emitLive = false) {
                 const [r, g, b] = hsvToRgb(hue, sat, val);
                 currentColor = rgbToHex(r, g, b);
                 hexInput.value = currentColor.toUpperCase();
                 preview.style.background = currentColor;
                 drawSV();
                 drawHue();
+                if (emitLive) scheduleLiveCallback();
             }
 
             /* SV 画布交互 */
@@ -277,7 +317,7 @@ function openColorPicker(initialColor, callback) {
                 const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
                 sat = x; val = 1 - y;
-                updateColor();
+                updateColor(true);
             }
             let svDragging = false;
             function onSvDown(e) { svDragging = true; onSvPointer(e); e.preventDefault(); }
@@ -289,7 +329,7 @@ function openColorPicker(initialColor, callback) {
                 const rect = hueCanvas.getBoundingClientRect();
                 const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 hue = x * 360;
-                updateColor();
+                updateColor(true);
             }
             let hueDragging = false;
             function onHueDown(e) { hueDragging = true; onHuePointer(e); e.preventDefault(); }
@@ -306,12 +346,15 @@ function openColorPicker(initialColor, callback) {
                     preview.style.background = currentColor;
                     drawSV();
                     drawHue();
+                    scheduleLiveCallback();
                 }
             }
 
-            function closePicker() {
-                overlay.classList.remove('visible');
-                if (colorPickerCallback) { colorPickerCallback(currentColor); colorPickerCallback = null; }
+            function cleanup() {
+                if (pendingRaf !== null && typeof cancelAnimationFrame === 'function') {
+                    cancelAnimationFrame(pendingRaf);
+                    pendingRaf = null;
+                }
                 svCanvas.removeEventListener('pointerdown', onSvDown);
                 document.removeEventListener('pointermove', onSvMove);
                 document.removeEventListener('pointerup', onSvUp);
@@ -319,28 +362,76 @@ function openColorPicker(initialColor, callback) {
                 document.removeEventListener('pointermove', onHueMove);
                 document.removeEventListener('pointerup', onHueUp);
                 hexInput.removeEventListener('input', onHexInput);
-                closeBtn.removeEventListener('click', closePicker);
+                hexInput.removeEventListener('keydown', onHexKeyDown);
+                closeBtn?.removeEventListener('click', commitPicker);
+                cancelBtn?.removeEventListener('click', cancelPicker);
+                confirmBtn?.removeEventListener('click', commitPicker);
                 overlay.removeEventListener('click', onOverlayClick);
-                document.removeEventListener('keydown', onEsc);
+                document.removeEventListener('keydown', onEsc, true);
             }
-            function onOverlayClick(e) { if (e.target === overlay) closePicker(); }
-            function onEsc(e) { if (e.key === 'Escape') closePicker(); }
 
-            svCanvas?.addEventListener('pointerdown', onSvDown);
+            function commitPicker() {
+                if (finished) return;
+                finished = true;
+                const typed = normalizeHexColor(hexInput.value);
+                if (typed) currentColor = typed;
+                cleanup();
+                overlay.classList.remove('visible');
+                const cb = colorPickerCallback;
+                colorPickerCallback = null;
+                if (cb) cb(currentColor);
+            }
+
+            function cancelPicker() {
+                if (finished) return;
+                finished = true;
+                cleanup();
+                overlay.classList.remove('visible');
+                const cb = colorPickerCallback;
+                colorPickerCallback = null;
+                if (!hasPreviewed) return;
+                if (typeof onCancel === 'function') {
+                    onCancel();
+                } else if (cb && currentColor.toLowerCase() !== startColor.toLowerCase()) {
+                    cb(startColor);
+                }
+            }
+
+            function onHexKeyDown(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    commitPicker();
+                }
+            }
+            function onOverlayClick(e) { if (e.target === overlay) commitPicker(); }
+            function onEsc(e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    cancelPicker();
+                }
+            }
+
+            svCanvas.addEventListener('pointerdown', onSvDown);
             if (typeof document !== "undefined") document.addEventListener('pointermove', onSvMove);
             if (typeof document !== "undefined") document.addEventListener('pointerup', onSvUp);
-            hueCanvas?.addEventListener('pointerdown', onHueDown);
+            hueCanvas.addEventListener('pointerdown', onHueDown);
             if (typeof document !== "undefined") document.addEventListener('pointermove', onHueMove);
             if (typeof document !== "undefined") document.addEventListener('pointerup', onHueUp);
-            hexInput?.addEventListener('input', onHexInput);
-            closeBtn?.addEventListener('click', closePicker);
-            overlay?.addEventListener('click', onOverlayClick);
-            if (typeof document !== "undefined") document.addEventListener('keydown', onEsc);
+            hexInput.addEventListener('input', onHexInput);
+            hexInput.addEventListener('keydown', onHexKeyDown);
+            closeBtn?.addEventListener('click', commitPicker);
+            cancelBtn?.addEventListener('click', cancelPicker);
+            confirmBtn?.addEventListener('click', commitPicker);
+            overlay.addEventListener('click', onOverlayClick);
+            if (typeof document !== "undefined") document.addEventListener('keydown', onEsc, true);
 
             /* 先显示 overlay，再同步 canvas 尺寸并绘制（display:none 时 getBoundingClientRect 为 0） */
             overlay.classList.add('visible');
             syncCanvasSize();
-            updateColor();
+            updateColor(false);
         }
 
 function applyGlassStrength(strength) {
@@ -350,21 +441,79 @@ function applyGlassStrength(strength) {
                 style.id = 'glass-style';
                 document.head.appendChild(style);
             }
+            const s = Math.max(0, Number(strength) || 0);
+            const overlayBlur = Math.round(s * 0.6);
+            const popBlur = Math.max(s > 0 ? 14 : 0, Math.round(s * 0.7));
+            /* ★ 2026-11-19：设置页的模糊只挂在 .settings-overlay::before（兄弟伪元素），
+               绝不直接给 .settings-overlay / .settings-panel 本身写 backdrop-filter，
+               否则 Chromium 会建立双重 Backdrop Root，彻底阻断内部 .ws-header /
+               .ws-mode-popover / .setting-dropdown-menu 的毛玻璃模糊。 */
             style.textContent = `
-                .search-overlay, .settings-overlay {
-                    backdrop-filter: saturate(180%) blur(${Math.round(strength * 0.6)}px) !important;
-                    -webkit-backdrop-filter: saturate(180%) blur(${Math.round(strength * 0.6)}px) !important;
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .search-overlay,
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .settings-overlay::before {
+                    backdrop-filter: saturate(180%) blur(${overlayBlur}px) !important;
+                    -webkit-backdrop-filter: saturate(180%) blur(${overlayBlur}px) !important;
                 }
-                .search-modal, .ctx-menu, .eq-panel, .settings-panel, .setting-dropdown-menu {
-                    backdrop-filter: saturate(200%) blur(${strength}px) !important;
-                    -webkit-backdrop-filter: saturate(200%) blur(${strength}px) !important;
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .search-modal,
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .ctx-menu,
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .eq-panel {
+                    backdrop-filter: saturate(200%) blur(${s}px) !important;
+                    -webkit-backdrop-filter: saturate(200%) blur(${s}px) !important;
+                }
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .setting-dropdown-menu,
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .ws-header::before,
+                html#ariaRoot:not(.is-software-renderer) body:not(.perf-low):not(.perf-minimal) .ws-mode-popover {
+                    backdrop-filter: saturate(185%) blur(${popBlur}px) !important;
+                    -webkit-backdrop-filter: saturate(185%) blur(${popBlur}px) !important;
                 }
             `;
         }
 
 /* 全局字体应用 */
-function resolveFontFamily(fontKey) {
+function syncActiveVisualizerFonts() {
+            try {
+                const msRoot = (typeof appSettings !== 'undefined' && appSettings.modeSettings) ? appSettings.modeSettings : {};
+                if (globalThis.mainVisManager && globalThis.mainVisManager.activeMode) {
+                    const activeMode = globalThis.mainVisManager.activeMode;
+                    const ms = msRoot[activeMode] || {};
+                    if (isFollowFontKey(ms.fontFamily) && typeof globalThis.mainVisManager.applySettings === 'function') {
+                        globalThis.mainVisManager.applySettings({ ...ms, fontFamily: ms.fontFamily || 'default' });
+                    }
+                }
+                if (typeof window !== 'undefined' && (window.__sonnetEngineReady || window.__sonnetProbe)) {
+                    const pv = msRoot.pv || {};
+                    if (isFollowFontKey(pv.fontFamily)) {
+                        import('../core/visualizers/sonnet/sonnetMode.js')
+                            .then(m => m.applySonnetSettings({ ...pv, fontFamily: pv.fontFamily || 'default' }))
+                            .catch(e => logCatch('colorMultilang', e));
+                    }
+                }
+                if (typeof currentViewMode !== 'undefined' && currentViewMode === 'tempera') {
+                    const tp = msRoot.tempera || {};
+                    if (isFollowFontKey(tp.fontFamily)) {
+                        import('../core/visualizers/tempera/temperaMode.js')
+                            .then(m => m.applyTemperaSettings({ ...tp, fontFamily: tp.fontFamily || 'default' }))
+                            .catch(e => logCatch('colorMultilang', e));
+                    }
+                }
+                if (globalThis.previewEngineInstance && typeof globalThis.previewEngineInstance.applyModeVars === 'function') {
+                    globalThis.previewEngineInstance.applyModeVars();
+                }
+            } catch (e) {
+                logCatch('colorMultilang', e);
+            }
+        }
+
+function resolveFontFamily(fontKey, globalKey) {
             if (!fontKey || fontKey === 'default' || fontKey === 'inherit') {
+                if (globalKey !== null) {
+                    const gKey = (globalKey !== undefined)
+                        ? globalKey
+                        : ((typeof appSettings !== 'undefined' && appSettings.interface) ? appSettings.interface.fontFamily : null);
+                    if (gKey && gKey !== 'default' && gKey !== 'inherit') {
+                        return resolveFontFamily(gKey, null);
+                    }
+                }
                 return "'Segoe UI', 'Microsoft YaHei', sans-serif";
             }
             const cfList = (customFonts && Object.keys(customFonts).length > 0) 
@@ -409,7 +558,7 @@ if (typeof window !== 'undefined') {
         }
 
 function applyFontFamily(font) {
-            let ff = resolveFontFamily(font);
+            let ff = resolveFontFamily(font, null);
             document.documentElement.style.setProperty('--app-font-family', ff);
             document.documentElement.style.setProperty('--pv-font-family', ff);
             document.documentElement.style.setProperty('--vis-font-family', ff);
@@ -418,6 +567,7 @@ function applyFontFamily(font) {
             const adv = appSettings.interface && appSettings.interface.advancedFonts;
             if (adv && adv.enabled) {
                 applyAdvancedFonts();
+                syncActiveVisualizerFonts();
                 return;
             }
 
@@ -487,6 +637,7 @@ function applyFontFamily(font) {
                     font-family: var(--app-font-family) !important;
                 }
             `;
+            syncActiveVisualizerFonts();
         }
 
 /* ★ 模式级字体作用域（2026-10-05）。
@@ -514,12 +665,18 @@ function applyModeFontFamily(modeFontKey) {
         /* 跟随全局：只清容器级覆盖。此前这里会**重新写一遍根变量**，
            那正是「退出设置后控件恢复默认、歌词却还是模式字体」这类错位的来源。 */
         for (const k of keys) pc.style.removeProperty(k);
+        if (globalThis.mainVisManager && typeof globalThis.mainVisManager.applySettings === 'function') {
+            globalThis.mainVisManager.applySettings({ fontFamily: 'default' });
+        }
         return;
     }
     const ff = resolveFontFamily(modeFontKey);
     /* --vis-font-family 是画布引擎（霓虹/活字/版画/诗境）取字体的通道。写在容器上是对的：
        引擎若自己用内联值显式指定字体（VisualizerBase），那个更内层、优先级更高。 */
     for (const k of keys) pc.style.setProperty(k, ff);
+    if (globalThis.mainVisManager && typeof globalThis.mainVisManager.applySettings === 'function') {
+        globalThis.mainVisManager.applySettings({ fontFamily: modeFontKey });
+    }
 }
 
 export { applyFontFamily, applyModeFontFamily, applyGlassStrength, hexToHsv, hsvToRgb, openColorPicker, resolveFontFamily, rgbToHex };

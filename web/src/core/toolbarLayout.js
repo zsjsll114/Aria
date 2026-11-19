@@ -43,23 +43,33 @@ export const TOOLBAR_PREF_VERSION = 1;
  *  285 的 bilingualCycleBtn 优先落底栏，只有底栏不存在时才 append 到顶栏末尾，
  *  所以它排在最后。 */
 export const TOOLBAR_CONTROLS = [
-    { id: 'openSearchBtn', bar: 'top', removable: true },
-    { id: 'lyricSearchBtn', bar: 'top', removable: true },
-    { id: 'openDailyBtn', bar: 'top', removable: true },
-    { id: 'openRankingsBtn', bar: 'top', removable: true },
-    { id: 'openStatsBtn', bar: 'top', removable: true },
-    { id: 'openFavoritesBtn', bar: 'top', removable: true },
-    { id: 'openPlaylistsBtn', bar: 'top', removable: true },
-    { id: 'npQuickToggle', bar: 'top', removable: true },
-    { id: 'desktopLyricsBtn', bar: 'top', removable: true },
-    { id: 'sleepTimerBtn', bar: 'top', removable: true },
-    { id: 'readabilityBtn', bar: 'top', removable: true },
-    { id: 'zenModeBtn', bar: 'top', removable: true },
-    { id: 'openViewModeBtn', bar: 'top', removable: true },
+    { id: 'openSearchBtn', bar: 'top', group: 'discover', removable: true },
+    { id: 'lyricSearchBtn', bar: 'top', group: 'discover', removable: true },
+    { id: 'openDailyBtn', bar: 'top', group: 'discover', removable: true },
+    { id: 'openRankingsBtn', bar: 'top', group: 'discover', removable: true },
+    { id: 'openStatsBtn', bar: 'top', group: 'discover', removable: true },
+    { id: 'openFavoritesBtn', bar: 'top', group: 'library', removable: true },
+    { id: 'openPlaylistsBtn', bar: 'top', group: 'library', removable: true },
+    { id: 'npQuickToggle', bar: 'top', group: 'enhance', removable: true },
+    { id: 'desktopLyricsBtn', bar: 'top', group: 'enhance', removable: true },
+    { id: 'sleepTimerBtn', bar: 'top', group: 'enhance', removable: true },
+    { id: 'readabilityBtn', bar: 'top', group: 'enhance', removable: true },
+    { id: 'zenModeBtn', bar: 'top', group: 'system', removable: true },
+    { id: 'openViewModeBtn', bar: 'top', group: 'system', removable: true },
     /* ★ 固定显示（见文件头 removable 的理由） */
-    { id: 'openSettingsBtn', bar: 'top', removable: false },
-    { id: 'bilingualCycleBtn', bar: 'top', removable: true },
+    { id: 'openSettingsBtn', bar: 'top', group: 'system', removable: false },
+    { id: 'bilingualCycleBtn', bar: 'top', group: 'enhance', removable: true },
 ];
+
+const GROUP_BY_ID = TOOLBAR_CONTROLS.reduce((acc, c) => {
+    acc[c.id] = c.group || 'enhance';
+    return acc;
+}, /** @type {Record<string, string>} */ ({}));
+
+/** @param {string} id @returns {string} */
+export function controlGroupOf(id) {
+    return GROUP_BY_ID[String(id || '')] || '';
+}
 
 /** 已登记的 bar 名（顺序稳定，供遍历用） */
 export const TOOLBAR_BARS = ['top'];

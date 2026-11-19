@@ -6,7 +6,7 @@
 import { API_BASE } from '../config/constants.js';
 import { searchKugouSongs } from '../services/musicApi.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
-import { markResolveRetry } from '../services/playSource.js'; // 重试期间角标显示「重试中 n/m」而不是「取链失败」
+import { markResolveRetry, platformKeyOf, resolveSourceOf } from '../services/playSource.js'; // 重试期间角标显示「重试中 n/m」+ 音源归一化
 import { audio } from './20-lyrics-render.js';
 import { currentTimeEl, favoritesOverlay, progressEl, searchOverlay, songArtistEl, songTitleEl, totalTimeEl, volumeBar } from './30-dom-refs.js';
 import { getLyricOffset, updateLineTimes, updateLyricOffsetUI } from './40-playback-state.js';
@@ -20,6 +20,7 @@ import { addToPlaylistOverlay, playlistsOverlay, renderAddToPlaylistList, render
 import { loadOnlineSong } from './175-track-index-online.js';
 import { getStreamCachedAudioUrl } from './180-boot-config.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
+import { invalidateResolvedPlayByTrack } from '../core/resolveCache.js';
 import { initFadeController, fadeInVolume, fadeOutVolume } from '../core/fadeController.js';
 import { sleepFadeOwnsVolume, sleepTimerSongChanged } from '../core/sleepTimer.js';
 import { formatTime } from '../utils/formatters.js';
@@ -31,19 +32,12 @@ globalThis.lastLoadedSongInfo = null;
    四个 rAF/timeout 句柄改由该模块独占读写，已从 globalBridge 的桥接面移除。 */
 initFadeController(audio);
 
-/* 切歌时应用音量处理：音量标准化 + 淡入（淡入目标为对数曲线后的声压值） */
+/* 切歌时应用音量处理：保持当前音量（仅应用淡入，目标为对数曲线后的声压值） */
 function applyVolumeOnSongChange() {
             /* 睡眠淡出中：音量斜坡继续接管，否则 fadeInVolume 会把淡到一半的音量顶回满值 */
             if (sleepFadeOwnsVolume()) { sleepTimerSongChanged(); return; }
-            let targetVol;
-            if (appSettings.audio.volumeNorm) {
-                /* 音量标准化：重置到默认音量 */
-                targetVol = volumePercentToGain(appSettings.playback.initialVolume);
-                volume = appSettings.playback.initialVolume;
-                if (volumeBar) volumeBar.style.width = volume + '%';
-            } else {
-                targetVol = volumePercentToGain(volume);
-            }
+            const targetVol = volumePercentToGain(volume);
+            if (volumeBar) volumeBar.style.width = volume + '%';
             fadeInVolume(targetVol, appSettings.playback.fadeDuration);
         }
 
@@ -58,6 +52,10 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
             if (typeof failGen === 'number' && failGen !== playbackGeneration) {
                 logInfo('crossfade', '播放失败回调已过期（用户已切歌），跳过重试');
                 return false;
+            }
+            /* 一旦进入失败分支，立刻使该曲直链缓存失效，避免重试继续拿到坏链 */
+            if (songInfo && songInfo.id) {
+                invalidateResolvedPlayByTrack(resolveSourceOf(songInfo, currentSource), songInfo.id, songInfo.url || '');
             }
             if (retryCount >= appSettings.playback.retryCount) {
                 retryCount = 0;
@@ -85,7 +83,7 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                    第2次重试起：按用户规定的统一退回链切换备用源——
                    【当前歌曲源 → QQ → 酷狗 → 网易云 → 酷我】，歌曲源与链尾重合时只保留靠前的 */
                 if (retryCount >= 2 && songInfo.id) {
-                    const originalSource = currentSource;
+                    const originalSource = resolveSourceOf(songInfo, currentSource);
                     const FALLBACK_TAIL = ['tencent', 'kugou', 'netease', 'kuwo'];
                     const chain = FALLBACK_TAIL.includes(originalSource)
                         ? [originalSource, ...FALLBACK_TAIL.filter(s => s !== originalSource)]
@@ -112,7 +110,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.hash = '';
                                         retrySongInfo.source = 'kuwo';
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
-                                        currentSource = 'kuwo';
                                         logInfo('crossfade', `酷我备用源搜索成功: ${best.song} - ${best.singer} (id=${retrySongInfo.id})`);
                                     }
                                 }
@@ -130,7 +127,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.hash = String(best.hash);
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
                                         retrySongInfo.source = 'kugou';
-                                        currentSource = 'kugou';
                                         logInfo('crossfade', `酷狗备用源搜索成功: ${best.song} - ${best.singer} (hash=${retrySongInfo.id})`);
                                     } else {
                                         logWarn('crossfade', '酷狗备用源搜索无结果');
@@ -163,7 +159,6 @@ function handlePlayFailure(songInfo, isFromPlaylist, failGen) {
                                         retrySongInfo.hash = '';
                                         retrySongInfo.source = targetSource;
                                         retrySongInfo.cover = best.cover || retrySongInfo.cover;
-                                        currentSource = targetSource;
                                         logInfo('crossfade', `备用源搜索成功: ${best.song} - ${best.singer} (id=${retrySongInfo.id}, mid=${retrySongInfo.mid})`);
                                     } else {
                                         logWarn('crossfade', '备用源搜索无结果');
@@ -186,20 +181,34 @@ async function loadPlaylistTrack(index, preloadOnly) {
             currentTrackIndex = index;
             retryCount = 0;  /* 切歌时重置重试计数器，避免上一首歌的重试状态影响新歌曲 */
             const track = playlist[index];
-            if ((track.source || track.id) && (track.id || track.mid)) {
-                /* source 为空时根据 mid 推断：有 mid 的是 QQ 音乐，没有的是网易云 */
-                const effectiveSource = track.source || (track.mid ? 'tencent' : 'netease');
-                const songInfo = { id: track.id, mid: track.mid || '', song: track.title || track.song || track.name, singer: track.artist || track.singer, cover: track.cover, url: track.url || '', source: effectiveSource,
-                    /* ★ 2026-10-04：MV 关联字段必须一起搬。此前这里只搬 id/mid/标题，
-                       于是**从歌单里播的在线歌曲连 QQ 的 vid 都丢了**（搜索页直接点歌才会带），
-                       表现为「搜索页能自动铺 MV，进歌单再播就铺不出来」。 */
-                    mvVid: track.mvVid || '', mvId: track.mvId || '', mvHash: track.mvHash || '' };
-                currentSource = effectiveSource;
+            if (!track) return;
+            const rawSrc = platformKeyOf(track.source);
+            const isLocalTrack = track.isLocal === true || rawSrc === 'local';
+            if (!isLocalTrack && (track.source || track.id || track.mid || track.hash) && (track.id || track.mid || track.hash)) {
+                const effectiveSource = resolveSourceOf(track, track.hash ? 'kugou' : (track.mid ? 'tencent' : (currentSource || 'netease')));
+                const songInfo = {
+                    id: track.id || track.hash || track.mid,
+                    mid: track.mid || '',
+                    hash: track.hash || '',
+                    song: track.title || track.song || track.name,
+                    singer: track.artist || track.singer,
+                    album: track.album || '',
+                    cover: track.cover,
+                    url: track.url || '',
+                    source: effectiveSource,
+                    interval: track.interval,
+                    duration: track.duration,
+                    mvVid: track.mvVid || '',
+                    mvId: track.mvId || '',
+                    mvHash: track.mvHash || '',
+                };
+                if (!preloadOnly && effectiveSource !== 'local') currentSource = effectiveSource;
                 /* ★ 预加载集成：如果预加载数据匹配当前歌曲，传递预加载的 URL 和歌词 */
                 _preloadedLyricData = null;  /* 先清除，避免残留 */
                 if (nextSongPreload && nextSongPreload.key === `${effectiveSource}:${track.id}`) {
                     if (nextSongPreload.url) {
                         songInfo.url = nextSongPreload.url;  /* 使用预加载的 URL，跳过网络请求 */
+                        songInfo._fromPreload = true;
                         logInfo('crossfade', '[Preload] 命中预加载，使用缓存URL:', track.title);
                     }
                     if (nextSongPreload.lyricData) {
@@ -208,7 +217,11 @@ async function loadPlaylistTrack(index, preloadOnly) {
                     }
                 }
                 await loadOnlineSong(songInfo, true, false, preloadOnly);
-            } else if (track.url) {
+            } else if ((track.folder || track.elrcUrl || track.lrcUrl || track.audioUrl)
+                && !preloadOnly && typeof window !== 'undefined' && typeof window.playLocalMusicSong === 'function') {
+                await window.playLocalMusicSong(track, { closePanel: false });
+            } else if (track.url || track.audioUrl) {
+                const localUrl = track.url || track.audioUrl;
                 /* 代际计数器递增，使上一次的异步回调过期 */
                 const gen = ++playbackGeneration;
                 /* ★ 本地直链路径同样取消进行中的 AI 分析（与 95/175 切歌入口对齐，2026-09-27） */
@@ -245,7 +258,7 @@ async function loadPlaylistTrack(index, preloadOnly) {
                     if (gen !== playbackGeneration) return;
                     audio.pause();
                     audio.removeAttribute('src');
-                    audio.src = getStreamCachedAudioUrl(track.url, track.mid || track.id || track.title);
+                    audio.src = getStreamCachedAudioUrl(localUrl, track.mid || track.id || track.title);
                     audio.load();
                     audio.playbackRate = currentPlaybackRate;
                     applyPreservesPitch(preservesPitch);
@@ -254,7 +267,7 @@ async function loadPlaylistTrack(index, preloadOnly) {
                     if (typeof window._playLocalTrackOnReady === 'function') {
                         window._playLocalTrackOnReady(gen, {
                             onPlayFail: () => {
-                                if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
+                                if (!handlePlayFailure({ id: '', url: localUrl, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
                                     audio.play().then(() => {
                                         if (gen !== playbackGeneration) return;
                                         applyVolumeOnSongChange();
@@ -275,7 +288,7 @@ if (typeof triggerPostLoadTasks === 'function') triggerPostLoadTasks({ gen: gen,
 }).catch(() => {
 if (gen !== playbackGeneration) return;
 handleAudioPlayError();
-                            if (!handlePlayFailure({ id: '', url: track.url, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
+                            if (!handlePlayFailure({ id: '', url: localUrl, song: track.title, singer: track.artist, cover: track.cover }, false, gen)) {
                                 audio.play().then(() => {
                                     if (gen !== playbackGeneration) return;
                                     applyVolumeOnSongChange();

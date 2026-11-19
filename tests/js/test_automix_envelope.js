@@ -95,6 +95,21 @@ test('meanEnergy 在合理量级（有声包络均值 0.01~0.5）', () => {
     assert.ok(r.meanEnergy > 0.01 && r.meanEnergy < 0.5, `meanEnergy=${r.meanEnergy}`);
 });
 
+test('energy: 原始 RMS 包络与帧率一并返回（消费方靠它驱动"按音乐强弱"的画面）', () => {
+    /* 以前这里算了包络就丢，于是按音乐强弱驱动画面的消费方（JIZURA 的 env.energy，
+       6 处：07_decor.js:218 / 11p_decorB.js:810,2360 / 11p_exitB.js:1763 /
+       11p_layoutsB.js:1773 / 11p_looks.js:775）只能重新解码整首歌。
+       这条钉住「导出的就是算 meanEnergy 用的那一份」，不是另建的空壳。 */
+    const samples = makeTone({});
+    const r = env.analyzeEnvelope(samples, RATE);
+    assert.ok(r.energy instanceof Float32Array, '必须是 Float32Array（缓存走结构化克隆，不做 JSON）');
+    assert.ok(r.energy.length > 0);
+    assert.ok(r.energyRate > 0, '帧率是消费方把秒换算成帧下标的唯一依据');
+    assert.equal(r.energyRate, 1000 / r.frameMs, 'energyRate 必须与 frameMs 自洽');
+    const mean = r.energy.reduce((a, b) => a + b, 0) / r.energy.length;
+    assert.ok(Math.abs(mean - r.meanEnergy) < 1e-6, `包络与 meanEnergy 不同源：${mean} vs ${r.meanEnergy}`);
+});
+
 /* ========== analyzer.js：失败语义（node 下用注入绕开浏览器 API） ========== */
 
 function fakeDecoder(durationMs = 30000) {
@@ -117,6 +132,18 @@ test('analyzer: 正常路径返回完整结果且带缓存键；过短音频返�
 
     const short = await analyzer.analyzeTrack({ id: 'song-2', url: 'http://x/b.mp3' }, { fetchImpl, decodeImpl: fakeDecoder(5000) });
     assert.equal(short, null, '15s 以下不分析');
+});
+
+test('analyzer: 结果里必须留原始包络与帧率，frameMs 仍不外泄', async () => {
+    /* 缓存层是把 analyzeEnvelope 的返回值整体存下来的，所以这条等于在钉「缓存里有包络」。
+       ★ fakeDecoder 的样本必须够长：包络按 50ms 一帧切，100 个采样会得到 0 帧。 */
+    const fetchImpl = async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) });
+    const decoder = async () => ({ samples: makeTone({ totalSec: 2 }), sampleRate: RATE, durationMs: 30000 });
+    const r = await analyzer.analyzeTrack({ id: 'song-env', url: 'http://x/env.mp3' }, { fetchImpl, decodeImpl: decoder });
+    assert.ok(r, '应分析成功');
+    assert.ok(r.energy instanceof Float32Array && r.energy.length > 0, '结果里必须带上能量包络');
+    assert.ok(r.energyRate > 0);
+    assert.ok(!('frameMs' in r), 'frameMs 仍是内部细节（帧率由 energyRate 携带）');
 });
 
 test('analyzer: fetch 失败 / 解码抛错 / 缺参数 → 全部返回 null 且不抛出', async () => {

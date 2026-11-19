@@ -21,6 +21,7 @@ import {
 } from '../core/visualizers/jizura/jizuraBridge.js';
 import { setHint } from './120-search-results.js';
 import { logInfo, logWarn, logCatch } from '../services/log.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 
 const TAG = 'jizuraFontPack';
 
@@ -100,17 +101,16 @@ function bindFontPackButton() {
     });
 }
 
-/* 设置面板是按需渲染/反复打开的，所以挂一个轻量的观察者持续补绑（幂等） */
+/* 设置面板由 settingsRenderer + settingsRegistry 声明式挂载，不再需要 MutationObserver */
 function init() {
     bindFontPackButton();
-    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
-    try {
-        const mo = new MutationObserver(() => bindFontPackButton());
-        mo.observe(document.body, { childList: true, subtree: true });
-    } catch (e) {
-        logCatch(TAG, e);
-    }
 }
+
+registerSettingsHook('appearance', {
+    id: 'jizura-fontpack',
+    order: 30,
+    onMount: () => { bindFontPackButton(); },
+});
 
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

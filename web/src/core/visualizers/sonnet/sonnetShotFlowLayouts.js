@@ -26,7 +26,7 @@ export const placeWithGlobalFit = (ctx, place) => {
     }));
     const safeHalfW = ctx.width * 0.48;
     const safeHalfH = ctx.height * 0.46;
-    for (const globalScale of [1, 0.92, 0.84, 0.76, 0.68, 0.6, 0.52]) {
+    for (const globalScale of [1, 0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44, 0.36, 0.28]) {
         ctx.boxes.forEach((box, index) => {
             box.fontScale = snapshot[index].fontScale * globalScale;
             box.measuredWidth = snapshot[index].measuredWidth * globalScale;

@@ -183,7 +183,8 @@ export function estimateBpm(env, frameMs, { minBpm = 60, maxBpm = 180 } = {}) {
  * @param {number} sampleRate
  * @returns {{ introPointMs: number, outroPointMs: number, outroSparsePointMs: number,
  *             bpm: number|null, bpmConfidence: number, meanEnergy: number,
- *             durationMs: number, frameMs: number }}
+ *             durationMs: number, frameMs: number,
+ *             energy: Float32Array, energyRate: number }}
  */
 export function analyzeEnvelope(samples, sampleRate) {
     const { env, frameMs } = computeRmsEnvelope(samples, sampleRate);
@@ -201,5 +202,16 @@ export function analyzeEnvelope(samples, sampleRate) {
         meanEnergy,
         durationMs: env.length * frameMs,
         frameMs,
+        /* ★ 原始 RMS 包络 + 帧率（2026-10-11）：这里以前算了包络就丢掉，于是任何
+           「按音乐强弱驱动画面」的消费方（JIZURA 的 `env.energy`，见 07_decor.js:218、
+           11p_decorB.js:810/2360、11p_exitB.js:1763、11p_layoutsB.js:1773、11p_looks.js:775）
+           要么只能重新解码整首歌，要么退回假噪声摆动。留一份最省 —— analyzer.js 会把
+           本函数的返回值整体写进 automixCache，而那个 store 走 IndexedDB 的结构化克隆
+           （没有 JSON 序列化路径：storageManager 只用 navigator.storage.estimate() 报体积），
+           所以 Float32Array 不会被膨胀成对象。4 分钟歌 ≈ 4800 帧 ≈ 19KB。
+           ★ 这里给的是**原始测量值**，不是 0~1：归一化是消费方的口径（引擎按 95 分位归一），
+           分析结果本身保持"原始 RMS"，换个消费方也能用。 */
+        energy: env,
+        energyRate: frameMs > 0 ? 1000 / frameMs : 0,
     };
 }

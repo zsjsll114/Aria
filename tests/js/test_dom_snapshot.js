@@ -197,6 +197,30 @@ test('snapshotElement：必须有 onStaged 钩子且在 **读样式之前** 调�
 	assert.ok(at > 0, '缺 onStaged 钩子');
 	const planCall = SRC.indexOf('_plan(root, clone, stats,');
 	assert.ok(planCall > 0, '缺 _plan 调用');
-	assert.ok(at < planCall, 'onStaged 必须在 _plan 之前调用（否则读到的还是旧值）');
+	assert.ok(at < planCall, 'onStaged 必须在 _plan 调用之前调用（否则读到的还是旧值）');
 	assert.match(SRC, /stats\.stagedApplied/, 'onStaged 的返回值要落进 stats，便于诊断');
+});
+
+test('replaceCssUrls：引号安全替换且支持单条声明内多个 url(...)', () => {
+	const fn = mod.replaceCssUrls;
+	assert.equal(typeof fn, 'function');
+	const m = new Map([
+		['https://a.example/x.jpg', 'data:image/png;base64,AAA+BBB/CCC='],
+		['https://b.example/y.png?size=300', 'data:image/png;base64,DDD='],
+	]);
+	const raw = 'background-image: url("https://a.example/x.jpg"), url(\'https://b.example/y.png?size=300\'), url(https://c.example/miss.png);';
+	const out = fn(raw, m);
+	assert.equal(out.replaced, 2);
+	assert.equal(out.failed, 0);
+	assert.ok(out.style.includes('url("data:image/png;base64,AAA+BBB/CCC=")'));
+	assert.ok(out.style.includes('url("data:image/png;base64,DDD=")'));
+	assert.ok(out.style.includes('url(https://c.example/miss.png)'));
+});
+
+test('domSnapshot 源代码不变量：清理 hiddenClones 且跳过 hiddenSrcSet/keepSet 固定层误伤', () => {
+	const src = readFileSync(new URL('../../web/src/core/domSnapshot.js', import.meta.url), 'utf8');
+	assert.match(src, /hiddenClones/, '应追踪待移除的隐藏克隆节点');
+	assert.match(src, /hiddenSrcSet/, '应追踪隐藏节点的源码引用以跳过画布/图片内联');
+	assert.match(src, /keepSet\.has\(/, 'fixedLeaks 检查必须放行 keepSet/alsoKeep 视觉舞台层');
+	assert.match(src, /for\s*\(const\s+hc\s+of\s+stats\.hiddenClones\)/, '序列化前应从克隆树移除 hiddenClones');
 });

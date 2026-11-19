@@ -79,20 +79,31 @@ with sync_playwright() as p:
           settle["shown"] == ["about"] and not settle["stillLeaving"] and not settle["concealing"],
           f"{settle}")
 
-    # —— initSettingsMisc 绑定已执行：滑块初值 + 开关状态与 appSettings 同步 ——
+    # —— initSettingsMisc 绑定已执行：默认音量设置已移除，其余控件初值与 appSettings 同步 ——
     misc = page.evaluate("""() => {
         const sv = document.getElementById('setInitialVolume');
+        const sn = document.getElementById('setVolumeNorm');
+        const spm = document.querySelector('#dropdown-defaultPlayMode .setting-dropdown-trigger');
+        const sfd = document.getElementById('setFadeDuration');
         const st = document.getElementById('setPreservesPitch');
         return {
-            volInput: sv ? sv.value : null,
-            volState: (window.appSettings && appSettings.playback) ? String(appSettings.playback.initialVolume) : 'no-appSettings',
+            hasInitialVolSetting: !!sv,
+            hasVolumeNormSetting: !!sn,
+            playModeVal: spm ? spm.dataset.value : null,
+            playModeState: (window.appSettings && appSettings.playback) ? String(appSettings.playback.defaultPlayMode) : 'no-appSettings',
+            fadeInput: sfd ? sfd.value : null,
+            fadeState: (window.appSettings && appSettings.playback) ? String(appSettings.playback.fadeDuration) : 'no-appSettings',
             pitchOn: st ? st.classList.contains('on') : null,
             pitchState: (window.appSettings && appSettings.playback) ? String(!!appSettings.playback.preservesPitch) : 'no-appSettings',
             bindToggleDefined: typeof window.bindToggle === 'function' || typeof bindToggle === 'function'
         };
     }""")
-    check("initSettingsMisc-vol-synced", misc["volInput"] is not None and misc["volInput"] == misc["volState"],
-          f"input={misc['volInput']} appSettings={misc['volState']}")
+    check("initial-volume-setting-removed", not misc["hasInitialVolSetting"] and not misc["hasVolumeNormSetting"],
+          f"sv={misc['hasInitialVolSetting']} sn={misc['hasVolumeNormSetting']}")
+    check("initSettingsMisc-playmode-synced", misc["playModeVal"] is not None and misc["playModeVal"] == misc["playModeState"],
+          f"dom={misc['playModeVal']} appSettings={misc['playModeState']}")
+    check("initSettingsMisc-fade-synced", misc["fadeInput"] is not None and misc["fadeInput"] == misc["fadeState"],
+          f"input={misc['fadeInput']} appSettings={misc['fadeState']}")
     check("initSettingsMisc-toggle-synced", misc["pitchOn"] is not None and misc["pitchOn"] == (misc["pitchState"] == "true"),
           f"on={misc['pitchOn']} appSettings={misc['pitchState']}")
 

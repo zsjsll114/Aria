@@ -4,6 +4,7 @@
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
 import { playerContainer } from './40-playback-state.js';
+import { translatePhrase } from '../core/i18n.js';
 /* ★ 帧时埋点（todos #21）：手机版歌词预览的逐字扫过是独立 rAF，
    与 57 的弹簧循环并行；它每帧读一次 offsetParent（强制布局），
    窄屏/歌词页下是滚动路径上的第三个循环，必须能被诊断页看见。 */
@@ -232,11 +233,35 @@ function updateMobileLyricProgress(ts) {
 function startMobileLyricProgress() { if (!_mlpRafId) _mlpRafId = requestAnimationFrame(updateMobileLyricProgress); }
 function stopMobileLyricProgress() { if (_mlpRafId) { cancelAnimationFrame(_mlpRafId); _mlpRafId = null; } }
 
+function syncMobileTopSafeOffset() {
+    if (!playerContainer) return;
+    if (!mobilePageMq.matches) {
+        playerContainer.style.removeProperty('--mobile-toggle-top');
+        playerContainer.style.removeProperty('--mobile-page-top-pad');
+        return;
+    }
+    const topBar = playerContainer.querySelector('.top-action-buttons');
+    const cRect = playerContainer.getBoundingClientRect();
+    let toggleTop = 104;
+    if (topBar) {
+        const bRect = topBar.getBoundingClientRect();
+        if (bRect.height > 0 && bRect.bottom > cRect.top) {
+            toggleTop = Math.max(60, Math.ceil(bRect.bottom - cRect.top + 14));
+        }
+    }
+    playerContainer.style.setProperty('--mobile-toggle-top', `${toggleTop}px`);
+    const togRect = mobileToggleEl ? mobileToggleEl.getBoundingClientRect() : null;
+    const togH = (togRect && togRect.height > 0) ? togRect.height : 38;
+    const contentTop = toggleTop + Math.ceil(togH) + 12;
+    playerContainer.style.setProperty('--mobile-page-top-pad', `${contentTop}px`);
+}
+
 function syncMobilePageState() {
     if (!mobileToggleEl || !playerContainer) return;
+    syncMobileTopSafeOffset();
     const onLyrics = playerContainer.classList.contains('mobile-page-lyrics');
     mobileToggleEl.classList.toggle('on-lyrics', onLyrics);
-    mobileToggleEl.setAttribute('aria-label', onLyrics ? '切换到播放页面' : '切换到歌词页面');
+    mobileToggleEl.setAttribute('aria-label', translatePhrase(onLyrics ? '切换到播放页面' : '切换到歌词页面'));
     /* 胶囊双段高亮同步：当前页对应的 icon 段点亮 */
     mobileToggleEl.querySelectorAll('.mpt-seg').forEach(seg => {
         seg.classList.toggle('active', (seg.dataset.page === 'lyrics') === onLyrics);
@@ -282,11 +307,25 @@ const onMobilePageMqChange = () => {
         };
 
 if (mobilePageMq.addEventListener) mobilePageMq.addEventListener('change', onMobilePageMqChange);
+if (typeof window !== 'undefined') {
+    window.addEventListener('resize', syncMobileTopSafeOffset);
+}
+if (typeof ResizeObserver !== 'undefined' && playerContainer) {
+    const _topBar = playerContainer.querySelector('.top-action-buttons');
+    if (_topBar) {
+        const _ro = new ResizeObserver(() => syncMobileTopSafeOffset());
+        _ro.observe(_topBar);
+        _ro.observe(playerContainer);
+    }
+}
 
 syncMobilePageState();
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(syncMobileTopSafeOffset);
 
 globalThis.lastPercent = -1;
 
 globalThis.lastFormattedTime = '';
 
-export { mobilePageMq, mobilePreviewEl, mobileToggleEl, onMobilePageMqChange, resetMobileLyricPreview, syncMobilePageState, updateMobileLyricPreview, updateMobileLyricProgress, startMobileLyricProgress, stopMobileLyricProgress };
+function isMobileLyricProgressRunning() { return !!_mlpRafId; }
+
+export { isMobileLyricProgressRunning, mobilePageMq, mobilePreviewEl, mobileToggleEl, onMobilePageMqChange, resetMobileLyricPreview, syncMobilePageState, updateMobileLyricPreview, updateMobileLyricProgress, startMobileLyricProgress, stopMobileLyricProgress };

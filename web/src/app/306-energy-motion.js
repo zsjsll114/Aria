@@ -46,6 +46,41 @@ let _doneScale = -1;
 let _gateAt = 0;
 let _blocked = false;
 let _manualOff = false;
+let _lastClassOn = null;
+let _lastWriteAt = 0;
+let _cachedPlayer = null;
+let _cachedCoverArea = null;
+let _cachedBottomCover = null;
+let _cachedBottomBar = null;
+
+function resolveTargets() {
+    if (typeof document === 'undefined') return null;
+    if (!_cachedPlayer || !_cachedPlayer.isConnected) _cachedPlayer = document.querySelector('.player-container');
+    if (!_cachedCoverArea || !_cachedCoverArea.isConnected) _cachedCoverArea = document.querySelector('.player-container .cover-area');
+    if (!_cachedBottomCover || !_cachedBottomCover.isConnected) _cachedBottomCover = document.getElementById('bottomSongCover');
+    if (!_cachedBottomBar || !_cachedBottomBar.isConnected) _cachedBottomBar = document.getElementById('bottomControlBar');
+    return {
+        player: _cachedPlayer,
+        coverArea: _cachedCoverArea,
+        bottomCover: _cachedBottomCover,
+        bottomBar: _cachedBottomBar,
+    };
+}
+
+function getActiveEnergyTarget() {
+    const t = resolveTargets();
+    if (!t || !t.player) return null;
+    /* 默认模式：主封面区可见，变量只写到 .cover-area 局部子树，绝不写 documentElement 触发全页重算 */
+    if (t.player.classList.contains('view-cover')) {
+        return t.coverArea || null;
+    }
+    /* 其他模式：仅当底栏未收起时写到 #bottomSongCover 单节点（1 节点子树），收起或专注态直接跳过 */
+    if (t.bottomCover && t.bottomBar && !t.bottomBar.classList.contains('is-collapsed') &&
+        !(document.body && document.body.classList.contains('zen-mode'))) {
+        return t.bottomCover;
+    }
+    return null;
+}
 
 /** 用户开关（缺省开；显式 false 才关） */
 function isEnabled() {
@@ -92,22 +127,36 @@ html#ariaRoot.is-energy-motion .player-container .cover-area {
 }
 
 function setClass(on) {
+    const flag = !!on;
+    if (flag === _lastClassOn) return;
+    _lastClassOn = flag;
     try {
         const root = document.documentElement;
         if (!root) return;
-        root.classList.toggle('is-energy-motion', !!on);
+        root.classList.toggle('is-energy-motion', flag);
     } catch (e) { logCatch(TAG, e); }
 }
 
-function writeVars(level, scale) {
+let _lastTarget = null;
+function writeVars(level, scale, target) {
     const l = Math.round(level * 100) / 100;
     const s = Math.round(scale * 10000) / 10000;
+    if (_lastTarget && _lastTarget !== target) {
+        try {
+            _lastTarget.style.removeProperty('--aria-energy');
+            _lastTarget.style.removeProperty('--aria-energy-scale');
+        } catch (e) { logCatch(TAG, e); }
+        _doneLevel = -1;
+        _doneScale = -1;
+    }
+    _lastTarget = target || null;
+    if (!target) return;
     if (l === _doneLevel && s === _doneScale) return;
     _doneLevel = l;
     _doneScale = s;
     try {
-        document.documentElement.style.setProperty('--aria-energy', String(l));
-        document.documentElement.style.setProperty('--aria-energy-scale', String(s));
+        target.style.setProperty('--aria-energy', String(l));
+        target.style.setProperty('--aria-energy-scale', String(s));
     } catch (e) { logCatch(TAG, e); }
 }
 
@@ -139,18 +188,23 @@ function readRaw() {
 
 function frame(now) {
     _raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(frame) : 0;
+    /* ★ 性能（2026-11-19）：30Hz 更新足够驱动 ≤2% 封面微呼吸，且严禁每帧写 :root CSS 变量
+       触发全文档 2000+ 节点样式重算（此前是所有歌词模式概率性卡顿的头号元凶）。 */
+    if (now - _lastWriteAt < 33) return;
+    _lastWriteAt = now;
     try {
         const on = isEnabled() && !refreshGate(now);
-        setClass(on);
-        if (!on) {
+        const target = on ? getActiveEnergyTarget() : null;
+        setClass(on && !!target);
+        if (!on || !target) {
             motion.reset();
-            writeVars(0, 1);
+            writeVars(0, 1, null);
             return;
         }
         const raw = readRaw();
         /* 没有来源就当作安静：包络自然回落到 0，而不是冻在最后的值上 */
         const st = motion.update(raw === null ? 0 : raw, now);
-        writeVars(st.level, st.scale);
+        writeVars(st.level, st.scale, target);
     } catch (e) {
         logCatch(TAG, e);
     }
@@ -168,7 +222,7 @@ function pushEnergy(level) {
 /** 手动开关（暂无设置项；供控制台/探针与将来接 UI 用） */
 function setEnabled(on) {
     _manualOff = (on === false);
-    if (_manualOff) { motion.reset(); writeVars(0, 1); setClass(false); }
+    if (_manualOff) { motion.reset(); writeVars(0, 1, null); setClass(false); }
 }
 
 function getState() {
@@ -179,6 +233,20 @@ function getState() {
         blocked: _blocked,
         source: (typeof window !== 'undefined' && window.playerAudioAnalyser) ? 'analyser' : (typeof window !== 'undefined' ? 'none' : 'none'),
     };
+}
+
+function isEnergyMotionRunning() {
+    return !!_raf;
+}
+
+function pauseEnergyMotion() {
+    if (_raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(_raf);
+    _raf = 0;
+}
+
+function resumeEnergyMotion() {
+    if (_raf || typeof requestAnimationFrame !== 'function' || typeof document === 'undefined') return;
+    _raf = requestAnimationFrame(frame);
 }
 
 if (typeof document !== 'undefined') {
@@ -194,4 +262,4 @@ if (typeof window !== 'undefined') {
     window.Aria.energyMotion = { push: pushEnergy, setEnabled, state: getState };
 }
 
-export { pushEnergy, setEnabled, getState };
+export { isEnergyMotionRunning, pauseEnergyMotion, pushEnergy, resumeEnergyMotion, setEnabled, getState };

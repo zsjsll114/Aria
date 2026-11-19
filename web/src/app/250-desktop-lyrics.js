@@ -7,6 +7,7 @@
 import { audio } from './20-lyrics-render.js';
 import { saveSettings } from './180-boot-config.js';
 import { logCatch } from '../services/log.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 
 (function () {
   const btn = document.getElementById('desktopLyricsBtn');
@@ -156,12 +157,14 @@ import { logCatch } from '../services/log.js';
     return fills;
   }
 
-  /* ★ 性能（2026-09-20）：主题色/字体/字号等样式类字段按 2s TTL 探测缓存——
-     它们只在切歌/设置变更时变，原本每 120ms 各做一次 getComputedStyle（强制
-     style recalc）+ querySelector×4，是主窗口周期性掉帧的确定性来源 */
+  /* ★ 性能（2026-11-19）：样式探测 TTL 延长至 5s，并优先读内联 CSS 变量避免强制 style recalc */
   let _styleProbeAt = 0;
   let _styleProbe = null;
-  const STYLE_PROBE_TTL = 2000;
+  const STYLE_PROBE_TTL = 5000;
+  let _dtkBc = null;
+  try {
+    if (typeof BroadcastChannel !== 'undefined') _dtkBc = new BroadcastChannel('aria_dtk_sync');
+  } catch (_e) { _dtkBc = null; }
   function buildEmColorMap() {
     const map = {};
     try {
@@ -180,17 +183,17 @@ import { logCatch } from '../services/log.js';
     _styleProbeAt = now;
     const st = _styleProbe || {};
     try {
-      st.themeColor = (typeof document !== 'undefined' && document.documentElement)
-        ? (getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#E8BE6A')
-        : '#E8BE6A';
-      st.fontFamily = (typeof document !== 'undefined' && document.documentElement)
-        ? (getComputedStyle(document.documentElement).getPropertyValue('--app-font-family').trim() || undefined)
-        : undefined;
+      const rootEl = typeof document !== 'undefined' ? document.documentElement : null;
+      const inlineTheme = rootEl ? rootEl.style.getPropertyValue('--aria-accent').trim() : '';
+      const inlineFont = rootEl ? rootEl.style.getPropertyValue('--app-font-family').trim() : '';
+      const rootCs = (!inlineTheme || !inlineFont) && rootEl ? getComputedStyle(rootEl) : null;
+      st.themeColor = inlineTheme || (rootCs ? rootCs.getPropertyValue('--aria-accent').trim() : '') || '#E8BE6A';
+      st.fontFamily = inlineFont || (rootCs ? rootCs.getPropertyValue('--app-font-family').trim() : '') || undefined;
     } catch (_e) { logCatch('desktopLyrics', _e); }
     try {
       let visualMode = false;
       if (typeof document !== 'undefined' && document.querySelector('.player-container')) {
-        visualMode = /(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-letterpress|view-neon)/.test(document.querySelector('.player-container').className);
+        visualMode = /(?:view-wordcloud|view-pv|view-tunnel|view-dimension|view-letterpress|view-neon|view-prism|view-astrolabe|view-vitrail|view-focalcut)/.test(document.querySelector('.player-container').className);
       }
       const el = document.querySelector('.player-container:not(.preview-player) .lrc-original')
               || document.querySelector('.lrc-original');
@@ -264,11 +267,24 @@ import { logCatch } from '../services/log.js';
   }
 
   let last = null;
+  let _lastStructKey = '';
+  let _lastLsWriteAt = 0;
   function push(force) {
     try {
       const p = currentPayload();
-      if (force || p !== last) {
-        last = p;
+      if (!force && p === last) return;
+      last = p;
+      /* ★ 性能（2026-11-19）：高频逐字进度改走非阻塞 BroadcastChannel（零同步磁盘刷写），
+         localStorage 仅在切行/切歌/启停或 1.5s 心跳时落盘，消除主窗口每 120ms 的同步 I/O 微卡顿。 */
+      if (_dtkBc) {
+        try { _dtkBc.postMessage(p); } catch (_e) { logCatch('desktopLyrics', _e); }
+      }
+      const now = Date.now();
+      const playingFlag = !!(audio && !audio.paused && !(globalThis.isBuffering));
+      const structKey = `${globalThis.currentTrackIndex}|${globalThis.activeLineIndex}|${playingFlag ? 1 : 0}`;
+      if (force || !_dtkBc || structKey !== _lastStructKey || now - _lastLsWriteAt >= 1500) {
+        _lastStructKey = structKey;
+        _lastLsWriteAt = now;
         localStorage.setItem(LS_STATE, p);
       }
     } catch (_e) { logCatch('desktopLyrics', _e); }
@@ -319,9 +335,11 @@ function resolveDtkFontFamily(val, customFonts) {
 }
 export { resolveDtkFontFamily };
 
-(function initDtkSettingsRows() {
-    const root = document.querySelector('[data-section="interface"]');
-    if (!root) return;
+function initDtkSettingsRows(secEl) {
+    const root = secEl || document.querySelector('[data-section="lyrics"]') || document.querySelector('[data-section="interface"]');
+    if (!root || root.dataset.dtkBound === '1') return;
+    if (!root.querySelector('[data-var="dlFontSize"]')) return;
+    root.dataset.dtkBound = '1';
     const dls = appSettings.interface.desktopLyrics ||
         (appSettings.interface.desktopLyrics = { fontSize: 34, fontFamily: 'default', emotionWords: true });
 
@@ -395,4 +413,11 @@ export { resolveDtkFontFamily };
             persist();
         });
     }
-})();
+}
+
+initDtkSettingsRows();
+registerSettingsHook('lyrics', {
+    id: 'desktop-lyrics',
+    order: 20,
+    onMount: (secEl) => initDtkSettingsRows(secEl),
+});

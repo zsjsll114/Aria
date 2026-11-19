@@ -245,7 +245,7 @@
     三个实测坑：① **两面都不常显，必须各挂一份**——`view-lyrics`/`view-pv`/`view-dimension`/  
     `view-tunnel` 下 `.player-controls-wrapper` 整列 `display:none`（元素存在但尺寸 0×0，  
     `getBoundingClientRect()` 才发现的），而 **默认（cover）模式下反过来**：`.bottom-control-bar`  
-    只有那四个视觉模式 + neon/letterpress 有 `display:flex` 规则，**cover 没有对应规则 → 整条底栏隐藏**  
+    只有那四个视觉模式 + neon/letterpress/vinyl 有 `display:flex` 规则，**cover 没有对应规则 → 整条底栏隐藏**  
     （此前这里写的「常显面只有底栏」是反的，2026-09-26 实测纠正）。所以角标有两枚  
     （底栏 `#playSourceBadge` + 主信息列 `[data-play-source-badge]`，由 `275-play-source.js`  
     按属性一次刷新，主信息列那枚用 `.song-source-badge-slot` 只在 view-cover 显示以免重复），  

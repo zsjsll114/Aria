@@ -151,8 +151,47 @@ const ENTER_ANIMATIONS = {
      { opacity: 1, scale: '1.12', filter: 'blur(0px)', offset: 0.28 },
      { opacity: 0.6, scale: '1.02', offset: 0.55 },
      { opacity: 1, scale: '1', filter: 'blur(0px)' }],
-    { duration: 300, delay: d, easing: EASE_OUT, fill: 'backwards' })
+    { duration: 300, delay: d, easing: EASE_OUT, fill: 'backwards' }),
+
+  /* ===== 风格派（Mondrian）直角几何揭示：零模糊、零旋转、硬切闸门 ===== */
+  'mondrian-wipe-r': (el, d) => el.animate(
+    [{ clipPath: 'inset(0 100% 0 0)', translate: '-10px 0', opacity: 0.2 },
+     { clipPath: 'inset(0 0% 0 0)', translate: '0 0', opacity: 1 }],
+    { duration: 170, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' }),
+
+  'mondrian-wipe-l': (el, d) => el.animate(
+    [{ clipPath: 'inset(0 0 0 100%)', translate: '10px 0', opacity: 0.2 },
+     { clipPath: 'inset(0 0 0 0)', translate: '0 0', opacity: 1 }],
+    { duration: 170, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' }),
+
+  'mondrian-wipe-up': (el, d) => el.animate(
+    [{ clipPath: 'inset(100% 0 0 0)', translate: '0 14px', opacity: 0.2 },
+     { clipPath: 'inset(0 0 0 0)', translate: '0 0', opacity: 1 }],
+    { duration: 170, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' }),
+
+  'mondrian-wipe-down': (el, d) => el.animate(
+    [{ clipPath: 'inset(0 0 100% 0)', translate: '0 -14px', opacity: 0.2 },
+     { clipPath: 'inset(0 0 0 0)', translate: '0 0', opacity: 1 }],
+    { duration: 170, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' }),
+
+  'mondrian-gate': (el, d) => el.animate(
+    [{ clipPath: 'inset(0 50% 0 50%)', scale: '1.08', opacity: 0.3 },
+     { clipPath: 'inset(0 0% 0 0)', scale: '1', opacity: 1 }],
+    { duration: 180, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' }),
+
+  'mondrian-snap-y': (el, d, dir = 0) => {
+    const sy = dir % 2 === 0 ? 18 : -18;
+    return el.animate(
+      [{ translate: `0 ${sy}px`, opacity: 0 },
+       { translate: '0 0', opacity: 1 }],
+      { duration: 160, delay: d, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' });
+  }
 };
+
+export const MONDRIAN_ENTER_POOL = [
+  'mondrian-wipe-r', 'mondrian-wipe-up', 'mondrian-gate',
+  'mondrian-wipe-down', 'mondrian-wipe-l', 'mondrian-snap-y'
+];
 
 const ENTER_POOL_LOW = ['slide-up', 'slide-diagonal', 'clip-reveal', 'scan-clip', 'raster-wobble', 'resize-slide'];
 const ENTER_POOL_HIGH = ['scale-burst', 'rotate-3d', 'rotate-z-bounce', 'blink-in', 'shatter-reverse'];
@@ -222,7 +261,16 @@ const EXIT_ANIMATIONS = {
 
   'dissolve': (el, d) => el.animate(
     [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0.5, filter: 'blur(4px)', offset: 0.5 }, { opacity: 0, filter: 'blur(12px)' }],
-    { duration: 250, delay: d, easing: 'ease-in', fill: 'forwards' })
+    { duration: 250, delay: d, easing: 'ease-in', fill: 'forwards' }),
+
+  /* 风格派直角闸门退场（零模糊） */
+  'mondrian-exit-wipe': (el, d, i = 0) => {
+    const target = (i % 2 === 0) ? 'inset(0 0 0 100%)' : 'inset(100% 0 0 0)';
+    return el.animate(
+      [{ clipPath: 'inset(0 0 0 0)', opacity: 1 },
+       { clipPath: target, opacity: 0 }],
+      { duration: 150, delay: Math.min(d, 70), easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'forwards' });
+  }
 };
 
 export function playEnterAnimation(el, type = 'slide-up', delay = 0, duration = 200, direction = 0) {

@@ -109,7 +109,10 @@ export class DimensionBackground {
         const h = this.height;
 
         const bass = audioData.bass || 0;
-        this.time += dt * this.speed * (1.0 + bass * 0.6);
+        const mid = audioData.mid || 0;
+        const treble = audioData.treble || 0;
+        const overall = audioData.overall || 0;
+        this.time += dt * this.speed * (1.0 + bass * 0.75 + mid * 0.15);
 
         // 主题色平滑渐变
         for (const k of ['base', 'silkLight', 'silkMid', 'silkDark', 'accent']) {
@@ -136,11 +139,11 @@ export class DimensionBackground {
             ctx.save();
             const rPhase = t * 0.5 + r * 1.3;
             const yBase = h * 0.5 + Math.sin(rPhase * 0.7) * (h * 0.15);
-            const thickness = h * (0.28 + r * 0.08) * (1.0 + bass * 0.2);
+            const thickness = h * (0.28 + r * 0.08) * (1.0 + bass * 0.32 + overall * 0.08);
 
             // 丝绸曲面渐变
             const grad = ctx.createLinearGradient(0, yBase - thickness, w, yBase + thickness);
-            const alphaLight = (0.35 - r * 0.04 + bass * 0.15).toFixed(3);
+            const alphaLight = (0.35 - r * 0.04 + bass * 0.20 + treble * 0.05).toFixed(3);
             const alphaMid = (0.22 - r * 0.02).toFixed(3);
             const alphaDark = (0.08).toFixed(3);
 
@@ -198,13 +201,61 @@ export class DimensionBackground {
             }
 
             ctx.lineWidth = 1.8 + s * 0.5;
-            const lineAlpha = (0.18 + (audioData.treble || 0) * 0.25).toFixed(3);
+            const lineAlpha = (0.18 + treble * 0.38).toFixed(3);
             ctx.strokeStyle = `rgba(${slr}, ${slg}, ${slb}, ${lineAlpha})`;
             ctx.stroke();
         }
         ctx.restore();
 
-        // 4. 四周暗角 (Vignette Shadow)
+        // 4. 低频能量光：丝绸底部随真实低频起伏
+        const freq = audioData.freqData;
+        const [ar, ag, ab] = this.theme.accent.map(Math.round);
+        /* 低频越强，丝绸底部那一团能量光越大越亮；高频给它加一点冷色边 */
+        const bloomRadius = Math.min(w, h) * (0.32 + bass * 0.20 + treble * 0.04);
+        if (bloomRadius > 1) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const bloom = ctx.createRadialGradient(
+                w * 0.5, h * 0.82, 0,
+                w * 0.5, h * 0.82, bloomRadius,
+            );
+            bloom.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, ${(0.02 + bass * 0.065).toFixed(3)})`);
+            bloom.addColorStop(0.55, `rgba(${ar}, ${ag}, ${ab}, ${(0.008 + mid * 0.024).toFixed(3)})`);
+            bloom.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = bloom;
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+        }
+
+        // 5. 真实频谱脊线：用当前帧的 32 个频段直接塑形，叠在能量光之上
+        if (freq && freq.length > 0) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const points = 32;
+            ctx.beginPath();
+            for (let i = 0; i <= points; i++) {
+                const idx = Math.min(freq.length - 1, Math.floor((i / points) * (freq.length - 1)));
+                const v = (freq[idx] || 0) / 255;
+                const x = (i / points) * w;
+                const y = h * 0.68 - v * h * 0.125 - Math.sin(i * 0.55 + t * 1.2) * 10;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = `rgba(214, 238, 255, ${(0.07 + overall * 0.16).toFixed(3)})`;
+            ctx.lineWidth = 1.3;
+            ctx.stroke();
+            ctx.lineTo(w, h);
+            ctx.lineTo(0, h);
+            ctx.closePath();
+            const ridgeFill = ctx.createLinearGradient(0, h * 0.52, 0, h);
+            ridgeFill.addColorStop(0, `rgba(214, 238, 255, ${(0.012 + overall * 0.030).toFixed(3)})`);
+            ridgeFill.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = ridgeFill;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 6. 四周暗角 (Vignette Shadow)
         const vigGrad = ctx.createRadialGradient(
             w * 0.5, h * 0.5, Math.min(w, h) * 0.35,
             w * 0.5, h * 0.5, Math.max(w, h) * 0.75
@@ -215,7 +266,7 @@ export class DimensionBackground {
         ctx.fillStyle = vigGrad;
         ctx.fillRect(0, 0, w, h);
 
-        // 5. 织物细腻胶质颗粒
+        // 7. 织物细腻胶质颗粒
         if (this.noiseCanvas) {
             ctx.save();
             ctx.globalAlpha = 0.38;

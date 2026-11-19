@@ -211,7 +211,14 @@ function openMoreMenu() {
             /* ★ 歌词海报（需求 2）：合成封面 + 歌名 + 当前歌词出图。
                由 304-lyric-poster.js 自注册到 Aria（本文件不 import 它，
                与下面 bilingual / abLoop / playSource / diagnostics 同一套扩展方式）。 */
-            if (aria.poster && typeof aria.poster.menuItems === 'function') {
+            if (aria.poster && typeof aria.poster.openStudio === 'function') {
+                extra.push({
+                    key: 'lyric-poster', label: '歌词海报', icon: CTX_ICONS.photo,
+                    onClick: () => {
+                        aria.poster.openStudio().catch((e) => logCatch('moreMenu', e));
+                    },
+                });
+            } else if (aria.poster && typeof aria.poster.menuItems === 'function') {
                 try {
                     const posterSub = aria.poster.menuItems();
                     if (Array.isArray(posterSub) && posterSub.length) {

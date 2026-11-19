@@ -6,6 +6,7 @@
 import { PVEngine } from '../core/pvEngine/PVEngine.js';
 import { TunnelEngine } from '../core/tunnelEngine/TunnelEngine.js';
 import { triggerAiAnalysisIfNeeded } from '../core/aiAnalyzer.js';
+import { updateAiSettingsPreview } from '../services/aiAnalyzer.js';
 import { state } from '../infrastructure/state.js';
 import { EQ_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '../config/constants.js';
 import { formatTime } from '../utils/formatters.js';
@@ -30,6 +31,9 @@ import { applyAllSettings, applyModeSettings, getSettingValue, setSettingValue }
 import { bindBtnGroup } from './200-settings-panel.js';
 import { logInfo, logWarn, logError, logCatch } from '../services/log.js';
 import { registerAudioListener, onRoleSwap } from '../core/dualDeck.js';
+import { bindProgressHoverTip, calcProgressPercent, hideProgressTimeTip, showProgressTimeTip } from '../core/progressPreview.js';
+import { bindDropdownToggle, ensureDropdownDocClose, mountDropdown, syncDropdownSelection } from '../ui/settingsPrimitives.js';
+import { t } from '../core/i18n.js';
 
 /* 快捷键录制 */
 globalThis.recordingShortcut = null;
@@ -107,12 +111,6 @@ function refreshSettingsUI() {
             if (typeof Aria.__nativeOutputRefresh === 'function') Aria.__nativeOutputRefresh();
             
             // 1. 播放设置
-            const setInitialVolume = document.getElementById('setInitialVolume');
-            const setInitialVolumeVal = document.getElementById('setInitialVolumeVal');
-            if (setInitialVolume && appSettings.playback) {
-                setInitialVolume.value = appSettings.playback.initialVolume ?? 80;
-                if (setInitialVolumeVal) setInitialVolumeVal.textContent = setInitialVolume.value;
-            }
             const setPreservesPitch = document.getElementById('setPreservesPitch');
             if (setPreservesPitch && appSettings.playback) {
                 setPreservesPitch.classList.toggle('on', !!appSettings.playback.preservesPitch);
@@ -212,29 +210,21 @@ function refreshSettingsUI() {
                 setGlassStrength.value = appSettings.interface.glassStrength ?? 40;
                 if (setGlassStrengthVal) setGlassStrengthVal.textContent = setGlassStrength.value + 'px';
             }
-            const themeContainer = document.getElementById('setThemeColor');
-            if (themeContainer && appSettings.interface) {
-                const curTheme = appSettings.interface.themeColor || '#E8BE6A';
+            const curTheme = (appSettings.interface && appSettings.interface.themeColor) || '#E8BE6A';
+            const normTheme = String(curTheme).trim().toLowerCase();
+            document.querySelectorAll('.setting-color-row[data-var="themeColor"]').forEach(themeContainer => {
                 let matched = false;
                 themeContainer.querySelectorAll('.color-swatch').forEach(sw => {
-                    if (sw.dataset.color === curTheme) {
-                        sw.classList.add('active');
-                        matched = true;
-                    } else {
-                        sw.classList.remove('active');
-                    }
+                    const sc = String(sw.dataset.color || '').trim().toLowerCase();
+                    const hit = sc !== '__custom__' && sc === normTheme;
+                    sw.classList.toggle('active', hit);
+                    if (hit) matched = true;
                 });
-                if (!matched) {
-                    const customSw = themeContainer.querySelector('.color-swatch.custom');
-                    if (customSw) customSw.classList.add('active');
-                }
-            }
+                const customSw = themeContainer.querySelector('.color-swatch.custom');
+                if (customSw) customSw.classList.toggle('active', !matched);
+            });
 
             // 4. 音效设置
-            const setVolumeNorm = document.getElementById('setVolumeNorm');
-            if (setVolumeNorm && appSettings.audio) {
-                setVolumeNorm.classList.toggle('on', !!appSettings.audio.volumeNorm);
-            }
             /* ★ 空间音频 + 虚拟声场（P1 虚拟声场 / P2 空间音频）：开关态回填 + 档位高亮。
                直接操作 DOM 而不调 200 的内部函数 —— 220 不 import 200（既有分层），
                且此处只需「把 UI 拉回 appSettings 的真实值」这一件事。
@@ -293,8 +283,18 @@ function refreshSettingsUI() {
             if (setAiModel && appSettings.ai) setAiModel.value = appSettings.ai.model || '';
             const setAiEnabled = document.getElementById('setAiEnabled');
             if (setAiEnabled && appSettings.ai) setAiEnabled.classList.toggle('on', !!appSettings.ai.enabled);
+            const isGeminiProv = !appSettings.ai || (appSettings.ai.provider || 'gemini') === 'gemini';
             const setAiUseProxy = document.getElementById('setAiUseProxy');
-            if (setAiUseProxy && appSettings.ai) setAiUseProxy.classList.toggle('on', appSettings.ai.useProxy !== false);
+            if (setAiUseProxy && appSettings.ai) {
+                setAiUseProxy.classList.toggle('on', appSettings.ai.useProxy !== false);
+                const proxyRow = setAiUseProxy.closest ? setAiUseProxy.closest('.setting-row') : null;
+                if (proxyRow) proxyRow.style.display = isGeminiProv ? '' : 'none';
+            }
+            const setAiProxyToken = document.getElementById('setAiProxyToken');
+            if (setAiProxyToken) {
+                const tokenRow = setAiProxyToken.closest ? setAiProxyToken.closest('.setting-row') : null;
+                if (tokenRow) tokenRow.style.display = isGeminiProv ? '' : 'none';
+            }
 
             /* 刷新当前歌曲 AI 分析状态 */
             if (typeof currentAiTheme !== 'undefined' && currentAiTheme) {
@@ -607,96 +607,37 @@ document.getElementById('profileEffectItems').innerHTML = effectsHtml;
             if (typeof refreshVfxOverheadUI === 'function') refreshVfxOverheadUI();
         }
 
-/* ========== 自定义下拉选择器 ========== */
+/* ========== 自定义下拉选择器（委托给 ui/settingsPrimitives.js） ========== */
 /* DROPDOWN_OPTIONS 已提升至顶部 */
 function initCustomDropdowns() {
-            /* ★ 文档级「点击外部关闭」只全局挂载一次（避免每次打开面板/切 tab 叠加多个监听） */
-            if (typeof document !== 'undefined' && !Aria.__ariaDropdownDocCloseBound) {
-                Aria.__ariaDropdownDocCloseBound = true;
-                document.addEventListener('click', () => {
-                    document.querySelectorAll('.setting-dropdown.open').forEach(d => d.classList.remove('open'));
-                });
-            }
+            ensureDropdownDocClose();
 
             document.querySelectorAll('.setting-dropdown').forEach(dd => {
-                /* ★ 开合事件唯一挂载点：
-                   若 trigger 已被其他模块（refreshFontDropdown 等）预建，只补绑开合事件、
-                   不重建内容 —— 避免 addEventListener 与 onclick 双 handler 互相 toggle 抵消
-                   （表现为点击下拉无法弹出） */
+                /* ★ 开合事件唯一挂载点：若 trigger 已被其他模块预建，只补绑开合事件 */
                 const existingTrigger = dd.querySelector('.setting-dropdown-trigger');
                 if (existingTrigger) {
-                    if (!existingTrigger._ariaToggleBound) {
-                        existingTrigger._ariaToggleBound = true;
-                        existingTrigger.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            document.querySelectorAll('.setting-dropdown.open').forEach(d => {
-                                if (d !== dd) d.classList.remove('open');
-                            });
-                            dd.classList.toggle('open');
-                        });
-                    }
+                    bindDropdownToggle(dd, existingTrigger);
                     return;
                 }
 
                 const setting = dd.dataset.setting;
+                if (!setting) return;
                 const options = DROPDOWN_OPTIONS[setting] || [];
                 const currentVal = getSettingValue(setting);
-
-                /* 构建 trigger */
-                const trigger = document.createElement('div');
-                trigger.className = 'setting-dropdown-trigger';
-                trigger._ariaToggleBound = true;
-                const currentOpt = options.find(o => String(o.value) === String(currentVal)) || options[0];
-                trigger.textContent = currentOpt ? currentOpt.label : '';
-
-                /* 构建 menu */
-                const menu = document.createElement('div');
-                menu.className = 'setting-dropdown-menu';
-                options.forEach(opt => {
-                    const item = document.createElement('div');
-                    item.className = 'setting-dropdown-item' + (String(opt.value) === String(currentVal) ? ' selected' : '');
-                    item.textContent = opt.label;
-                    item.dataset.value = opt.value;
-                    item?.addEventListener('click', () => {
-                        trigger.textContent = opt.label;
-                        menu.querySelectorAll('.setting-dropdown-item').forEach(i => i.classList.remove('selected'));
-                        item.classList.add('selected');
-                        setSettingValue(setting, opt.value);
-                        dd.classList.remove('open');
-                    });
-                    menu.appendChild(item);
+                mountDropdown(dd, options, currentVal, {
+                    onSelect: (opt) => setSettingValue(setting, opt.value),
                 });
-
-                trigger?.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    document.querySelectorAll('.setting-dropdown.open').forEach(d => {
-                        if (d !== dd) d.classList.remove('open');
-                    });
-                    dd.classList.toggle('open');
-                });
-
-                dd.appendChild(trigger);
-                dd.appendChild(menu);
             });
         }
 
 function refreshDropdowns() {
             document.querySelectorAll('.setting-dropdown').forEach(dd => {
                 const setting = dd.dataset.setting;
-                /* ★ fontFamily 下拉由 refreshFontDropdown（215-multilang-fonts）私有
-                   管理：选项含 customFonts 动态项，静态 DROPDOWN_OPTIONS 匹配不到
-                   当前值时会 fallback 到 options[0] 把 trigger 重置成「默认」——
-                   用户实测：选宋体后 trigger 显示「默认」而 menu 选中仍正确（两组
-                   逻辑各写各的）。显示统一以 refreshFontDropdown 为准，此处跳过。 */
-                if (setting === 'fontFamily') return;
+                /* ★ fontFamily 下拉由 refreshFontDropdown（215-multilang-fonts）私有管理 */
+                if (!setting || setting === 'fontFamily') return;
                 const options = DROPDOWN_OPTIONS[setting] || [];
                 const currentVal = getSettingValue(setting);
-                const trigger = dd.querySelector('.setting-dropdown-trigger');
-                const currentOpt = options.find(o => String(o.value) === String(currentVal)) || options[0];
-                if (trigger && currentOpt) trigger.textContent = currentOpt.label;
-                dd.querySelectorAll('.setting-dropdown-item').forEach(item => {
-                    item.classList.toggle('selected', String(item.dataset.value) === String(currentVal));
-                });
+                syncDropdownSelection(dd, currentVal, options, { fallbackFirst: true });
             });
         }
 
@@ -907,7 +848,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 if (typeof window !== 'undefined') window.currentViewMode = mode;
                 
                 /* ★ 先移除并更新所有视图模式 class */
-                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-tempera', 'view-jizura');
+                playerContainer.classList.remove('view-lyrics', 'view-flyin', 'view-wordcloud', 'view-pv', 'view-tunnel', 'view-dimension', 'view-letterpress', 'view-neon', 'view-tempera', 'view-jizura', 'view-prism', 'view-astrolabe', 'view-vitrail', 'view-focalcut');
                 
                 if (mainVisManager && mainVisManager.has(mode)) {
                     playerContainer.classList.add(`view-${mode}`);
@@ -1000,6 +941,7 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                         /* ★ 切歌复用口：20-lyrics-render 渲染新歌时用它重走确认流程（防止切歌绕过弹窗） */
                         if (typeof window !== 'undefined') {
                             Aria.__tunnelEnsureAnalysis = ensureTunnelAnalysis;
+                            Aria.__tunnelEngine = tunnelEngineInstance;
                             Aria.__tunnelLastAskAt = Date.now();   // 本次进入已弹，供 3s 护栏防双弹
                         }
                         /* ★ 第 16.1/16.4 节：进入 PV 需 AI 分析 → 先查缓存，未命中弹确认框提醒 token 消耗 */
@@ -1018,6 +960,13 @@ if (typeof window !== "undefined") window.addEventListener('load', function() {
                 const isDefaultCoverMode = !(mainVisManager && mainVisManager.has(mode))
                     && mode !== 'lyrics' && mode !== 'flyin' && mode !== 'wordcloud' && mode !== 'pv' && mode !== 'tunnel' && mode !== 'tempera';
                 playerContainer.classList.toggle('view-cover', isDefaultCoverMode);
+                /* ★ 2026-11-19：全屏自绘视觉模式切入时挂 body.vis-opaque-bg，
+                   立即停掉底层 .blur-background 的 150% 全屏实时高斯模糊 + bgSway 动画 */
+                const isOpaqueVisMode = !!(mainVisManager && mainVisManager.has(mode))
+                    || mode === 'pv' || mode === 'tunnel' || mode === 'tempera';
+                if (typeof document !== 'undefined' && document.body) {
+                    document.body.classList.toggle('vis-opaque-bg', isOpaqueVisMode);
+                }
 
                 /* ★ P4：离开默认模式时退出手机版歌词页；每次切换后同步按钮态与预览文本 */
                 if (!isDefaultCoverMode) playerContainer.classList.remove('mobile-page-lyrics');
@@ -1342,15 +1291,30 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
                 bottomTotalTimeEl.textContent = formatTime(getDuration()).replace(/^0/, '');
             });
 
-            /* 底部进度条点击拖拽 */
+            /* 底部进度条点击拖拽 + 悬停时间预览 */
             let isDraggingBottomProgress = false;
-            function setBottomProgressFromEvent(e) {
-                const rect = bottomProgressTrack.getBoundingClientRect();
-                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                if (audio.duration) audio.currentTime = pct * audio.duration;
-                bottomProgressBar.style.width = (pct * 100) + '%';
+            function getBottomDurationMs() {
+                if (audio && Number.isFinite(audio.duration) && audio.duration > 0) return audio.duration * 1000;
+                return getDuration();
             }
+            function setBottomProgressFromEvent(e) {
+                if ((typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())) return;
+                if (!bottomProgressTrack) return;
+                const durMs = getBottomDurationMs();
+                if (!Number.isFinite(durMs) || durMs <= 0) return;
+                const rect = bottomProgressTrack.getBoundingClientRect();
+                const pct = calcProgressPercent(e.clientX, rect);
+                if (audio) audio.currentTime = pct * (durMs / 1000);
+                if (bottomProgressBar) bottomProgressBar.style.width = (pct * 100) + '%';
+                if (bottomCurrentTimeEl) bottomCurrentTimeEl.textContent = formatTime(pct * durMs).replace(/^0/, '');
+                showProgressTimeTip(bottomProgressTrack, e.clientX, durMs);
+            }
+            bindProgressHoverTip(bottomProgressTrack, getBottomDurationMs, () => (
+                typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive()
+            ));
             bottomProgressTrack?.addEventListener('mousedown', (e) => {
+                if (e.button !== 0 && e.button !== undefined) return;
+                if ((typeof window !== 'undefined' && window.Aria && window.Aria.__npActive && window.Aria.__npActive())) return;
                 isDraggingBottomProgress = true;
                 setBottomProgressFromEvent(e);
                 e.preventDefault();
@@ -1358,7 +1322,12 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
             if (typeof document !== "undefined") document.addEventListener('mousemove', (e) => {
                 if (isDraggingBottomProgress) setBottomProgressFromEvent(e);
             });
-            if (typeof document !== "undefined") document.addEventListener('mouseup', () => { isDraggingBottomProgress = false; });
+            if (typeof document !== "undefined") document.addEventListener('mouseup', () => {
+                if (isDraggingBottomProgress) {
+                    isDraggingBottomProgress = false;
+                    hideProgressTimeTip();
+                }
+            });
 
             /* ========== 底部播放/暂停同步 ========== */
             function updateBottomPlayIcon() {
@@ -1475,6 +1444,68 @@ setTimeout(() => { if (typeof flyinAutoScaleFont === 'function') flyinAutoScaleF
                     bottomVolumeValue.textContent = Math.round(_cur);
                 });
             }
+
+            /* ========== 底部控制栏收缩/展开（非对称非线性过渡） ========== */
+            const bottomCollapseBtn = typeof document !== 'undefined' ? document.getElementById('bottomCollapseBtn') : null;
+            let _bottomCollapseAnimTimer = null;
+            function applyBottomBarCollapsed(collapsed, opts) {
+                const { animate = true, save = true } = opts || {};
+                const next = Boolean(collapsed);
+                if (_bottomCollapseAnimTimer) {
+                    clearTimeout(_bottomCollapseAnimTimer);
+                    _bottomCollapseAnimTimer = null;
+                }
+                if (next) {
+                    try { closeAllPopups(); } catch (e) { logCatch('shortcutsViewmode', e); }
+                }
+                if (animate) {
+                    bottomControlBar.classList.add('is-bar-animating');
+                    _bottomCollapseAnimTimer = setTimeout(() => {
+                        bottomControlBar.classList.remove('is-bar-animating');
+                        _bottomCollapseAnimTimer = null;
+                    }, 400);
+                } else {
+                    bottomControlBar.classList.remove('is-bar-animating');
+                }
+                bottomControlBar.classList.toggle('is-collapsed', next);
+                if (bottomCollapseBtn) {
+                    const labelZh = next ? '展开底部播放栏' : '收起底部播放栏';
+                    const key = next ? 'btn.expandBottomBar' : 'btn.collapseBottomBar';
+                    const tip = typeof t === 'function' ? t(key, labelZh) : labelZh;
+                    bottomCollapseBtn.setAttribute('aria-expanded', next ? 'false' : 'true');
+                    bottomCollapseBtn.setAttribute('aria-label', tip);
+                    bottomCollapseBtn.title = tip;
+                }
+                if (save && typeof appSettings !== 'undefined' && appSettings) {
+                    if (!appSettings.interface || typeof appSettings.interface !== 'object') {
+                        appSettings.interface = {};
+                    }
+                    appSettings.interface.bottomBarCollapsed = next;
+                    try {
+                        if (typeof saveSettings === 'function') saveSettings();
+                    } catch (e) { logCatch('shortcutsViewmode', e); }
+                }
+                try {
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('aria:bottom-bar-toggle', { detail: { collapsed: next } }));
+                    }
+                } catch (e) { logCatch('shortcutsViewmode', e); }
+            }
+
+            if (bottomCollapseBtn) {
+                bottomCollapseBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isCollapsed = bottomControlBar.classList.contains('is-collapsed');
+                    applyBottomBarCollapsed(!isCollapsed, { animate: true, save: true });
+                });
+            }
+            if (typeof globalThis.Aria === 'undefined') globalThis.Aria = {};
+            globalThis.Aria.setBottomBarCollapsed = (val, opts) => applyBottomBarCollapsed(Boolean(val), opts);
+            globalThis.Aria.syncBottomBarCollapsed = () => applyBottomBarCollapsed(
+                Boolean(typeof appSettings !== 'undefined' && appSettings?.interface?.bottomBarCollapsed),
+                { animate: false, save: false }
+            );
+            globalThis.Aria.syncBottomBarCollapsed();
 
             /* ========== 更多菜单 ========== */
             if (bottomMoreBtn && moreSubmenu) {

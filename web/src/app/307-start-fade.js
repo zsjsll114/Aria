@@ -33,14 +33,11 @@ function playbackCfg() {
     return (s && s.playback) || {};
 }
 
-/** 目标音量（0~1）：与 135-crossfade 同口径 —— 「音量标准化」开着时用初始音量 */
+/** 目标音量（0~1）：跟随当前运行时音量（即上次关闭时保存的音量） */
 function targetVolume() {
-    const p = playbackCfg();
-    const s = (typeof globalThis !== 'undefined') ? globalThis.appSettings : null;
-    const norm = !!(s && s.audio && s.audio.volumeNorm);
-    const pct = norm ? p.initialVolume : (typeof globalThis !== 'undefined' ? globalThis.volume : 100);
-    const n = Number(pct);
-    return volumePercentToGain(Number.isFinite(n) ? n : 100);
+    const s = (typeof globalThis !== 'undefined') ? globalThis.volume : 80;
+    const n = Number(s);
+    return volumePercentToGain(Number.isFinite(n) ? n : 80);
 }
 
 function isOwnDeck(el) {

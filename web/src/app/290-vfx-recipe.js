@@ -36,6 +36,7 @@ import { esc } from '../utils/formatters.js';
 import { logCatch, logWarn } from '../services/log.js';
 import { state } from '../infrastructure/state.js';
 import { saveSettings } from './180-boot-config.js';
+import { registerSettingsGroup } from '../core/settingsRegistry.js';
 import {
     applyBackgroundSettings, applyHighlightColor, applyInterfaceSettings, applyLyricBlurLevel,
     applyLyricFontSize, applyModeSettings,
@@ -656,56 +657,49 @@ function ensureStylesheet() {
     } catch (e) { logCatch(TAG, e); }
 }
 
-/** 设置 → 视觉模式 底部自挂一个说明组（正解是写进 index.html，这条兜底保证不改也能用） */
-function mountSettingsGroup() {
+/** 设置 → 视觉工坊顶栏自挂「视觉配方」入口（经 settingsRegistry 声明式挂载，无 MutationObserver） */
+function mountSettingsGroup(targetHost) {
     const d = doc();
-    if (!d || byId(SETTINGS_GROUP_ID)) return;
-    /* 挂「数据」页而不是「视觉模式」：配方本质是保存/导出/导入一组预设，与
-       数据备份迁移同类；挂在视觉模式里会把该页右侧撑出一整片空白（2026-09-26 用户反馈）。
-       数据页不存在时才退回原处，最后兜底 settingsBody。 */
-    const host = q('[data-section="data"]') || q('[data-section="appearance"]') || q('#settingsBody');
-    if (!host) return;
+    if (!d || byId('vrOpenFromSettings')) return;
+    const slot = (targetHost && targetHost.closest && targetHost.closest('#vrSettingsSlot'))
+        ? targetHost
+        : (q('#vrSettingsSlot') || targetHost || q('[data-section="appearance"]') || q('[data-section="data"]'));
+    if (!slot) return;
     try {
-        const group = d.createElement('div');
-        group.className = 'settings-group';
-        group.id = SETTINGS_GROUP_ID;
-        group.innerHTML = `
-            <div class="settings-group-title">视觉配方</div>
-            <div class="setting-row">
-                <div>
-                    <div class="setting-label">保存 / 分享当前所有视觉参数</div>
-                    <div class="setting-desc">把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API 密钥、登录态、本地路径、语言与快捷键都不在内。</div>
-                </div>
-                <div class="setting-control"><button type="button" class="setting-btn" id="vrOpenFromSettings">管理配方</button></div>
-            </div>`;
-        host.appendChild(group);
+        if (slot.id === 'vrSettingsSlot' || (slot.closest && slot.closest('#vrSettingsSlot'))) {
+            slot.innerHTML = '<button type="button" class="setting-btn ws-vfx-recipe-btn" id="vrOpenFromSettings" title="保存 / 分享当前所有视觉参数">视觉配方</button>';
+        } else {
+            if (byId(SETTINGS_GROUP_ID)) return;
+            const group = d.createElement('div');
+            group.className = 'settings-group';
+            group.id = SETTINGS_GROUP_ID;
+            group.innerHTML = `
+                <div class="settings-group-title">视觉配方</div>
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">保存 / 分享当前所有视觉参数</div>
+                        <div class="setting-desc">把模式、字号、模糊、摇摆、高亮色与各模式的版式偏好存成命名预设，或复制成一段分享码发给朋友。API 密钥、登录态、本地路径、语言与快捷键都不在内。</div>
+                    </div>
+                    <div class="setting-control"><button type="button" class="setting-btn" id="vrOpenFromSettings">管理配方</button></div>
+                </div>`;
+            slot.appendChild(group);
+        }
         byId('vrOpenFromSettings')?.addEventListener('click', openPanel);
     } catch (e) { logCatch(TAG, e); }
 }
 
-/* ==================== 启动 ==================== */
+registerSettingsGroup('appearance', {
+    id: 'vfx-recipe',
+    order: 15,
+    render: (wrapper) => { mountSettingsGroup(wrapper); },
+});
 
-/**
- * 设置面板的节内容是按需重建的（200 每次进 appearance 都会 buildAppearanceControls），
- * 兜底做法与 282 一致：盯 #settingsOverlay 的 class，面板一开就确认说明组还在。
- * 正解仍是在 index.html 里静态写进 [data-section="appearance"]（接线清单第 3 条）。
- */
-function watchSettingsPanel() {
-    const d = doc();
-    const overlay = d && d.getElementById ? d.getElementById('settingsOverlay') : null;
-    if (!overlay || typeof MutationObserver === 'undefined') return;
-    try {
-        new MutationObserver(() => {
-            if (overlay.classList.contains('visible')) mountSettingsGroup();
-        }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
-    } catch (e) { logCatch(TAG, e); }
-}
+/* ==================== 启动 ==================== */
 
 function boot() {
     try {
         ensureStylesheet();
         mountSettingsGroup();
-        watchSettingsPanel();
         /* 语言切换后把开着的panel重画一遍：静态中文靠 i18n observer 扫，
            但错误清单/分享码标题这些本模块自己拼的串得重出一次 */
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

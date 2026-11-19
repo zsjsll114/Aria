@@ -20,7 +20,7 @@ import { TunnelDirector } from './TunnelDirector.js';
 import { buildMosaicPatterns, applyPalette, MOSAIC_COLOR_SETS } from './mondrianTemplates.js';
 import { TunnelCameraController } from './TunnelCameraTrack.js';
 import { TunnelDepthStack, TunnelParticle3DLayer } from './TunnelDepthStack.js';
-import { playEnterAnimation, playExitAnimation, playMaskTransition, playFlashOverlay, buildDecorationComboSVG } from './TunnelAnimations.js';
+import { playEnterAnimation, playExitAnimation, playMaskTransition, playFlashOverlay, buildDecorationComboSVG, MONDRIAN_ENTER_POOL } from './TunnelAnimations.js';
 import { mvBackdropAlpha, onMvBackdropChange } from '../visualizers/mvBackdrop.js';
 import { logCatch } from '../../services/log.js';
 
@@ -98,15 +98,35 @@ export class TunnelEngine {
    * 莫奈色板提亮后白字在 tone1/tone2 亮块上对比度不足，此判定恢复可读性。
    * 支持 6/8 位 hex（8 位时忽略 alpha）与 rgba() 前缀色。
    */
-  _isLightColor(color) {
+  _isLightColor(color, effectiveOpacity = 1) {
     try {
-      let c = String(color || '').trim();
-      const m = c.match(/^#([0-9a-fA-F]{6})/);
-      if (!m) return false;
-      const n = parseInt(m[1], 16);
-      const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-      const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-      return luma > 0.5;
+      const c = String(color || '').trim();
+      let r = 0, g = 0, b = 0, a = 1;
+      const m = c.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/);
+      if (m) {
+        const n = parseInt(m[1], 16);
+        r = (n >> 16) & 255;
+        g = (n >> 8) & 255;
+        b = n & 255;
+        if (m[2]) a = parseInt(m[2], 16) / 255;
+      } else {
+        const rgb = c.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+        if (!rgb) return false;
+        r = Number(rgb[1]);
+        g = Number(rgb[2]);
+        b = Number(rgb[3]);
+        if (rgb[4] != null) a = Number(rgb[4]);
+      }
+      const alpha = Math.max(0, Math.min(1, a * (Number.isFinite(effectiveOpacity) ? effectiveOpacity : 1)));
+      if (alpha < 0.55) return false;
+      const toLin = (v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      const fgLuma = 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+      /* 叠加深色基底(#121218 ≈ 0.015)后的有效亮度，避免半透明浅块误判反色导致黑字配深底 */
+      const effectiveLuma = alpha * fgLuma + (1 - alpha) * 0.015;
+      return effectiveLuma > 0.30;
     } catch (e) { return false; }
   }
 
@@ -149,6 +169,7 @@ export class TunnelEngine {
     this.viewContainer = view;
     this.viewContainer.innerHTML = '';
     this.viewContainer.style.display = 'block';
+    this.viewContainer.classList.toggle('is-mondrian-mode', !!this.mosaicMode);
 
     /* ★ 重入修复（蒙德里安概率性无背景的根因）：复用实例二次 init（220-shortcuts-viewmode
        切回隧道模式时 L864 无守卫再 init）会在这里 innerHTML='' 丢弃整个图层树，
@@ -197,7 +218,10 @@ export class TunnelEngine {
     this.particleCanvas.className = 'tunnel-particle-canvas';
     this.viewContainer.appendChild(this.particleCanvas);
     this.particles = new TunnelParticle3DLayer(this.particleCanvas);
-    this.particles.init(60);
+    if (this.mosaicMode && typeof this.particles.setStyle === 'function') {
+      this.particles.setStyle('mondrian');
+    }
+    this.particles.init(this.mosaicMode ? 24 : 60);
 
     // Layer 5: 段落切换白闪（18.8 画面のキレ：柔和白闪非故障）
     this.flashOverlay = document.createElement('div');
@@ -374,6 +398,8 @@ export class TunnelEngine {
     this._focusBlockEl = null;
     this._wcCacheCenter = null;
     this._lastTransLine = null;
+    this._stableCellSection = null;
+    this._sectionStableCell = null;
     // ★ 新歌强制重建背景色块：清掉上一个 section/group 的缓存键，避免首屏因键碰撞被
     //    _updateMosaicBackground 提前 return 而漏掉蒙德里安色块（出现“只有歌词没色块”）。
     this._lastBgCacheKey = null;
@@ -410,9 +436,13 @@ export class TunnelEngine {
       this.currentGroupId = group.id;
       this.currentGroup = group;
 
-      // ★ 19.2 旧组推入 3D 背景层（不删除，纵深堆叠形成历史感）
+      // ★ 19.2 旧组推入 3D 背景层（非蒙德里安）或干净移除（蒙德里安禁止模糊倾斜鬼影）
       if (oldGroupEl && oldGroup) {
-        this.depthStack.pushGroupToBackground(oldGroupEl);
+        if (this.mosaicMode) {
+          if (oldGroupEl.parentNode) oldGroupEl.remove();
+        } else {
+          this.depthStack.pushGroupToBackground(oldGroupEl);
+        }
       }
       this._buildGroupLayer(group, shot);
     }
@@ -466,6 +496,13 @@ export class TunnelEngine {
     const py = Math.round(-cam.y * 100) / 100;
     const pz = Math.round(-cam.z * 10) / 10;
     const s = Math.round(cam.scale * 1000) / 1000;
+    if (this.mosaicMode && !this.allowTilt) {
+      /* 风格派横平竖直：歌词平面始终平行于网格线，只做轻量 2D 呼吸平移/缩放，禁 3D 歪斜 */
+      const dx = Math.round(px * 0.18 * 100) / 100;
+      const dy = Math.round(py * 0.18 * 100) / 100;
+      const sc = Math.round((1 + (s - 1) * 0.25) * 1000) / 1000;
+      return `translate3d(${dx}px, ${dy}px, 0px) scale(${sc})`;
+    }
     // ★ 复杂三轴旋转（rotateX/rotateY/rotateZ），焦点锁定由弹簧目标保证
     const rx = Math.abs(cam.rotX || 0) > 0.05 ? ` rotateX(${Math.round(cam.rotX * 100) / 100}deg)` : '';
     const ry = Math.abs(cam.rotY || 0) > 0.05 ? ` rotateY(${Math.round(cam.rotY * 100) / 100}deg)` : '';
@@ -564,8 +601,8 @@ export class TunnelEngine {
 
   _applyGroupTexture(type, params = {}) {
     if (!this.textureLayer) return;
-    if (!type || type === 'none') {
-      // ★ 纯背景（无纹理）：与带纹理的组夹杂，丰富背景层次
+    if (this.mosaicMode || !type || type === 'none') {
+      // ★ 蒙德里安/纯背景：不叠网点/扫描线，保持硬边色块干净利落
       this.textureLayer.className = 'tunnel-layer tunnel-layer-texture';
       this.textureLayer.style.backgroundImage = 'none';
       this.textureLayer.style.opacity = '0';
@@ -732,7 +769,7 @@ export class TunnelEngine {
 
     // ★★ 稳定块池：一次性创建固定数量的块，之后每次只更新目标样式（颜色/位置/尺寸/透明度），
     //     由 CSS transition 平滑过渡到目标值 —— 不再重新生成 innerHTML。多余块淡出隐藏。
-    const MAX_BLOCKS = 6;
+    const MAX_BLOCKS = 9; // v4 风格派构图最多 9 格（boogie/lattice）
     if (!this._mosaicBlockPool) this._mosaicBlockPool = [];
     while (this._mosaicBlockPool.length < MAX_BLOCKS) {
       const el = document.createElement('div');
@@ -773,6 +810,20 @@ export class TunnelEngine {
 
     this._lastBgCacheKey = cacheKey;
     this.mosaicLayer.style.setProperty('--mosaic-accent', pattern.accentColor);
+    if (pattern.paletteColors && this.viewContainer) {
+      const pc = pattern.paletteColors;
+      const s = this.viewContainer.style;
+      if (pc.red) s.setProperty('--m-red', pc.red);
+      if (pc.blue) s.setProperty('--m-blue', pc.blue);
+      if (pc.yellow) s.setProperty('--m-yellow', pc.yellow);
+      if (pc.paper) s.setProperty('--m-paper', pc.paper);
+      if (pc.deep) s.setProperty('--m-deep', pc.deep);
+      if (pc.mid) s.setProperty('--m-mid', pc.mid);
+      if (pc.ink) s.setProperty('--m-ink', pc.ink);
+      if (this.particles && typeof this.particles.setPalette === 'function') {
+        this.particles.setPalette(pc);
+      }
+    }
   }
 
   /**
@@ -808,6 +859,11 @@ export class TunnelEngine {
       el.style.transform = b.rotation ? `rotate(${b.rotation}deg)` : '';
       /* ★ 透明度烘焙进背景色，块保持 opacity:1 —— 栅格子层不再被父 opacity 连带压暗 */
       el.style.backgroundColor = this._hexWithAlpha(b.color, opacity);
+      /* v4 风格派：粗墨线 = 每格半线宽 border（CSS --m-line），颜色随 MV 因子压薄 */
+      el.style.borderColor = b.ink ? this._hexWithAlpha(b.ink, Math.min(1, backdrop)) : '';
+      el.dataset.tone = b.toneIdx != null ? String(b.toneIdx) : '';
+      /* 换构图时逐格错峰变形，像一格一格重新刷漆 */
+      el.style.transitionDelay = `${i * 45}ms`;
       el.style.opacity = '1';
       /* ★ 栅格/条形线条自己的不透明度也要跟着压薄：它是 rg 白线（默认 .5），
          不跟块走的话 MV 一铺上就只剩一张"方格纸"，比色块还抢眼（实测：
@@ -913,7 +969,37 @@ export class TunnelEngine {
    * 以画面中部偏上的视觉重心为锚，锁定一个横向 0.12~0.88、高约 0.38 的排版带，
    * 让本节所有页面（分镜）的歌词都居中锁定在此带内 → 换页不跳变、整体像连续的编辑排版。
    */
-  _computeSectionStableCell(edges) {
+  _computeSectionStableCell(edges, pattern = null) {
+    /* 若当前蒙德里安构图有主深画布格(toneIdx===4)，把歌词区对齐进它的安全内框，
+       使排版真正「落在格子里」，不再横跨粗黑分隔线 */
+    if (pattern && Array.isArray(pattern.blocks)) {
+      let bestDeep = null;
+      let bestArea = 0;
+      for (const b of pattern.blocks) {
+        if (b && b.toneIdx === 4) {
+          const area = b.w * b.h;
+          if (area > bestArea) { bestArea = area; bestDeep = b; }
+        }
+      }
+      if (bestDeep && bestDeep.w >= 46 && bestDeep.h >= 34) {
+        const padX = 0.04;
+        const padY = 0.04;
+        let x0 = Math.max(0.10, bestDeep.x / 100 + padX);
+        let x1 = Math.min(0.90, (bestDeep.x + bestDeep.w) / 100 - padX);
+        let y0 = Math.max(0.16, bestDeep.y / 100 + padY);
+        let y1 = Math.min(0.72, (bestDeep.y + bestDeep.h) / 100 - padY);
+        if (x1 - x0 < 0.44) {
+          const cx = (x0 + x1) / 2;
+          x0 = Math.max(0.08, cx - 0.24);
+          x1 = Math.min(0.92, x0 + 0.48);
+        }
+        if (y1 - y0 < 0.28) {
+          y0 = Math.max(0.18, y0 - 0.04);
+          y1 = Math.min(0.72, y0 + 0.30);
+        }
+        return { x0, y0, x1, y1, w_: x1 - x0, h_: y1 - y0 };
+      }
+    }
     const midY = (edges && edges.centerY != null) ? edges.centerY / 100 : 0.5;
     const bh = 0.38;
     // 把带的中心夹在 0.38~0.58，既让歌词有编辑排版的重心感，又避开顶部标题栏与底部控制栏
@@ -968,11 +1054,13 @@ export class TunnelEngine {
 
     if (this.currentShotEl) {
       const oldEl = this.currentShotEl;
-      const exitType = (this.currentShot && this.currentShot.params && this.currentShot.params.exit && this.currentShot.params.exit.type) || 'fade-out';
+      const exitType = this.mosaicMode
+        ? 'mondrian-exit-wipe'
+        : ((this.currentShot && this.currentShot.params && this.currentShot.params.exit && this.currentShot.params.exit.type) || 'fade-out');
       const oldChars = oldEl.querySelectorAll('.tunnel-char');
-      oldChars.forEach((c, i) => playExitAnimation(c, exitType, i * 18, i, oldChars.length));
-      // ★★ 延长退出动画等待时间：与入场重叠 150ms，形成「接力融合」感
-      setTimeout(() => { if (oldEl && oldEl.parentNode) oldEl.remove(); }, 520);
+      oldChars.forEach((c, i) => playExitAnimation(c, exitType, i * (this.mosaicMode ? 8 : 18), i, oldChars.length));
+      // ★★ 蒙德里安硬切 240ms 快速退场，不再拖泥带水；非蒙德里安保持 520ms 接力
+      setTimeout(() => { if (oldEl && oldEl.parentNode) oldEl.remove(); }, this.mosaicMode ? 240 : 520);
     }
 
     const P = shot.params || {};
@@ -1039,9 +1127,10 @@ export class TunnelEngine {
         const reSeed = Math.abs((shot.sectionId + 1) * 13 + (shot.groupId + 1) * 29 + (shot.indexInGroup || 0) * 7) || 5;
         // ★ 排版稳定性：同一 section 内所有页面共用一个「锚定安全区 cell」，
         //   换页始终锁定在同一条垂直带内居中（参考图风格：歌词像连续分栏的编辑排版，不撒得到处都是）。
-        if (this._stableCellSection !== shot.sectionId) {
-          this._stableCellSection = shot.sectionId;
-          this._sectionStableCell = this._computeSectionStableCell(edges);
+        const cellKey = `${shot.sectionId}:${shot.groupId}`;
+        if (this._stableCellSection !== cellKey) {
+          this._stableCellSection = cellKey;
+          this._sectionStableCell = this._computeSectionStableCell(edges, this._currentMosaicPattern);
         }
         TunnelDirector.assignWordLayouts(blocks, reSeed, compType, {}, true, effectiveAlignment, edges, {
           // ★ 横平竖直：无旋转 + 按 AI line_breaks 语义断行（分词效果可见）
@@ -1061,6 +1150,17 @@ export class TunnelEngine {
       return { fx: wl.x, fy: wl.y };
     });
 
+    // ★ 风格派主导词判定：有情感词走情感词色块，无情感词时取最长非空词作为结构主词（黄色点睛）
+    let hasEmotionBlock = false;
+    let longestIdx = -1;
+    let longestScore = -1;
+    blocks.forEach((blk, idx) => {
+      if (blk && blk.isEmotion) hasEmotionBlock = true;
+      const len = Array.from(String((blk && blk.text) || '').trim()).length;
+      if (len > longestScore) { longestScore = len; longestIdx = idx; }
+    });
+    const heroIdx = (!hasEmotionBlock && blocks.length >= 2 && longestScore >= 2) ? longestIdx : -1;
+
     // ★ 检查词块所在矩形是否需要反色（使用修正后的位置）
     blocks.forEach((b, bi) => {
       const emphasis = b.__emphasis || { scale: 1, glow: 0.4, effect: 'none' };
@@ -1074,10 +1174,13 @@ export class TunnelEngine {
 
       // ★ 检查词块所在矩形是否需要反色
       const rectForText = findRectForBlock(finalX * 100, finalY * 100);
-      /* ★ 反色判定 v2（用户反馈：莫奈色板提亮后字体与背景融为一体）：不再只依赖
-         模板 invertText 标志（v2 满屏色板模板全为 false → 永不反色），改为按词块
-         所落色块的背景色相对亮度自动判定——亮块(Rec.709 亮度>0.5)上用深墨字。 */
-      const shouldInvert = !!(rectForText && (rectForText.invertText || this._isLightColor(rectForText.color)));
+      /* ★ 反色判定 v2：按词块真实合成后相对亮度判定（计入块不透明度与 MV/封面衬底因子），
+         避免半透明浅块叠在暗底上显暗却误挂深墨字导致低对比 */
+      const backdropAlpha = mvBackdropAlpha(this.container);
+      const blockOpacity = rectForText
+        ? (rectForText.opacity != null ? rectForText.opacity : (rectForText.isGrid ? 0.5 : 0.35)) * backdropAlpha
+        : 1;
+      const shouldInvert = !!(rectForText && this._isLightColor(rectForText.color, blockOpacity));
 
       // ★ 文字倾斜：每行基准角度 + 微调，限制在 ±5°；
       //   横平竖直模式（allowTilt=false）强制 0°，不多旋转
@@ -1090,13 +1193,19 @@ export class TunnelEngine {
         textTilt = Math.max(-5, Math.min(5, textTilt));
       }
 
+      const isHero = (bi === heroIdx);
       const blockEl = document.createElement('div');
       blockEl.className = 'tunnel-block' +
-        (b.isEmotion ? ' tunnel-block-emotion' : '') +
+        (b.isEmotion ? ' tunnel-block-emotion' : (isHero ? ' tunnel-block-hero' : '')) +
         (wl.dir === 'v' ? ' tunnel-block-v' : ' tunnel-block-h') +
         ' tunnel-block-mosaic-enter' +
         (rowInfo.rowIdx > 0 ? ' tunnel-block-row-' + rowInfo.rowIdx : '') +
         (shouldInvert ? ' tunnel-block-invert' : '');
+
+      if (this.mosaicMode) {
+        if (b.isEmotion) blockEl.dataset.mTone = ((bi + (shot.indexInGroup || 0)) % 2 === 0) ? 'red' : 'blue';
+        else if (isHero) blockEl.dataset.mTone = ((shot.indexInGroup || 0) % 2 === 0) ? 'yellow' : 'blue';
+      }
 
       blockEl.dataset.start = b.start;
       blockEl.dataset.end = b.end;
@@ -1191,14 +1300,21 @@ export class TunnelEngine {
             span.style.setProperty('--tunnel-char-color', emotionCharColor);
             span.classList.add('tunnel-char-emotion');
           }
-        } else {
-          // ★★ 非情感字使用当前色系柔和高光（莫兰迪风格），不再与主色全一致导致单调
-          //    在 accent 的 hsl 上让亮度 +12%、饱和度 -18%，保持同色系但有层次
+        } else if (!this.mosaicMode) {
+          // ★★ 非蒙德里安：保留莫兰迪柔和高光；蒙德里安模式下改由纯净白纸墨色 + 亮黄高光承担
           span.style.setProperty('--tunnel-char-color', activeAccent);
           span.classList.add('tunnel-char-nonemotion-morandi');
         }
 
-        if (gran === 'char' && b.__charAnims && b.__charAnims[ci]) {
+        if (this.mosaicMode) {
+          /* 风格派直角几何揭示：禁用模糊与乱转，改用直角闸门切入 */
+          const mType = MONDRIAN_ENTER_POOL[(shot.sectionId * 5 + (shot.groupId || 0) * 3 + bi) % MONDRIAN_ENTER_POOL.length];
+          const mRot = this.allowTilt && b.__charAnims && b.__charAnims[ci] ? (b.__charAnims[ci].rotation || 0) : 0;
+          span.style.setProperty('--char-rotate', `${mRot.toFixed(2)}deg`);
+          const charAt = (gran === 'char' && typeof ch.start === 'number') ? ch.start : wordAt;
+          const mDelay = Math.min(Math.max(charAt - buildT, 0), ENTER_MAX) + Math.min(ci * 10, 36);
+          playEnterAnimation(span, mType, mDelay, Math.min(180, (T.enterDuration || 160) * slowFactor), bi % 4);
+        } else if (gran === 'char' && b.__charAnims && b.__charAnims[ci]) {
           const ca = b.__charAnims[ci];
           span.style.setProperty('--char-scale', ca.scaleJitter.toFixed(3));
           span.style.setProperty('--char-rotate', `${(this.allowTilt ? (ca.rotation || 0) : 0)}deg`);
@@ -1234,6 +1350,29 @@ export class TunnelEngine {
 
       shotEl.appendChild(blockEl);
     });
+
+    if (this.mosaicMode && blockFinalPos.length > 0) {
+      let minX = 1, maxX = 0, minY = 1, maxY = 0;
+      for (const p of blockFinalPos) {
+        if (p.fx < minX) minX = p.fx;
+        if (p.fx > maxX) maxX = p.fx;
+        if (p.fy < minY) minY = p.fy;
+        if (p.fy > maxY) maxY = p.fy;
+      }
+      const cell = this._sectionStableCell;
+      const fx0 = Math.max(cell ? cell.x0 : 0.12, Math.min(minX - 0.10, 0.36));
+      const fx1 = Math.min(cell ? cell.x1 : 0.88, Math.max(maxX + 0.10, 0.64));
+      const fy0 = Math.max(0.14, minY - 0.09);
+      const fy1 = Math.min(0.73, maxY + 0.09);
+      const frameEl = document.createElement('div');
+      frameEl.className = 't-m-shot-frame';
+      frameEl.style.left = `${(fx0 * 100).toFixed(2)}%`;
+      frameEl.style.top = `${(fy0 * 100).toFixed(2)}%`;
+      frameEl.style.width = `${Math.max(24, (fx1 - fx0) * 100).toFixed(2)}%`;
+      frameEl.style.height = `${Math.max(14, (fy1 - fy0) * 100).toFixed(2)}%`;
+      frameEl.innerHTML = '<span class="t-m-rule t-m-rule-top"></span><span class="t-m-rule t-m-rule-bottom"></span><span class="t-m-pip t-m-pip-a"></span><span class="t-m-pip t-m-pip-b"></span>';
+      shotEl.insertBefore(frameEl, shotEl.firstChild);
+    }
 
     if (shot.line && shot.line.bracketText) {
       const br = document.createElement('div');
@@ -1315,16 +1454,21 @@ export class TunnelEngine {
     let latestActiveLineData = null;
     let latestPassedLineData = null;
 
+    const activeBlockSet = new Set();
+    const blockEndMap = new Map();
+
     for (let i = 0; i < this.chars.length; i++) {
       const item = this.chars[i];
       const el = item.el;
       const { start, end } = item;
+      if (item.blockEl && item.block) blockEndMap.set(item.blockEl, item.block);
 
       if (timeMs >= start && timeMs <= end) {
         if (!el.classList.contains('active')) {
           el.classList.remove('waiting', 'passed', 'sung');
           el.classList.add('active');
         }
+        if (item.blockEl) activeBlockSet.add(item.blockEl);
         if (start >= latestActiveCharTime) {
           latestActiveCharTime = start;
           // ★ 词块级焦点：仅活跃词块变化时重算目标（纯计算，无 DOM 反馈）
@@ -1349,17 +1493,27 @@ export class TunnelEngine {
       }
     }
 
-    // 情感词唱响呼吸（7.4 burst 微放大，围绕自身 word-scale 呼吸，不覆盖大小强调）
-    for (const item of this.chars) {
-      const b = item.block;
-      if (!b || !b.isEmotion || !item.blockEl) continue;
-      const el = item.blockEl;
-      if (timeMs >= b.start && timeMs <= b.end && b.end > b.start) {
-        const p = Math.min(Math.max((timeMs - b.start) / (b.end - b.start), 0), 1);
-        const base = parseFloat(el.style.getPropertyValue('--word-scale')) || 1;
-        el.style.scale = (base * (1 + Math.sin(p * Math.PI) * 0.08)).toFixed(3);
-      } else if (el.style.scale) {
-        el.style.scale = '';
+    // 同步词块级唱响态（is-singing / has-sung）驱动风格派底线推进与色块前冲
+    for (const [blkEl, blk] of blockEndMap) {
+      const singing = activeBlockSet.has(blkEl) || (timeMs >= blk.start && timeMs <= blk.end);
+      const sung = !singing && timeMs > blk.end;
+      if (blkEl.classList.contains('is-singing') !== singing) blkEl.classList.toggle('is-singing', singing);
+      if (blkEl.classList.contains('has-sung') !== sung) blkEl.classList.toggle('has-sung', sung);
+    }
+
+    // 情感词唱响呼吸（非蒙德里安用正弦呼吸；蒙德里安改由 CSS .is-singing 硬步进承担）
+    if (!this.mosaicMode) {
+      for (const item of this.chars) {
+        const b = item.block;
+        if (!b || !b.isEmotion || !item.blockEl) continue;
+        const el = item.blockEl;
+        if (timeMs >= b.start && timeMs <= b.end && b.end > b.start) {
+          const p = Math.min(Math.max((timeMs - b.start) / (b.end - b.start), 0), 1);
+          const base = parseFloat(el.style.getPropertyValue('--word-scale')) || 1;
+          el.style.scale = (base * (1 + Math.sin(p * Math.PI) * 0.08)).toFixed(3);
+        } else if (el.style.scale) {
+          el.style.scale = '';
+        }
       }
     }
 
@@ -1469,6 +1623,8 @@ export class TunnelEngine {
     this._focusBlockEl = null;
     this._wcCacheCenter = null;
     this._wcCacheEl = null;
+    this._stableCellSection = null;
+    this._sectionStableCell = null;
     this._lastSpotlightAt = 0;
     this.lastRawLyrics = null;
     this.lastAiData = null;
@@ -1483,5 +1639,180 @@ export class TunnelEngine {
     }
     if (this.viewContainer && this.viewContainer.parentNode) this.viewContainer.remove();
     this.viewContainer = null;
+  }
+
+  /**
+   * 海报抓帧前将格律(tunnel)推进到当前/目标句完整显现的时刻。
+   * @param {number} [targetLineIndex]
+   * @returns {(() => void)|null}
+   */
+  stageForPoster(targetLineIndex) {
+    if (!this.viewContainer || !this.director || !Array.isArray(this.lastRawLyrics) || !this.lastRawLyrics.length) return null;
+    const prevRunning = !!this.isRunning;
+    const isMs = this.lastRawLyrics.some((l) => l && typeof l.start === 'number' && l.start >= 1000);
+    const div = isMs ? 1000 : 1;
+    const audioEl = typeof document !== 'undefined' ? document.getElementById('audioPlayer') : null;
+    const curSec = audioEl ? Number(audioEl.currentTime) || 0 : 0;
+    const fallbackIdx = Math.max(0, Math.min(this.lastRawLyrics.length - 1, Number(globalThis.activeLineIndex) || 0));
+    const idx = (Number.isInteger(targetLineIndex) && targetLineIndex >= 0 && targetLineIndex < this.lastRawLyrics.length)
+      ? targetLineIndex
+      : fallbackIdx;
+    const line = this.lastRawLyrics[idx];
+    let holdSec = curSec;
+    const lineShots = [];
+    if (line) {
+      const st = Number(line.start ?? line.time ?? 0) / div;
+      const ed = line.end != null ? Number(line.end) / div : st + 3.0;
+      const span = Math.max(0.2, ed - st);
+      holdSec = st + Math.max(0.08, Math.min(span - 0.12, span * 0.65));
+      const stMs = st * 1000;
+      const edMs = ed * 1000;
+      for (const sh of (this.director.shotList || [])) {
+        if (!sh) continue;
+        const shEnd = Number(sh.end) || (Number(sh.start) + 1000);
+        if (sh.line === line || (shEnd > stMs + 40 && sh.start < edMs - 40)) {
+          lineShots.push(sh);
+        }
+      }
+      if (lineShots.length > 0) {
+        const lead = lineShots[0];
+        const lSpan = Math.max(200, (Number(lead.end) || (lead.start + 1000)) - lead.start);
+        holdSec = (lead.start + Math.min(lSpan * 0.65, Math.max(120, lSpan - 120))) / 1000;
+      }
+    }
+    if (prevRunning && typeof this.stop === 'function') this.stop();
+    const cancelWebAnims = (node) => {
+      if (!node || typeof node.getAnimations !== 'function') return;
+      try {
+        for (const anim of node.getAnimations()) anim.cancel();
+      } catch (e) { void e; /* ignore getAnimations unavailability */ }
+    };
+    const snapEls = [this.mosaicLayer, this._mosaicBgEl, this.currentWordsHost, ...(this._mosaicBlockPool || [])].filter(Boolean);
+    const elRestore = snapEls.map((el) => {
+      const rec = [el, el.style.transition, el.style.animation, el.style.display];
+      el.style.setProperty('transition', 'none', 'important');
+      el.style.setProperty('animation', 'none', 'important');
+      cancelWebAnims(el);
+      return rec;
+    });
+    try { this.update(holdSec); } catch (e) { void e; /* poster seek ignored */ }
+
+    let tempMergedState = null;
+    if (lineShots.length > 1 && this.currentWordsHost && this.currentGroup) {
+      const leadShot = lineShots[0];
+      const mergedBlocks = lineShots.flatMap((sh) => ((sh.line && sh.line.blocks) || []).map((b) => ({ ...b })));
+      if (mergedBlocks.length > 0) {
+        tempMergedState = {
+          savedChars: this.chars.slice(),
+          savedShot: this.currentShot,
+          savedShotEl: this.currentShotEl,
+          savedShotId: this.currentShotId,
+          tempEl: null,
+        };
+        /* 清空 currentShotEl 引用以免 _buildShotBlocks 给旧镜挂 520ms 自毁定时器 */
+        this.currentShotEl = null;
+        const mergedShot = {
+          ...leadShot,
+          line: {
+            ...(leadShot.line || {}),
+            blocks: mergedBlocks,
+          },
+          params: {
+            ...(leadShot.params || {}),
+            lineBreaks: [],
+          },
+        };
+        try {
+          this._buildShotBlocks(mergedShot, this.currentGroup, leadShot.start);
+          tempMergedState.tempEl = this.currentShotEl;
+        } catch (e) {
+          void e;
+          this.chars = tempMergedState.savedChars;
+          this.currentShot = tempMergedState.savedShot;
+          this.currentShotEl = tempMergedState.savedShotEl;
+          this.currentShotId = tempMergedState.savedShotId;
+          tempMergedState = null;
+        }
+      }
+    }
+
+    if (this.currentWordsHost) {
+      for (const child of Array.from(this.currentWordsHost.querySelectorAll('.tunnel-shot'))) {
+        if (child !== this.currentShotEl) {
+          elRestore.push([child, child.style.transition, child.style.animation, child.style.display]);
+          child.style.setProperty('display', 'none', 'important');
+          cancelWebAnims(child);
+        }
+      }
+    }
+    if (this.currentShotEl && this.currentShotEl.style) {
+      elRestore.push([this.currentShotEl, this.currentShotEl.style.transition, this.currentShotEl.style.animation, this.currentShotEl.style.display]);
+      this.currentShotEl.style.setProperty('transition', 'none', 'important');
+      this.currentShotEl.style.setProperty('animation', 'none', 'important');
+      cancelWebAnims(this.currentShotEl);
+      for (const blk of this.currentShotEl.querySelectorAll('.tunnel-block')) {
+        elRestore.push([blk, blk.style.transition, blk.style.animation, blk.style.display]);
+        blk.style.setProperty('transition', 'none', 'important');
+        blk.style.setProperty('animation', 'none', 'important');
+        if (blk.classList.contains('tunnel-block-emotion') || blk.classList.contains('tunnel-block-hero')) {
+          blk.classList.add('is-singing');
+        }
+        cancelWebAnims(blk);
+      }
+    }
+    const charRestore = [];
+    for (const item of (this.chars || [])) {
+      const el = item && item.el;
+      if (!el) continue;
+      if (this.currentShot && item.shot && item.shot !== this.currentShot) continue;
+      charRestore.push([
+        el,
+        el.classList.contains('waiting'),
+        el.classList.contains('active'),
+        el.classList.contains('passed'),
+        el.classList.contains('sung'),
+        el.style.opacity,
+        el.style.visibility,
+        el.style.transition,
+        el.style.animation,
+      ]);
+      el.classList.remove('waiting', 'passed', 'sung');
+      el.classList.add('active');
+      el.style.setProperty('transition', 'none', 'important');
+      el.style.setProperty('animation', 'none', 'important');
+      el.style.setProperty('opacity', '1', 'important');
+      el.style.setProperty('visibility', 'visible', 'important');
+      cancelWebAnims(el);
+    }
+    if (this.stage) void this.stage.offsetWidth;
+    return () => {
+      if (tempMergedState) {
+        if (tempMergedState.tempEl && tempMergedState.tempEl.parentNode) {
+          tempMergedState.tempEl.remove();
+        }
+        this.chars = tempMergedState.savedChars;
+        this.currentShot = tempMergedState.savedShot;
+        this.currentShotEl = tempMergedState.savedShotEl;
+        this.currentShotId = tempMergedState.savedShotId;
+      }
+      for (const [el, prevTr, prevAn, prevDisp] of elRestore) {
+        if (!el || !el.style) continue;
+        if (prevTr) el.style.transition = prevTr; else el.style.removeProperty('transition');
+        if (prevAn) el.style.animation = prevAn; else el.style.removeProperty('animation');
+        if (prevDisp) el.style.display = prevDisp; else el.style.removeProperty('display');
+      }
+      for (const [el, wasW, wasA, wasP, wasS, prevOp, prevVis, prevTr, prevAn] of charRestore) {
+        el.classList.toggle('waiting', wasW);
+        el.classList.toggle('active', wasA);
+        el.classList.toggle('passed', wasP);
+        el.classList.toggle('sung', wasS);
+        if (prevOp) el.style.opacity = prevOp; else el.style.removeProperty('opacity');
+        if (prevVis) el.style.visibility = prevVis; else el.style.removeProperty('visibility');
+        if (prevTr) el.style.transition = prevTr; else el.style.removeProperty('transition');
+        if (prevAn) el.style.animation = prevAn; else el.style.removeProperty('animation');
+      }
+      try { this.update(audioEl ? Number(audioEl.currentTime) || 0 : curSec); } catch (e) { void e; /* poster restore ignored */ }
+      if (prevRunning && typeof this.start === 'function') this.start();
+    };
   }
 }

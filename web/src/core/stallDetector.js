@@ -38,6 +38,13 @@ function _getAudio() {
 
 const isDocHidden = () => (typeof document !== 'undefined' && document.hidden);
 
+/** @param {boolean} active */
+function syncBufferingBodyClass(active) {
+    if (typeof document !== 'undefined' && document.body && document.body.classList) {
+        document.body.classList.toggle('aria-audio-buffering', Boolean(active));
+    }
+}
+
 /** 启动卡死检测（8 秒内 currentTime 未前进即判定卡死） */
 export function startStallCheck() {
     stopStallCheck();
@@ -76,6 +83,7 @@ export function stopStallCheck() {
  */
 export function setBuffering(buffering) {
     state.isBuffering = buffering;
+    syncBufferingBodyClass(buffering);
 }
 
 /**
@@ -122,6 +130,7 @@ export function initStallDetector(audio, onStall) {
     /* 缓冲开始：暂停卡死检测 */
     bind('waiting', () => {
         state.isBuffering = true;
+        syncBufferingBodyClass(true);
         if (state.stallTimer) { clearTimeout(state.stallTimer); state.stallTimer = null; }
         /* 续播诊断：暂停几秒后恢复出现"卡一下"时，控制台会看到这条日志，
            据此区分 网络层重缓冲(readyState 低/bufferedEnd 追不上) 与 解码层异常 */
@@ -136,6 +145,7 @@ export function initStallDetector(audio, onStall) {
     /* 缓冲结束恢复播放：重新启动卡死检测 */
     bind('playing', () => {
         state.isBuffering = false;
+        syncBufferingBodyClass(false);
         startStallCheck();
     });
 }

@@ -20,7 +20,9 @@ import {
 import { backupFilename, buildBackup, describeBackup, validateBackup } from '../core/backupService.js';
 import { downloadJSON, importData } from './220-shortcuts-viewmode.js';
 import { saveSettings } from './180-boot-config.js';
+import { registerSettingsHook } from '../core/settingsRegistry.js';
 import { logInfo, logWarn, logCatch } from '../services/log.js';
+import { esc } from '../utils/formatters.js';
 
 const TAG = 'storage';
 const HANDLE_DB = 'aria_backup';
@@ -113,12 +115,6 @@ function lsEntries() {
 }
 
 /* ============================ 扫描与渲染 ============================ */
-
-function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
-        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
-}
 
 async function scanUsage() {
     const ls = classifyLocalStorage(lsEntries());
@@ -515,9 +511,21 @@ async function initUI() {
 }
 
 if (typeof document !== 'undefined') {
-    const boot = () => { initUI().catch((e) => logCatch(TAG, e)); };
+    let _booted = false;
+    const boot = () => {
+        if (_booted || !g('setStorageRefresh')) return;
+        _booted = true;
+        initUI().catch((e) => logCatch(TAG, e));
+    };
     if (document.readyState === 'complete') boot();
     else window.addEventListener('load', boot, { once: true });
+
+    registerSettingsHook('data', {
+        id: 'storage-backup',
+        order: 10,
+        onMount: () => { boot(); },
+        onShow: () => { scanUsage().then(renderUsage).catch((e) => logCatch(TAG, e)); },
+    });
 }
 
 export { doBackup, pruneToLimit, scanUsage };

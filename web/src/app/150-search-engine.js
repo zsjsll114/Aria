@@ -6,10 +6,11 @@
 import { API_BASE } from '../config/constants.js';
 import { escapeHtml } from '../utils/formatters.js';
 import { hueOfName } from '../utils/colorUtils.js';
-import { proxyFetch, searchKugouSongs } from '../services/musicApi.js';
+import { fetchKugouVendorSearch, proxyFetch, searchKugouSongs } from '../services/musicApi.js';
 import { artistSearchSupported, searchArtists } from '../services/artistApi.js';
 import { adoptVkeysMvFields, mvSearchSupported, searchMvsForWord } from '../services/mvApi.js';
 import { selfhostKeyOf } from '../services/playSource.js';
+import { getSelfhostOptions } from './selfhost-runtime.js';
 import { favoritesOverlay, searchBtn, searchInput, searchResultsEl, sourceBtns, searchOverlay } from './30-dom-refs.js';
 import { closeSearch, getFavorites, hideResults, openSearch, saveFavorites, setHint, showResults, showResultsSkeleton, updateFavoriteBtn } from './120-search-results.js';
 import { closeFavorites, renderFavoritesList } from './125-favorites.js';
@@ -18,6 +19,7 @@ import { closePlaylists, loadPlaylistTrack, openAddToPlaylist } from './135-cros
 import { closeAddToPlaylist } from './140-playlist-ui-events.js';
 import { addSearchHistory, hideSearchHistory, updateSearchView } from './157-search-history.js';
 import { loadOnlineSong } from './175-track-index-online.js';
+import { buildCollectionQueue, enqueueTrack } from '../core/playlistQueue.js';
 import { logInfo, logWarn, logError } from '../services/log.js';
 
 /* ESC 关闭弹窗 */
@@ -54,14 +56,13 @@ if (typeof window !== "undefined") window.addEventListener('keydown', (e) => {
            获取后可插入到 getPlaylists() 返回列表中，并加 .tag='推荐' 标记
         */
 /* 搜索缓存：按音源缓存关键词与已加载的真实后端分页数据 */
-globalThis.lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '', qishui: '' };
+globalThis.lastSearchKeyword = { tencent: '', netease: '', kugou: '', kuwo: '' };
 
 /* 各源真实后端分页单页上限（2026-08 实测）：QQ=60 网易=20 酷狗=100
-   ★ 酷我（=99）已于 2026-10-03 从搜索移除，表项保留仅为兼容旧缓存。
-   ★ 汽水是自建 vendor 一层封装，上限由我们自己的 server.mjs 定（默认 30，硬顶 100）。 */
-const SOURCE_PAGE_SIZE = { tencent: 60, netease: 20, kugou: 100, kuwo: 99, qishui: 30 };
+   ★ 酷我（=99）已于 2026-10-03 从搜索移除，表项保留仅为兼容旧缓存。 */
+const SOURCE_PAGE_SIZE = { tencent: 60, netease: 20, kugou: 100, kuwo: 99 };
 /* 每源结构：{ keyword, pages:{1:[...],2:[...]}, pageSize, lastFull, curPage, busy } */
-globalThis.searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null, qishui: null };
+globalThis.searchPageCache = { tencent: null, netease: null, kugou: null, kuwo: null };
 /* ★ "这个源的这次搜索正在飞"标记**挂在 cache 对象上**（cache.busy），不再是全局单变量。
    全局 `searchPagingBusy` 有过一个真实缺陷（2026-10-03 定位）：用户在 A 源搜索飞行
    途中点 B 源按钮 → searchSongs 建了 B 的 cache、铺了骨架屏 → goToSearchPage(1) 看见
@@ -78,7 +79,7 @@ globalThis.searchPage = 1;
    根因：搜索页此前直接用 currentSource —— 可它是**播放平台**：loadPlaylistTrack
    会把它设成 'local'（本地文件/导入歌单里的本地曲）、切歌会把它设成那一首的平台
    （日推首曲常常是网易云）。于是：
-     · 它不在 {tencent,netease,kugou,qishui} 里时 → 音源按钮全灭，
+     · 它不在 {tencent,netease,kugou} 里时 → 音源按钮全灭，
        搜索又拿 'local' 去查 → 必然空手而归；
      · 它被切歌改成别家时 → 搜索页跟着跳源，缓存键一换就查不到刚搜的结果，
        结果区与 label 同时被 updateSearchView 的「无缓存」分支清掉。
@@ -90,13 +91,12 @@ globalThis.searchPage = 1;
 /* ★ 酷我（2026-10-03 移除）：曲库偏、命中率低，用户判定「太鸡肋」→ 只从**搜索**里摘掉
    入口（index.html 的按钮 + 这张表），酷我作为**歌词/兜底取链**的链路原样保留
    （170-lyric-sources / 175-track-index-online 仍在用，删表项会让它们判成非法源）。 */
-const SEARCH_SOURCES = ['tencent', 'netease', 'kugou', 'qishui'];
+const SEARCH_SOURCES = ['tencent', 'netease', 'kugou'];
 let searchSourceUserChosen = false;   /* 用户是否显式点过音源按钮（粘性开关） */
 function isSearchSource(s) { return SEARCH_SOURCES.includes(s); }
 function sourcePlaceholder(src) {
     return src === 'tencent' ? '搜索QQ音乐歌曲...'
-        : (src === 'kugou' ? '搜索酷狗音乐歌曲...'
-        : (src === 'qishui' ? '搜索汽水音乐歌曲...' : '搜索网易云音乐歌曲...'));
+        : (src === 'kugou' ? '搜索酷狗音乐歌曲...' : '搜索网易云音乐歌曲...');
 }
 /* 同步音源按钮高亮 + 输入框占位（纯 UI，不发请求、不改结果区） */
 function syncSearchSourceUI() {
@@ -124,18 +124,23 @@ function setSearchSource(src) {
 }
 function refreshSearchSourceView() {
     if (!searchOverlay || !searchOverlay.classList.contains('visible')) return;
-    if (searchInput) searchInput.value = lastSearchKeyword[searchSource] || '';
-    const loaded = getLoadedSearchResults();
+    /* ★ 切换音源时保留用户当前输入词（不再强行覆写成目标源的历史 lastSearchKeyword，
+       避免切源瞬间把别的源或过期关键词的旧结果顶出来挡住屏幕）；仅当目标源正好缓存了
+       当前输入词的搜索结果时才直接恢复，否则彻底清空上次结果并切回该源的历史/联想视图。 */
+    const word = searchInput ? searchInput.value.trim() : '';
+    const c = searchPageCache[searchSource];
+    const loaded = (word && c && c.keyword === word) ? getLoadedSearchResults() : [];
     if (loaded.length) {
         searchResultsCache = loaded;
+        hideSearchHistory();
         renderSearchResults(loaded);
         /* 数量标签由 renderSearchResults 画进列表头部（见那里的说明），这里只清顶部瞬时提示 */
         setHint('');
         /* 切回一个「歌曲有缓存但卡片还没拉过」的源时补拉（缓存命中不经过 goToSearchPage） */
-        const c = searchPageCache[searchSource];
-        if (c && c.keyword) ensureSearchExtras(searchSource, c.keyword, loaded);
+        ensureSearchExtras(searchSource, c.keyword, loaded);
     } else {
-        if (searchResultsEl) searchResultsEl.innerHTML = '';
+        searchResultsCache = [];
+        hideResults();
         setHint('');
         updateSearchView();
     }
@@ -171,20 +176,13 @@ async function fetchSourcePage(source, word, page) {
        用户选"QQ音乐"就是想搜 QQ 的歌——接口无结果/失败时明确报错提示，由用户自行切换音源，
        避免"搜索接到别家去"(接过去后常遇到 VIP 播不了、没歌词的双重问题)。 */
     if (source === 'kugou') {
-        const r = await searchKugouSongs(word, page, SOURCE_PAGE_SIZE.kugou);
-        if (r && r.success && r.list && r.list.length) return r.list;
+        const pubP = searchKugouSongs(word, page, SOURCE_PAGE_SIZE.kugou)
+            .then(r => (r && r.success && Array.isArray(r.list) && r.list.length) ? r.list : null);
+        const venP = fetchKugouVendorSearch(word, page, SOURCE_PAGE_SIZE.kugou);
+        const hit = await firstNonEmpty([venP, pubP]);
+        if (hit && hit.length) return hit;
         logWarn('searchEngine', '[Search] 酷狗搜索无结果，不自动切换到其它源');
         throw new Error('酷狗搜索暂无结果，可尝试点击顶部音源切换');
-    }
-    /* ★ 汽水（2026-10-03）：只有自建 vendor 一条路——汽水没有匿名公开搜索接口，
-       第三方站要么已挂要么要 token（实测见 scripts/probes/qishui-source-probe.py）。
-       所以这里不做「失败静默回退」（没有可回退的目标），而是明确报错让用户知道
-       要先把本机自建服务跑起来。 */
-    if (source === 'qishui') {
-        const qs = await fetchQishuiSearchPage(word, page, SOURCE_PAGE_SIZE.qishui);
-        if (qs && qs.length) return qs;
-        logWarn('searchEngine', '[Search] 汽水搜索无结果（自建服务离线或上游无匹配）');
-        throw new Error('汽水音乐搜索暂无结果（需本机自建服务在线）');
     }
     /* ★ 自建 vendor 与公网 vkeys **并发竞速**（2026-10-03 真机实测后改）。
        实测本机数据：
@@ -298,12 +296,17 @@ async function fetchVendorSearchPage(source, word, page, want) {
                ★ 且上游硬顶 60：limit=60 → 60 首，limit=65/70/80 → 仍 60，
                **limit=100 → 0 首**（上游直接判非法、整页空）。调用方传的是 100，
                所以这里必须夹住，否则修成 limit 反而比现在还糟（0 首 → 静默回退公网）。 */
-            const qqN = Math.min(want, 60);
+            const shLimit = Number(getSelfhostOptions('qq').searchLimit) || want;
+            const qqN = Math.max(10, Math.min(want, shLimit, 60));
             path = `/getSearchByKey?key=${encodeURIComponent(word)}&limit=${qqN}&page=${page}`;
         } else if (source === 'netease') {
             /* ★ /cloudsearch 而非 /search（2026-09-26）：旧 /search 的 album 只有 picId 没有
                picUrl → 封面恒空；/cloudsearch 的 songs[].al.picUrl 才带封面 URL */
-            path = `/cloudsearch?keywords=${encodeURIComponent(word)}&limit=${want}&offset=${(page - 1) * want}&type=1`;
+            const neOpts = getSelfhostOptions('netease');
+            const extras = [];
+            if (neOpts.realIP) extras.push(`realIP=${encodeURIComponent(String(neOpts.realIP).trim())}`);
+            if (neOpts.proxy) extras.push(`proxy=${encodeURIComponent(String(neOpts.proxy).trim())}`);
+            path = `/cloudsearch?keywords=${encodeURIComponent(word)}&limit=${want}&offset=${(page - 1) * want}&type=1${extras.length ? '&' + extras.join('&') : ''}`;
         } else {
             return null;
         }
@@ -386,47 +389,6 @@ async function fetchVendorSearchPage(source, word, page, want) {
     }
 }
 
-/* ★ 汽水搜索（走自建 vendor）：/api/selfhost/qishui/proxy?path=/search?keyword=&limit=
-   归一化为搜索页标准字段 {id, song, singer, album, cover, interval, source}。
-   为什么不并进上面的 fetchVendorSearchPage：汽水的字段名与 QQ/网易**三者互不相同**
-   （title / artists[].name / coverUrl / durationMs），塞进同一个 if 链会把那个函数
-   变成「按源分叉的 switch」，反而更难维护。 */
-async function fetchQishuiSearchPage(word, page, want) {
-    try {
-        /* 一次取到第 page 页末尾（上限 100，与 server.mjs 的硬顶一致），再本地切片，
-           保持与其它源一致的「翻页请求」语义。 */
-        const limit = Math.min(100, Math.max(want, want * page));
-        const path = `/search?keyword=${encodeURIComponent(word)}&limit=${limit}`;
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 8000);
-        let j;
-        try {
-            const res = await fetch(`/api/selfhost/qishui/proxy?path=${encodeURIComponent(path)}`, { signal: ctl.signal });
-            if (!res.ok) return null;
-            j = await res.json();
-        } finally { clearTimeout(timer); }
-        if (!j || j.ok === false) return null;
-        const raw = Array.isArray(j.songs) ? j.songs : [];
-        const list = raw.map(it => ({
-            id: String(it.id),
-            song: it.title || '',
-            singer: (Array.isArray(it.artists) ? it.artists : [])
-                .map(a => (a && a.name) || '').filter(Boolean).join('/'),
-            artists: (Array.isArray(it.artists) ? it.artists : [])
-                .map(a => ({ id: String((a && a.id) || ''), mid: '', name: (a && a.name) || '', avatar: (a && a.avatarUrl) || '' }))
-                .filter(a => a.name),
-            album: it.album || '',
-            /* 汽水封面本身是 https（p3-luna.douyinpic.com），无需像网易那样升协议 */
-            cover: it.coverUrl || '',
-            interval: Math.round((Number(it.durationMs) || 0) / 1000),
-            source: 'qishui',
-        }));
-        return list.slice((page - 1) * want, page * want);
-    } catch (e) {
-        return null;
-    }
-}
-
 async function goToSearchPage(p) {
     const cache = searchPageCache[searchSource];
     /* cache.busy：只有**同一个 cache 对象**的在飞请求才去重（同一源连点翻页）。
@@ -498,13 +460,39 @@ async function goToSearchPage(p) {
            ★ 2026-10-04：**提到 renderSearchResults 之前** —— 先置 pending，
              紧接着的这次渲染才会画骨架而不是留空。 */
         if (p === 1) ensureSearchExtras(reqSource, reqWord, list || []);
-        if (searchResultsCache.length) renderSearchResults(searchResultsCache);
+        if (searchResultsCache.length) {
+            renderSearchResults(searchResultsCache);
+        } else if (p === 1) {
+            Aria.__clearSongView?.(searchResultsEl);
+            showResults(
+                `<div class="search-feedback-card">`
+                + `<div class="search-feedback-title">未找到与“${escapeHtml(reqWord)}”相关的歌曲</div>`
+                + `<div class="search-feedback-sub">可尝试更换关键词，或点击顶部切换其他音源</div>`
+                + `</div>`
+            );
+        }
         setHint((list && list.length) ? '' : (p === 1 ? '无搜索结果' : '没有更多结果了'));
     } catch (err) {
         logError('searchEngine', '搜索出错:', err);
         cache.curPage = prevPage;
+        const stale = searchSource !== reqSource
+            || !searchPageCache[reqSource]
+            || searchPageCache[reqSource].keyword !== reqWord;
+        const errMsg = (err && err.message && String(err.message).length < 60) ? err.message : '搜索失败，请检查网络';
         /* 展示 fetchSourcePage 抛出的具体原因（如"QQ音乐服务暂时不可用"），否则通用提示 */
-        setHint((err && err.message && String(err.message).length < 60) ? err.message : '搜索失败，请检查网络');
+        if (!stale) {
+            if (p === 1) {
+                Aria.__clearSongView?.(searchResultsEl);
+                showResults(
+                    `<div class="search-feedback-card is-error">`
+                    + `<div class="search-feedback-title">${escapeHtml(errMsg)}</div>`
+                    + `<div class="search-feedback-sub">请检查网络连接或切换顶部音源后重试</div>`
+                    + `<button type="button" class="search-retry-btn" id="searchRetryBtn">重新搜索</button>`
+                    + `</div>`
+                );
+            }
+            setHint(errMsg);
+        }
     } finally {
         cache.busy = false;
     }
@@ -661,15 +649,14 @@ function artistLinksHtml(item) {
    而不是点第 37 首翻唱；MV 则要能一键铺成动态背景。
 
    ★ 三源能力不同，所以这里**不是**「支持就显示、不支持就静默消失」：
-     · 歌手卡：QQ 与汽水没有「按关键词搜歌手」的接口（QQ getSearchByKey 不返回
-       歌手分组，汽水 vendor 未挂 artist 路由）→ 退化为「从歌曲结果里提取歌手」。
+     · 歌手卡：QQ 没有「按关键词搜歌手」的接口（QQ getSearchByKey 不返回
+       歌手分组）→ 退化为「从歌曲结果里提取歌手」。
        QQ 的歌曲行本来就带 singer[{id,mid,name}]，头像按 mid 直接拼 y.gtimg.cn；
        酷狗 mobilecdn 兜底结果只有名字，就出首字母占位。永不缺一块。
-     · MV 卡：只有 QQ／网易／酷狗有（汽水底层库零 video 方法），
-       汽水给一行明确说明，而不是让用户对着空白猜哪里坏了。
+     · MV 卡：QQ／网易／酷狗均支持。
    ★ 竞态：extras 有自己的缓存（按源 + 关键词），与歌曲分页缓存解耦——
      翻第 2/3 页不重复拉卡片；切源或换词时旧响应按 keyword 校验后丢弃。 */
-globalThis.searchExtras = { tencent: null, netease: null, kugou: null, qishui: null, kuwo: null };
+globalThis.searchExtras = { tencent: null, netease: null, kugou: null, kuwo: null };
 
 const MV_PLAY_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff" opacity="0.9"><path d="M8 5v14l11-7z"></path></svg>';
 
@@ -679,7 +666,7 @@ function fmtDur(sec) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/* 从歌曲结果里反推歌手（QQ/汽水，以及任何 searchArtists 拿不到的时候）。
+/* 从歌曲结果里反推歌手（QQ，以及任何 searchArtists 拿不到的时候）。
    按名字去重：同一歌手在不同歌曲里可能带不同 id（QQ 的合唱条目就是），
    但显示上必须只有一张卡。 */
 function deriveArtistsFromSongs(source, songs) {
@@ -765,12 +752,9 @@ async function fetchArtistCards(source, keyword, songs) {
     return dedupeArtists(deriveArtistsFromSongs(source, songs), 6);
 }
 
-/* 两排卡片的**骨架**（inner，不含外层容器）。★ 2026-10-04 新增。
-   用户报：「搜索的骨架屏不太对吧 只有底下的歌曲卡片的骨架 而上面歌手、mv 却没有骨架屏
-   而且歌手、mv、歌曲卡片不是同时出现」。骨架的尺寸必须与真实卡片一致
-   （歌手 92px / 圆头像 64px，MV 168px / 16:9 缩略图，见 styles/mv.css），
-   否则内容填进来时这一排会"跳一下"。
-   ★ 只铺**该源确定支持**的那一排：汽水没有 MV 能力，铺了会「出现又消失」。 */
+/* 骨架的尺寸与真实卡片一致
+ * （歌手 92px / 圆头像 64px，MV 168px / 16:9 缩略图，见 styles/mv.css），
+ * 否则内容填进来时这一排会"跳一下"。 */
 function extraRowsSkeletonInner(src) {
     if (typeof Aria === 'undefined' || typeof Aria.__skeleton !== 'function') return '';
     const card = (cls) => `<div class="sk-shelf-card ${cls}"><div class="sk sk-banner"></div><div class="sk sk-line"></div></div>`;
@@ -1021,6 +1005,9 @@ function renderSearchResults(list) {
                     </div>
                     <span class="result-status">${statusText}</span>
                     <div class="result-actions">
+                        <button class="result-action-btn" data-action="playnext" data-idx="${idx}" title="下一首播放">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l8 5-8 5V4z"></path><line x1="15" y1="6" x2="21" y2="6"></line><line x1="15" y1="12" x2="21" y2="12"></line><line x1="5" y1="18" x2="21" y2="18"></line></svg>
+                        </button>
                         <button class="result-action-btn" data-action="addnow" data-idx="${idx}" title="加入当前播放">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"></path></svg>
                         </button>
@@ -1092,6 +1079,12 @@ searchResultsEl?.addEventListener('click', (e) => {
                 }
                 return;
             }
+            /* 失败重试 */
+            if (e.target.closest('#searchRetryBtn')) {
+                e.stopPropagation();
+                searchSongs();
+                return;
+            }
             /* 操作按钮优先 */
             const actionBtn = e.target.closest('.result-action-btn');
             if (actionBtn) {
@@ -1102,6 +1095,8 @@ searchResultsEl?.addEventListener('click', (e) => {
                     toggleSearchResultFav(idx);
                 } else if (actionBtn.dataset.action === 'addpl') {
                     addSearchResultToPlaylist(idx);
+                } else if (actionBtn.dataset.action === 'playnext') {
+                    playNextSearchResult(idx);
                 } else if (actionBtn.dataset.action === 'addnow') {
                     addSearchResultToNowPlaying(idx);
                 }
@@ -1113,32 +1108,37 @@ searchResultsEl?.addEventListener('click', (e) => {
                 playEntireSearchResults();
                 return;
             }
-            /* 播放单曲（允许中断当前加载，代际机制会自动废弃旧请求） */
+            /* 播放单曲（允许中断当前加载，代际机制会自动废弃旧请求；发现渠道单曲点击插入当前队列下一位并立即切换而不清空队列） */
             const item = e.target.closest('.result-item');
             if (!item) return;
             const idx = parseInt(item.dataset.idx);
             if (isNaN(idx) || !searchResultsCache[idx]) return;
-            loadOnlineSong(searchResultsCache[idx]);
+            const picked = searchResultsCache[idx];
+            loadOnlineSong(picked.source ? picked : { ...picked, source: searchSource });
         });
+
+/* 将搜索结果设为下一首播放 */
+function playNextSearchResult(idx) {
+            const item = searchResultsCache[idx];
+            if (!item) return;
+            if (typeof globalThis.Aria !== 'undefined' && typeof globalThis.Aria.enqueuePlayNextTrack === 'function') {
+                const res = globalThis.Aria.enqueuePlayNextTrack(item, searchSource);
+                if (res && res.message) setHint(res.message);
+                return;
+            }
+            addSearchResultToNowPlaying(idx);
+        }
 
 /* 将搜索结果加入当前播放队列 */
 function addSearchResultToNowPlaying(idx) {
             const item = searchResultsCache[idx];
             if (!item) return;
-            playlist.push({
-                url: null,
-                title: item.song || '未知歌曲',
-                artist: item.singer || '未知歌手',
-                cover: item.cover || '',
-                source: searchSource,
-                id: item.id,
-                mid: item.mid || '',
-                /* 带上这首歌的 MV id，队列里播到它时 MV 背景能直接跟随（见 101）。
-                   ★ 2026-10-04：mvId（网易 song.mv）也要带 —— 此前只带了 QQ 的 mvVid，
-                     网易歌曲进队列后 MV 关联就丢了。 */
-                mvVid: item.mvVid || '',
-                mvId: item.mvId || ''
-            });
+            const res = enqueueTrack(playlist, item, searchSource);
+            if (res.added) {
+                setHint('已加入当前播放队列');
+            } else if (res.duplicate) {
+                setHint('已在当前播放队列中');
+            }
         }
 
 /* 播放搜索结果的"播放全部" */
@@ -1146,19 +1146,11 @@ async function playEntireSearchResults() {
             if (!searchResultsCache || searchResultsCache.length === 0) return;
             closeSearch();
             /* 构建播放队列 */
-            playlist = searchResultsCache.map(item => ({
-                url: null,
-                title: item.song || '未知歌曲',
-                artist: item.singer || '未知歌手',
-                cover: item.cover || '',
-                source: searchSource,
-                id: item.id,
-                mid: item.mid || '',
-                mvVid: item.mvVid || '',
-                mvId: item.mvId || ''
-            }));
-            currentTrackIndex = 0;
-            await loadPlaylistTrack(0);
+            const q = buildCollectionQueue(searchResultsCache, 0, searchSource);
+            if (!q.playlist.length) return;
+            playlist = q.playlist;
+            currentTrackIndex = q.currentTrackIndex;
+            await loadPlaylistTrack(currentTrackIndex);
         }
 
 export { addSearchResultToNowPlaying, addSearchResultToPlaylist, ensureSearchExtras, getLoadedSearchResults, playEntireSearchResults, renderSearchResults, searchSongs, toggleSearchResultFav };

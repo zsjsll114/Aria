@@ -199,6 +199,10 @@ export function createJizuraEngine() {
 - planner **只消费 `beats[]` + `energy/energyRate`**（`08_planner.js:295,305-312,605-606`）；`bpm/peaks` 仅 UI 用。
 - 适配：用 Aria 已有的 BPM/能量/逐 onset 能力生成同一结构（**并把卡点从"整张匀速网格 ±0.13s"升级为"逐 onset 可选"**——上游被吐槽的"卡点不准、镜头切换过快"正源于此）。`10_audio.js` 仍搬（作为解码兜底 / 离线导出用），但实时路径不走它。
 
+**★ 落地状态（2026-10-11，实测见 §15）**：本节方案的 `beats` 与 `energy/energyRate` **已接通** ——
+`beats` 由适配层按真实 BPM 用 `J.beatGrid` 自建；`energy/energyRate` 直接复用 automix 分析
+**本来就算了却丢掉**的 RMS 包络（见 §15 的 ②）。仍未做的是本节括号里那项「逐 onset 可选」。
+
 ### 6.3 逐字进度（唯一需要**新增引擎能力**的地方，详见 §7）
 
 ### 6.4 字体
@@ -277,7 +281,7 @@ export function createJizuraEngine() {
 |---|---|---|
 | 风格（27 套） | `04_styles.js:10-151` + `11p_styles.js` | 下拉 |
 | おまかせ mood（7 种） | `08b_omakase.js:10` | 下拉 + 「随机」 |
-| 部件集开关（typo/kinetic/horror + 和风/追加） | `11q_sets.js:32-53` | 多选/开关组 |
+| 部件集开关（typo/kinetic/horror + 和风/追加） | `11q_sets.js:32-53` | 多选/开关组 —— **部分落地**：追加分 `extra` 已接（2026-10-11，面板开关名「追加部件」），其余待接（见 §15） |
 | 镜头密度 `density` | `08_planner.js:353-356` | 滑杆 |
 | 渲染质量 `fx`（chroma/shake/grain/scan/bloom…） | `08_planner.js:32` | 开关组 |
 | 语言（自动/日/繁/简/英/韩） | `02b_lang.js:12` | 下拉 |
@@ -341,3 +345,53 @@ export function createJizuraEngine() {
 3. **导出**：只做"播放时的视觉模式"（P0–P3），还是也搬导出（P4，MP4/PNG/AE JSON，需 vendor mp4-muxer 并登记许可）？
 
 定了这三件我就按 §11 从 P0 开工（P0 结束会给你一个可 `switchView` 看画面的最小可用版本）。
+
+---
+
+## 十五、补接线（2026-10-11）：三个「静默缺口」与实测数字
+
+**症状**（用户报障原话）：jizura 的分镜比原版少了很多、太容易重复。
+
+**结论**：**引擎是完整的** —— 40 个文件逐字节搬运，`scripts/port-jizura.mjs` 用「差异行数必须恰好等于已声明补丁数」做机器校验（39/40 文件 0 差异，2 条补丁有声明）。缺的是**适配层没把上游的三个入口接上**。
+
+| # | 缺口 | 上游怎么做 | 我们此前怎么做 | 实测后果 |
+|---|---|---|---|---|
+| 1 | **音频分析**（`J.plan(project, audio)` 的第二参） | `audioLike()`：只要 `bpm > 0` **必然**给一条拍点栅格（连没导入音频时都用一条 600s 长网格），有音频时再带上 `duration/energy/energyRate` | 恒传 `null`（调用点从没构造过 `analyses`） | `plan.beats` 恒空 → `snap()` 恒等返回（**32/73 的切点本会对齐拍点**），渲染层的 `beatAt()` 拍点脉冲与 `energy` 调制全哑 |
+| 2 | **追加分 `extra`** | 面板有「追加分」开关；`11q_sets.js:51-57` 的 `J.randomOk` 用严格 `project.extra === true` 放行 | 不转发 → 沿用 `defaultProject()` 里的 **false** | 抽签池只有 **486/910**；**转场只剩 5/27**、风格只剩 12/27 → 相邻分镜来回就那几种转场 |
+| 3 | **部件集开关**（horror/typo/kinetic + 和風 `wa`） | `11q_sets.js:32-53` 的多选/开关组 | 只有 §9 表里的一行，**没落地** | 用户无法改回/打开这些集合（`horror` 默认关是引擎设计，不是缺陷） |
+
+**一个必须说清的澄清**：缺口 2 改的是**部件多样性**，**不是分镜数量**。cut 数只由 `density`、可见时长（被 `visEnd` 钳制）与每行 `chunks` 数决定（`08_planner.js:349-358`）——实测同歌词、同种子下 `extra` 开与不开都是 **73 cut / 20 行**。所以「分镜少」若指字面数量，旋钮是 `density`（默认 0.55 与上游一致，面板可拉到 1）；若指观感「发木、重复」，就是上表这三条。
+
+**本轮已修**：
+
+- ① 拍点栅格：`jizuraBridge.js` 的 `beatAnalysesOf()` 按真实 BPM 建网格，长度取 `max(600, 末行 + 60)`（比上游固定 600s 更宽，不会在长歌尾部丢拍点）。它与调用方给的 `analyses` **合并**而非二选一 —— 栅格我们造得出、包络造不出，缺哪边就少哪边的效果。
+- ② 能量包络（缺口 1 的另一半）：走的是「复用本来就算了、却被丢掉的东西」——
+  `core/automix/envelope.js` 的 `analyzeEnvelope()` 一直**算了 RMS 包络却只返回标量**（包络当场丢掉），
+  于是「按音乐强弱驱动画面」的消费方只能重新解码整首歌。现在它把 `energy`（原始 RMS Float32Array）
+  与 `energyRate` 一并返回；而 `analyzer.js` 是**整体缓存该函数的返回值**（只 `delete frameMs`），
+  所以包络自动进了 `automixCache`，**analyzer 一行没改**。
+  适配层再按引擎口径归一化（`jizuraBridge.normalizeEnergy()`：95 分位为 1、夹到 1，照上游
+  `10_audio.js:62-66`），由 `_kickAnalysisLookup()` 随 BPM 一趟取回（同一个缓存、只读、每首歌一次）。
+  ⇒ 引擎那 6 处 `env.energy != null ? 按能量缩放 : 假噪声摆动` 由「假噪声」换成真实音乐。
+  ⚠ **旧缓存条目没有这个字段**（存的是升级前那份对象）：命中的歌走噪声兜底，观感与升级前一致、
+  不会变差；要拿到包络得让那首歌重新分析一次（清空「混音分析缓存」）。
+  体积：50ms 一帧，4 分钟歌 ≈ 4800 帧 ≈ 19KB/首 —— IndexedDB 结构化克隆直存（无 JSON 路径），
+  而 `storageManager` 报体积只用 `navigator.storage.estimate()`，所以不会被膨胀成假数字。
+- ③ 追加分：`extra` 全链路接通（`defaults.js` 默认 **true** → 面板「追加部件」toggle → `JizuraVisualizer.modeOptions` → bridge → 引擎 project），并进了 plan 指纹（切开关立刻重建，不然画面不动）。
+- 顺带修掉一条相邻缺陷：`previewEngine` 的 `modeVars.jizura` 原先只含通用歌词变量，导致外观面板重开时 jizura 的风格/情绪/密度/闪光等控件**回填不上**（`syncModeSectionValues` 的 `mv` 一旦取到对象就再也不往回落）。现已把专有键全部补进去。
+
+**新增回归防线**：`tests/js/test_jizura_pool.js`（把真引擎 + 最小 DOM 桩载进 Node）。它断言的是**抽签池的大小** —— 这是「抽签池被静默砍半」唯一能被自动发现的地方（plan 结构完全看不出来）。其中 JP2 是端到端断言：bridge 造出的 project，其抽签池必须等于「开着追加分」那一档，**忘了转发 `extra` 就会红**。
+
+配套的三处（缺口 1 的两个半边各有一条端到端）：
+
+- `test_jizura_pool.js`｜JP3：有 BPM 时引擎第二参必须带 `beats`、没 BPM 时必须为 `null`；JP5：能量包络必须原样落到 `plan.energy` / `plan.energyRate`（没给时必须是 `null` / `0`，不能是 NaN 或空数组）。
+- `test_jizura_bridge.js`｜TC9 钉「栅格与包络**合并**、同名以传入者为准」；TC25 钉归一化（95 分位为 1、夹到 1、全零不除零、NaN 不扩散）。
+- `test_automix_envelope.js`｜新增两条钉住「**算了又丢**」不再发生：`analyzeEnvelope` 导出的包络必须就是算 `meanEnergy` 用的那一份；`analyzeTrack` 的结果里必须留着 `energy`/`energyRate`、而 `frameMs` 仍不外泄。
+
+**仍待接**（未做，按需再排）：
+
+- 缺口 3 的其余开关（和風 `wa`、部件集 horror/typo/kinetic）；
+- §6.2 里提到的那项升级：**把卡点从「匀速 BPM 网格 ±0.13s」换成「逐 onset」**（引擎的 `snap()` 吃的就是 `beats` 数组，喂 onset 列表即可）——上游被吐槽的「卡点不准、镜头切换过快」正源于匀速网格；
+- 能量包络目前只在 automix **分析过**的歌上有（与 BPM 同源、同一份缓存）。要让每首歌都有，就得在播放链上解码 —— 那与「不阻塞播放主链」冲突，需单独立项；
+- 上游的 `unify`（統一感）/ `typeset`（文字整列）/ `centerFree`（中央を空ける）三项构图能力整块未接；
+- `.setting-btn-group`（`perf`/`beat` 那类按钮组）目前**任何模式都没有回填**，属另一条相邻缺陷。

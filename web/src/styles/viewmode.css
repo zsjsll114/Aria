@@ -311,57 +311,75 @@
             transform: scale(1);
         }
 
-        /* --- 飞入与渐显模式预览：深色背景 + 逐字飞入 --- */
+        /* --- 飞入与渐显模式预览：深邃极简夜幕 + 几何线框 + 逐字飞入发光 --- */
         .view-mode-preview-flyin {
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            gap: 10px;
             padding: 12px;
             position: relative;
-            background: rgba(10, 8, 20, 0.85);
+            background: radial-gradient(88% 82% at 50% 44%, #1a1530 0%, #0d0a1a 62%, #07050f 100%);
+            overflow: hidden;
         }
-        .view-mode-mock-flyin-bg {
+        .vm-flyin-glow {
             position: absolute;
-            inset: 0;
-            background: radial-gradient(ellipse at 60% 40%, rgba(60, 40, 80, 0.4), transparent 70%);
-            border-radius: 14px 14px 0 0;
-        }
-        .view-mode-mock-flyin-wireframe {
-            position: absolute;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 50%;
+            width: 140px;
+            height: 70px;
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: radial-gradient(ellipse, rgba(232, 190, 106, 0.24) 0%, rgba(120, 152, 255, 0.12) 48%, transparent 74%);
+            filter: blur(14px);
             pointer-events: none;
         }
-        .view-mode-mock-flyin-wireframe.wf1 {
-            width: 60px; height: 60px;
-            top: 15%; right: 12%;
+        .vm-flyin-svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
         }
-        .view-mode-mock-flyin-wireframe.wf2 {
-            width: 40px; height: 40px;
-            bottom: 20%; left: 14%;
-            border-style: dashed;
-        }
-        .view-mode-mock-flyin-char {
-            width: 5px;
-            height: 18px;
-            border-radius: 3px;
-            background: rgba(255, 255, 255, 0.1);
-            display: inline-block;
-            margin: 0 1px;
-        }
-        .view-mode-mock-flyin-char.active {
-            background: rgba(var(--aria-accent-rgb), 0.8);
-            box-shadow: 0 0 6px rgba(var(--aria-accent-rgb), 0.5);
-        }
-        .view-mode-preview-flyin .view-mode-mock-lyrics-full {
-            flex: 1;
+        .vm-flyin-chars {
+            position: relative;
+            z-index: 2;
             display: flex;
-            flex-direction: row;
-            justify-content: center;
-            align-items: center;
-            gap: 1px;
-            z-index: 1;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .vm-fc-ch {
+            font-size: 22px;
+            font-weight: 900;
+            line-height: 1;
+            display: inline-block;
+        }
+        .vm-fc-ch.lit {
+            color: rgba(248, 245, 255, 0.92);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+        }
+        .vm-fc-ch.hero {
+            font-size: 26px;
+            color: #f6d17c;
+            transform: translateY(-4px) scale(1.06);
+            text-shadow: 0 0 16px rgba(232, 190, 106, 0.85), 0 4px 12px rgba(0, 0, 0, 0.6);
+        }
+        .vm-fc-ch.rising {
+            color: rgba(240, 236, 255, 0.46);
+            transform: translateY(5px);
+            filter: blur(0.4px);
+        }
+        .vm-fc-ch.entering {
+            color: rgba(240, 236, 255, 0.2);
+            transform: translateY(11px);
+            filter: blur(1px);
+        }
+        .vm-flyin-sub {
+            position: relative;
+            z-index: 2;
+            font: 600 7.5px/1 ui-monospace, Consolas, monospace;
+            letter-spacing: 0.24em;
+            color: rgba(236, 232, 255, 0.45);
         }
 
         /* ========== 飞入与渐显视图模式 (.view-flyin) ========== */
@@ -410,9 +428,11 @@
            覆盖，唯独飞入裸用通用 rgba(30,30,35,0.75)——全屏线框 + 模糊封面从底栏后
            透出来，观感就是「透明」。补上与 viewmode.css 891 那批同规格的深色配方。 */
         .player-container.view-flyin .bottom-control-bar {
-            background: rgba(18, 14, 30, 0.85) !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+            background: rgba(14, 16, 22, 0.44) !important;
+            backdrop-filter: blur(26px) saturate(175%) !important;
+            -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.13) !important;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
         }
 
         /* ========== 飞入模式：居中不滚动布局 ========== */
@@ -437,8 +457,8 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) !important;
-            width: 92% !important;
-            max-width: 900px;
+            width: 94% !important;
+            max-width: min(94vw, 1360px);
             text-align: center !important;
             opacity: 0 !important;
             visibility: hidden;
@@ -619,61 +639,58 @@
             min-height: 1.4em;
         }
 
-        /* ========== 词云模式预览卡片 ========== */
+        /* ========== 词云模式预览卡片：空间词云 + 镜头跟焦 ========== */
         .view-mode-preview-wordcloud {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             position: relative;
-            background: radial-gradient(ellipse at 50% 55%, rgba(28, 22, 50, 0.95), rgba(10, 8, 20, 0.98));
+            background: radial-gradient(ellipse at 50% 50%, #201a3c 0%, #100d22 58%, #070611 100%);
             padding: 0;
             overflow: hidden;
         }
-        /* 词云背景微粒装饰 */
-        .view-mode-preview-wordcloud::before {
-            content: '';
+        .vm-wc-bg {
             position: absolute;
             inset: 0;
-            background-image: 
-                radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,0.15), transparent),
-                radial-gradient(1px 1px at 70% 30%, rgba(255,255,255,0.1), transparent),
-                radial-gradient(1px 1px at 35% 70%, rgba(255,255,255,0.12), transparent),
-                radial-gradient(1px 1px at 85% 80%, rgba(255,255,255,0.08), transparent);
+            width: 100%;
+            height: 100%;
             pointer-events: none;
         }
-        .view-mode-mock-wc-item {
+        .vm-wc-word {
             position: absolute;
-            height: 4px;
-            border-radius: 3px;
-            background: rgba(255, 255, 255, 0.08);
+            font-weight: 700;
+            letter-spacing: 0.08em;
             white-space: nowrap;
-            transition: opacity 0.4s ease, filter 0.4s ease;
-        }
-        .view-mode-mock-wc-item.active {
-            background: rgba(var(--aria-accent-rgb), 0.8);
-            box-shadow: 0 0 10px rgba(var(--aria-accent-rgb), 0.5), 0 0 4px rgba(var(--aria-accent-rgb), 0.8);
-            animation: view-wc-pulse 2.5s ease-in-out infinite;
-        }
-        @keyframes view-wc-pulse {
-            0%, 100% { box-shadow: 0 0 8px rgba(var(--aria-accent-rgb), 0.4); }
-            50% { box-shadow: 0 0 14px rgba(var(--aria-accent-rgb), 0.7); }
-        }
-        .view-mode-mock-wc-item.blur {
-            opacity: 0.12;
-            filter: blur(2px);
-        }
-        /* 词云跟焦框装饰 */
-        .view-mode-preview-wordcloud::after {
-            content: '';
-            position: absolute;
-            top: 38%; left: 32%;
-            width: 56px; height: 18px;
-            border: 1.5px solid rgba(var(--aria-accent-rgb), 0.35);
-            border-radius: 4px;
             pointer-events: none;
-            animation: view-wc-focus 3s ease-in-out infinite;
         }
-        @keyframes view-wc-focus {
-            0%, 100% { transform: scale(1); opacity: 0.35; }
-            50% { transform: scale(1.08); opacity: 0.6; }
+        .vm-wc-word.far {
+            font-size: 10px;
+            color: rgba(224, 228, 255, 0.24);
+            filter: blur(1px);
+        }
+        .vm-wc-word.mid {
+            font-size: 12px;
+            color: rgba(232, 236, 255, 0.48);
+        }
+        .vm-wc-focus {
+            position: relative;
+            z-index: 3;
+            padding: 6px 14px;
+            border: 1px solid rgba(232, 190, 106, 0.46);
+            border-radius: 6px;
+            background: rgba(16, 13, 34, 0.55);
+            box-shadow: 0 0 24px rgba(232, 190, 106, 0.22);
+        }
+        .vm-wc-hero {
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            color: rgba(245, 242, 255, 0.55);
+            white-space: nowrap;
+        }
+        .vm-wc-hero .lit {
+            color: #f6d17c;
+            text-shadow: 0 0 14px rgba(232, 190, 106, 0.75);
         }
 
         /* ========== PV 模式预览卡片 ========== */
@@ -735,29 +752,29 @@
             100% { opacity: 1; transform: scale(1.15) translateY(-2px); }
         }
 
-        /* ========== 词云视图模式 (.view-wordcloud) ========== */
-        /* 深色背景：压暗模糊背景层 */
+        /* ========== 词云视图模式 (.view-wordcloud) — 星海词云重制版 ========== */
+        /* 封面浸染星云背景：柔和保留专辑主色与流光，告别死黑灰蒙 */
         .view-wordcloud .blur-background {
-            filter: blur(80px) brightness(0.1) !important;
-            animation: view-wordcloud-bg 25s ease-in-out infinite !important;
+            filter: blur(76px) brightness(0.32) saturate(1.45) !important;
+            animation: view-wordcloud-bg 26s ease-in-out infinite !important;
         }
         @keyframes view-wordcloud-bg {
-            0%, 100% { transform: rotate(-5deg) scale(1.12); }
-            50%      { transform: rotate(5deg) scale(1.18); }
+            0%, 100% { transform: rotate(-4deg) scale(1.12); }
+            50%      { transform: rotate(4deg) scale(1.18); }
         }
-        /* 暗色叠加遮罩 */
+        /* 星海径向暗角与极光氛围幕 */
         .player-container.view-wordcloud::before {
             content: '';
             position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, rgba(5, 4, 12, 0.82), rgba(12, 10, 22, 0.72));
+            inset: 0;
+            background:
+                radial-gradient(ellipse 68% 58% at 50% 46%, rgba(var(--aria-accent-rgb), 0.14) 0%, transparent 62%),
+                radial-gradient(ellipse 95% 88% at 50% 50%, rgba(8, 10, 22, 0.36) 0%, rgba(5, 6, 14, 0.84) 100%);
             z-index: -1;
             pointer-events: none;
         }
 
-        /* 视口（Viewport = 固定摄像机）：固定宽高 + overflow hidden */
-        /* 全屏沉浸：词云容器铺满整个屏幕，层级低于上方控件（顶部操作按钮 / 左侧控制区浮于其上） */
+        /* 视口（Viewport = 固定摄像机） */
         .player-container.view-wordcloud .lyrics-area-wrapper {
             position: absolute;
             top: 0;
@@ -768,7 +785,6 @@
             z-index: 3;
             overflow: clip;
             overflow-clip-margin: 90px;
-            /* 词云铺满视口，右侧延时/提前控制若贴边会顶到屏幕边缘；补上与普通模式一致的内边距 */
             padding-right: 28px;
         }
         .player-container.view-wordcloud .lyrics-container {
@@ -776,7 +792,6 @@
             overflow: clip !important;
             overflow-clip-margin: 90px;
         }
-        /* 上方控件浮在词云之上，保持可点、可读 */
         .player-container.view-wordcloud .top-action-buttons {
             z-index: 20;
         }
@@ -785,19 +800,53 @@
             z-index: 20;
         }
 
-        /* 画布（Canvas）：巨大虚拟矩形，整体 transform 平移实现镜头跟焦 */
+        /* 画布（Canvas）：整体 transform 平移实现丝滑星海镜头漫游 */
         .view-wordcloud .scroll-container {
             position: absolute !important;
             top: 0;
             left: 0;
-            transform: translate(0px, 0px) scale(1);
-            transform-origin: 0 0;  /* scale 以左上角为原点，简化跟焦坐标计算 */
+            transform: translate3d(0px, 0px, 0);
+            transform-origin: 0 0;
             will-change: transform;
             transition: none !important;
             display: block !important;
         }
 
-        /* 歌词行：绝对定位、inline-block、nowrap → 坚固的包围盒 */
+        /* 星轨连线与天文坐标环 SVG */
+        .wc-constellation-svg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            pointer-events: none;
+            overflow: visible;
+        }
+        .wc-orbit-ring {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.045);
+            stroke-width: 1;
+            stroke-dasharray: 4 10;
+        }
+        .wc-thread {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.08);
+            stroke-width: 1.2;
+            stroke-dasharray: 5 8;
+            transition: stroke 0.55s ease, stroke-width 0.55s ease, opacity 0.55s ease;
+        }
+        .wc-thread.is-active {
+            stroke: rgba(var(--aria-accent-rgb), 0.42);
+            stroke-width: 1.8;
+            stroke-dasharray: none;
+        }
+        .wc-star-node {
+            fill: rgba(255, 255, 255, 0.16);
+            transition: fill 0.45s ease, r 0.45s ease;
+        }
+        .wc-star-node.is-active {
+            fill: var(--aria-accent);
+        }
+
+        /* 歌词行：分级光学景深 + 微倾角（当前行自动摆正并绽放光晕） */
         .view-wordcloud .line {
             position: absolute !important;
             display: inline-block !important;
@@ -805,24 +854,50 @@
             width: auto !important;
             max-width: none !important;
             box-sizing: content-box !important;
-            padding: 8px 14px !important;
-            opacity: var(--wc-dim-opacity, 0.25) !important;
-            filter: blur(var(--wc-dim-blur, 4px)) !important;
-            transition: opacity 0.6s ease, filter 0.6s ease !important;
-            cursor: default !important;
-            border-radius: 0 !important;
+            padding: 10px 18px !important;
+            border-radius: 14px !important;
             background-color: transparent !important;
+            cursor: default !important;
+            transform: rotate(var(--wc-tilt, 0deg)) scale(0.96);
+            transform-origin: center center;
+            opacity: var(--wc-dim-opacity, 0.16) !important;
+            filter: blur(calc(var(--wc-dim-blur, 3.2px) * 1.2)) !important;
+            transition:
+                opacity 0.55s var(--e-enter-soft),
+                filter 0.55s var(--e-enter-soft),
+                transform 0.55s var(--e-enter-soft),
+                text-shadow 0.45s ease !important;
         }
-        /* 活动行：全亮、无模糊 */
+        .view-wordcloud .line[data-wc-depth="1"] {
+            opacity: 0.44 !important;
+            filter: blur(calc(var(--wc-dim-blur, 3.2px) * 0.42)) !important;
+            transform: rotate(calc(var(--wc-tilt, 0deg) * 0.55)) scale(0.98);
+        }
+        .view-wordcloud .line[data-wc-depth="2"] {
+            opacity: 0.25 !important;
+            filter: blur(calc(var(--wc-dim-blur, 3.2px) * 0.82)) !important;
+        }
+        .view-wordcloud .line[data-wc-tier="hero"] .lrc-original {
+            font-weight: 900 !important;
+            letter-spacing: 0.04em;
+        }
+        .view-wordcloud .line[data-wc-tier="soft"] .lrc-original {
+            font-weight: 600 !important;
+            letter-spacing: 0.06em;
+        }
+
+        /* 活动行：回正 0deg + 柔和主题色焦点光场 + 清晰通透排版 */
         .view-wordcloud .line.active {
             opacity: 1 !important;
             filter: none !important;
+            transform: rotate(0deg) scale(1.04);
+            z-index: 5;
+            background: radial-gradient(ellipse 80% 70% at 50% 52%, rgba(var(--aria-accent-rgb), 0.14) 0%, transparent 72%) !important;
+            text-shadow: 0 4px 24px rgba(0, 0, 0, 0.55), 0 0 26px rgba(var(--aria-accent-rgb), 0.28);
         }
-        /* 隐藏时间戳 */
         .view-wordcloud .line .line-time {
             display: none !important;
         }
-        /* 主文本：inline-block + nowrap 防断行，字号继承 .line 的内联设置 */
         .view-wordcloud .line .lrc-original {
             display: inline-block !important;
             white-space: nowrap !important;
@@ -830,44 +905,58 @@
             max-width: none !important;
             overflow: visible !important;
             font-weight: 700 !important;
-            font-size: inherit !important;  /* 继承 .line 上设置的随机字号 */
-            line-height: 1.3 !important;
+            font-size: inherit !important;
+            line-height: 1.28 !important;
             margin: 0 !important;
         }
-        /* 逐字容器：inline，保持词组连续 */
         .view-wordcloud .line .words-container {
             display: inline !important;
             flex-wrap: nowrap !important;
         }
-        /* 单个 word 元素：inline-block + nowrap 不可分割 */
         .view-wordcloud .line .word {
             display: inline-block !important;
             white-space: nowrap !important;
         }
-        /* 翻译行：作为内部子元素置于主文本下方，整体仍为防断行块 */
-        /* 词云模式：行内隐藏翻译/罗马音，显示在底部翻译区域 */
-        .view-wordcloud .line .lrc-translation {
-            display: none !important;
-        }
+        .view-wordcloud .line .lrc-translation,
         .view-wordcloud .line .lrc-romaji {
             display: none !important;
         }
-        /* 词云模式禁用 hover 效果 */
         .view-wordcloud .line:hover {
             background-color: transparent !important;
-            filter: blur(6px) !important;
-            opacity: 0.15 !important;
+            opacity: 0.55 !important;
+            filter: blur(1px) !important;
         }
         .view-wordcloud .line.active:hover {
-            background-color: transparent !important;
+            background: radial-gradient(ellipse 80% 70% at 50% 52%, rgba(var(--aria-accent-rgb), 0.14) 0%, transparent 72%) !important;
             filter: none !important;
             opacity: 1 !important;
         }
-        /* 词云模式隐藏飞入翻译区域 */
-        /* 词云模式：翻译/罗马音显示在底部控制栏上方（复用飞入模式翻译区域） */
+        /* 词云底部译文：优雅悬浮在底栏上方，与底栏留出呼吸间距 */
         .view-wordcloud .flyin-translation-area {
             display: block !important;
-            bottom: 12px; /* 紧贴底部控制栏上方 */
+            bottom: 128px !important;
+        }
+        .view-wordcloud .flyin-translation-area .flyin-trans-text {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 999px;
+            background: rgba(14, 16, 22, 0.44);
+            border: 1px solid rgba(255, 255, 255, 0.11);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+        }
+        .view-wordcloud .flyin-translation-area .flyin-trans-text:empty {
+            display: none;
+        }
+
+        html#ariaRoot.is-software-renderer .view-wordcloud .line,
+        html#ariaRoot body.perf-low .view-wordcloud .line {
+            filter: none !important;
+        }
+        html#ariaRoot.is-software-renderer .view-wordcloud .wc-constellation-svg,
+        html#ariaRoot body.perf-minimal .view-wordcloud .wc-constellation-svg {
+            display: none !important;
         }
 
 
@@ -913,21 +1002,21 @@
             transform: translateX(-50%) !important;
             z-index: 90 !important;
             margin: 0 !important;
-            background: rgba(18, 14, 30, 0.82) !important;
-            backdrop-filter: blur(28px) saturate(180%) !important;
-            -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+            background: rgba(14, 16, 22, 0.44) !important;
+            backdrop-filter: blur(26px) saturate(175%) !important;
+            -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.13) !important;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
             border-radius: 24px !important;
             pointer-events: auto !important;
         }
 
-        /* 飞入样式翻译歌词在所有全景模式下悬浮于底栏上方 */
+        /* 飞入样式翻译歌词在无自建翻译条的全景模式下悬浮于底栏上方
+           （dimension 已有独立 .vis-dimension-trans，不再叠画第二份） */
         .player-container.view-flyin .flyin-translation-area,
         .player-container.view-wordcloud .flyin-translation-area,
         .player-container.view-pv .flyin-translation-area,
-        .player-container.view-tempera .flyin-translation-area,
-        .player-container.view-dimension .flyin-translation-area {
+        .player-container.view-tempera .flyin-translation-area {
             display: block !important;
             position: absolute !important;
             bottom: 140px !important;
@@ -1006,25 +1095,7 @@
             position: relative;
             overflow: hidden;
         }
-        /* 浮空粒子背景 */
-        .view-mode-preview-dimension::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: 
-                radial-gradient(1.5px 1.5px at 20% 25%, rgba(var(--aria-accent-rgb), 0.4), transparent),
-                radial-gradient(1px 1px at 55% 15%, rgba(var(--aria-accent-rgb), 0.3), transparent),
-                radial-gradient(1.5px 1.5px at 75% 60%, rgba(var(--aria-accent-rgb), 0.35), transparent),
-                radial-gradient(1px 1px at 30% 80%, rgba(var(--aria-accent-rgb), 0.25), transparent),
-                radial-gradient(1px 1px at 85% 35%, rgba(255, 255, 255, 0.15), transparent),
-                radial-gradient(1.5px 1.5px at 15% 65%, rgba(var(--aria-accent-rgb), 0.2), transparent);
-            pointer-events: none;
-            animation: view-dim-drift 8s ease-in-out infinite alternate;
-        }
-        @keyframes view-dim-drift {
-            0% { transform: translate(0, 0); }
-            100% { transform: translate(4px, -3px); }
-        }
+        /* 浮空粒子背景已由卡片内联 SVG 渲染 */
         .view-mode-mock-dim-cube {
             width: 40px;
             height: 40px;
@@ -1197,35 +1268,45 @@
 .vm-card-dim .dmf.d4 { left: 24%; top: 62%; font-size: 20px; transform: rotateY(-30deg) translateZ(10px); color: rgba(255,255,255,0.35); }
 
 
-/* —— 浮空（dimension）卡片骨架：透视倾斜歌词条，远近层次 —— */
-.view-mode-preview-dimension { perspective: 260px; }
-.view-mode-mock-dim-line {
+/* —— 穿行 · Dimension 卡片预览：1:1 还原真实丝绸流体雾幕 + 3D 点阵立方体 + 纵深虚焦双行 —— */
+.view-mode-preview-dimension {
+    background: linear-gradient(148deg, #132125 0%, #1d3637 48%, #0d161a 100%);
+    position: relative;
+    overflow: hidden;
+}
+.vm-dim-svg {
     position: absolute;
-    left: 14%; right: 14%;
-    height: 9px;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.55);
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
-.view-mode-mock-dim-line.far {
-    top: 26%;
-    background: rgba(255, 255, 255, 0.22);
-    transform: rotateX(38deg) scale(0.72);
+.vm-dim-depth-back {
+    position: absolute;
+    left: 50%;
+    top: 52%;
+    transform: translate(-50%, -50%) scale(1.18);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    color: rgba(215, 236, 232, 0.34);
+    filter: blur(4px);
+    pointer-events: none;
 }
-.view-mode-mock-dim-line.mid {
-    top: 42%;
-    background: rgba(255, 255, 255, 0.4);
-    transform: rotateX(24deg) scale(0.88);
+.vm-dim-depth-front {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    color: rgba(232, 240, 240, 0.88);
+    z-index: 3;
+    pointer-events: none;
 }
-.view-mode-mock-dim-line.near {
-    top: 58%;
-    background: var(--aria-accent);
-    box-shadow: 0 0 18px color-mix(in srgb, var(--aria-accent) 45%, transparent);
-    transform: rotateX(10deg) scale(1.02);
-}
-.view-mode-mock-dim-line.floor {
-    top: 76%;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.14);
-    transform: rotateX(48deg) scale(1.1);
-    border-radius: 0;
+.vm-dim-depth-front .lit {
+    color: #E8BE6A;
 }

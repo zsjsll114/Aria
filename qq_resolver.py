@@ -419,7 +419,7 @@ def _probe_light(url, timeout=2.5):
 
 # ==================== 主流程 ====================
 
-def _race(tasks, expect_dur, deadline_s=8.0):
+def _race(tasks, expect_dur, deadline_s=6.5):
     """并发竞速：所有任务同时发，第一个通过预检的结果胜出。
     tasks: [(name, fn)]，fn() -> (url, quality_label)
     返回 (winner|None, tried_list)"""
@@ -485,16 +485,15 @@ def _plans_for(mid, quality):
     ])
     race_master = ('race', [
         ('vkeys:q14', lambda: _p_vkeys(mid, 14)),
-        ('ygking:master', lambda: _p_ygking(mid, 'master')),
         ('nki:sq', lambda: _p_nki(mid)),
     ])
     race_flac = ('race', [
         ('vkeys:q10', lambda: _p_vkeys(mid, 10)),
-        ('ygking:flac', lambda: _p_ygking(mid, 'flac')),
+        ('official:F000', lambda: _p_official(mid, *_OFFICIAL_TIERS[0])),
     ])
     race_320 = ('race', [
         ('vkeys:q9', lambda: _p_vkeys(mid, 9)),
-        ('ygking:320', lambda: _p_ygking(mid, '320')),
+        ('official:M800', lambda: _p_official(mid, *_OFFICIAL_TIERS[1])),
     ])
 
     if q in ('master', 'atmos'):
@@ -507,21 +506,19 @@ def _plans_for(mid, quality):
     if q in ('flac', 'sq', 'lossless'):
         return [race_flac, tail_lossless, tail_rare, tail_official]
     if q in ('320', 'hq'):
-        # 320档：先竞速320源；全挂时降级无损兜底（有歌播 > 严格音质）
+        # 320档：先并发竞速 vkeys:320 与官方 M800；全挂时降级 moeyao / 无损兜底（有歌播 > 严格音质）
         return [
             race_320,
-            ('seq', [('moeyao', lambda: _p_moeyao(mid)),
-                     ('official:M800', lambda: _p_official(mid, *_OFFICIAL_TIERS[1]))]),
+            ('seq', [('moeyao', lambda: _p_moeyao(mid))]),
             race_flac,
-            ('seq', [('official:F000', lambda: _p_official(mid, *_OFFICIAL_TIERS[0])),
-                     ('official:M500', lambda: _p_official(mid, *_OFFICIAL_TIERS[2]))]),
+            ('seq', [('official:M500', lambda: _p_official(mid, *_OFFICIAL_TIERS[2]))]),
         ]
     if q == '128':
         return [
-            ('race', [('ygking:128', lambda: _p_ygking(mid, '128')),
-                      ('official:M500', lambda: _p_official(mid, *_OFFICIAL_TIERS[2]))]),
-            race_320, race_flac,
-            ('seq', [('official:F000', lambda: _p_official(mid, *_OFFICIAL_TIERS[0]))]),
+            ('race', [('official:M500', lambda: _p_official(mid, *_OFFICIAL_TIERS[2])),
+                      ('vkeys:q9', lambda: _p_vkeys(mid, 9))]),
+            ('seq', [('moeyao', lambda: _p_moeyao(mid))]),
+            race_flac,
         ]
     # 未指定/未知音质：保持旧全阶梯
     return [race_master, race_flac, tail_lossless, tail_rare, tail_official]
@@ -582,8 +579,8 @@ def resolve(mid, dur=None, quality=None, skip_cache=False):
                 break
         else:
             for name, fn in items:
-                # 顺序降级层单次尝试也收紧到 7s：不再允许单个慢源拖 11 秒
-                w, tr = _race([(name, fn)], dur, deadline_s=7.0)
+                # 顺序降级层单次尝试收紧到 5.5s：不再允许单个慢源拖死整条链
+                w, tr = _race([(name, fn)], dur, deadline_s=5.5)
                 tried_all.extend(tr)
                 if w:
                     winner = w

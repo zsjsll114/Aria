@@ -3,9 +3,9 @@
  * 来源区间: 原第 8210-8840 行 | 单元数: 21
  * 参照源 web/src/app.js 已删除（拆分完成，勿按旧行号定位）；仅改分片
  * ============================================================ */
-import { AI_PROVIDERS, EQ_STORAGE_KEY, FAV_STORAGE_KEY, PERF_STORAGE_KEY, PLAYLIST_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '../config/constants.js';
+import { AI_PROVIDERS, EQ_STORAGE_KEY, FAV_STORAGE_KEY, PERF_STORAGE_KEY, PLAYLIST_STORAGE_KEY, SETTINGS_STORAGE_KEY, VOLUME_STORAGE_KEY, VOLUME_TS_STORAGE_KEY } from '../config/constants.js';
 import { DEFAULT_SETTINGS, DEFAULT_SONG } from '../config/defaults.js';
-import { PERFORMANCE_PROFILES } from './10-config-state.js';
+import { PERFORMANCE_PROFILES, readSavedVolume } from './10-config-state.js';
 import { audio } from './20-lyrics-render.js';
 import { handleAudioPlayError } from './70-audio-engine.js';
 import { getFavorites } from './120-search-results.js';
@@ -141,6 +141,11 @@ async function bootApp() {
                 logWarn('bootConfig', 'Backend config load fallback:', e);
             }
             try { loadSettings(); } catch(e) { logError('bootConfig', 'loadSettings error:', e); }
+            /* ★ 音量跟随上次关闭时的状态：仅在启动尚未被用户改动时同步一次，
+               绝不放进 applyAllSettings()（后者 2.5s 后会因字体注册重跑）。 */
+            if (!globalThis.__ariaVolumeTouched) {
+                try { volume = readSavedVolume(); } catch (e) { logCatch('bootConfig', e); }
+            }
             /* 自动检测性能并应用配置（首次访问时） */
             autoDetectAndApplyPerformance(true).then(result => {
                 if (result && result.auto) {
@@ -768,15 +773,20 @@ function loadSettings() {
                 const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
                 if (raw) {
                     const saved = JSON.parse(raw);
-                    /* ★ 音量必须读成整数：#setInitialVolume 是 step=1 的 range，浏览器会把
-                       68.041 显示成 68，于是「滑块值」和「appSettings 值」永久对不上
-                       （user_config.json 里存的是点音量条算出来的浮点，跨设备共享）。
-                       写入侧 70-audio-engine.js 的 persistVolume 已改成 Math.round，
-                       这里是把历史上已经存进去的浮点一次性治好。 */
                     const savedPlayback = Object.assign({}, saved.playback || {});
-                    if (savedPlayback.initialVolume != null) {
-                        savedPlayback.initialVolume = Math.round(Number(savedPlayback.initialVolume)) || 0;
+                    const rawVol = savedPlayback.lastVolume ?? savedPlayback.initialVolume;
+                    if (rawVol != null && rawVol !== '') {
+                        const n = Math.round(Number(rawVol));
+                        if (Number.isFinite(n)) {
+                            savedPlayback.lastVolume = Math.max(0, Math.min(100, n));
+                            try {
+                                if (localStorage.getItem(VOLUME_STORAGE_KEY) === null) {
+                                    localStorage.setItem(VOLUME_STORAGE_KEY, String(savedPlayback.lastVolume));
+                                }
+                            } catch (e) { logCatch('bootConfig', e); }
+                        }
                     }
+                    delete savedPlayback.initialVolume;
                     /* ★ 2026-10-06：「播放状态持久化与崩溃恢复」已**整体删除**
                        （用户报"开机恢复上次播放"与"启动时播放默认歌单"直接冲突 ——
                        两个机制都在抢着决定"现在该放哪一首"）。
@@ -929,8 +939,17 @@ async function syncConfigToBackend() {
                     perfData = JSON.parse(localStorage.getItem(PERF_STORAGE_KEY) || '{}');
                 } catch (e) { logCatch('bootConfig', e); }
 
+                const rawVol = (typeof volume === 'number' && Number.isFinite(volume))
+                    ? Math.max(0, Math.min(100, Math.round(volume)))
+                    : readSavedVolume();
+                if (currentSettings && currentSettings.playback) {
+                    currentSettings.playback.lastVolume = rawVol;
+                    delete currentSettings.playback.initialVolume;
+                }
+
                 const fullBundle = {
                     settings: currentSettings,
+                    volume: rawVol,
                     playlists: pls,
                     favorites: favs,
                     eq: eqData,
@@ -940,7 +959,8 @@ async function syncConfigToBackend() {
                 const res = await fetch('/api/config/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(fullBundle)
+                    body: JSON.stringify(fullBundle),
+                    keepalive: true
                 });
                 if (res.ok) {
                     _isLocalBackendAvailable = true;
@@ -955,8 +975,22 @@ if (typeof window !== 'undefined') window.syncConfigToBackend = syncConfigToBack
 
 function debouncedSaveConfigToBackend() {
             if (_configSaveDebounceTimer) clearTimeout(_configSaveDebounceTimer);
-            _configSaveDebounceTimer = setTimeout(syncConfigToBackend, 400);
+            _configSaveDebounceTimer = setTimeout(() => {
+                _configSaveDebounceTimer = null;
+                syncConfigToBackend();
+            }, 400);
         }
+
+/* 退出前（<400ms 防抖窗口内关闭窗口/刷新）立即 flush 待同步配置（含最新音量），避免丢失 */
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('pagehide', () => {
+        if (_configSaveDebounceTimer) {
+            clearTimeout(_configSaveDebounceTimer);
+            _configSaveDebounceTimer = null;
+            if (_isLocalBackendAvailable) syncConfigToBackend();
+        }
+    });
+}
 
 async function loadConfigFromBackend() {
             try {
@@ -984,6 +1018,28 @@ async function loadConfigFromBackend() {
                             }
                         } catch (_mergeErr) { /* 合并失败按原样覆盖 */ }
                         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(mergedSettings));
+                        /* 同步恢复上次关闭音量：仅当本端 localStorage 没有更新时间戳更晚的本地改动时采用后端音量 */
+                        try {
+                            const localVolTs = Number(localStorage.getItem(VOLUME_TS_STORAGE_KEY) || 0);
+                            const serverUpdated = Number(data.lastUpdated || 0);
+                            const serverVol = data.volume ?? mergedSettings?.playback?.lastVolume ?? mergedSettings?.playback?.initialVolume;
+                            if (serverVol != null && serverVol !== '' && Number.isFinite(Number(serverVol))) {
+                                const clamped = Math.max(0, Math.min(100, Math.round(Number(serverVol))));
+                                if (localStorage.getItem(VOLUME_STORAGE_KEY) === null || !localVolTs || serverUpdated >= localVolTs) {
+                                    localStorage.setItem(VOLUME_STORAGE_KEY, String(clamped));
+                                }
+                            }
+                        } catch (e) { logCatch('bootConfig', e); }
+                        hasValidData = true;
+                    } else if (data && data.volume != null && Number.isFinite(Number(data.volume))) {
+                        try {
+                            const localVolTs = Number(localStorage.getItem(VOLUME_TS_STORAGE_KEY) || 0);
+                            const serverUpdated = Number(data.lastUpdated || 0);
+                            if (localStorage.getItem(VOLUME_STORAGE_KEY) === null || !localVolTs || serverUpdated >= localVolTs) {
+                                const clamped = Math.max(0, Math.min(100, Math.round(Number(data.volume))));
+                                localStorage.setItem(VOLUME_STORAGE_KEY, String(clamped));
+                            }
+                        } catch (e) { logCatch('bootConfig', e); }
                         hasValidData = true;
                     }
                     if (data && data.playlists && Array.isArray(data.playlists) && data.playlists.length > 0) {

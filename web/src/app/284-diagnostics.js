@@ -42,8 +42,8 @@ import { getActiveAudio } from '../core/dualDeck.js';
 const tx = translatePhrase;
 
 /* 自建 vendor 副进程端口：/api/selfhost/status 不带 port 字段，按 AGENTS 固定端口表补 */
-const VENDOR_PORTS = { kugou: 3100, qq: 3200, netease: 3201, qishui: 3300 };
-const VENDOR_NAMES = { kugou: '酷狗 KuGouMusicApi', qq: 'QQ qq-music-api-node', netease: '网易云音乐 NeteaseCloudMusicApi', qishui: '汽水音乐 qishui-music-api' };
+const VENDOR_PORTS = { kugou: 3100, qq: 3200, netease: 3201 };
+const VENDOR_NAMES = { kugou: '酷狗 KuGouMusicApi', qq: 'QQ qq-music-api-node', netease: '网易云音乐 NeteaseCloudMusicApi' };
 const VFX_KEYS = ['renderScale', 'coverBlur', 'glassBlur', 'lyricBlur', 'textBlur', 'pvBloom', 'flyinGlow', 'wcParticles', 'tunnelParticles', 'dimParticles'];
 const VFX_LABELS = {
     renderScale: '渲染缩放 renderScale', coverBlur: '封面模糊 coverBlur', glassBlur: '玻璃模糊 glassBlur',
@@ -392,16 +392,13 @@ async function collectVendor() {
     rows.push(row('主服务 :8001', ok ? tx('正常返回') : `${tx('无响应（未启动 / 绿色版路径异常）')}${err ? ` — ${err}` : ''}`, ok ? OK : BAD));
     rows.push(row('配置后端标记', `${String(readGlobal('_isLocalBackendAvailable'))} (null=尚未确认)`,
         readGlobal('_isLocalBackendAvailable') === false ? WARN : DIM));
-    for (const key of ['qq', 'kugou', 'netease', 'qishui']) {
+    for (const key of ['qq', 'kugou', 'netease']) {
         const s = ok ? (st[key] || null) : null;
         const bits = [
             `${tx('本地服务')} ${s ? (s.alive ? tx('在线') : tx('离线')) : '—'}`,
             `${tx('登录态')} ${s ? (s.loggedIn ? tx('已登录') : tx('未登录')) : '—'}`,
         ];
-        /* ★ 汽水没有平台开关（它的搜索源就是本机服务、播放也只有这一条路），
-           照抄其它平台的「平台开关 未启用」是一句假话 —— 与其误导，不如说实话。 */
-        if (key === 'qishui') bits.push(tx('无平台开关（搜索与播放始终走本机）'));
-        else bits.push(`${tx('平台开关')} ${selfhostEnabled(key) ? tx('已启用') : tx('未启用')}`);
+        bits.push(`${tx('平台开关')} ${selfhostEnabled(key) ? tx('已启用') : tx('未启用')}`);
         if (s && s.hasSource === false) bits.push(tx('本地组件缺失（未运行安装脚本）'));
         if (s && s.uid) bits.push(`uid ${s.uid}`);
         bits.push(`:${VENDOR_PORTS[key]}`);

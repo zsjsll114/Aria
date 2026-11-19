@@ -41,11 +41,11 @@
     transform: translateX(-50%) !important;
     z-index: 90 !important;
     margin: 0 !important;
-    background: rgba(18, 14, 30, 0.82) !important;
-    backdrop-filter: blur(28px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    background: rgba(14, 16, 22, 0.44) !important;
+    backdrop-filter: blur(26px) saturate(175%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(175%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.13) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
     border-radius: 24px !important;
     pointer-events: auto !important;
 }
@@ -110,50 +110,84 @@ body.mv-bg-on .player-container.view-jizura .flyin-translation-area {
  * 静态示意"日系文字 PV"的排版语汇 —— 话数角标 + 逐字点亮的一行 + 罗马音副标。
  * ============================================================ */
 .view-mode-preview-jizura {
-    background: #101014;
+    position: relative;
+    background: radial-gradient(95% 85% at 24% 48%, #1d1a24 0%, #101015 65%, #09090d 100%);
     overflow: hidden;
+}
+
+.view-mode-preview-jizura .vm-jz-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.view-mode-preview-jizura .vm-jz-side {
+    position: absolute;
+    right: 12px;
+    top: 20px;
+    writing-mode: vertical-rl;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    color: rgba(242, 237, 228, 0.34);
+    z-index: 2;
 }
 
 .view-mode-preview-jizura .vm-jz-frame {
     position: absolute;
-    inset: 8% 10%;
+    inset: 14px 36px 14px 30px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 4%;
+    gap: 7px;
     color: #f2ede4;
+    z-index: 2;
 }
 
 .view-mode-preview-jizura .vm-jz-no {
-    font-size: 9px;
-    letter-spacing: 0.28em;
-    color: rgba(242, 237, 228, 0.55);
+    display: inline-flex;
+    align-self: flex-start;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    color: rgba(242, 237, 228, 0.72);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(242, 237, 228, 0.14);
+    padding: 2px 6px;
+    border-radius: 2px;
 }
 
 .view-mode-preview-jizura .vm-jz-line {
-    font-size: 19px;
-    font-weight: 700;
+    font-size: 20px;
+    font-weight: 900;
     letter-spacing: 0.06em;
     line-height: 1.15;
+    color: rgba(242, 237, 228, 0.42);
+    white-space: nowrap;
 }
 
 .view-mode-preview-jizura .vm-jz-line .sung {
-    color: var(--aria-accent, #e8be6a);
-    text-shadow: 0 0 10px color-mix(in srgb, var(--aria-accent, #e8be6a) 55%, transparent);
+    color: #f7f2e8;
+    border-bottom: 2px solid #E8BE6A;
+    padding-bottom: 2px;
+    text-shadow: 0 0 14px rgba(232, 190, 106, 0.6);
 }
 
 .view-mode-preview-jizura .vm-jz-sub {
-    font-size: 7px;
-    letter-spacing: 0.32em;
-    color: rgba(242, 237, 228, 0.4);
+    font: 600 7.5px/1 ui-monospace, Consolas, monospace;
+    letter-spacing: 0.28em;
+    color: rgba(242, 237, 228, 0.48);
+    margin-top: 2px;
 }
 
-/* 缩略图里给一层极淡的网点纹理，呼应引擎的印刷质感 */
+/* 缩略图网点印刷质感 */
 .view-mode-preview-jizura::after {
     content: '';
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 0.6px, transparent 0.7px);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.055) 0.6px, transparent 0.7px);
     background-size: 3px 3px;
     pointer-events: none;
 }

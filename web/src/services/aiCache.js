@@ -1,5 +1,4 @@
-/**
- * services/aiCache.js — AI 分析结果 IndexedDB 持久化缓存
+/* services/aiCache.js — AI 分析结果 IndexedDB 持久化缓存
  * 解决 localStorage 5MB 限制
  * 本文件是 LyricsPlayerDB（AI_DB_NAME）唯一属主：upgrade 阶段幂等创建
  * aiThemeCache + chorusCache + wordTimingCache 三 store。★勿再在其它模块内另开

@@ -172,11 +172,16 @@ export class VisualizerBase {
       if (settings.fontSize) {
         this.viewContainer.style.setProperty('--vis-font-size', `${settings.fontSize}px`);
       }
-      if (settings.fontFamily) {
-        const resolved = (typeof window !== 'undefined' && typeof window.resolveFontFamily === 'function')
-          ? window.resolveFontFamily(settings.fontFamily)
-          : settings.fontFamily;
-        this.viewContainer.style.setProperty('--vis-font-family', resolved);
+      if (settings.fontFamily !== undefined) {
+        const fk = settings.fontFamily;
+        if (!fk || fk === 'default' || fk === 'inherit') {
+          this.viewContainer.style.removeProperty('--vis-font-family');
+        } else {
+          const resolved = (typeof window !== 'undefined' && typeof window.resolveFontFamily === 'function')
+            ? window.resolveFontFamily(fk)
+            : fk;
+          this.viewContainer.style.setProperty('--vis-font-family', resolved);
+        }
       }
       if (settings.emotionGlow !== undefined) {
         this.viewContainer.style.setProperty('--emotion-glow', `${parseFloat(settings.emotionGlow) || 10}px`);

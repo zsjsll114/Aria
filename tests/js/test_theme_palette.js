@@ -40,22 +40,29 @@ test('A1 每个预设都有 key / zh / en / hex 四个字段，hex 是合法 6 �
     assert.equal(new Set(keys).size, keys.length, 'key 不得重复');
 });
 
-test('A2 色板是唯一来源：index.html 里不许再出现任何十六进制色值', () => {
+test('A2 色板是唯一来源：index.html 与设置 Schema 不许再出现手抄色块', async () => {
+    const { SETTINGS_SECTIONS_SCHEMA } = await import('../../web/src/config/settingsSchema.js');
+    const { APPEARANCE_SECTIONS } = await import('../../web/src/config/appearanceSchema.js');
     const html = fs.readFileSync(path.join(REPO, 'web/index.html'), 'utf8');
-    /* 水合后 HTML 只该有 data-palette / data-active；data-active 允许（它是"默认亮哪颗"的指针） */
-    const rows = html.match(/class="setting-color-row"[^>]*/g) || [];
-    assert.ok(rows.length >= 15, `色板行应全部保留，实际 ${rows.length}`);
-    for (const r of rows) {
+    const schemaHtml = Object.values(SETTINGS_SECTIONS_SCHEMA)
+        .flat().map((g) => g.html || '').join('\n');
+    const htmlRows = schemaHtml.match(/class="setting-color-row"[^>]*/g) || [];
+    const schemaColorCtrls = Object.values(APPEARANCE_SECTIONS).flatMap((tiers) =>
+        ['core', 'advanced', 'override'].flatMap((t) =>
+            (tiers[t] || []).flatMap((r) => (r.controls || []).filter((c) => c.kind === 'color')),
+        ),
+    );
+    const total = htmlRows.length + schemaColorCtrls.length;
+    assert.ok(total >= 15, `色板行应全部保留，实际 ${total}`);
+    for (const r of htmlRows) {
         assert.match(r, /data-palette="(accent|accent\+white|text|dim)"/, `行缺 data-palette: ${r.slice(0, 90)}`);
         assert.ok(!/style="background:/.test(r), `行里不该再有内联色: ${r.slice(0, 90)}`);
     }
-    assert.ok(!/data-color="#/.test(html), 'index.html 不该再有手抄的 data-color 色值');
-    assert.ok(!/color-swatch/.test(html), 'index.html 不该再有手抄的 .color-swatch 节点');
-    /* ★ 把 17 行手抄色块换成一行 data-palette 时，最容易漏的就是闭合标签：
-       第一版就是 18 行全部少了 `</div>`，症状却完全不在色板上——后面每个元素
-       嵌套深一层，#sleepTimerOverlay 掉进 .settings-group 里变成 0×0，
-       而"水合后有没有色块"这类断言照样全绿。所以这里直接钉结构不变量。
-       （<div> 计数对得上不代表嵌套一定对，但对不上就一定坏。） */
+    for (const c of schemaColorCtrls) {
+        assert.match(String(c.palette || ''), /^(accent|accent\+white|text|dim)$/, `Schema 控件缺 palette: ${c.var}`);
+    }
+    assert.ok(!/data-color="#/.test(html + schemaHtml), '设置模板不该再有手抄的 data-color 色值');
+    assert.ok(!/color-swatch/.test(html + schemaHtml), '设置模板不该再有手抄的 .color-swatch 节点');
     const open = (html.match(/<div\b/g) || []).length;
     const close = (html.match(/<\/div>/g) || []).length;
     assert.equal(open, close, `index.html 的 div 开合不配对：${open} 开 / ${close} 闭`);
@@ -70,7 +77,7 @@ test('A3 默认强调色 = 色板首项，且 defaults.js 不再写字面量', (
 
 test('A4 全仓只剩装饰色里的旧金色，主题色的两种写法都已跟上', () => {
     const hits = [];
-    const rgbHits = [];
+    const rgbEntries = [];
     /* _eval/ 在 .gitignore 里（scripts/setup-vendors.bat 重建），不是本仓源码，扫它只会误报 */
     const SKIP = new Set(['node_modules', 'vendor', '_eval', '.workbuddy', '.git', 'dist', 'dist-stub', 'scratch']);
     (function walk(abs) {
@@ -83,25 +90,24 @@ test('A4 全仓只剩装饰色里的旧金色，主题色的两种写法都已�
             s.split('\n').forEach((line, i) => {
                 const at = `${rel}:${i + 1}`;
                 if (/ffcc33/i.test(line)) hits.push(at);
-                if (/255, ?204, ?51/.test(line)) rgbHits.push(at);
+                if (/255, ?204, ?51/.test(line)) rgbEntries.push({ at, rel, line });
             });
         }
     })(path.join(REPO, 'web'));
     assert.deepEqual(hits, ['web/src/core/pvEngine/PVEngine.js:138'],
         `旧金色十六进制残留: ${hits.join(', ')}`);
-    /* 主题色除了十六进制还有 rgba(255,204,51,…) 这种写法：只换十六进制会在同一条规则里
-       留下两个金色（pv-tunnel.css:545 实测就是 color:#E8BE6A 配 text-shadow:rgba(255,204,51,.85)）。
-       允许残留的只有两处真装饰色：AI 面板的高亮笔 marker（=renderChorusMarkers 的副歌标记条，
-       ★ 行号漂移史：2026-09-26 从 1636/1637 → 1658/1659（f4f6973 团队提交）；
-       2026-09-29 → 1654/1655（getLowQualityAudioUrl 删 ygking 死链块，行数 -9）；
-       2026-10-05 → 1663/1664（applyEmotionWordColors 补 ensureEmotionWordStyle 兜底，+8 行）。
-       行号硬编码本就脆弱，这里先跟上）、回响视觉器自己的能量光。 */
+    /* 主题色除了十六进制还有 rgba(255,204,51,…) 这种写法：允许残留的只有两处真装饰色：
+       1) services/aiAnalyzer.js renderChorusMarkers 高潮高亮条（2 行 background/box-shadow，不再硬编码行号）
+       2) DimensionBackground.js 回响视觉器自己的能量光。 */
+    const chorusMarkerHits = rgbEntries.filter(
+        ({ rel, line }) => rel === 'web/src/services/aiAnalyzer.js' && /rgba\(255,\s*204,\s*51,\s*0\.(?:88|7)\)/.test(line),
+    );
+    assert.equal(chorusMarkerHits.length, 2, `services/aiAnalyzer.js 高潮标记装饰色应恰好 2 行，实际 ${chorusMarkerHits.length}`);
     const DECORATIVE_RGB = new Set([
-        'web/src/app/201-settings-ai.js:1663',
-        'web/src/app/201-settings-ai.js:1664',
+        ...chorusMarkerHits.map(x => x.at),
         'web/src/core/visualizers/dimension/DimensionBackground.js:22',
     ]);
-    const unexpected = rgbHits.filter(h => !DECORATIVE_RGB.has(h));
+    const unexpected = rgbEntries.map(x => x.at).filter(h => !DECORATIVE_RGB.has(h));
     assert.deepEqual(unexpected, [], `主题色 rgb 形态没跟上: ${unexpected.join(', ')}`);
 });
 

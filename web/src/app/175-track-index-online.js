@@ -7,8 +7,9 @@ import { API_BASE } from '../config/constants.js';
 import { playerConfig } from '../config/defaults.js';
 import { getCoverLayers } from '../infrastructure/dom.js';
 import { detectAndParseLyrics, mergeLyrics } from '../parsers/lyricMerger.js';
-import { checkAudioUrlPlayable, fetchAggSameSongUrl, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchQishuiLyric, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveInfo, qqResolveUrl } from '../services/musicApi.js';
-import { selfhostQQPlayUrl, selfhostNeteasePlayUrl, selfhostQishuiPlayUrl } from './selfhost-runtime.js';
+import { checkAudioUrlPlayable, fetchAggSameSongUrl, fetchKugouLyric, fetchKuwoPic, fetchKuwoSearch, fetchKuwoUrl, fetchLyricWithFallback, fetchQQSongMid, fetchSameSongUrlFrom, getKugouPlayInfo, getKuwoPlayInfo, intervalToSec, qqResolveInfo, qqResolveUrl } from '../services/musicApi.js';
+import { getCachedResolvedPlay, invalidateResolvedPlayByTrack, isProviderInCooldown, makeResolveCacheKey, recordProviderFailure, recordProviderSuccess, setCachedResolvedPlay } from '../core/resolveCache.js';
+import { selfhostQQPlayUrl, selfhostNeteasePlayUrl } from './selfhost-runtime.js';
 import { volumePercentToGain } from '../utils/volumeCurve.js';
 import { audio, renderLyrics } from './20-lyrics-render.js';
 import { currentTimeEl, progressEl, searchResultsEl, songArtistEl, songTitleEl, totalTimeEl, volumeBar } from './30-dom-refs.js';
@@ -27,6 +28,7 @@ import { chorusCacheGet } from '../services/aiCache.js'; // 高潮检测缓存�
 import { beginResolveTrace, clearResolveTrace, markResolveFailed, platformKeyOf, recordResolveHit, resolveSourceOf } from '../services/playSource.js'; // 取链透明化（todos #15）
 import { conceal } from '../utils/motion.js'; // 退场后再卸载（utils→services/log 单向，无分片环）
 import { artistOf, titleOf } from '../services/lyricIndex.js'; // title/song/name 字段归一（该模块零 import，无环）
+import { buildSingleTrackQueue, insertNextAndPlay, normalizeQueueTrack } from '../core/playlistQueue.js';
 import { logWarn, logInfo, logError, logCatch } from '../services/log.js';
 /* { key, url, lyricData, chorusSegments, aiTheme, trackIndex } */
 globalThis.preloadAbortFlag = { aborted: false };
@@ -36,8 +38,8 @@ globalThis.preloadAbortFlag = { aborted: false };
 function getNextTrackIndex() {
             if (playlist.length === 0) return -1;
             if (playMode === 'loop') return currentTrackIndex;
+            if (playlist.length === 1) return -1;
             if (playMode === 'random') {
-                if (playlist.length === 1) return currentTrackIndex;
                 let idx;
                 do {
                     idx = Math.floor(Math.random() * playlist.length);
@@ -87,15 +89,25 @@ async function _tryByfunsLevels(id, orderedLevels, {
     songId, songName = '', expSec = 0, verbose = false,
     fetchImpl = fetch, probe = null
 } = {}) {
+    /* 测试注入自定义 fetchImpl 时不受全局冷却态干扰 */
+    const useCooldown = fetchImpl === fetch;
+    if (useCooldown && isProviderInCooldown('byfuns')) {
+        if (verbose) logInfo('trackIndexOnline', '[Netease] byfuns 处于冷却期，跳过并直落外链/跨源');
+        return null;
+    }
     const ping = probe || ((url, sid, _ref, sec) => checkAudioUrlPlayable(url, sid, _ref, sec));
     for (const level of orderedLevels) {
+        const controller = new AbortController();
+        /* ★ 3.5s 超时（2026-09-22）：byfuns 公网上游经常整体失联，8s×5 档拖死播放链 */
+        const timeout = setTimeout(() => controller.abort(), 3500);
         try {
-            const controller = new AbortController();
-            /* ★ 3.5s 超时（2026-09-22）：byfuns 公网上游经常整体失联，8s×5 档拖死播放链 */
-            const timeout = setTimeout(() => controller.abort(), 3500);
             const resp = await fetchImpl(`https://api.byfuns.top/1/?id=${id}&level=${level}`, { signal: controller.signal });
-            clearTimeout(timeout);
+            if (typeof resp.status === 'number' && (resp.status === 429 || resp.status >= 500)) {
+                if (useCooldown && recordProviderFailure('byfuns', `HTTP ${resp.status}`)) break;
+                continue;
+            }
             const text = await resp.text();
+            if (useCooldown) recordProviderSuccess('byfuns');
             /* byfuns API 返回纯文本直链（非 JSON），需校验是有效URL */
             if (text && text.startsWith('http')) {
                 const u = text.trim();
@@ -106,23 +118,27 @@ async function _tryByfunsLevels(id, orderedLevels, {
                 if (verbose) logWarn('trackIndexOnline', `byfuns API ${level} 为试听/不可播，换下一音质`);
             }
         } catch (e) {
+            if (useCooldown && recordProviderFailure('byfuns', (e && e.message) || 'network')) {
+                if (verbose) logWarn('trackIndexOnline', 'byfuns 连续网络异常，触发短暂冷却');
+                break;
+            }
             if (verbose) logWarn('trackIndexOnline', `byfuns API ${level} 获取失败:`, e.message);
+        } finally {
+            clearTimeout(timeout);
         }
     }
     return null;
 }
 
 /* 网易云：自建 /song/url/v1 直链优先（本机秒回），失败返回 null */
-async function _tryNeteaseSelfhost(id, level, { songName = '', songId = '', expSec = 0 } = {}) {
+async function _tryNeteaseSelfhost(id, level, { songName = '', songId = '', expSec = 0, verifyWithProbe = false } = {}) {
     const ctl = new AbortController();
     const tid = setTimeout(() => ctl.abort(), 8000);
     try {
-        const url = await selfhostNeteasePlayUrl(id, level, ctl.signal);
+        const url = await selfhostNeteasePlayUrl(id, level, ctl.signal, { expSec });
         if (!url) return null;
-        /* ★ 时长探测（2026-10-07 补）：此前自建直链**不做任何校验**就被采用，
-           而网易云对无权益曲目会回 30 秒试听链 → 用户听到"VIP 却只有 30 秒"。
-           与 QQ 自建同一口径：先探测整曲时长，不合格就交棒公网阶梯（那条有自己的探测）。 */
-        if (expSec && !(await checkAudioUrlPlayable(url, songId, 'https://music.163.com/', expSec))) {
+        /* ★ JSON 已带 freeTrialInfo 与 time 时长校验；首放直接秒出，仅在 _isRetry 重试时再发服务器探测 */
+        if (verifyWithProbe && expSec && !(await checkAudioUrlPlayable(url, songId, 'https://music.163.com/', expSec))) {
             logWarn('trackIndexOnline', `[Netease] 自建直链为试听/不可播（期望约 ${Math.round(expSec)}s），走公网阶梯: ${songName || songId || id}`);
             return null;
         }
@@ -135,13 +151,34 @@ async function _tryNeteaseSelfhost(id, level, { songName = '', songId = '', expS
     }
 }
 
-/* 跨源同名歌：酷狗 / 网易云 → 返回 {url, cover} 或 null */
+const KUWO_DIRECT_CHANNELS = {
+    kuwo: 'kuwo',
+    selfhostQQ: 'selfhostQQ',
+    qqResolve: 'qqResolve',
+    vkeysPrefetch: 'vkeysPrefetch',
+};
+const KUWO_FALLBACK_CHANNELS = {
+    kuwo: 'crossKuwo',
+    selfhostQQ: 'selfhostQQ',
+    qqResolve: 'qqResolve',
+    vkeysPrefetch: 'vkeysPrefetch',
+};
+function _crossNeteaseChannelOf(hit) {
+    return (hit && hit.provider === 'selfhostNetease') ? 'selfhostNetease' : 'crossNetease';
+}
+function _crossKuwoChannelOf(hit, direct = false) {
+    const p = (hit && hit.provider) || 'kuwo';
+    const tbl = direct ? KUWO_DIRECT_CHANNELS : KUWO_FALLBACK_CHANNELS;
+    return tbl[p] || (direct ? 'kuwo' : 'crossKuwo');
+}
+
+/* 跨源同名歌：酷狗 / 网易云 → 返回 {url, cover, provider} 或 null */
 async function _resolveSameSong(platform, songName, singer, { songId, expSec = 0, verbose = false } = {}) {
     try {
         const same = await fetchSameSongUrlFrom(platform, songName, singer || '');
         if (same && same.url) {
             if (await checkAudioUrlPlayable(same.url, songId, '', expSec)) {
-                return { url: same.url, cover: same.cover || '' };
+                return { url: same.url, cover: same.cover || '', provider: same.provider || '' };
             }
             if (verbose) logWarn('trackIndexOnline', `[跨源] ${platform} 同名歌链接探测不可播，继续下一源`);
         }
@@ -149,7 +186,7 @@ async function _resolveSameSong(platform, songName, singer, { songId, expSec = 0
     return null;
 }
 
-/* 兜底尾部：酷我同名歌（搜索 → 官方取链，带探测）→ 返回 {url, cover} 或 null */
+/* 兜底尾部：酷我同名歌（搜索 → 官方取链，带探测）→ 返回 {url, cover, provider} 或 null */
 async function _resolveKuwoByName(songName, singer, { songId, expSec = 0, verbose = false } = {}) {
     try {
         const query = [songName, singer].filter(Boolean).join(' ').trim();
@@ -160,20 +197,155 @@ async function _resolveKuwoByName(songName, singer, { songId, expSec = 0, verbos
         if (kwBest && kwBest.id) {
             const kwInfo = await getKuwoPlayInfo(String(kwBest.id), songName, singer || '');
             if (kwInfo && kwInfo.url && await checkAudioUrlPlayable(kwInfo.url, songId, '', expSec)) {
-                return { url: kwInfo.url, cover: kwInfo.cover || '' };
+                return { url: kwInfo.url, cover: kwInfo.cover || '', provider: kwInfo.provider || 'kuwo' };
             }
         }
     } catch (e) { /* 酷我兜底失败，放弃 */ }
     return null;
 }
 
+function _qualityKeyForSource(source) {
+    const s = platformKeyOf(source) || String(source || '').toLowerCase();
+    const q = (typeof appSettings !== 'undefined' && appSettings && appSettings.quality) || {};
+    if (s === 'tencent') return String(q.qqPlayback || '320').toLowerCase();
+    if (s === 'netease') return String(q.neteasePlayback || 'exhigh').toLowerCase();
+    if (s === 'kugou') return String(q.kugouPlayback || '320').toLowerCase();
+    if (s === 'kuwo') return String(q.kuwoPlayback || '320').toLowerCase();
+    return 'default';
+}
+
+/* ★ 异步歌词管线：与 audio.src / audio.play() 完全解耦，首曲退避重试、空行跨源重取、
+   双语翻译补齐均在后台完成，代际不一致立即中止，绝不卡死出声时间 */
+async function _applySongLyricsAsync({ songInfo, effSource, lyricPromise, gen, isRetry = false, preloadOnly = false }) {
+    try {
+        let lyricJson = await lyricPromise;
+        if (gen !== playbackGeneration) return;
+
+        /* ★ 首曲歌词自愈：冷启动时外网歌词接口往往慢/超时（无预加载、无服务器热缓存），
+           首杯请求常返回空对象导致「第一首歌没有歌词」。此处若为空则等待后重试（最多 2 次，
+           指数退避 1.2s/3s），最大限度消除启动初期歌词空窗。 */
+        if (lyricJson && !_hasLyricContent(lyricJson) && !isRetry && !preloadOnly) {
+            const retryDelays = [1200, 3000];
+            for (const delay of retryDelays) {
+                logWarn('trackIndexOnline', `[Lyric] 首曲歌词为空，${delay}ms 后重试...`);
+                await new Promise(r => setTimeout(r, delay));
+                if (gen !== playbackGeneration) return;
+                try {
+                    const retryRes = await fetchLyricWithFallback(
+                        songInfo,
+                        lyricSourceOverride || effSource
+                    ).catch(() => ({}));
+                    if (retryRes && _hasLyricContent(retryRes)) {
+                        lyricJson = retryRes;
+                        logWarn('trackIndexOnline', '[Lyric] 首曲歌词重试成功。');
+                        break;
+                    }
+                } catch (e) { /* 继续下一轮退避重试 */ }
+            }
+        }
+
+        if (gen !== playbackGeneration) return;
+
+        /* 解析歌词并渲染 */
+        const lyricData = lyricJson || {};
+        let { originals, translations, romaji } = detectAndParseLyrics(lyricData);
+        /* ★ 解析后空行兜底：接口返回了内容但仍解析出 0 行（空壳歌词/格式异常/纯占位），
+           再走一次跨源歌词（fetchLyricWithFallback 内部自带 酷狗→网易 同名兜底），
+           最大化消除"歌词是空的"场景 */
+        if ((!originals || originals.length === 0) && gen === playbackGeneration) {
+            logWarn('trackIndexOnline', '[Lyric] 歌词解析后为空行，尝试跨源重取一次...');
+            try {
+                const reFetch = await fetchLyricWithFallback(
+                    songInfo,
+                    lyricSourceOverride || (songInfo && songInfo.source) || currentSource
+                ).catch(() => ({}));
+                const reparsed = detectAndParseLyrics(reFetch);
+                if (reparsed.originals && reparsed.originals.length > 0) {
+                    originals = reparsed.originals;
+                    translations = reparsed.translations;
+                    romaji = reparsed.romaji;
+                    logWarn('trackIndexOnline', '[Lyric] 跨源重取解析成功。');
+                }
+            } catch (e) { /* 保留原空结果，不阻塞播放 */ }
+        }
+
+        if (gen !== playbackGeneration) return;
+
+        lyrics = mergeLyrics(originals, translations, romaji);
+        activeLineIndex = -1;
+        currentTime = (!preloadOnly && typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime))
+            ? audio.currentTime
+            : 0;
+        /* 切歌时清理上一首歌的 AI 情感词，避免跨歌泄漏 */
+        aiEmotionWords = [];
+        renderLyrics(lyrics);
+        updateLineTimes();
+
+        /* ★ 翻译补齐：当前歌词无翻译/翻译为空时，后台跨源补齐双语翻译并实时刷新。
+           首选网易云官方双语接口（lrc + tlyric 一起返回、最稳定），经本地 /proxy 代理规避 CORS；
+           失败则回退 vkeys 网易云歌词（也常带 trans）。补齐后重渲染；失败不影响播放（静默）。 */
+        if (!lyrics.some(l => l.translation && l.translation.trim() && l.translation.trim() !== '//')) {
+            (async () => {
+                try {
+                    const word = `${songInfo.song || ''} ${songInfo.singer || ''}`.trim();
+                    if (!word) return;
+                    const nRes = await fetch(`${API_BASE}/netease?word=${encodeURIComponent(word)}&num=1`)
+                        .then(r => r.json()).catch(() => ({}));
+                    const sItem = (nRes.code === 200 && nRes.data) ? (Array.isArray(nRes.data) ? nRes.data[0] : nRes.data) : null;
+                    if (!(sItem && sItem.id)) return;
+
+                    let parsedN = null;
+                    try {
+                        const nApiUrl = `https://music.163.com/api/song/lyric?id=${encodeURIComponent(String(sItem.id))}&lv=1&kv=1&tv=1`;
+                        const nJson = await fetch(`/proxy?url=${encodeURIComponent(nApiUrl)}`)
+                            .then(r => r.json()).catch(() => ({}));
+                        if (nJson && nJson.tlyric && nJson.tlyric.lyric && nJson.tlyric.lyric.trim() &&
+                            nJson.lrc && nJson.lrc.lyric && nJson.lrc.lyric.trim()) {
+                            parsedN = detectAndParseLyrics({ lrc: nJson.lrc.lyric, trans: nJson.tlyric.lyric });
+                        }
+                    } catch (e) { parsedN = null; }
+
+                    if (!parsedN || !parsedN.translations || parsedN.translations.length === 0) {
+                        try {
+                            const lData = await fetchLyricWithFallback(String(sItem.id), 'netease');
+                            parsedN = detectAndParseLyrics(lData);
+                        } catch (e) { parsedN = null; }
+                    }
+
+                    if (parsedN && parsedN.translations && parsedN.translations.length > 0 && gen === playbackGeneration) {
+                        lyrics = mergeLyrics(lyrics, parsedN.translations, parsedN.romaji);
+                        renderLyrics(lyrics);
+                        logInfo('trackIndexOnline', `[Lyric] 翻译补齐成功 (${parsedN.translations.length} 行)`);
+                    }
+                } catch (e) { logWarn('trackIndex', e); }
+            })();
+        }
+
+        /* 立即同步手机版歌词预览 */
+        updateMobileLyricPreview();
+    } catch (e) {
+        logWarn('trackIndexOnline', '[Lyric] 异步歌词应用异常:', e);
+    }
+}
+
 async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec, singer = '') {
             let playUrl = null;
+            let resolvedChannel = '';
+            const normSrc = platformKeyOf(source) || source;
+            const qKey = _qualityKeyForSource(normSrc);
+            const cacheKey = makeResolveCacheKey(normSrc, songId, qKey);
+            if (cacheKey) {
+                const cached = getCachedResolvedPlay(cacheKey);
+                if (cached && cached.url) {
+                    return cached.url;
+                }
+            }
             /* 酷我源：一站式获取直链、封面与歌词 */
-            if (source === 'kuwo' && songId) {
-                const kwInfo = await getKuwoPlayInfo(songId, songName, '');
+            if (normSrc === 'kuwo' && songId) {
+                const kwInfo = await getKuwoPlayInfo(songId, songName, singer || '');
                 if (kwInfo && kwInfo.url) {
                     playUrl = kwInfo.url;
+                    resolvedChannel = _crossKuwoChannelOf(kwInfo, true);
                     if (kwInfo.parsedList && kwInfo.parsedList.length > 0) {
                         /* ★ key 必填：消费方（loadOnlineSong）要校验这首歌是不是它，
                            否则会把别人的歌词渲染上来。约定与本文件其它预加载一致。 */
@@ -181,13 +353,18 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec,
                     }
                 }
             }
-            if (source === 'tencent') {
-                let effectiveMid = songMid;
+            let effectiveMid = songMid;
+            if (normSrc === 'tencent') {
                 let vkeysUrl = null;
                 if (!effectiveMid && songId) {
-                    const meta = await _fetchQQMeta(songId, {});
-                    if (meta.mid) effectiveMid = meta.mid;
-                    if (meta.url) vkeysUrl = meta.url;
+                    const fastMid = await fetchQQSongMid(songId);
+                    if (fastMid) {
+                        effectiveMid = fastMid;
+                    } else {
+                        const meta = await _fetchQQMeta(songId, {});
+                        if (meta.mid) effectiveMid = meta.mid;
+                        if (meta.url) vkeysUrl = meta.url;
+                    }
                 }
 
                 /* 步骤0: 优先走本地解析池（与 loadOnlineSong 主链一致，服务端已校验）
@@ -205,91 +382,117 @@ async function fetchPlayUrlForPreload(songId, songMid, source, songName, durSec,
                         const shUrl = await selfhostQQPlayUrl(effectiveMid, userQuality);
                         if (shUrl && await checkAudioUrlPlayable(shUrl, songId, 'https://y.qq.com/', expSec)) {
                             playUrl = shUrl;
+                            resolvedChannel = 'selfhostQQ';
                             logInfo('trackIndexOnline', `[SelfHost] QQ 自建服务命中(预加载): ${songName}`);
                         } else if (shUrl) {
                             logWarn('trackIndexOnline', '[SelfHost] QQ 自建链接探测不可播，落回原链(预加载)');
                         }
-                    } catch { /* 未启用/未登录/失败：静默落回原链 */ }
+                    } catch (e) { logCatch('trackIndexOnline', e); }
                 }
                 if (effectiveMid && !playUrl) {
                     const resolved = await qqResolveUrl(effectiveMid, durSec || 0, userQuality);
-                    if (resolved) playUrl = resolved;
+                    if (resolved) {
+                        playUrl = resolved;
+                        resolvedChannel = 'qqResolve';
+                    }
                 }
 
                 if (!playUrl) {
                     if (vkeysUrl && await checkAudioUrlPlayable(vkeysUrl, songId, 'https://y.qq.com/')) {
                         playUrl = vkeysUrl;
+                        resolvedChannel = 'vkeysPrefetch';
                     } else if (!vkeysUrl) {
                         const meta2 = await _fetchQQMeta(songId, {});
-                        if (meta2.url && await checkAudioUrlPlayable(meta2.url, songId, 'https://y.qq.com/')) playUrl = meta2.url;
+                        if (meta2.url && await checkAudioUrlPlayable(meta2.url, songId, 'https://y.qq.com/')) {
+                            playUrl = meta2.url;
+                            resolvedChannel = 'vkeysPrefetch';
+                        }
                     }
                 }
                 /* 跨源同名歌兜底（与 loadOnlineSong 主链一致）：酷狗 → 网易云 → 酷我（用户规定的退回链尾部） */
                 if (!playUrl && songName) {
-                    const hit = await _resolveSameSong('kugou', songName, '', { songId });
-                    if (hit) playUrl = hit.url;
+                    const hit = await _resolveSameSong('kugou', songName, singer || '', { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = 'crossKugou'; }
                 }
                 if (!playUrl && songName) {
-                    const hit = await _resolveSameSong('netease', songName, '', { songId });
-                    if (hit) playUrl = hit.url;
+                    const hit = await _resolveSameSong('netease', songName, singer || '', { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = _crossNeteaseChannelOf(hit); }
                 }
                 /* 兜底尾部：酷我同名歌（搜索 → 官方取链，带探测） */
                 if (!playUrl && songName) {
-                    const hit = await _resolveKuwoByName(songName, '', { songId });
-                    if (hit) playUrl = hit.url;
+                    const hit = await _resolveKuwoByName(songName, singer || '', { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = _crossKuwoChannelOf(hit, false); }
                 }
-            } else if (source === 'netease') {
+            } else if (normSrc === 'netease') {
                 const userLevel = (appSettings.quality && appSettings.quality.neteasePlayback) || 'exhigh';
                 const QUALITY_LEVELS = ['hires', 'lossless', 'exhigh', 'higher', 'standard'];
                 const orderedLevels = [userLevel, ...QUALITY_LEVELS.filter(q => q !== userLevel)];
                 const expSec = durSec || 0;
                 /* ★ 上游参考项目 对齐：本机自建网易云 /song/url/v1 一次直链优先（本机+登录cookie 秒回），
                    自建离线才走公网 byfuns 串行音质试错
-                   ★ 2026-10-07 补 expSec：上一步刚算好（L245）却没传下来，
+                   ★ 2026-10-07 补 expSec：上一步刚算好却没传下来，
                    于是**预加载这条**仍会把 30 秒试听链当"D+"的备用地址存起来
-                   （主链已修，预加载漏了 —— 两条链必须同口径）。 */
+                   （主链与预加载同口径）。 */
                 if (!playUrl) {
                     playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName, songId, expSec });
+                    if (playUrl) resolvedChannel = 'selfhostNetease';
                 }
                 if (!playUrl) {
                     const hit = await _tryByfunsLevels(songId, orderedLevels, { songId, songName, expSec });
-                    if (hit) playUrl = hit.url;
+                    if (hit) { playUrl = hit.url; resolvedChannel = 'byfuns'; }
                 }
-                /* 原实现此处先赋值 outer 外链、再判 !playUrl 做酷狗兜底——该分支恒假（死代码），
-                   预加载语义就是「宁取外链保住备用地址」，跨源兜底交给播放时主链，此处保持不回退 */
-                if (!playUrl) playUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
-            } else if (source === 'qishui') {
-                /* ★ 汽水：vendor 解密吐流（同主链口径）。预加载链**故意不埋点**
-                   （见 scripts/audits/resolve-instrumentation.mjs：埋了角标会跳到下一首）。
-                   失败不重试——预加载只是闲时备歌，真播时主链还会再走一遍。 */
-                try {
-                    const qsUrl = await selfhostQishuiPlayUrl(songId, 'higher');
-                    if (qsUrl && await checkAudioUrlPlayable(qsUrl, songId, '', durSec || 0)) playUrl = qsUrl;
-                } catch { /* 离线/未登录：留给播放时主链 */ }
+                if (!playUrl) {
+                    const outerUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
+                    if (await checkAudioUrlPlayable(outerUrl, songId, 'https://music.163.com/', expSec)) {
+                        playUrl = outerUrl;
+                        resolvedChannel = 'neteaseOuter';
+                    }
+                }
                 if (!playUrl && songName) {
-                    const hit = await _resolveSameSong('netease', songName, singer, { songId });
-                    if (hit) playUrl = hit.url;
+                    const hit = await _resolveSameSong('kugou', songName, singer, { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = 'crossKugou'; }
                 }
-            } else {
-                /* ★ 第三方 API 必须经本机 /proxy 转发：浏览器直连 api.vkeys.cn 会被
-                   CORS 拦截（该端点不返回 Access-Control-Allow-Origin）→ 预载永远拿不到
-                   直链、automix 的 ARM 取链随之必败（真机实测：ARM 窗口内每 250ms 重试
-                   一次，控制台瞬间刷屏上百条）。/proxy 由 server.py 附加 CORS 头，
-                   并已做 scheme 白名单 + 本机 Origin 校验。 */
+                if (!playUrl && songName) {
+                    const hit = await _resolveKuwoByName(songName, singer, { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = _crossKuwoChannelOf(hit, false); }
+                }
+            } else if (normSrc === 'kugou') {
+                const expSec = durSec || 0;
+                const userQuality = (appSettings.quality && appSettings.quality.kugouPlayback) || '320';
+                const kgInfo = await getKugouPlayInfo(songMid || songId, songName, singer, userQuality);
+                if (kgInfo && kgInfo.url && await checkAudioUrlPlayable(kgInfo.url, songId, '', expSec)) {
+                    playUrl = kgInfo.url;
+                    resolvedChannel = kgInfo.provider || 'kugou';
+                }
+                const _kgTriedNetease = !!(kgInfo && (kgInfo.provider === 'selfhostNetease' || kgInfo.provider === 'byfuns' || kgInfo.provider === 'neteaseOuter'));
+                if (!playUrl && songName && !_kgTriedNetease) {
+                    const hit = await _resolveSameSong('netease', songName, singer, { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = _crossNeteaseChannelOf(hit); }
+                }
+                if (!playUrl && songName) {
+                    const hit = await _resolveKuwoByName(songName, singer, { songId, expSec });
+                    if (hit) { playUrl = hit.url; resolvedChannel = _crossKuwoChannelOf(hit, false); }
+                }
+            } else if (normSrc !== 'kuwo') {
+                /* ★ 第三方 API 必须经本机 /proxy 转发：浏览器直连 api.vkeys.cn 会被 CORS 拦截 */
                 try {
-                    const target = `${API_BASE}/${source}?id=${songId}`;
+                    const target = `${API_BASE}/${normSrc}?id=${songId}`;
                     const urlJson = await fetch(`/proxy?url=${encodeURIComponent(target)}`).then(r => r.json());
                     playUrl = (urlJson.code === 200 && urlJson.data && urlJson.data.url) ? urlJson.data.url : null;
+                    if (playUrl) resolvedChannel = 'unknown';
                 } catch (e) { /* 静默 */ }
-                /* ★ 跨源兜底（与 loadOnlineSong 主链同口径）：vkeys 对部分 kugou id 直接
-                   返回 404（真机实测 A8748CA6… → code 404），单靠它拿不到链；而前端串联的
-                   _resolveSameSong('netease') 内部同样直连第三方（API_BASE / api.byfuns.top），
-                   在浏览器里会一起 CORS 挂。唯一可靠通道是服务端聚合兜底
-                   （gdstudio 多源搜索 + 取链 + 校验，本地 server 已缓存）。 */
                 if (!playUrl && songName) {
                     const hit = await fetchAggSameSongUrl(songName, singer);
-                    if (hit && hit.url) playUrl = hit.url;
+                    if (hit && hit.url) { playUrl = hit.url; resolvedChannel = 'agg'; }
                 }
+            }
+            if (playUrl && cacheKey && String(playUrl).startsWith('http') && !String(playUrl).includes('music.163.com/song/media/outer/')) {
+                setCachedResolvedPlay(cacheKey, {
+                    url: playUrl,
+                    channel: resolvedChannel || 'direct',
+                    songMid: effectiveMid || songMid || '',
+                    quality: qKey,
+                });
             }
             return playUrl;
         }
@@ -322,9 +525,30 @@ async function loadLyricsAfterAutomixSwap(track) {
  * @returns {string} 预载直链；未命中返回 ''
  */
 function getPreloadedOnlineUrl(track) {
-    if (!track || !track.id || !nextSongPreload || !nextSongPreload.url) return '';
+    if (!track || !track.id || track.source === 'local') return '';
     const effectiveSource = platformKeyOf(track.source) || (track.mid ? 'tencent' : 'netease');
-    return nextSongPreload.key === `${effectiveSource}:${track.id}` ? nextSongPreload.url : '';
+    if (nextSongPreload && nextSongPreload.url && nextSongPreload.key === `${effectiveSource}:${track.id}`) {
+        return nextSongPreload.url;
+    }
+    const cacheKey = makeResolveCacheKey(effectiveSource, track.id, _qualityKeyForSource(effectiveSource));
+    const hit = cacheKey ? getCachedResolvedPlay(cacheKey) : null;
+    return (hit && hit.url) ? hit.url : '';
+}
+
+function _getNeighborWarmIndices(alreadyIdx) {
+    const len = Array.isArray(playlist) ? playlist.length : 0;
+    if (len <= 1 || playMode === 'loop') return [];
+    const out = [];
+    const pushIfValid = (idx) => {
+        if (idx < 0 || idx >= len) return;
+        if (idx === currentTrackIndex || idx === alreadyIdx || out.includes(idx)) return;
+        out.push(idx);
+    };
+    if (playMode !== 'random') {
+        pushIfValid((currentTrackIndex + 2) % len);
+    }
+    pushIfValid((currentTrackIndex - 1 + len) % len);
+    return out;
 }
 
 /* 预加载下一首歌的所有资源 */
@@ -397,6 +621,27 @@ async function preloadNextSong() {
                 if (!myFlag.aborted) {
                     nextSongPreload = preloadData;
                     logInfo('trackIndexOnline', '[Preload] 预加载完成:', preloadTitle, { hasUrl: !!preloadData.url, hasLyrics: !!preloadData.lyricData, hasChorus: !!preloadData.chorusSegments, hasAI: !!preloadData.aiTheme });
+                    /* ★ 邻近曲目 [next 2, prev 1] 轻预热进 LRU 取链缓存，快切连按直接零等待 */
+                    const neighborIndices = _getNeighborWarmIndices(nextIdx);
+                    for (const idx of neighborIndices) {
+                        if (myFlag.aborted) break;
+                        const t = playlist[idx];
+                        if (!t || !t.source || t.source === 'local' || !t.id) continue;
+                        const src = platformKeyOf(t.source) || (t.mid ? 'tencent' : 'netease');
+                        if (!src || src === 'local') continue;
+                        const cKey = makeResolveCacheKey(src, t.id, _qualityKeyForSource(src));
+                        if (cKey && getCachedResolvedPlay(cKey)) continue;
+                        await new Promise(r => setTimeout(r, 150));
+                        if (myFlag.aborted) break;
+                        await fetchPlayUrlForPreload(
+                            String(t.id),
+                            t.mid || '',
+                            src,
+                            titleOf(t),
+                            intervalToSec(t.interval) || t.duration || 0,
+                            artistOf(t)
+                        ).catch(e => logCatch('trackIndexOnline', e));
+                    }
                 }
             } catch (err) {
                 if (!myFlag.aborted) {
@@ -453,17 +698,23 @@ async function loadOnlineSong(songInfo, skipPlaylistUpdate, _isRetry, preloadOnl
                 preloadedSongReady = null;
                 return Promise.resolve(false);
             }
+            function syncSongLoadingState(active) {
+                isLoadingSong = Boolean(active);
+                if (typeof document !== 'undefined' && document.body && document.body.classList) {
+                    document.body.classList.toggle('aria-audio-loading', isLoadingSong);
+                }
+            }
             /* 代际计数器递增：使所有上一次的异步回调（canplay监听器、超时、fade回调）过期 */
             const gen = ++playbackGeneration;
             /* 如果上一次加载未完成，强制中止（而非直接 return 丢弃新请求） */
-            isLoadingSong = true;
+            syncSongLoadingState(true);
             const songId = songInfo.id;
             const songMid = songInfo.mid;   /* 仅QQ有 */
             if (!songId) {
                 /* 这条路径根本没开始取链，但角标还挂着**上一首**的终态——
                    用户看到的「上一首失败了，现在这首歌也显示取链失败」就是这么来的。 */
                 clearResolveTrace();
-                setHint('无法获取歌曲ID'); isLoadingSong = false; return;
+                setHint('无法获取歌曲ID'); syncSongLoadingState(false); return;
             }
             /* ★ 取链分支的音源判定：优先用「这首歌自带的 source」，全局 currentSource 只兜底。
                此前分支写的是 `currentSource === 'kugou' || songInfo.source === 'kugou'`，而
@@ -483,6 +734,15 @@ async function loadOnlineSong(songInfo, skipPlaylistUpdate, _isRetry, preloadOnl
             if (!songInfo.singer) songInfo.singer = artistOf(songInfo);
             /* 取链透明化：本次加载的降级轨迹从这里开始计（key 约定同 _preLyricKey） */
             beginResolveTrace(`${effSource}:${songId}`);
+
+            /* ★ A 类发现/瞬态渠道单曲点播：插入当前播放曲目下一位并立即切换播放，保留原有播放队列 */
+            if (!skipPlaylistUpdate && !preloadOnly) {
+                const nextQueue = insertNextAndPlay(playlist, { ...songInfo, source: effSource }, effSource, currentTrackIndex);
+                if (nextQueue.index >= 0 && nextQueue.playlist.length > 0) {
+                    playlist = nextQueue.playlist;
+                    currentTrackIndex = nextQueue.currentTrackIndex;
+                }
+            }
 
 /* 立即暂停并重置 audio，取消上一次的加载 */
 audio.pause();
@@ -583,10 +843,6 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     lyricPromise = Promise.resolve(_preloadedLyricData);
                 } else if (effSource === 'kugou') {
                     lyricPromise = fetchKugouLyric(songInfo);
-                } else if (effSource === 'qishui') {
-                    /* 汽水歌词走自建 vendor（逐字；QRC→KRC 同构解析，见 fetchQishuiLyric）。
-                       失败返回 {}，由下方首曲自愈重试与同名歌兜底接管。 */
-                    lyricPromise = fetchQishuiLyric(songInfo);
                 } else if (effSource === 'kuwo') {
                     lyricPromise = fetchLyricWithFallback(songInfo, 'kuwo');
                 } else {
@@ -603,10 +859,30 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
 
                 /* 获取播放链接 */
                 let playUrl;
-                if (songInfo.url && (songInfo.source === 'local' || songInfo.isRandomApi || (!songInfo.url.includes('stream.qqmusic.qq.com') && !songInfo.url.includes('api.vkeys.cn')))) {
-                    /* 已有直链（如本地音乐、自定义外链、随机 API 返回的 Music 字段） */
+                const hasTrustedDirectUrl = !!(songInfo.url && (
+                    songInfo.source === 'local'
+                    || songInfo.isRandomApi
+                    || songInfo.isCustomUrl
+                    || (songInfo._fromPreload && !songInfo.url.includes('music.163.com/song/media/outer/'))
+                    || /^(blob:|data:|\/api\/local\/|\/cache\/)/i.test(songInfo.url)
+                ));
+                const _resolveQKey = _qualityKeyForSource(effSource);
+                const _resolveCacheKey = makeResolveCacheKey(effSource, songId, _resolveQKey);
+                if (_isRetry && songId) {
+                    invalidateResolvedPlayByTrack(effSource, songId, songInfo.url || '');
+                }
+                const _cachedPlayHit = (!_isRetry && !hasTrustedDirectUrl && _resolveCacheKey)
+                    ? getCachedResolvedPlay(_resolveCacheKey)
+                    : null;
+                if (hasTrustedDirectUrl) {
+                    /* 已有可信直链（本地文件、随机 API、明确标识的预加载/缓存直链）；过期/外链旧 URL 一律走下方重取 */
                     playUrl = songInfo.url;
                     recordResolveHit(songInfo.source === 'local' ? 'local' : 'direct', playUrl, songInfo.quality || '');
+                } else if (_cachedPlayHit && _cachedPlayHit.url) {
+                    playUrl = _cachedPlayHit.url;
+                    recordResolveHit(_cachedPlayHit.channel || 'direct', playUrl, _cachedPlayHit.quality || _resolveQKey);
+                    if (_cachedPlayHit.songMid && !songInfo.mid) songInfo.mid = _cachedPlayHit.songMid;
+                    logInfo('trackIndexOnline', `[ResolveCache] 命中缓存直链 (${_cachedPlayHit.channel || 'cache'}): ${songInfo.song}`);
                 } else if (effSource === 'kugou') {
                     /* 酷狗音乐：通过 hash 获取播放直链（含多源回退与用户音质参数） */
                     const hash = songInfo.hash || songMid || songId;
@@ -617,18 +893,11 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         /* VIP 未开通时酷狗常给 30s 试听链，须探测整曲时长后决定是否回退跨源 */
                         if (await checkAudioUrlPlayable(kgInfo.url, songId, '', expSec)) {
                             playUrl = kgInfo.url;
-                            /* ★ 2026-10-03：渠道名要如实反映**真正的上游**。
-                               getKugouPlayInfo 在酷狗官方接口拿不到直链时会跨源回退
-                               （→ QQ 解析池 → vkeys → 网易），于是出现用户实测的
-                               「命中渠道=酷狗取链接口 / 链接域名=ws.stream.qqmusic.qq.com /
-                               轨迹=0 条 [QQResolve] vkeys 命中」三者对不上。
-                               现在按 getKugouPlayInfo 带回的 provider 归一化上报。
-                               ★ 音质不套用酷狗档位：跨源拿到的可能是无损链，写死
-                               userQuality（酷狗档位，常为 320）会当场把 flac 标成 320k；
-                               传空串让 describeDetail 按直链后缀嗅探。 */
                             const kgProv = kgInfo.provider || 'kugou';
                             const KG_CHANNEL = {
                                 kugou: 'kugou',
+                                selfhostQQ: 'selfhostQQ',
+                                selfhostNetease: 'selfhostNetease',
                                 qqResolve: 'qqResolve',
                                 vkeysPrefetch: 'vkeysPrefetch',
                                 byfuns: 'crossNetease',
@@ -640,15 +909,9 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                                 logInfo('trackIndexOnline',
                                     `[KuGou] 官方直链不可用，跨源 ${kgProv} 命中: ${songInfo.song}`);
                             }
-                            /* ★ 2026-10-04：酷狗 getSongInfo 报文自带 mvhash = 这首歌自己的 MV。
-                               取链时顺手落到 songInfo 上，等 currentSongData 构造时会带出去，
-                               MV 背景就能零搜索直接铺（详见 mvApi.resolveMvForSong 的三级解析）。
-                               跨源回退（provider≠kugou）时 kgInfo 没有该字段，保持空串走搜索兜底。 */
                             if (kgInfo.mvHash && !songInfo.mvHash) songInfo.mvHash = kgInfo.mvHash;
                             if (kgInfo.cover && !songInfo.cover) {
                                 songInfo.cover = kgInfo.cover;
-                                /* ★ 酷狗封面同步应用：搜索项常无 img，封面在 playInfo 才返回；
-                                   立即设置避免等后续钩子,否则整曲解析完成前一直没封面 */
                                 setCoverImage(kgInfo.cover);
                                 setBlurBackground(kgInfo.cover);
                             }
@@ -657,11 +920,12 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                             logWarn('trackIndexOnline', `[KuGou] ${songInfo.song} 链接为试听/不可播，回退跨源`);
                         }
                     }
-                    if (!playUrl && songInfo.song) {
+                    const _kgTriedNetease = !!(kgInfo && (kgInfo.provider === 'selfhostNetease' || kgInfo.provider === 'byfuns' || kgInfo.provider === 'neteaseOuter'));
+                    if (!playUrl && songInfo.song && !_kgTriedNetease) {
                         const kgSame = await fetchSameSongUrlFrom('netease', songInfo.song, songInfo.singer || '').catch(() => null);
                         if (kgSame && kgSame.url && await checkAudioUrlPlayable(kgSame.url, songId, '', expSec)) {
                             playUrl = kgSame.url;
-                            recordResolveHit('crossNetease', playUrl);
+                            recordResolveHit(_crossNeteaseChannelOf(kgSame), playUrl);
                         }
                     }
                     if (!playUrl && songInfo.song) {
@@ -674,7 +938,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                                 const kwInfo = await getKuwoPlayInfo(String(kwBest.id), songInfo.song, songInfo.singer || '');
                                 if (kwInfo && kwInfo.url && await checkAudioUrlPlayable(kwInfo.url, songId, '', expSec)) {
                                     playUrl = kwInfo.url;
-                                    recordResolveHit('crossKuwo', playUrl);
+                                    recordResolveHit(_crossKuwoChannelOf(kwInfo, false), playUrl);
                                 }
                             }
                         } catch (e) { /* 酷我兜底失败，放弃 */ }
@@ -687,7 +951,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const kwInfo = await getKuwoPlayInfo(kuwoId, songName, singerName);
                     if (kwInfo && kwInfo.url) {
                         playUrl = kwInfo.url;
-                        recordResolveHit('kuwo', playUrl, kwInfo.quality || '');
+                        recordResolveHit(_crossKuwoChannelOf(kwInfo, true), playUrl, kwInfo.quality || '');
                         if (kwInfo.cover && (!songInfo.cover || songInfo.cover.includes('img4.kuwo.cn/star/albumcover/'))) {
                             songInfo.cover = kwInfo.cover;
                             setCoverImage(kwInfo.cover);
@@ -709,41 +973,22 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                         }
                         logInfo('trackIndexOnline', `[Kuwo] 一站式解析成功: ${songName}`);
                     }
-                } else if (effSource === 'qishui') {
-                    /* 汽水：本机 vendor 解密吐流，是**唯一**取链途径（汽水没有公网直链可回退）。
-                       ★ 这里拿到的 URL 指向 127.0.0.1:3300/stream，下游 getStreamCachedAudioUrl
-                       会把它包成 /api/audio/stream（Range + 磁盘缓存），与其它源拿 CDN 直链
-                       时的形状完全一致 —— 所以播放链一行都不用改。
-                       ★ 未登录/vendor 离线时拿不到 URL 或探不通，落跨源同名歌兜底
-                       （用户至少还能听到别的平台的同名曲，而不是一个红色「取链失败」）。 */
-                    const qsId = songInfo.qishuiId || songId;
-                    const qsUrl = await selfhostQishuiPlayUrl(qsId, 'higher');
-                    if (qsUrl) {
-                        const qsDur = intervalToSec(songInfo.interval) || songInfo.duration || 0;
-                        if (await checkAudioUrlPlayable(qsUrl, songId, '', qsDur)) {
-                            playUrl = qsUrl;
-                            /* 音质留空：vendor 不自报档位，宁可角标只显示「汽水音乐」，
-                               也不要拿请求的 'higher' 冒充平台档位（那是另一种撒谎）。 */
-                            recordResolveHit('selfhostQishui', playUrl, '');
-                            logInfo('trackIndexOnline', `[Qishui] 自建汽水命中: ${songInfo.song}`);
-                        } else {
-                            logWarn('trackIndexOnline', '[Qishui] 取流不可播（未登录/试听/离线），落跨源兜底');
-                        }
-                    }
-                    if (!playUrl && songInfo.song) {
-                        const qsSame = await fetchSameSongUrlFrom('netease', songInfo.song, songInfo.singer || '').catch(() => null);
-                        if (qsSame && qsSame.url) {
-                            playUrl = qsSame.url;
-                            recordResolveHit('crossNetease', playUrl);
-                        }
-                    }
                 } else if (effSource === 'tencent') {
                     let effectiveMid = songMid;
                     let vkeysUrl = null;
                     if (!effectiveMid && songId) {
-                        const meta = await _fetchQQMeta(songId, { verbose: true });
-                        if (meta.mid) effectiveMid = meta.mid;
-                        if (meta.url) vkeysUrl = meta.url;
+                        const fastMid = await fetchQQSongMid(songId);
+                        if (fastMid) {
+                            effectiveMid = fastMid;
+                            songInfo.mid = fastMid;
+                        } else {
+                            const meta = await _fetchQQMeta(songId, { verbose: true });
+                            if (meta.mid) {
+                                effectiveMid = meta.mid;
+                                songInfo.mid = meta.mid;
+                            }
+                            if (meta.url) vkeysUrl = meta.url;
+                        }
                     }
 
                     /* 步骤0: 优先走本地解析池（多API竞速 + 防试听校验 + 15min缓存）
@@ -764,13 +1009,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                             logWarn('trackIndexOnline', '[SelfHost] QQ 自建服务链接探测不可播/试听，落回原链');
                         }
                     } else if (!effectiveMid && !playUrl) {
-                        /* ★ 显式告警（2026-10-07 用户报障「取链过程没有经过自建 vendor」）：
-                           缺 mid 时自建那一步会被**整段跳过**，日志里既没有 [SelfHost] 也没有
-                           任何 [QQ]，从外部看就像"从没尝试过自建"（排查时只能靠猜）。
-                           这里确实调不了 —— vendor 的取链接口是按 mid 走的（自建服务的开关/
-                           在线/登录状态另见 selfhost-runtime.js:192-201 的三重闸门日志）——
-                           但**跳过必须说清**，不能静默（约束 9）。 */
-                        logWarn('trackIndexOnline', `[SelfHost] 缺 QQ mid，自建取链被跳过（也未能从 /tencent?id= 补齐）: ${songInfo.song} / ${songInfo.singer || ''}`);
+                        logWarn('trackIndexOnline', `[SelfHost] 缺 QQ mid，自建取链被跳过（也未能从 /api/qq/mid 或 /tencent?id= 补齐）: ${songInfo.song} / ${songInfo.singer || ''}`);
                     }
                     if (effectiveMid && !playUrl) {
                         const durSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
@@ -825,12 +1064,12 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     if (!playUrl) {
                         logWarn('trackIndexOnline', '酷狗也未命中，尝试网易云同名歌...');
                         const ncmHit = await _resolveSameSong('netease', songInfo.song, songInfo.singer, { songId, verbose: true });
-                        if (ncmHit) { playUrl = ncmHit.url; recordResolveHit('crossNetease', playUrl); if (ncmHit.cover && !songInfo.cover) songInfo.cover = ncmHit.cover; }
+                        if (ncmHit) { playUrl = ncmHit.url; recordResolveHit(_crossNeteaseChannelOf(ncmHit), playUrl); if (ncmHit.cover && !songInfo.cover) songInfo.cover = ncmHit.cover; }
                     }
                     if (!playUrl) {
                         logWarn('trackIndexOnline', '网易云也未命中，最后尝试酷我同名歌...');
                         const kwHit = await _resolveKuwoByName(songInfo.song, songInfo.singer, { songId, verbose: true });
-                        if (kwHit) { playUrl = kwHit.url; recordResolveHit('crossKuwo', playUrl); if (kwHit.cover && !songInfo.cover) songInfo.cover = kwHit.cover; }
+                        if (kwHit) { playUrl = kwHit.url; recordResolveHit(_crossKuwoChannelOf(kwHit, false), playUrl); if (kwHit.cover && !songInfo.cover) songInfo.cover = kwHit.cover; }
                     }
                 } else if (effSource === 'netease') {
                     /* 网易云：★ 上游参考项目 对齐先试本机自建 /song/url/v1 直链（秒回），失败再走公网 byfuns 音质阶梯 */
@@ -839,7 +1078,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const orderedLevels = [userLevel, ...QUALITY_LEVELS.filter(q => q !== userLevel)];
                     const nmExpSec = intervalToSec(songInfo.interval) || songInfo.duration || 0;
                     if (!playUrl) {
-                        playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName: songInfo.song, songId, expSec: nmExpSec });
+                        playUrl = await _tryNeteaseSelfhost(songId, userLevel, { songName: songInfo.song, songId, expSec: nmExpSec, verifyWithProbe: !!_isRetry });
                         if (playUrl) recordResolveHit('selfhostNetease', playUrl, userLevel);
                     }
                     if (!playUrl) {
@@ -852,11 +1091,16 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                             logInfo('trackIndexOnline', `byfuns API 获取成功 (音质: ${byfHit.level}): ${songInfo.song}`);
                         }
                     }
-                    /* byfuns 全部失败时，回退到网易云外链 */
+                    /* byfuns 全部失败时，仅在探测确认非 404/试听后才采用网易云外链，否则放行跨源兜底 */
                     if (!playUrl) {
-                        logWarn('trackIndexOnline', 'byfuns API 全部音质失败，回退到网易云外链');
-                        playUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
-                        recordResolveHit('neteaseOuter', playUrl);
+                        const outerUrl = `https://music.163.com/song/media/outer/url?id=${songId}`;
+                        if (await checkAudioUrlPlayable(outerUrl, songId, 'https://music.163.com/', nmExpSec)) {
+                            logWarn('trackIndexOnline', 'byfuns API 全部音质失败，网易云外链可用，已启用');
+                            playUrl = outerUrl;
+                            recordResolveHit('neteaseOuter', playUrl);
+                        } else {
+                            logWarn('trackIndexOnline', 'byfuns API 全部音质失败且网易云外链不可播/试听，尝试跨源兜底');
+                        }
                     }
                     /* VIP 试听/外链不可播时跨源兜底：酷狗 → 酷我 */
                     if (!playUrl && songInfo.song) {
@@ -865,7 +1109,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     if (!playUrl && songInfo.song) {
                         const kwHit = await _resolveKuwoByName(songInfo.song, songInfo.singer, { songId, expSec: nmExpSec });
-                        if (kwHit) { playUrl = kwHit.url; recordResolveHit('crossKuwo', playUrl); }
+                        if (kwHit) { playUrl = kwHit.url; recordResolveHit(_crossKuwoChannelOf(kwHit, false), playUrl); }
                     }
                 } else {
                     /* 未知音源走 vkeys 接口 */
@@ -882,6 +1126,9 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                 }
                 if (!playUrl) {
+                    /* 静默预加载（如启动预加载首曲）取链失败时仅回退 preloadedSongReady=null，
+                       不得挂起后台重试定时器——否则退避后会以 preloadOnly=false 覆盖前台播放进度与 UI */
+                    if (preloadOnly) { preloadedSongReady = null; return; }
                     markResolveFailed();
                     if (selectedEl) {
                         const statusEl = selectedEl.querySelector('.result-status');
@@ -889,54 +1136,32 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     /* 获取播放链接失败也尝试重试（failGen=gen：失败时已是旧代际则不再重试） */
                     if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
-                    isLoadingSong = false;
+                    syncSongLoadingState(false);
                     return;
                 }
 
-                /* ★ 移除 URL HEAD 预检（no-cors 预检不可靠且增加 5 秒延迟）
-                   直接开始音频加载，URL 失效时由 audio error 事件触发重试 */
-
-                /* 歌词请求（已提前并行发起，此处 await 获取结果） */
-                let lyricJson = await lyricPromise;
-
-                /* ★ 首曲歌词自愈：冷启动时外网歌词接口往往慢/超时（无预加载、无服务器热缓存），
-                   首杯请求常返回空对象导致「第一首歌没有歌词」。此处若为空则等待后重试（最多 2 次，
-                   指数退避 1.2s/3s），并在重试时带上缓存绕过参数，最大限度消除启动初期歌词空窗。 */
-                if (lyricJson && !_hasLyricContent(lyricJson)) {
-                    const retryDelays = [1200, 3000];
-                    for (const delay of retryDelays) {
-                        logWarn('trackIndexOnline', `[Lyric] 首曲歌词为空，${delay}ms 后重试...`);
-                        await new Promise(r => setTimeout(r, delay));
-                        if (gen !== playbackGeneration) return;
-                        try {
-                            const retryRes = await fetchLyricWithFallback(
-                                songInfo,
-                                lyricSourceOverride || effSource
-                            ).catch(() => ({}));
-                            if (retryRes && _hasLyricContent(retryRes)) {
-                                lyricJson = retryRes;
-                                logWarn('trackIndexOnline', '[Lyric] 首曲歌词重试成功。');
-                                break;
-                            }
-                        } catch (e) { /* 继续下一轮退避重试 */ }
-                    }
-                }
-
+                /* ★ 移除 URL HEAD 预检，且不阻塞等待歌词：先立刻起播音频，歌词并发渲染 */
                 /* 代际检查：网络请求期间用户可能已切歌，放弃本次加载 */
                 if (gen !== playbackGeneration) return;
 
+                if (_resolveCacheKey && !hasTrustedDirectUrl && !(_cachedPlayHit && _cachedPlayHit.url)
+                    && playUrl.startsWith('http') && !playUrl.includes('music.163.com/song/media/outer/')) {
+                    setCachedResolvedPlay(_resolveCacheKey, {
+                        url: playUrl,
+                        channel: 'direct',
+                        songMid: songInfo.mid || songMid || '',
+                        quality: _resolveQKey,
+                    });
+                }
+
                 /* 设置音频并播放（不覆盖已有播放队列） */
                 if (!skipPlaylistUpdate) {
-                    playlist = [{
-                        url: playUrl,
-                        title: titleOf(songInfo),
-                        artist: artistOf(songInfo),
-                        cover: songInfo.cover || '',
-                        source: effSource,
-                        id: songInfo.id,
-                        mid: songMid || ''
-                    }];
+                    const resolvedTrack = normalizeQueueTrack({ ...songInfo, url: playUrl, source: effSource }, effSource);
+                    playlist = resolvedTrack ? [resolvedTrack] : [];
                     currentTrackIndex = 0;
+                } else if (songInfo.mid && Array.isArray(playlist) && playlist[currentTrackIndex]
+                    && String(playlist[currentTrackIndex].id) === String(songId) && !playlist[currentTrackIndex].mid) {
+                    playlist[currentTrackIndex].mid = songInfo.mid;
                 }
 
                 /* ★ 预载二次守卫：入口守卫（函数开头）在 await 取链之前，取链耗时
@@ -945,7 +1170,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                    非预载（真切歌）不适用，真切歌就是要抢占元素。 */
                 if (preloadOnly && (!audio.paused || audio.currentTime > 0)) {
                     preloadedSongReady = null;
-                    isLoadingSong = false;
+                    syncSongLoadingState(false);
                     return Promise.resolve(false);
                 }
 
@@ -953,16 +1178,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 audio.pause();
                 audio.removeAttribute('src');
 
-                /* 清理旧的 Web Audio 图，防止内存泄漏。
-                   ★ 2026-10-05：拆完必须重建。全局响度压缩（DynamicsCompressor）就挂在
-                   这张图里，而此前**全仓没有任何地方在加载后重建它**（本文件下面那段
-                   注释当时也承认了这点）→ 于是"在线点播期间音量均衡静默失效、整体偏响"，
-                   正是用户问的"是不是音量均衡没生效"。这里先记住用户本来有没有图，
-                   新曲就绪后再按原样建一张（见下方 playPromise.then）。 */
-                /* ★ 2026-10-06：判据从"曾经建过图"扩成"用户有必须建图才能生效的意图"
-                   （wantsAudioGraph：非默认声道 / 均衡器有增益 / 空间音频 / 虚拟声场）。
-                   否则"从没开过均衡器但设了单声道"的用户会看到：设置选着、声音没变
-                   —— 这正是用户报的「立体声/切换声道没用」。 */
+                /* 清理旧的 Web Audio 图，防止内存泄漏 */
                 const hadEqGraph = eqGraphBuiltOnce() || wantsAudioGraph();
                 cleanupEqAudioGraph();
                 eqInitFailed = false; /* 重置失败标志，新歌曲可以重新尝试 */
@@ -1006,16 +1222,12 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }, 8000);
                 });
 
+                const resolvedMid = songInfo.mid || songMid || '';
                 /* 现在设置 src 并加载——监听器已就位，canplay 不会被错过 */
-                audio.src = getStreamCachedAudioUrl(playUrl, songMid || songInfo.id || songInfo.song);
+                audio.src = getStreamCachedAudioUrl(playUrl, resolvedMid || songInfo.id || songInfo.song);
                 audio.load();
                 audio.playbackRate = currentPlaybackRate;
                 applyPreservesPitch(preservesPitch);
-                /* ★ 重建 EQ 图（含响度压缩 DynamicsCompressor / 均衡 / 空间处理）。
-                   只在"用户本来已经有图"时重建 —— 从未开过 EQ / 均衡的用户不该被强加一张图。
-                   等 canplay 之后再建：initEqAudioGraph 需要能读到有效的 audio.src，
-                   且它内部会处理 crossOrigin 重载与播放位置恢复。
-                   建图失败不阻断播放（90-eq 内部会回退直连旁通，声音照常）。 */
                 if (hadEqGraph) {
                     playPromise.then(() => initEqAudioGraph()).catch(() => {});
                 }
@@ -1029,12 +1241,8 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     cover: songInfo.cover || '',
                     source: effSource,
                     id: songInfo.id,
-                    mid: songMid || '',
+                    mid: resolvedMid,
                     interval: songInfo.interval || '',
-                    /* ★ 这首歌自己的 MV id（2026-10-03）：搜索结果里 QQ 每首歌都带 vid，
-                       一路带到这里，MV 动态背景就能"跟随播放"零请求直接铺（见 101）。
-                       ★ 2026-10-04 补 mvId / mvHash：网易的 song.mv、酷狗的 getSongInfo.mvhash
-                         同属"歌曲自带的 MV 关联"，只带 QQ 的 vid 会让另外两源退化成关键词搜索。 */
                     mvVid: songInfo.mvVid || '',
                     mvId: songInfo.mvId || '',
                     mvHash: songInfo.mvHash || ''
@@ -1053,83 +1261,17 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const statusEl = selectedEl.querySelector('.result-status');
                     if (statusEl) statusEl.textContent = '正在播放';
                 }
-
-                /* 封面与背景已在上方"即时 UI 响应"块中设置，此处不再重复调用
-                   （重复调用会导致交叉淡入被撤销，背景不切换） */
-
-                /* 解析歌词并渲染 */
-                const lyricData = lyricJson || {};
-                let { originals, translations, romaji } = detectAndParseLyrics(lyricData);
-                /* ★ 解析后空行兜底：接口返回了内容但仍解析出 0 行（空壳歌词/格式异常/纯占位），
-                   再走一次跨源歌词（fetchLyricWithFallback 内部自带 酷狗→网易 同名兜底），
-                   最大化消除"歌词是空的"场景 */
-                if ((!originals || originals.length === 0) && gen === playbackGeneration) {
-                    logWarn('trackIndexOnline', '[Lyric] 歌词解析后为空行，尝试跨源重取一次...');
-                    try {
-                        const reFetch = await fetchLyricWithFallback(
-                            songInfo,
-                            lyricSourceOverride || (songInfo && songInfo.source) || currentSource
-                        ).catch(() => ({}));
-                        const reparsed = detectAndParseLyrics(reFetch);
-                        if (reparsed.originals && reparsed.originals.length > 0) {
-                            originals = reparsed.originals;
-                            translations = reparsed.translations;
-                            romaji = reparsed.romaji;
-                            logWarn('trackIndexOnline', '[Lyric] 跨源重取解析成功。');
-                        }
-                    } catch (e) { /* 保留原空结果，不阻塞播放 */ }
-                }
-                lyrics = mergeLyrics(originals, translations, romaji);
-                activeLineIndex = -1;
-                currentTime = 0;
-                /* 切歌时清理上一首歌的 AI 情感词，避免跨歌泄漏 */
-                aiEmotionWords = [];
-                renderLyrics(lyrics);
-                /* ★ 翻译补齐：当前歌词无翻译/翻译为空时，后台跨源补齐双语翻译并实时刷新。
-   首选网易云官方双语接口（lrc + tlyric 一起返回、最稳定），经本地 /proxy 代理规避 CORS；
-   失败则回退 vkeys 网易云歌词（也常带 trans）。补齐后重渲染，
-   列表 / 飞入 / 蒙德里安翻译区都会显示；失败不影响播放（静默）。 */
-                if (!lyrics.some(l => l.translation && l.translation.trim() && l.translation.trim() !== '//')) {
-                    (async () => {
-                        try {
-                            const word = `${songInfo.song || ''} ${songInfo.singer || ''}`.trim();
-                            if (!word) return;
-                            const nRes = await fetch(`${API_BASE}/netease?word=${encodeURIComponent(word)}&num=1`)
-                                .then(r => r.json()).catch(() => ({}));
-                            const sItem = (nRes.code === 200 && nRes.data) ? (Array.isArray(nRes.data) ? nRes.data[0] : nRes.data) : null;
-                            if (!(sItem && sItem.id)) return;
-
-                            /* 首选：网易云官方 /api/song/lyric（tlyric.lyric = 翻译，与 lrc 同源对齐） */
-                            let parsedN = null;
-                            try {
-                                const nApiUrl = `https://music.163.com/api/song/lyric?id=${encodeURIComponent(String(sItem.id))}&lv=1&kv=1&tv=1`;
-                                const nJson = await fetch(`/proxy?url=${encodeURIComponent(nApiUrl)}`)
-                                    .then(r => r.json()).catch(() => ({}));
-                                if (nJson && nJson.tlyric && nJson.tlyric.lyric && nJson.tlyric.lyric.trim() &&
-                                    nJson.lrc && nJson.lrc.lyric && nJson.lrc.lyric.trim()) {
-                                    parsedN = detectAndParseLyrics({ lrc: nJson.lrc.lyric, trans: nJson.tlyric.lyric });
-                                }
-                            } catch (e) { parsedN = null; }
-
-                            /* 备选：vkeys 网易云歌词（trans 字段） */
-                            if (!parsedN || !parsedN.translations || parsedN.translations.length === 0) {
-                                try {
-                                    const lData = await fetchLyricWithFallback(String(sItem.id), 'netease');
-                                    parsedN = detectAndParseLyrics(lData);
-                                } catch (e) { parsedN = null; }
-                            }
-
-                            if (parsedN && parsedN.translations && parsedN.translations.length > 0 && gen === playbackGeneration) {
-                                lyrics = mergeLyrics(lyrics, parsedN.translations, parsedN.romaji);
-                                renderLyrics(lyrics);
-                                logInfo('trackIndexOnline', `[Lyric] 翻译补齐成功 (${parsedN.translations.length} 行)`);
-                            }
-                        } catch (e) { logWarn('trackIndex', e); }
-                    })();
-                }
-                /* 立即同步手机版歌词预览（展示首行歌词） */
-                updateMobileLyricPreview();
                 totalTimeEl.textContent = '00:00';
+
+                /* 歌词异步解析/重试/翻译补齐与音频加载并行推进 */
+                const _lyricsTask = _applySongLyricsAsync({
+                    songInfo,
+                    effSource,
+                    lyricPromise,
+                    gen,
+                    isRetry: !!_isRetry,
+                    preloadOnly: !!preloadOnly,
+                });
 
                 await playPromise;
 
@@ -1139,18 +1281,21 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                 /* 音频加载出错时直接走重试逻辑，不再调用 play() */
                 if (audio.error) {
                     logError('trackIndexOnline', '音频加载错误:', audio.error);
+                    if (_resolveCacheKey) invalidateResolvedPlayByTrack(effSource, songId, playUrl);
                     if (selectedEl) {
                         const statusEl = selectedEl.querySelector('.result-status');
                         if (statusEl) statusEl.textContent = '加载失败';
                     }
                     if (preloadOnly) { preloadedSongReady = null; return; }
                     if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
-                    isLoadingSong = false;
+                    syncSongLoadingState(false);
                     return;
                 }
 
-                /* 预加载模式：不调用 play()（浏览器自动播放策略），标记就绪并预先加载 AI 情感词分析 */
+                /* 预加载模式：等待歌词就绪后标记就绪并预先加载 AI 情感词分析 */
                 if (preloadOnly) {
+                    await _lyricsTask;
+                    if (gen !== playbackGeneration) return;
                     preloadedSongReady = true;
                     if (typeof triggerAiAnalysisIfNeeded === 'function') {
                         /* silent：这条路径没有用户手势（开机预加载），不能弹 AI 反代隐私确认 */
@@ -1166,6 +1311,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                             if (typeof triggerPostLoadTasks === 'function') triggerPostLoadTasks({ gen: gen });
                         }).catch(err => {
                             if (gen !== playbackGeneration) return;
+                            if (_resolveCacheKey) invalidateResolvedPlayByTrack(effSource, songId, playUrl);
                             handleAudioPlayError();
                             logError('trackIndexOnline', '预加载后播放失败:', err);
                         });
@@ -1187,10 +1333,13 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     const _preload = nextSongPreload;
                     const _songKey = `${effSource}:${songInfo.id}`;
                     const _usedPreload = _preload && _preload.key === _songKey;
-                    /* AI 智能分析：始终走实时分析路径（不再使用预加载的AI主题，确保情感词正确渲染） */
-                    if (typeof triggerAiAnalysisIfNeeded === 'function') {
-                        triggerAiAnalysisIfNeeded();
-                    }
+                    /* AI 智能分析：等歌词管线写入 state.lyrics 后再触发，确保情感词分析有词可读 */
+                    _lyricsTask.then(() => {
+                        if (gen !== playbackGeneration) return;
+                        if (typeof triggerAiAnalysisIfNeeded === 'function') {
+                            triggerAiAnalysisIfNeeded();
+                        }
+                    }).catch(e => logCatch('trackIndexOnline', e));
                     /* 高潮检测：优先使用预加载的高潮段落 */
                     if (_usedPreload && _preload.chorusSegments) {
                         globalThis.currentChorusSegments = _preload.chorusSegments;
@@ -1202,12 +1351,13 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     }
                     /* 清除预加载缓存 */
                     nextSongPreload = null;
-                    /* 延迟触发下一首歌的预加载 */
+                    /* 紧随切歌后触发下一首与邻近曲目预热 */
                     if (typeof preloadNextSong === 'function') {
-                        setTimeout(() => preloadNextSong(), 2000);
+                        setTimeout(() => preloadNextSong(), 800);
                     }
                 }).catch(err => {
                     if (gen !== playbackGeneration) return;  /* 已过期，不处理 */
+                    if (_resolveCacheKey) invalidateResolvedPlayByTrack(effSource, songId, playUrl);
                     handleAudioPlayError();
                     logError('trackIndexOnline', '播放失败:', err);
                     if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
@@ -1219,6 +1369,7 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
             } catch (err) {
                 /* 代际检查：如果是过期请求的错误，不处理，避免干扰新歌 */
                 if (gen !== playbackGeneration) return;
+                invalidateResolvedPlayByTrack(effSource, songId);
                 logError('trackIndexOnline', '加载歌曲出错:', err);
                 /* 预加载模式下直接标记失败，不重试 */
                 if (preloadOnly) { preloadedSongReady = null; return; }
@@ -1231,11 +1382,11 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
                     if (statusEl) statusEl.textContent = '加载失败';
                 }
                 /* 所有类型的错误（音频加载失败、网络请求失败等）都尝试重试 */
-                if (handlePlayFailure(songInfo, skipPlaylistUpdate)) return;
+                if (handlePlayFailure(songInfo, skipPlaylistUpdate, gen)) return;
             } finally {
                 /* 只有最新代际才能重置 isLoadingSong，避免旧请求的 finally 干扰新请求 */
                 if (gen === playbackGeneration) {
-                    isLoadingSong = false;
+                    syncSongLoadingState(false);
                 }
             }
         }
@@ -1243,14 +1394,12 @@ document.querySelectorAll('.chorus-marker').forEach(el => {
 /* ========== 初始化 ========== */
 function initPlayer() {
             /* 使用当前音量变量设置音量和音量条（对数曲线） */
-            volumeBar.style.width = `${volume}%`;
+            const safeVol = (typeof volume === 'number' && Number.isFinite(volume))
+                ? Math.max(0, Math.min(100, Math.round(volume)))
+                : (playerConfig.defaultVolume ?? 80);
+            volume = safeVol;
+            if (volumeBar) volumeBar.style.width = `${volume}%`;
             audio.volume = volumePercentToGain(volume);
-            /* 确保音量不为0，如果为0则恢复到默认音量 */
-            if (audio.volume === 0) {
-                volume = playerConfig.initialVolume;
-                audio.volume = volumePercentToGain(volume);
-                volumeBar.style.width = `${volume}%`;
-            }
 
             totalTimeEl.textContent = '00:00';
 

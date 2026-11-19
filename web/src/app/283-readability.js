@@ -56,7 +56,7 @@ const SHARP_BG_WASH = 0.12;
       也不该按封面主色去走「亮档」的厚底衬+提字色（上一版就是这么错的：
       词云实测被叠了 0.40 的压暗膜，压在本就 0.82 的舞台遮罩上，糊成一片）。
    两类统一走暗档：底衬收到最弱、投影单层、不出描边、不提字色。 */
-const SELF_DARK_STAGES = ['view-letterpress', 'view-neon', 'view-tunnel', 'view-dimension', 'view-pv', 'view-flyin', 'view-wordcloud'];
+const SELF_DARK_STAGES = ['view-letterpress', 'view-neon', 'view-tunnel', 'view-dimension', 'view-pv', 'view-flyin', 'view-wordcloud', 'view-prism', 'view-astrolabe', 'view-vitrail', 'view-focalcut'];
 
 /* 动态拼串（i18n observer 只扫 UI 弹层根，右上角按钮不在内）按 280/285 的做法自组。
    措辞刻意不再列「描边、底衬、压暗背景」——那三件套是上一版的做法，
