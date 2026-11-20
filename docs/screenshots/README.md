@@ -14,7 +14,7 @@
 | jizura.jpg | 字面 · Jizura（日系动态文字 PV） |
 | verse.jpg | 诗镜 · Verse（多镜头歌词影像） |
 | wordcloud.jpg | 云涌 · WordCloud（星轨词云与景深虚化） |
-| mondrian.png | 格律 · Mondrian（蒙德里安色块拼画） |
+| mondrian.jpg | 格律 · Mondrian（夜间风格派蒙德里安色块拼画） |
 | flyin.jpg | 飞白 · Fly-In（巨幕逐字飞入） |
 | lyrics.jpg | 拾光 · Lyrics（沉浸逐字歌词） |
 | cover.jpg | 默认模式 · Default（封面与歌词并排） |

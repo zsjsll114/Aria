@@ -509,8 +509,9 @@
             text-align: center;
             color: rgba(255, 255, 255, 0.56);
             font-size: 13px;
-            margin: 14px auto;
-            max-width: 440px;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 14px 0;
             padding: 28px 20px;
             border-radius: 16px;
             background: rgba(14, 16, 22, 0.44);

@@ -64,7 +64,7 @@ Fourteen modes organized into four visual families (Classic Lyrics / Spatial & P
   <tr>
     <td align="center"><img src="docs/screenshots/verse.jpg" width="100%" alt="Verse"><br><sub><b>Verse</b></sub></td>
     <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="WordCloud"><br><sub><b>WordCloud</b></sub></td>
-    <td align="center"><img src="docs/screenshots/mondrian.png" width="100%" alt="Mondrian"><br><sub><b>Mondrian</b></sub></td>
+    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="Mondrian"><br><sub><b>Mondrian</b></sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/flyin.jpg" width="100%" alt="Fly-In"><br><sub><b>Fly-In</b></sub></td>

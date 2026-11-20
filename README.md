@@ -67,7 +67,7 @@
   <tr>
     <td align="center"><img src="docs/screenshots/verse.jpg" width="100%" alt="诗镜 · Verse"><br><sub><b>诗镜 · Verse</b></sub></td>
     <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="云涌 · WordCloud"><br><sub><b>云涌 · WordCloud</b></sub></td>
-    <td align="center"><img src="docs/screenshots/mondrian.png" width="100%" alt="格律 · Mondrian"><br><sub><b>格律 · Mondrian</b></sub></td>
+    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="格律 · Mondrian"><br><sub><b>格律 · Mondrian</b></sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/flyin.jpg" width="100%" alt="飞白 · Fly-In"><br><sub><b>飞白 · Fly-In</b></sub></td>
