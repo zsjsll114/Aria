@@ -62,14 +62,19 @@ Fourteen modes organized into four visual families (Classic Lyrics / Spatial & P
     <td align="center"><img src="docs/screenshots/jizura.jpg" width="100%" alt="Jizura"><br><sub><b>Jizura</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/tempera.jpg" width="100%" alt="Tempera"><br><sub><b>Tempera</b></sub></td>
     <td align="center"><img src="docs/screenshots/verse.jpg" width="100%" alt="Verse"><br><sub><b>Verse</b></sub></td>
-    <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="WordCloud"><br><sub><b>WordCloud</b></sub></td>
-    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="Mondrian"><br><sub><b>Mondrian</b></sub></td>
+    <td align="center"><img src="docs/screenshots/dimension.jpg" width="100%" alt="Dimension"><br><sub><b>Dimension</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="WordCloud"><br><sub><b>WordCloud</b></sub></td>
+    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="Mondrian"><br><sub><b>Mondrian</b></sub></td>
     <td align="center"><img src="docs/screenshots/flyin.jpg" width="100%" alt="Fly-In"><br><sub><b>Fly-In</b></sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/lyrics.jpg" width="100%" alt="Lyrics"><br><sub><b>Lyrics</b></sub></td>
     <td align="center"><img src="docs/screenshots/cover.jpg" width="100%" alt="Default"><br><sub><b>Default</b></sub></td>
+    <td align="center"></td>
   </tr>
 </table>
 

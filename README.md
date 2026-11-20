@@ -65,14 +65,19 @@
     <td align="center"><img src="docs/screenshots/jizura.jpg" width="100%" alt="字面 · Jizura"><br><sub><b>字面 · Jizura</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/tempera.jpg" width="100%" alt="版画 · Tempera"><br><sub><b>版画 · Tempera</b></sub></td>
     <td align="center"><img src="docs/screenshots/verse.jpg" width="100%" alt="诗镜 · Verse"><br><sub><b>诗镜 · Verse</b></sub></td>
-    <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="云涌 · WordCloud"><br><sub><b>云涌 · WordCloud</b></sub></td>
-    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="格律 · Mondrian"><br><sub><b>格律 · Mondrian</b></sub></td>
+    <td align="center"><img src="docs/screenshots/dimension.jpg" width="100%" alt="穿行 · Dimension"><br><sub><b>穿行 · Dimension</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/wordcloud.jpg" width="100%" alt="云涌 · WordCloud"><br><sub><b>云涌 · WordCloud</b></sub></td>
+    <td align="center"><img src="docs/screenshots/mondrian.jpg" width="100%" alt="格律 · Mondrian"><br><sub><b>格律 · Mondrian</b></sub></td>
     <td align="center"><img src="docs/screenshots/flyin.jpg" width="100%" alt="飞白 · Fly-In"><br><sub><b>飞白 · Fly-In</b></sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/lyrics.jpg" width="100%" alt="拾光 · Lyrics"><br><sub><b>拾光 · Lyrics</b></sub></td>
     <td align="center"><img src="docs/screenshots/cover.jpg" width="100%" alt="默认模式 · Default"><br><sub><b>默认模式 · Default</b></sub></td>
+    <td align="center"></td>
   </tr>
 </table>
 

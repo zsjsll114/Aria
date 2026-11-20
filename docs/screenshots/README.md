@@ -12,7 +12,9 @@
 | folio.jpg | 画册 · Folio（瑞士天体海报构图） |
 | letterpress.jpg | 活字 · Letterpress（铅字字盘矩阵与棉纸压印） |
 | jizura.jpg | 字面 · Jizura（日系动态文字 PV） |
+| tempera.jpg | 版画 · Tempera（蛋彩网点印刷风歌词 PV） |
 | verse.jpg | 诗镜 · Verse（多镜头歌词影像） |
+| dimension.jpg | 穿行 · Dimension（3D 空间粒子流体与漂浮点阵立方体） |
 | wordcloud.jpg | 云涌 · WordCloud（星轨词云与景深虚化） |
 | mondrian.jpg | 格律 · Mondrian（夜间风格派蒙德里安色块拼画） |
 | flyin.jpg | 飞白 · Fly-In（巨幕逐字飞入） |
