@@ -97,11 +97,16 @@ def main():
         page.wait_for_timeout(2500)
         page.evaluate("() => ['ariaOobeOverlay','welcomeOverlay'].forEach(id => { const e=document.getElementById(id); if(e) e.setAttribute('style','display:none !important'); })")
 
-        wav_a = "data:audio/wav;base64," + beated_wav_b64(seconds=30, fade_tail_s=2.0)
-        wav_b = "data:audio/wav;base64," + beated_wav_b64(seconds=20, fade_tail_s=2.0)
+        # ★ 时长必须显著大于 scheduler.AUTOMIX_DEFAULTS.armLeadMs（26s）：
+        #   - wav_a=36s：步骤 1 播放 ~3s 后剩余 ~33s > 26s，不会在步骤 2 seek 前提前 ARM；
+        #   - wav_b=40s：甲→乙 3s 交叉结束后 乙 剩余 ~37s > 26s，留足 11s 静默窗给步骤 4~7
+        #     采样 IDLE / 元数据 / 旧 deck 收尾，防止慢速 CI 上 乙 刚落地就触发第二轮 乙→甲
+        #     把 activeDeck 翻回 甲（原 20s < 26s 会在 100ms 轮询间隙内立刻从 IDLE 跳回 ARMED）。
+        wav_a = "data:audio/wav;base64," + beated_wav_b64(seconds=36, fade_tail_s=2.0)
+        wav_b = "data:audio/wav;base64," + beated_wav_b64(seconds=40, fade_tail_s=2.0)
 
         setup = page.evaluate(SETUP, {"wavA": wav_a, "wavB": wav_b})
-        check("audio-loaded", setup["ready"] >= 1 and abs(setup["duration"] - 30.0) < 0.5, setup)
+        check("audio-loaded", setup["ready"] >= 1 and abs(setup["duration"] - 36.0) < 0.5, setup)
 
         # 模块句柄（同 URL 动态 import = 与分片共享同一实例）
         page.evaluate("""async () => {
