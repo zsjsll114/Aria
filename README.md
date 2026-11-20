@@ -13,7 +13,7 @@
 [![Release](https://img.shields.io/github/v/release/zsjsll114/Aria)](https://github.com/zsjsll114/Aria/releases/latest)
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![CI](https://img.shields.io/actions/workflows/ci.yml/badge.svg)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/zsjsll114/Aria/ci.yml?branch=main&label=CI)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
 [![Node](https://img.shields.io/badge/node-20.19%2B%20or%2022.13%2B-green)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-green)]()
