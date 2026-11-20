@@ -29,6 +29,17 @@ let lastLyricsRef = null;   /* 引用比较：切歌/重解析时自动重编译
 let lastEmotionRef = null;  /* 引用比较：AI 情感词更新时刷新 wordColors */
 let lastFontKey = null;     /* 引用比较：全局字体设置变更时热切换（Pixi 字体烘焙进 TextStyle，CSS 变量无效） */
 let freqBuf = null;         /* 音频驱动用的可复用频谱缓冲（按 analyser.frequencyBinCount 尺寸，见 pushAudioLevels） */
+let clockInited = false;
+let clockRawSec = 0;
+let clockSmoothSec = 0;
+let clockPerfMs = 0;
+
+function resetAudioClock() {
+    clockInited = false;
+    clockRawSec = 0;
+    clockSmoothSec = 0;
+    clockPerfMs = 0;
+}
 
 /** 情感词 → 上游 theme.wordColors 形状（[{word,color}]，TextViewBuilder isKeyword 消费） */
 function emotionWordsToColors(list) {
@@ -74,14 +85,52 @@ function applyStoredModeSettings() {
     } catch { /* 设置形状异常不阻塞进入 */ }
 }
 
+function rawAudioBaseTimeSec() {
+    const audio = typeof document !== 'undefined' ? document.getElementById('audioPlayer') : null;
+    const sec = audio && Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    return { audio, sec };
+}
+
 function audioTime() {
-    /* ★ 与 70 主循环同一公式（2026-09-29）：audio.currentTime*1000 + lyricOffset(毫秒)
-       再 /1000 转秒——此前直接用 audio.currentTime（秒）但没加偏移，且与旧 PV 的
-       ((currentTime + lyricOffset) / 1000) 公式不一致，歌词偏移在 sonnet 里不生效。 */
-    const audio = document.getElementById('audioPlayer');
-    const baseMs = (audio ? audio.currentTime : 0) * 1000;
-    const offset = typeof globalThis.lyricOffset === 'number' ? globalThis.lyricOffset : 0;
-    return (baseMs + offset) / 1000;
+    /* ★ 与 70 主循环同一公式 + 亚帧单调锁相插值（2026-11-20）：
+       Chromium 的 audio.currentTime 按音频缓冲量子刷新（10~25ms 才跳一格），在 60/120/144Hz
+       显示器直接读原值会出现连续两帧时间为 0 步进随后突跳 2~3 倍的微卡顿；用 performance.now()
+       做单调 PLL 亚帧插值（seek / 暂停 / 偏移>80ms 立即硬对齐），高刷下逐帧绝对均匀丝滑。 */
+    const { audio, sec: rawSec } = rawAudioBaseTimeSec();
+    const offsetSec = (typeof globalThis.lyricOffset === 'number' ? globalThis.lyricOffset : 0) / 1000;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const isPlayingNow = Boolean(audio && !audio.paused && (typeof document === 'undefined' || !document.hidden));
+
+    if (!isPlayingNow) {
+        clockInited = true;
+        clockRawSec = rawSec;
+        clockSmoothSec = rawSec;
+        clockPerfMs = now;
+        return rawSec + offsetSec;
+    }
+
+    const rate = (audio && Number.isFinite(audio.playbackRate) && audio.playbackRate > 0) ? audio.playbackRate : 1;
+    if (!clockInited || rawSec < clockRawSec - 0.01 || Math.abs(rawSec - clockSmoothSec) > 0.08) {
+        clockInited = true;
+        clockRawSec = rawSec;
+        clockSmoothSec = rawSec;
+        clockPerfMs = now;
+        return rawSec + offsetSec;
+    }
+
+    const dtSec = Math.max(0, Math.min(0.05, (now - clockPerfMs) * 0.001)) * rate;
+    let est = clockSmoothSec + dtSec;
+    if (Math.abs(rawSec - clockRawSec) > 1e-4) {
+        clockRawSec = rawSec;
+        est += Math.max(-0.015, Math.min(0.015, (rawSec - est) * 0.25));
+    }
+    /* 上限防超前冻结：外推最多超前最新音频采样 45ms，且严格单调不回退 */
+    if (est > clockRawSec + 0.045) est = clockRawSec + 0.045;
+    if (est < clockSmoothSec) est = clockSmoothSec;
+
+    clockSmoothSec = est;
+    clockPerfMs = now;
+    return est + offsetSec;
 }
 
 /* ★ 2026-10-11 纯音乐（上游 songHandover.ts 的 decideSongCommit + VisualizerSonnet.tsx:89-107）：
@@ -185,10 +234,17 @@ function tickBody() {
            仅监听 key 变化会永远停在回退栈（用户实测「不能跟随全局字体」的根因）。
            栈变化（含注册完成、用户换字体）即重烘焙。 */
         try {
-            const stack = currentFontStack();
-            if (stack && stack !== engine.fontFamily) {
-                engine.fontFamily = stack;
-                engine.invalidateScenes();
+            const pvFont = globalThis.appSettings?.modeSettings?.pv?.fontFamily;
+            const explicitPvFont = pvFont && pvFont !== 'default' && pvFont !== 'inherit';
+            if (!explicitPvFont) {
+                const stack = currentFontStack();
+                if (stack && stack !== lastFontKey) {
+                    lastFontKey = stack;
+                    if (stack !== engine.fontFamily) {
+                        engine.fontFamily = stack;
+                        engine.invalidateScenes();
+                    }
+                }
             }
         } catch { /* 字体管理器未就绪 */ }
         /* 音频驱动：必须在 update 之前灌，本帧的 MG 才能拿到当前响度 */
@@ -212,11 +268,22 @@ function suspendRaf() {
 }
 
 function startTicker() {
-    /* ★ 2026-10-03 幂等重启：此前只在 rafId === null 时启动——而 tick 内异常中断时
-       rafId 会留下一个「非 null 的死 id」（旧代码的崩溃后遗症），此后再也不重启。
-       现在先取消旧句柄再无条件调度，任何入口调用都能让渲染循环复活。 */
+    /* ★ 2026-11-20 单一 rAF 合拍：优先通过 engine.onBeforeTick 在 Pixi app.ticker
+       同一帧渲染前就地更新时间/歌词/频谱，彻底消除双 rAF 相位错位与 1 帧滞后。 */
     if (rafId !== null) {
         try { cancelAnimationFrame(rafId); } catch { /* 句柄已失效 */ }
+        rafId = null;
+    }
+    if (engine && engine.app && engine.app.ticker) {
+        engine.onBeforeTick = () => {
+            if (!engine || suspended) return;
+            try {
+                tickBody();
+            } catch (e) {
+                logCatch('sonnetMode', e);
+            }
+        };
+        return;
     }
     rafId = requestAnimationFrame(tick);
 }
@@ -278,8 +345,8 @@ export async function ensureSonnetEngine(container) {
         container.appendChild(engine.canvas);
     }
     suspended = false;
+    resetAudioClock();
     /* ★ 2026-10-01：suspend 时 app.stop() 了，恢复进入必须重启 ticker（配对 setPaused） */
-    engine.setPaused(false);
     const current = (typeof globalThis.lyrics !== 'undefined' && Array.isArray(globalThis.lyrics))
         ? globalThis.lyrics : [];
     if (current !== lastLyricsRef) {
@@ -288,6 +355,7 @@ export async function ensureSonnetEngine(container) {
     }
     engine.update(audioTime());
     startTicker();
+    engine.setPaused(false);
     return engine;
 }
 
@@ -314,20 +382,25 @@ export function updateSonnetEngine(timeSec) {
 /** 切走时挂起：停渲染省 GPU，引擎与场景缓存保留（切回秒恢复） */
 export function suspendSonnetEngine() {
     suspended = true;
+    resetAudioClock();
     if (rafId !== null) {
         try { cancelAnimationFrame(rafId); } catch { /* 句柄已失效 */ }
         rafId = null;
     }
-    if (engine) engine.setPaused(true);
+    if (engine) {
+        engine.onBeforeTick = null;
+        engine.setPaused(true);
+    }
 }
 
 /** 从后台节流恢复诗镜渲染循环 */
 export function resumeSonnetEngine() {
     if (!engine) return;
     suspended = false;
-    engine.setPaused(false);
+    resetAudioClock();
     engine.update(audioTime());
     startTicker();
+    engine.setPaused(false);
 }
 
 export function isSonnetRunning() {
@@ -336,11 +409,14 @@ export function isSonnetRunning() {
 
 /** 真正销毁（页面卸载/内存回收） */
 export function destroySonnetEngine() {
+    resetAudioClock();
+    lastFontKey = null;
     if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
     }
     if (engine) {
+        engine.onBeforeTick = null;
         engine.destroy();
         engine = null;
     }

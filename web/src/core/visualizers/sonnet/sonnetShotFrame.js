@@ -29,7 +29,6 @@ import {
 import { hashSonnetSeed } from './sonnetRandom.js';
 import { isSonnetEmphasisRole } from './sonnetTypographyLayout.js';
 import { resolveSonnetSegmentCameraFocus } from './sonnetCameraTracking.js';
-import { clampSonnetScreenContainerTransform } from './sonnetViewportFit.js';
 
 // src/components/visualizer/sonnet/sonnetShotFrame.ts
 // 单个 shot 的逐帧姿态：镜头运动、间隙漂移与呼吸、逐段落焦点跟踪、MG / 引导线 / 开放画框时间，
@@ -156,17 +155,10 @@ export const updateSonnetShot = (
         currentFocusY = smoothedFocus.y;
     }
 
-    const pc = view.pivotClamp;
-    let px = view.basePivotX + (currentFocusX - view.basePivotX) * camera;
-    let py = view.basePivotY + (currentFocusY - view.basePivotY) * camera;
-    if (pc) {
-        if (Number.isFinite(pc.fxMin) && Number.isFinite(pc.fxMax) && pc.fxMin <= pc.fxMax) {
-            px = Math.max(pc.fxMin, Math.min(pc.fxMax, px));
-        }
-        if (Number.isFinite(pc.fyMin) && Number.isFinite(pc.fyMax) && pc.fyMin <= pc.fyMax) {
-            py = Math.max(pc.fyMin, Math.min(pc.fyMax, py));
-        }
-    }
+    /* ★ 2026-11-20 恢复 folia 原生连续运镜与焦点追踪：不在逐帧态叠加 pivotClamp / 屏幕边距硬墙，
+       避免追踪 span 被锁死为 0、长扫镜被钉在边框或跨越边线瞬间产生 ~10-15px/帧的画面跳变。 */
+    const px = view.basePivotX + (currentFocusX - view.basePivotX) * camera;
+    const py = view.basePivotY + (currentFocusY - view.basePivotY) * camera;
     view.container.pivot.set(px, py);
 
     // 集成约定 4：`* zoomScale` 是本仓「默认焦距(镜头特写)」旋钮；上游此处无此因子。
@@ -180,24 +172,6 @@ export const updateSonnetShot = (
     ) * camera;
     view.container.x = view.baseX + (cameraFrame.x * width + shake.x * width) * camera;
     view.container.y = view.baseY + (cameraFrame.y * height + shake.y * height) * camera;
-
-    if (view.contentBounds) {
-        const clamped = clampSonnetScreenContainerTransform(view.contentBounds, {
-            width,
-            height,
-            marginX: Math.max(36, width * 0.065),
-            marginY: Math.max(32, height * 0.075),
-            pivotX: px,
-            pivotY: py,
-            x: view.container.x,
-            y: view.container.y,
-            scale: view.container.scale.x,
-            rotation: view.container.rotation,
-        });
-        view.container.scale.set(clamped.scale);
-        view.container.x = clamped.x;
-        view.container.y = clamped.y;
-    }
 
     const { mgLayer, mgParticleLayer, mgFixedGeoLayer } = SHOT_MG_LAYERS(view);
 

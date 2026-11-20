@@ -47,7 +47,7 @@ import { SonnetOutroBlur } from './sonnetOutroBlur.js';
    挂在 stage 上与场景容器并列，不随运镜/转场移动 */
 import { drawSonnetFrameOverlay } from './sonnetFrameOverlay.js';
 import { hashSonnetSeed } from './sonnetRandom.js';
-import { computeSonnetContentBounds, fitSonnetPlacementsToSafeArea, clampSonnetPivotToViewport } from './sonnetViewportFit.js';
+import { computeSonnetContentBounds, fitSonnetPlacementsToSafeArea, clampSonnetPivotToViewport, hasVerticalSonnetContent } from './sonnetViewportFit.js';
 import { sanitizeCssFontFamily } from '../../../utils/fontStacks.js';
 
 const FALLBACK_FONT = '"Noto Sans SC", "Microsoft YaHei", sans-serif';
@@ -457,8 +457,10 @@ export class SonnetEngine {
     }
 
     _tick = () => {
-        if (!this.app || this.destroyed || this.paused || !this.program) return;
+        if (!this.app || this.destroyed || this.paused) return;
         try {
+            if (typeof this.onBeforeTick === 'function') this.onBeforeTick();
+            if (!this.program) return;
             this._tickInner();
         } catch (e) {
             /* 帧内异常落到 _lastError 供诊断探针读取；吞掉以保渲染循环存活 */
@@ -705,6 +707,7 @@ export class SonnetEngine {
         /* ★ 后期滤镜链（lens→noise→contrast→print，上游 applySonnetScenePostProcess）
            与转场 blur 并存：container.filters = [blur, ...post] */
         const blurFilter = new BlurFilter({ strength: 0, quality: 2 });
+        blurFilter.enabled = false;
         const profile = resolveSonnetPostProcessProfile(this.theme, this.tuning, false);
         const postFilters = applySonnetScenePostProcess(
             { Container, Graphics, Text, TextStyle, BlurFilter, Color, Filter, GlProgram, UniformGroup, NoiseFilter, ColorMatrixFilter, Texture },
@@ -857,26 +860,37 @@ export class SonnetEngine {
                hero 恒居画面正中，support/装饰围绕（fit 已保证整体在安全区）。
                追踪出发点=hero（applyShotCamera 里 ×0.2+clamp）。 */
             const heroPlacement = placements.find(p => p.role === 'hero');
-            const piv = clampSonnetPivotToViewport({
-                boxes: placements,
-                heroPlacement,
-                isPosterBlocks: shot.kind === 'poster-blocks',
-                width,
-                height,
-                rawHeight,
-                cameraX: shot.camera.x,
-                cameraY: shot.camera.y,
-                cameraZoom: shot.camera.zoom,
-                cameraZoomScale: this.cameraZoomScale,
-                isCompactStage,
-            });
+            const isPoster = shot.kind === 'poster-blocks';
+            const rawFocusX = isPoster ? 0 : (heroPlacement ? heroPlacement.x : 0);
+            const rawFocusY = isPoster ? 0 : (heroPlacement ? heroPlacement.y : 0);
+            const piv = hasVerticalSonnetContent(placements)
+                ? clampSonnetPivotToViewport({
+                    boxes: placements,
+                    heroPlacement,
+                    isPosterBlocks: isPoster,
+                    width,
+                    height,
+                    rawHeight,
+                    cameraX: shot.camera.x,
+                    cameraY: shot.camera.y,
+                    cameraZoom: shot.camera.zoom,
+                    cameraZoomScale: this.cameraZoomScale,
+                    isCompactStage,
+                })
+                : {
+                    focusX: isCompactStage ? rawFocusX * 0.35 : rawFocusX,
+                    focusY: isCompactStage ? rawFocusY * 0.35 : rawFocusY,
+                    baseX: width * (isPoster ? 0.5 : 0.5 + shot.camera.x * (isCompactStage ? 0.35 : 1)),
+                    baseY: isPoster
+                        ? height / 2
+                        : (isCompactStage ? height / 2 : rawHeight / 2) + shot.camera.y * height * (isCompactStage ? 0.1 : 0.2),
+                };
             shotContainer.pivot.set(piv.focusX, piv.focusY);
             shotContainer.position.set(piv.baseX, piv.baseY);
             shotView.baseX = piv.baseX;
             shotView.baseY = piv.baseY;
             shotView.basePivotX = piv.focusX;
             shotView.basePivotY = piv.focusY;
-            shotView.pivotClamp = { fxMin: piv.fxMin, fxMax: piv.fxMax, fyMin: piv.fyMin, fyMax: piv.fyMax };
             shotView.contentBounds = computeSonnetContentBounds(placements);
 
             shotContainer.visible = false;
@@ -939,6 +953,7 @@ export class SonnetEngine {
         scene.container.scale.set(tf.scale);
         scene.container.rotation = tf.rotation;
         scene.blurFilter.blur = tf.blur;
+        scene.blurFilter.enabled = tf.blur > 0.01;
         if (scene.transitionGlitchEffect && scene.transitionGlitchEffect.filter) {
             scene.transitionGlitchEffect.update(tf.glitch, tf.glitchSeed);
             scene.transitionGlitchEffect.filter.enabled = tf.glitch > 0.01;

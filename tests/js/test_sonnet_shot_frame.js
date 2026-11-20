@@ -254,3 +254,36 @@ test('SF8 缺件不抛：没有 MG / 没有 frameDecor / 没有 update 的引导
 	const eased = Math.asin(seg.guide.container.alpha / 0.6) / Math.PI;
 	assert.ok(Math.abs(seg.guide.container.scale.x - (0.76 + eased * 0.24)) < 1e-9);
 });
+
+test('SF9 连续平滑运镜与追踪：不被 pivotClamp / 屏边距硬墙锁死或跳变（2026-11-20 修复）', () => {
+	const shot = {
+		id: 'shot-ribbon', kind: 'tracking-ribbon', startTime: 0, endTime: 4, cues: [],
+		camera: { zoom: 1.25, rotation: 0.01, x: 0.02, y: 0.01 },
+	};
+	const g1 = glyphOf(0.2, 0.8, { baseX: -520, baseY: 0 });
+	const g2 = glyphOf(1.6, 2.2, { baseX: 0, baseY: 0 });
+	const g3 = glyphOf(3.0, 3.6, { baseX: 520, baseY: 0 });
+	const view = viewOf(shot, [segmentOf([g1, g2, g3])]);
+	/* 即便上游对象残留 contentBounds / pivotClamp 字段，逐帧姿态也不得被硬墙锁死或跳变 */
+	view.contentBounds = { minX: -620, maxX: 620, minY: -80, maxY: 80 };
+	view.pivotClamp = { fxMin: 0, fxMax: 0, fyMin: -10, fyMax: 10 };
+
+	let prevX = null;
+	let maxStepDx = 0;
+	const pivots = [];
+	const xs = [];
+	for (let k = 0; k <= 100; k++) {
+		const t = (4 * k) / 100;
+		updateSonnetShot(view, t, W, H, 0, ctxOf());
+		if (prevX !== null) maxStepDx = Math.max(maxStepDx, Math.abs(view.container.x - prevX));
+		prevX = view.container.x;
+		pivots.push(view.container.pivot.x);
+		xs.push(view.container.x);
+	}
+	assert.ok(Math.max(...xs) - Math.min(...xs) > 120,
+		`tracking-ribbon 水平扫镜幅度应完整保留，实得 span=${(Math.max(...xs) - Math.min(...xs)).toFixed(1)}`);
+	assert.ok(Math.max(...pivots) - Math.min(...pivots) > 200,
+		`逐词水平焦点追踪不得被锁死，实得 pivotSpan=${(Math.max(...pivots) - Math.min(...pivots)).toFixed(1)}`);
+	assert.ok(maxStepDx < 8,
+		`单步相机位移不得因硬墙夹紧发生跳变，实得 maxStepDx=${maxStepDx.toFixed(2)}`);
+});
