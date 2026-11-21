@@ -8,27 +8,21 @@
 
 **Aria** 是一款功能完整的在线歌词播放器（桌面应用），核心能力包括：
 
-- 多源在线音乐搜索与播放（QQ 音乐、网易云、酷我、咪咕、聚合兜底、任意存量 API）
-- 逐字（卡拉OK式）歌词高亮渲染，支持原词 / 翻译 / 罗马音三行布局
-- 多种歌词可视化模式（默认模式之外共十一种全屏视觉）：
-  - **拾光 Lyrics**：全屏逐字滚动
-  - **飞白 Fly-In**：逐字飞入发光
-  - **云涌 WordCloud**：二维词云 + 相机跟焦
-  - **诗镜 Verse**：SonnetEngine，folia-major 移植的多镜头歌词影像（巨字特写 / 杂志排版 / 碎片拼贴）
-  - **版画 Tempera**：网点印刷风 PV（色块挖窗 + 歌词反色 + 121 种镜头变体）
-  - **格律 Mondrian**：色块拼画，按句组轮换预设布局
-  - **黑胶 Vinyl**：封面作为唱片标签缓慢转动，歌词像内页排在旁边，唱臂随进度从外圈移向中心；长句自动分行，换句接力滚动
-  - **穿行 Dimension**：浮空层叠的三维歌词
-  - **活字 Letterpress**：印刷压印隐喻，纸色随段落情绪
-  - **字面 Jizura**：日系文字 PV 引擎（JIZURA 移植，MIT）
-  - 霓虹 Neon 已于 2026-10-11 整体退役（不可达的 `NeonVisualizer.js` 删除、`neon.css` 从 `index.html` 摘链留档）；长卷 Scroll 已于 2026-10-05 整体删除
+- 多源在线音乐搜索与播放（QQ 音乐、酷狗、网易云、酷我、聚合/咪咕兜底及本机自建服务）
+- 逐字（卡拉OK式）歌词高亮渲染，支持原词 / 翻译 / 罗马音三行布局与 RTL 适配
+- **14 种歌词可视化模式**（四大视觉家族，详见 §23）：
+  - **经典歌词**：**默认模式 Cover**（双栏/窄屏双页）、**拾光 Lyrics**（全屏逐字滚动）、**飞白 Fly-In**（巨幕海报字号逐字飞入）
+  - **空间粒子**：**云涌 WordCloud**（黄金角星轨词云与景深虚化）、**格律 Mondrian**（夜间风格派色块拼画，8 种构图）、**穿行 Dimension**（3D 粒子流体与漂浮逐字）、**棱镜 Prism**（6 家族 × 6 镜 = 36 种光学晶体切面分镜）
+  - **动态分镜**：**诗镜 Verse**（`SonnetEngine`，folia-major 移植的多镜头歌词影像）、**画册 Folio**（`astrolabe`，9 家族 × 6 镜 = 54 种破框天体海报构图）、**镜幕 FocalCut**（2.5D 建筑展墙摄影棚与光学扫字）
+  - **版画建筑**：**活字 Letterpress**（金属字盘矩阵 + 棉纸压印）、**字面 Jizura**（MIT 协议日系文字 PV 引擎，27 套版式 × 860 部件）、**琉璃龛 Vitrail**（WebGL2 3D 光学圣殿，8 种空间原型）、**版画 Tempera**（`TemperaEngine`，121 种网点印刷风镜头）
+  - **已退役 / 移除模式**：长卷 Scroll（2026-10-05 删除）、霓虹 Neon（2026-10-11 退役）、黑胶 Vinyl（v3.0 移除，原规范存档于 `docs/歌词模式视觉规范.md`）
 - 手机遥控器（`--lan` 模式下手机浏览器访问 `/remote.html`，经 `/api/remote/*` 总线远程控制播放）
 - 听歌识曲（Node sidecar 调用 Shazam 指纹识别；Shazam 失败时回退到 Vosk 语音转写 + 歌词反查）
 - 本地音乐管理（上传、结构化落盘、Enhanced LRC 逐字歌词生成）
 - AI 情绪分析（Gemini 或 OpenAI 兼容接口，分析歌词情绪 → 生成主题色 / 驱动视觉模式情绪配色与构图）
-- 桌面歌词悬浮窗（透明、可自由拖动、可锁定穿透、逐字本地插值动画）
-- 收藏 / 歌单 / 歌单导入（网易云、QQ） / 搜索历史 / 快捷键 / 触控手势
-- 10 段音频均衡器、倍速（变速不变调）、下载、无缝切歌淡入淡出
+- 桌面歌词悬浮窗（透明、可自由拖动、可锁定穿透、`BroadcastChannel` + 同源存储同步与逐字本地插值）
+- 收藏 / 歌单 / 歌单导入（网易云、QQ、酷狗） / 智能歌单 / 歌手主页 / 声音手账与听歌统计 / 跟随模式的歌词海报 / MV 背景与 Anime4K 超分
+- 10 段音频均衡器（AutoEQ PEQ 导入 / 分享码）、空间音频（HRTF）/ 虚拟声场、WASAPI 独占输出（桌面版）、Automix 智能过渡、倍速（变速不变调）、下载与无缝淡入淡出
 
 **部署形态**：Web 前端（ES Module 分片架构）+ Python 本地后端（单文件 `server.py`，纯标准库）+ Node 识曲 sidecar + Tauri v2 桌面壳（自动拉起上述两个 sidecar）。
 
@@ -57,7 +51,7 @@
 ├── qq_resolver.py               # QQ 音乐多源解析池（Tier A~D 竞速/降级 + 防试听校验）
 ├── agg_resolver.py              # 聚合跨源兜底（gdstudio：酷我→网易） + 酷我独立源
 ├── local_music_server.py        # 本地音乐扫描 / 音频缓存 / 用户配置 / 字体 / 识曲缓存
-├── selfhost_service.py          # 自建服务四平台副进程托管（酷狗/QQ/网易云/汽水，3100/3200/3201/3300 端口，NODE_OPTIONS 注入 vendor-loopback-guard 收口只绑回环）
+├── selfhost_service.py          # 自建服务三平台副进程托管（酷狗/QQ/网易云，3100/3200/3201 端口，NODE_OPTIONS 注入 vendor-loopback-guard 收口只绑回环）
 ├── remote_bus.py                # 手机遥控器总线（/api/remote/*）
 ├── scripts/
 │   ├── shazam-server.mjs        # ★ Node 识曲 sidecar（18089：/health /proxy /recognize）
@@ -87,26 +81,27 @@
 │   ├── remote.html              # 手机遥控器页面（--lan 模式下供手机访问）
 │   ├── version.json / build_info.json  # 构建版本信息（运行时生成，不入库）
 │   └── src/
-│       ├── app/                 # 71 个分片（000~999）+ index.js 加载器
-│       ├── core/                # 音频/歌词/主题/预览/AI/峰值检测/均衡器/PV/流光隧道/可视化引擎
+│       ├── app/                 # 89 个分片与扩展模块（000~999、selfhost-*）+ index.js 加载器
+│       ├── core/                # 音频/歌词/主题/预览/AI/峰值检测/均衡器/automix/PV/隧道/视觉引擎
 │       ├── core/pvEngine/       # ★ PV 模式（PVEngine + PVLyricLayout + PVCamera + WordSegmenter 等）
 │       ├── core/pvEngine_backup/# PV 引擎旧版备份（已不再使用，勿删，可对照回滚）
 │       ├── core/tunnelEngine/   # ★ 流光隧道/格律（TunnelEngine 主时间线 + Director + Camera + DepthStack + Animations + AILyricSegmenter + mondrianTemplates）
-│       ├── core/visualizers/    # 可视化引擎：VisualizerBase + VisualizerManager + dimension/ + sonnet/（诗镜）+ tempera/（版画）+ Letterpress/Neon
-│       ├── services/            # API、AI、本地音乐、收藏/歌单/字体、歌词匹配等
+│       ├── core/visualizers/    # 可视化引擎：VisualizerBase + VisualizerManager + dimension/ + sonnet/(诗镜) + tempera/(版画) + astrolabe/(画册) + prism/(棱镜) + vitrail/(琉璃龛) + focalcut/(镜幕) + jizura/(字面) + Letterpress
+│       ├── ui/                  # 声明式设置与浮层原语（settingsRenderer / settingsPrimitives / overlay / static-overlays）
+│       ├── vendor/              # 前端三方库：jizura/engine/(39模块) / segmentit / kuromoji
+│       ├── services/            # API、AI、歌手主页、MV/超分、本地音乐、收藏/歌单/字体、歌词匹配等
 │       ├── parsers/             # LRC/YRC/罗马音/KRC/增强LRC/多源合并
 │       ├── infrastructure/      # dom / eventBus / state（状态单一来源）/ globalBridge（globalThis 桥接过渡层）
-│       ├── config/              # constants / defaults / performance
-│       ├── utils/               # colorUtils / formatters / colorMix / fontStacks / lyrics/
-│       ├── font/                # 内置自定义字体文件（.ttf）
-│       ├── img/                 # 内置占位封面等图片
-│       └── styles/              # 全套 CSS
+│       ├── config/              # constants / defaults / performance / settingsNav / settingsSchema / appearanceSchema / themePalette
+│       ├── utils/               # colorUtils / formatters / colorMix / fontStacks / motion / numberStepper / lyrics/
+│       ├── font/                # 内置自定义字体文件（.ttf / .woff2）
+│       ├── img/                 # 内置占位封面与音源图标
+│       └── styles/              # 全套 CSS（含 tokens / motion / appearance / vitrail / prism / astrolabe / focalcut 等）
 ├── cache/                       # 运行时生成：audio/*.mp3(.tmp/.meta/.ok)、recognize/
 ├── local_music/                 # 本地结构化音乐库（每曲一个文件夹）
-├── models/vosk-model-small-cn-0.22/   # Vosk 中文语音模型
-├── new_style/                   # PV 参考素材（帧序列、提示词）
+├── scripts/                     # 打包前准备与 CI 门禁：setup-vendors / shazam-server / vendor-loopback-guard / port-jizura / sync_version / audits/*
+├── tests/                       # Node 单测(tests/js/)、Python 单测(tests/python/)、Playwright E2E(tests/test_*.py)
 ├── StartAria.bat / StopAria.bat / restart-aria.bat / build_portable.bat   # 启动/停止/重启/绿色版打包脚本
-└── 根目录调试/临时文件（非核心，已随旧壳清理删除）: probe_exact.py / probe_from_zero.py / probe_stall.py / repro_stall.py（停滞复现）、diag-webview.mjs（WebView 诊断）、scratch_chunk.js / _idx.html / _t.js / _vk_test.json / _verify_sample.mp3 / __test_font.ttf / node_shazam_temp.pcm / chorus_detection_demo.py / chorus_demo_requirements.txt（频谱/高潮实验）
 ```
 
 ---
@@ -124,15 +119,15 @@
                 │ 前端由 server.exe 提供（exe 不内嵌） │ WebView / 浏览器
 ┌───────────────▼──────────────────────────────────▼─────────────┐
 │  Web 前端 (web/)                                               │
-│  index.html → src/app/index.js → 顺序 import 71 个分片          │
-│  ✦ 分片 000-95：tooltip/配置/渲染/播放引擎基础链路                │
-│  ✦ 分片 100-250：封面/键盘/搜索/收藏/歌单/识曲/歌词源/设置/触控    │
-│  ✦ 分片 251-999：榜单/取链透明化/歌词搜索/工具栏/AI设置/全局审计    │
-│  ✦ core/: lyricEngine / audioPlayer / themeEngine / previewEngine│
-│          / PVEngine / TunnelEngine / VisualizerManager / aiAnalyzer │
-│  ✦ services/: musicApi / aiClient / localMusicManager ...       │
-│  lyrics.html（desktop_lyrics 窗口，经 localStorage + storage     │
-│  事件接收主界面的逐字歌词推送，rAF 本地插值渲染）                  │
+│  index.html → src/app/index.js → 顺序 import 89 个文件         │
+│  ✦ app/ 分片 000-310+999 & selfhost-*: 业务编排与交互           │
+│  ✦ config/ + ui/: 声明式 13 栏设置与「视觉工坊」(4 家族×14 模式)│
+│  ✦ core/: lyricEngine / themeEngine / previewEngine / automix   │
+│          / pvEngine / tunnelEngine / visualizers(sonnet/tempera│
+│            /astrolabe/prism/vitrail/focalcut/jizura) / aiAnalyzer│
+│  ✦ services/ & parsers/: musicApi / aiClient / artistApi / 解析 │
+│  lyrics.html（desktop_lyrics 窗口，BroadcastChannel +           │
+│  localStorage 同源同步，rAF 本地逐字插值渲染）                  │
 └───────────────┬──────────────────────────────────┬─────────────┘
                 │ fetch(同源或跨域走 /proxy)          │
 ┌───────────────▼──────────────────────────────────▼─────────────┐
@@ -154,7 +149,7 @@
 **运行路径**：
 1. Tauri 启动 → Rust `lib.rs` 直接 `spawn` `python server.py` 与 `node scripts/shazam-server.mjs`（不依赖 `cmd &&`）。
 2. WebView 加载 `web/index.html`。
-3. 主界面为单 `module script`（`src/app/index.js`），按编写顺序 import 全部 71 个分片，分片共享全局作用域并彼此 `import` 对方导出的函数。
+3. 主界面为单 `module script`（`src/app/index.js`），按编号顺序 import `web/src/app/` 下的全部分片模块（当前共 89 个文件），配合 `core/`、`config/`、`ui/`、`services/`、`parsers/`、`infrastructure/`、`utils/` 组成 353 个可达/受控模块图。
 4. 前端所有跨域请求（搜索/取链/歌词/CDN 封面）优先走同源 `server.py` 的 `/proxy` 与各 `/api/*`，避免跨域。
 
 ---
@@ -262,8 +257,8 @@
 
 ### 6.1 入口与分片加载机制
 
-- `web/index.html` 仅引入一个 ES Module：`<script type="module" src="./src/app/index.js">`（外加 segmentit / kuromoji 两个 `async` CDN 分析脚本；`async` 非阻塞、不参与 DOMContentLoaded 等待，晚到不影响功能）。
-- `web/src/app/index.js`（自动生成）按**求值顺序** `import` 71 个分片（`000-tooltip.js` → `999-global-audit.js`）。分片间通过 ES module 显式 `import` 共享函数（如 `245-playlist-manager.js` import 20/120/135；`95-track-loading.js` import 20/30/40/65/70/85/120/135/155/180 等），并共用 `globalThis` 上的全局状态（2026-09 起由 `infrastructure/state.js` 单一来源 + `globalBridge.js` 访问器桥接收口中，见 §22）。
+- `web/index.html` 仅引入一个 ES Module：`<script type="module" src="./src/app/index.js">`（中文/日文分词库 `segmentit` / `kuromoji` 由 `index.html` 的按需加载器 `window.__ensureSegLibs()` 在闲时或实际分词时异步注入，不阻塞首屏；参见 `AGENTS.md` 约束 13）。
+- `web/src/app/index.js` 按**求值顺序** `import` `web/src/app/` 下的 89 个模块文件（`000-tooltip.js` ~ `310-media-session.js` → `selfhost-*` → `999-global-audit.js`）。分片间通过 ES module 显式 `import` 共享函数（如 `245-playlist-manager.js` import 20/120/135；`95-track-loading.js` import 20/30/40/65/70/85/120/135/155/180 等），并共用 `globalThis` 上的全局状态（由 `infrastructure/state.js` 单一来源 + `globalBridge.js` 访问器桥接收口中，见 §22）。
 - **防缓存**：分片 import 语句不再带 `?v=`；统一依赖服务端对 js/css/html/json/svg/mjs 强制 `Cache-Control: no-cache`（见 5.1 `_serve_file_with_range`），个别资源仍保留手动版本串（如 `pv-tunnel.css?v=tunnel_fix_2`、`/icons/icon.png?v=aria1`）。
 - 每个分片头部注明"由 `split_app.js` 从原 `web/src/app.js` 拆分，来源区间 X-Y 行"。
 - `web/src/app.js` 原保留作为拆分参照源，已于 2026-09 删除（分片拆分完成、无代码引用）；头部注释中的历史行号仅供溯源。
@@ -324,7 +319,7 @@
 | `201-settings-ai.js` | AI 设置面板（全项目最大单文件，~2400 行）：Key/反代/隐私确认/状态面板，全量 i18n | — |
 | `999-global-audit.js` | 全局审计收尾分片（globalThis 键登记核查） | — |
 
-> 上表为核心分片节选（71 个分片全量见 `app/index.js` 的 import 列表）。分片编号是历史拆分顺序而非职责分层，存在 `135↔130↔120↔150` 循环依赖环（靠分片内 typeof 探测 + 惰性调用装配）——结构债，重构方案见 `docs/模块化重构方案.md`。
+> 上表为核心分片节选（全量 89 个模块按加载顺序见 `app/index.js`）。v3 后期新增分片多以职责命名并配合 `core/` 纯逻辑模块解耦（如 `256-listen-stats`、`297-artist-page`、`304-lyric-poster`、`308/309-jizura-*`、`103-mv-upscale` 等）；早期分片间存在 `135↔130↔120↔150` 循环依赖环（靠 `typeof` 探测 + 惰性调用装配，重构路线见 `docs/模块化重构方案.md`）。
 
 > 注意：`250-desktop-lyrics.js` 是桌面歌词**主界面侧**的控制器；歌词渲染本体在 `lyrics.html`。
 
@@ -347,7 +342,7 @@
 | `dualDeck.js` | 双 deck 管理（Automix）+ **`replaceActiveDeck()`**：把活跃 deck 换成原生替身或换回 HTML，常驻监听成对搬运 | `initDualDeck`、`swapRoles`、`replaceActiveDeck` |
 | `shortcutManager.js` | 键盘快捷键统一管理 | `initShortcutManager()` |
 | `visualizers/VisualizerBase.js` | 可视化渲染器基类：标准化生命周期（`init/setLyrics/update/start/stop/destroy`）+ 通用工具（建容器、resize、rAF 管理）；子类实现 `getModeId()/onInit()` | `VisualizerBase`（`init/update/resize`） |
-| `visualizers/VisualizerManager.js` | 可视化模式调度（dimension / letterpress / neon 注册切换） | `switchMode/setLyrics/update/applySettings` |
+| `visualizers/VisualizerManager.js` | 可视化模式调度（flyin / dimension / letterpress / wordcloud / jizura / astrolabe / prism / vitrail / focalcut 等注册切换） | `switchMode/setLyrics/update/applySettings` |
 | `visualizers/DimensionVisualizer.js` | 浮空模式（Dimension）：**逐字符**染色（非整词）、染色平滑渐变（0.18s 进主题色、唱过停留 0.15s 后 0.45s 变白）、零发光、独立实体空格（`.dim-space`）、摄像机实时平滑追踪唱到字符中心；组合下方四个 dimension/ 子模块 | `onInit/start/stop` |
 | `visualizers/dimension/DimensionAudio.js` | 浮空模式 - 非侵入式安全频谱/节奏分析器（不劫持媒体节点），输出 bass/mid/treble/overall/peakEnergy | `connect()`、`update()` |
 | `visualizers/dimension/DimensionBackground.js` | 浮空模式 - 3D 空间纵深背景（渐变舞台/纵深网格等） | — |
@@ -364,10 +359,16 @@
 | `tunnelEngine/TunnelCameraTrack.js` | 摄像机：Catmull-Rom 组轨道 + 运镜马达混合（push/dive/orbit/spiral…）+ 弹簧速度积分 + 焦点优先锁定 | `update()`、`planGroupTrack()` |
 | `tunnelEngine/TunnelDepthStack.js` | 3D 深度堆叠背景层（演完句组推入 Z 轴）+ 视差/涟漪/运动拉伸/方向光/DOF + 3D 粒子 Canvas | `pushGroupToBackground()`、`update()` |
 | `tunnelEngine/TunnelAnimations.js` | 8 大类 WAAPI 入场/出场库、几何蒙版转场、37 种装饰库（`DECORATION_LIBRARY`）、`splitToCharAnimParams()` 每字独立参数 | `playEnterAnimation()`、`pickDecorationCombo()` |
-| `visualizers/sonnet/`（SonnetEngine 等 ~20 文件） | 诗镜 · Verse 引擎（folia-major 移植）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜池、逐字色散、运镜跟随，纯时间轴驱动。样式选择器中占 `data-mode="pv"` 位 | `SonnetEngine` |
-| `visualizers/tempera/` | 版画 · Tempera 引擎：网点印刷风——色块构图挖窗 + 歌词动态反色 + 121 种镜头变体；`data-mode="tempera"` | — |
+| `visualizers/sonnet/`（SonnetEngine 等 52 个模块） | 诗镜 · Verse 引擎（folia-major 移植）：多镜头歌词影像——巨字特写/杂志排版/碎片拼贴分镜池、逐字色散、连续追踪运镜（rAF 时钟锁相驱动）；样式选择器中占 `data-mode="pv"` 位 | `SonnetEngine` |
+| `visualizers/tempera/`（39 个模块） | 版画 · Tempera 引擎（folia-major 移植）：蛋彩网点印刷风——色块构图挖窗 + 歌词动态反色 + 121 种镜头变体；`data-mode="tempera"` | `TemperaEngine` |
+| `visualizers/astrolabe/`（3 个模块） | 画册 · Folio 引擎：`data-mode="astrolabe"`，9 家族 × 6 镜 = 54 种破框天体圆弧与实色切面 + 8 种排版拓扑与正负形反色 | — |
+| `visualizers/prism/`（4 个模块） | 棱镜 · Prism 引擎：`data-mode="prism"`，6 家族 × 6 镜 = 36 种光学折射切面构图 + 8 种歌词排版流向 + 跨切面色散反色 | — |
+| `visualizers/vitrail/`（9 个模块） | 琉璃龛 · Vitrail 引擎：`data-mode="vitrail"`，原生 WebGL2 3D 光学圣殿，8 种建筑原型随章节巡游 + 6 套建筑美学色板 | — |
+| `visualizers/focalcut/`（3 个模块） | 镜幕 · FocalCut 引擎：`data-mode="focalcut"`，2.5D 建筑展墙摄影棚，曜石暗房/策展纸白双极性、6 种光学运镜与双层扫字 | — |
+| `visualizers/jizura/` + `vendor/jizura/engine/` | 字面 · Jizura 引擎：`data-mode="jizura"`，MIT 协议 JIZURA 引擎移植（39 个引擎模块 + `bootstrap.js` + 4 个 Aria 适配模块），27 套版式 × 860 部件与 AI 推荐选风格 | — |
 
-> **命名陷阱（改这里必读）**：样式选择器的显示名与 `data-mode` 不对应——「格律 · Mondrian」=`tunnel`、`穿行 · Tunnel`=`dimension`、`诗镜 · Verse`=`pv`。新模式 tempera 名实相符。这两个新引擎（sonnet/tempera）不走 VisualizerManager 注册链，由 `220-shortcuts-viewmode.js` 直接调度，切走时的清理由各模式自己的守卫分支负责（注意凝彩清理必须在 `mode!=='pv'` 守卫之外，见 220 内注释）。
+> **命名与调度说明（改这里必读）**：样式显示名与 `data-mode` 仅有两处历史别名——「格律 · Mondrian」使用 `data-mode="tunnel"`、「诗镜 · Verse」使用 `data-mode="pv"`；而「穿行 · Dimension」（`dimension`）与 v3 新增模式（`tempera` / `astrolabe` / `prism` / `vitrail` / `focalcut` / `jizura`）命名均直接对应。全屏引擎与 `VisualizerManager` 在 `220-shortcuts-viewmode.js` 中按模式路由调度，切走时的清理由各自守卫分支负责（注意凝彩清理必须在 `mode!=='pv'` 守卫之外，见 220 内注释）。
+> **已退役模式**：长卷 `scroll`（2026-10-05 删除）、霓虹 `neon`（2026-10-11 退役）、黑胶 `vinyl`（v3.0 移除，见 `docs/歌词模式视觉规范.md`）。
 
 ### 6.4 服务层（web/src/services/）
 
@@ -508,42 +509,44 @@
 ### 后端（Python，仅标准库）
 ```
 server.py ──→ local_music_server（本地库/缓存/配置）
-          └→ qq_resolver（QQ 解析池；agg_resolver 复用其 validate_url）
-          └→ agg_resolver（gdstudio；依赖 qq_resolver 校验）
+          ├→ qq_resolver（QQ 解析池；agg_resolver 复用其 validate_url）
+          ├→ agg_resolver（gdstudio；依赖 qq_resolver 校验）
+          ├→ selfhost_service（三平台 Node vendor 托管与回环守卫）
+          └→ remote_bus（手机遥控器局域网状态与控制总线）
 ```
 
 ### 前端核心依赖链
 ```
 index.html
-  └→ src/app/index.js（按序 import 71 分片）
+  └→ src/app/index.js（按序 import 89 个 app 模块文件）
         ├→ 000-tooltip（全局 tooltip，无依赖）
         ├→ 10-config-state ←── 全局状态
         ├→ 20-lyrics-render → audio 元素
         ├→ 30-dom-refs
         ├→ 65-playback-position ├→ 70-audio-engine（停滞自愈）
-        ├→ 95-track-loading ──→ 135-crossfade（重试/淡入）→ 175-track-index-online（在线加载）
+        ├→ 95-track-loading ──→ 135-crossfade / 96-automix → 175-track-index-online（在线加载）
         ├→ 245-playlist-manager → 20/120/135（队列管理）
         ├→ 170-lyric-sources → parsers/lyricMerger + services/lyricMatcher + musicApi
         ├→ 165-audio-recognize → 18089 sidecar + Vosk
         ├→ 215-multilang-fonts → fontService(IndexedDB) → FontFace
-        └→ 200-settings-panel → themeEngine/previewEngine/PVEngine/VisualizerManager
+        └→ 200-settings-panel / 202-settings-appearance → config/*Schema + ui/settingsRenderer + previewEngine + VisualizerManager
 ```
 
 **引擎内部依赖**：
 ```
 PVEngine → PVLyricLayout → WordSegmenter（segment/segmentFine）
-TunnelEngine → TunnelDirector → AILyricSegmenter（segmentBlocksByAI/multiPageSegment）
-            → TunnelCameraTrack / TunnelDepthStack / TunnelAnimations
-            → PVLyricLayout + WordSegmenter（复用 PV 分词）
-VisualizerManager → DimensionVisualizer → dimension/{Audio,Background,Camera,Shapes} + VisualizerBase
+TunnelEngine → TunnelDirector → AILyricSegmenter / TunnelCameraTrack / TunnelDepthStack / TunnelAnimations / mondrianTemplates
+VisualizerManager → Dimension / Letterpress / WordCloud / FlyIn / Astrolabe / Prism / Vitrail / FocalCut / Jizura
+SonnetEngine (verse) & TemperaEngine → 220-shortcuts-viewmode 直接调度
+```
 
 ```
 
 ### 第三方依赖
-- **前端**：segmentit、kuromoji（CDN）。
-- **Node**：shazamio-core、@ffmpeg-installer/ffmpeg（`scripts/`）。
-- **Rust**：tauri 2、tauri-plugin-opener、tauri-plugin-shell、image（`src-tauri/Cargo.toml`）。
-- **Python**：无（纯标准库）；识别转写需系统 Python 装有 `vosk`。
+- **前端**：`segmentit`、`kuromoji`（默认同源按需加载，支持 CDN 兜底）、`JIZURA` 引擎（`web/src/vendor/jizura/engine/`）、`Anime4K` 着色器（`scripts/anime4k/` 编译至 `mvUpscaleShaders.js`）、`han-convert`。
+- **Node**：`shazamio-core`、`@ffmpeg-installer/ffmpeg`（识曲侧车）；`_eval/` 下三家自建音源（KuGou / QQ / Netease）。
+- **Rust**：`tauri 2`、`tauri-plugin-opener`、`tauri-plugin-shell`、`image` 及独立原生音频引擎 crate `aria-audio`（`src-tauri/audio/`）。
+- **Python**：纯标准库（无第三方必选依赖）；本地语音转写反查需系统 Python 可选安装 `vosk`。
 
 ---
 
@@ -635,7 +638,7 @@ Tauri 启动时自动拉起 `server.py`(8001) 与 `shazam-server.mjs`(18089)，�
 
 **根因**：Tauri 主窗口 `transparent: true`，且 `html.aria-desktop, body.aria-desktop` 被强制为 `background: transparent !important`——页面背景完全由双层 `.blur-background`(z-index:-2) + `.color-overlay`(z-index:-1) 承担。切歌时 `setBlurBackground/setCoverImage` 的 `tryCrossfade` 让新层 opacity 0→1、旧层 1→0（均 0.8s 过渡）；**任一瞬间两层叠加合成不透明度 < 100%**（如各 0.5 → 区域合成 ≈75%），底层透明 html/body 直接露出窗口下方的桌面。
 
-**修复**：在 [base.css](file:///d:/旧电脑/下载/歌词/歌词播放器/web/src/styles/base.css) 增加固定不透明保底层：
+**修复**：在 [base.css](web/src/styles/base.css) 增加固定不透明保底层：
 
 ```css
 body::before {
@@ -778,24 +781,23 @@ body::before {
 
 ---
 
-## 20. 自建音乐服务（酷狗 / QQ / 网易云 / 汽水）（2026-09-05，汽水 2026-10-03）
+## 20. 自建音乐服务（酷狗 / QQ / 网易云）（2026-09-05；汽水曾于 2026-10-03 接入，后于 v3.0.0 下线）
 
 ### 20.1 定位与原则
 - 以 Node 副进程跑各自音乐 API server（后端镜像），由 `server.py`（`/api/selfhost/*`）统一托管与代理。
-- **登录态优先、未登录回退**：扫码登录后（token/cookie 存副进程进程内存 + 前端 localStorage），QQ 播放/三家日推优先走高音质自建接口；**任何否定分支（未启用/未登录/离线/失败）一律回退现有免费源池，不动旧逻辑**。
+- **登录态优先、未登录回退**：扫码/手机号登录后（token/cookie 存副进程进程内存 + `cache/selfhost_login.json`），搜索 / 歌词 / 播放优先走本机自建接口并回落免费源池；**任何否定分支（未启用/未登录/离线/失败）一律回退现有免费源池，不动旧逻辑**。
 - 默认关闭（`localStorage('selfhost_prefs').enabled.*` 默认 false），开启后才参与取链，安全默认。
 
 ### 20.2 平台与端口
 | 平台 | vendor 目录 | 端口 | 启动 | 未登录时播放 |
 |---|---|---|---|---|
 | 酷狗 | `_eval/KuGouMusicApi`（MakcRe 概念版 lite） | 3100 | `node app.js` | 无（需 token） |
-| QQ | `_eval/qq-music-api-node`（sansenjian） | 3200 | `npx tsx src/app.ts` | 无（`getMusicPlay` 强制登录态） |
+| QQ | `_eval/qq-music-api-node`（sansenjian） | 3200 | `node node_modules/tsx/dist/cli.mjs src/app.ts` | 无（`getMusicPlay` 强制登录态） |
 | 网易云 | `_eval/NeteaseCloudMusicApi`（`nooblong/NeteaseCloudMusicApiBackup` fork，官方仓库已被举报下架） | 3201 | `node app.js` | 无（日推 `/recommend/songs` 通常需登录） |
-| 汽水 | `_eval/qishui-music-api`（npm 库 `ly-music-source` + 适配层 `scripts/qishui-server.mjs`） | 3300 | `node ../../scripts/qishui-server.mjs` | 无（上游 `resolve()` 未登录返回 `UNAUTHENTICATED`） |
 
 > 网易云官方主仓库 2023 前后被举报下架；本项目用活跃 fork `nooblong/NeteaseCloudMusicApiBackup`（其 GitHub 原始 URL 全小写会 404，正确为 `NeteaseCloudMusicApiBackup`）。
 
-> 汽水与前三个平台**形态不同**，见 §20.8：它的上游不是能直接跑的服务，而是一个库。
+> 汽水（3300 / `ly-music-source`）已于 v3.0.0 整体下线（§20.8 保留为历史接入档案）。
 
 ### 20.3 后端 `server.py` / `selfhost_service.py`
 - 新模块 `selfhost_service.py`（纯标准库）：`ensure_running(name)` 惰性拉起副进程（校验 Node、等端口、幂等）；`status_all()`；登录 `get_login_qr(name)` / `poll_login(name,key)`；通用代理 `proxy_request(name,method,path,body)`（qq 自动注入 `cookie=`；kugou 自动注入 `token&userid`；netease 自动注入 `Cookie` 头，并支持回读 Set-Cookie 供扫码用）。
@@ -809,7 +811,7 @@ body::before {
 - 登录态寿命：QQ 逆向登录态无标准 refresh_token，通常几小时~数周被风控/服务端吊销；**掉线不可静默续期，需重新扫码**。实现上靠 `/api/selfhost/status` 标记 loggedIn=false + 播放回退免费池兜底，避免一次掉线卡死 QQ 播放。
 
 ### 20.5 前端接入
-- `web/src/app/selfhost-settings.js`：设置页「自建服务」Tab（`index.html` 新增 `data-tab="selfhost"` 按钮 + `.settings-section` 空容器 + `#selfhostQrOverlay` 扫码弹窗）。四平台卡片（存活灯/登录按钮/登出；前三者另有启用开关）+「每日推荐来源」下拉。扫码弹窗：`/qr` 取码 → 每 2s `/check` 轮询 → 成功写状态并刷新。
+- `web/src/app/selfhost-settings.js`：设置页「自建服务」Tab（`settingsSchema` 与 `settingsNav` 托管，含 `#selfhostQrOverlay` 登录弹窗）。当前为三平台卡片（酷狗 / QQ / 网易云；v3.0 已移除曾短暂接入的汽水，保留「每日推荐来源」下拉与上游接口参数自定义）。登录弹窗：`/qr` 取码 → 每 2s `/check` 轮询 → 成功写状态并刷新。
 - `web/src/app/selfhost-runtime.js`：`selfhostQQPlayUrl(mid,quality)`（**步骤0** 插到 `175-track-index-online.js` QQ 解析最前，`enabled+loggedIn` 才走，失败落回原链，且需 `checkAudioUrlPlayable` 复验）；`dayRecommend()` 归一化三家日推为 {song,singer,id,source}。
 - `web/src/app/258-rankings.js`：新增 `openDailyRecommend()`（复用榜单弹窗 `renderSongs` 渲染成普通歌单列表），右上角 `#openDailyBtn` 触发。
 
@@ -822,8 +824,10 @@ body::before {
 - 自建服务依赖本机 `node`（≥18）；副进程在 server.py 退出后被孤儿但端口保持占用，重启 server 时 `ensure_running` 会探测复用，不会重复拉起。
 - `_eval/` 目录仅为验证期目录，正式版可将 `_SERVICES[].dir` 指向 `vendor/<repo>` 稳定路径。
 
-### 20.8 汽水音乐（2026-10-03）
-上游是 npm 库 **`ly-music-source`**（GPL-3.0-only、零依赖、纯 ESM），不是可 `node app.js` 起的服务 → 多了一层 HTTP 适配层 `scripts/qishui-server.mjs`。
+### 20.8 汽水音乐（历史存档：2026-10-03 接入，v3.0.0 已整体移除）
+> 2026-11-19（`v3.0.0`）：已移除 `_SERVICES['qishui']`、适配层 `scripts/qishui-server.mjs`、搜索/日推/歌单入口及相关测试，自建服务收口回三平台（酷狗 / QQ / 网易云）。以下为历史技术记录。
+
+上游曾是 npm 库 **`ly-music-source`**（GPL-3.0-only、零依赖、纯 ESM），不是可 `node app.js` 起的服务 → 多了一层 HTTP 适配层 `scripts/qishui-server.mjs`。
 
 - **适配层为什么在 `scripts/` 而不在 `_eval/`**：`.gitignore:19` 把整个 `_eval/` 排除了，我们自己的代码放进去会丢。库本身仍按 npm 惯例放 `_eval/qishui-music-api/vendor/node_modules/ly-music-source/`，由 `setup-vendors.bat` 第 5 节 `npm install ly-music-source@0.1.0` 重建。副进程 cwd 仍是 `_eval/qishui-music-api`（项目根下恰好两层），所以回环守卫的 `--require ../../scripts/vendor-loopback-guard.cjs` 相对路径推导与另三家一致（`selfhost_service.py:270`）。
 - **能力边界（逐条实测，非推断；2026-10-03 curl 实跑）**：
@@ -1047,7 +1051,7 @@ ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计
 ### 22.1 工程治理（门禁化）
 
 - **状态单一来源**：`infrastructure/state.js` 成为全局状态唯一存储；`infrastructure/globalBridge.js` 把 59 个历史 `globalThis` 键降级为 state 的读写访问器；`core/globalRegistry.js` 做全局键登记审计。ESLint 门禁 B（`no-restricted-syntax` 棘轮）封死 `globalThis.x = ...` 新增（2026-09-25 已存在的 30 个分片进白名单，只减不增）。
-- **影子层封存**：4 个「从入口不可达」的影子模块（`core/audioPlayer.js`、`services/favoritesService.js`、`services/playlistService.js`、`services/fontService.js`）用 `no-restricted-imports` 门禁 A 禁止 import，配套复扫工具 `scripts/audits/module-reachability.mjs`。全仓不可达即这 4 个（2026-10-11 实测 306 模块 / 不可达 4）。
+- **影子层封存**：4 个「从入口不可达」的影子模块（`core/audioPlayer.js`、`services/favoritesService.js`、`services/playlistService.js`、`services/fontService.js`）用 `no-restricted-imports` 门禁 A 禁止 import，配套复扫工具 `scripts/audits/module-reachability.mjs`。全仓不可达即这 4 个（2026-10-11 实测 306 模块 / 不可达 4；2026-11-21 v3.0.0 实测 353 模块 / 不可达 4）。
 - **HTML 转义门禁**：自定义 ESLint 规则 `aria/no-unescaped-html`（error 级），模板插值必须走 `esc()`（`utils/formatters.js` 唯一转义入口），配套规则测试。
 - **catch 收口**：`no-empty` 收紧到 error（`allowEmptyCatch:false`），129 处静默 catch 全部改 `logCatch(tag, e)`（`services/log.js` 为全库唯一 console 出口，400 条有界环形缓冲 + 5s 去重）。
 - **测试登记门禁**：`scripts/audits/test-registry.mjs` 强制每个 `tests/**/test_*` 文件在 ci.yml 跑到（历史上真漏过 15 个）。另有 motion / i18n / resolve-instrumentation 三道棘轮。
@@ -1109,7 +1113,7 @@ ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计
 ### 22.4 版本号单一来源（2026-10-01）
 
 - 根因：版本号三处割裂（server.py 硬编码 2.0.0，package.json / tauri.conf.json / Cargo.toml 停在 1.0.0），发布物无可信版本来源。
-- 方案：`server.py` 模块级常量 `SERVER_VERSION` 为**唯一来源**（改版本只动这一行）；`scripts/sync_version.py` 就地行内正则同步到其余三处（不用 JSON round-trip，避免紧凑数组被展开成多行 diff；Cargo.toml 只锚行首 version，不碰依赖内联版本）；CI pv-regression 加 `python scripts/sync_version.py --check` 门禁。当前统一为 2.0.0。
+- 方案：`server.py` 模块级常量 `SERVER_VERSION` 为**唯一来源**（改版本只动这一行）；`scripts/sync_version.py` 就地行内正则同步到其余三处（不用 JSON round-trip，避免紧凑数组被展开成多行 diff；Cargo.toml 只锚行首 version，不碰依赖内联版本）；CI pv-regression 加 `python scripts/sync_version.py --check` 门禁（2026-10-01 起落地；v3.0.0 见 §23）。
 
 ### 22.5 本批其余
 
@@ -1175,3 +1179,15 @@ ecordPlayStats 每次上报即落盘（此前 <30s 不保存导致近7日/累计
   ESLint 0 error，motion / i18n-coverage / resolve-instrumentation / test-registry /
   module-reachability 五道门禁全绿。
 - **未验证**：真机在线曲的「预载→ARM→交叉」端到端仍待用户实测（本机无法复现该网络路径）。
+
+---
+
+## 23. v3.0.0 里程碑（2026-10 ~ 11）：14 种视觉模式、视觉工坊、毛玻璃与帧率/后台恢复架构
+
+- **14 种视觉模式体系（4 大家族 × 14 模式）**：
+  - 经典歌词（`cover` / `lyrics` / `flyin`）、空间粒子（`wordcloud` / `tunnel` 格律·Mondrian / `dimension` / `prism` 棱镜）、动态分镜（`pv` 诗镜·Verse / `astrolabe` 画册·Folio / `focalcut` 镜幕）、版画建筑（`letterpress` 活字 / `jizura` 字面 / `vitrail` 琉璃龛 / `tempera` 版画）。
+  - 下线/移除：`scroll`（2026-10-05 删除）、`neon`（2026-10-11 退役）、`vinyl` 黑胶（v3.0 移除）。
+- **声明式设置页与「视觉工坊」**：`web/src/config/{settingsNav,settingsSchema,appearanceSchema}.js` + `web/src/ui/{settingsRenderer,settingsPrimitives}.js` 收口 13 个设置分页、mode 宫格选择器与三层参数（`core` / `advanced` / `override`）。
+- **统一毛玻璃与渲染预算**：剥离 Chromium 嵌套 Backdrop Root，顶栏 / 底栏 / 视觉工坊浮层 / 下拉菜单使用一致毛玻璃参数，软件渲染/低性能档统一走 `#ariaRoot` 特异性锚点降级。
+- **帧率与后台恢复重构**：取消 60fps `:root` CSS 变量整页样式重算；全屏模式下停止隐藏的 150% 模糊背景层无效绘制；引入单 rAF 时钟锁相驱动并恢复 `sonnet` 连续追踪跟拍与零模糊 empty FBO 跳过；桌面歌词迁入 `BroadcastChannel` 零阻塞推送；修复后台切回前台后飞入字号塌缩、活字字盘自适应缩放与歌词索引自愈。
+- **音源与功能收口**：自建服务收敛至 QQ / 酷狗 / 网易云三平台（移除 `qishui` / 3300 端口）并支持设置页上游参数自定义；新增歌词海报、声音手账 / 听歌统计、歌手主页、MV 背景与 Anime4K 实时超分、`tsc` 类型检查全仓 P0–P6（基线 0）。

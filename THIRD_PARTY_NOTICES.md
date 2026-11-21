@@ -13,9 +13,9 @@
 - 引入方式：**逐行保真机械移植**（仅删除 TypeScript 类型标注，不改逻辑/数值/分支），
   以及少量"对齐上游实现/借鉴上游美学"的重写（`shapeField.js`、`PVDecorations.js`、
   `mondrianTemplates.js`）。
-- 涉及文件：**90 个**（每个文件首行均有署名行）。按目录分布：
+- 涉及文件：**96 个**（每个文件首行均有署名行）。按目录分布：
 
-  - `web/src/core/visualizers/sonnet/` —— 40 个
+  - `web/src/core/visualizers/sonnet/` —— 46 个
   - `web/src/core/visualizers/tempera/` —— 24 个
   - `web/src/core/visualizers/tempera/compositions/` —— 15 个
   - `web/src/core/visualizers/` —— 3 个
@@ -42,16 +42,21 @@
 - `web/src/core/visualizers/sonnet/sonnetExtendedShotMg.js`
 - `web/src/core/visualizers/sonnet/sonnetFixedGeoVariants.js`
 - `web/src/core/visualizers/sonnet/sonnetFrameDecor.js`
+- `web/src/core/visualizers/sonnet/sonnetFrameOverlay.js`
 - `web/src/core/visualizers/sonnet/sonnetGlitchFilter.js`
 - `web/src/core/visualizers/sonnet/sonnetGuides.js`
 - `web/src/core/visualizers/sonnet/sonnetIcons.js`
 - `web/src/core/visualizers/sonnet/sonnetLensFilter.js`
 - `web/src/core/visualizers/sonnet/sonnetMotion.js`
 - `web/src/core/visualizers/sonnet/sonnetOpenFrameShotMg.js`
+- `web/src/core/visualizers/sonnet/sonnetOutroBlur.js`
 - `web/src/core/visualizers/sonnet/sonnetPostProcess.js`
 - `web/src/core/visualizers/sonnet/sonnetPosterBlocksLayout.js`
 - `web/src/core/visualizers/sonnet/sonnetPrintFilters.js`
+- `web/src/core/visualizers/sonnet/sonnetProgram.js`
+- `web/src/core/visualizers/sonnet/sonnetRandom.js`
 - `web/src/core/visualizers/sonnet/sonnetShotFlowLayouts.js`
+- `web/src/core/visualizers/sonnet/sonnetShotFrame.js`
 - `web/src/core/visualizers/sonnet/sonnetShotMgArchitecture.js`
 - `web/src/core/visualizers/sonnet/sonnetShotMgBotanical.js`
 - `web/src/core/visualizers/sonnet/sonnetShotMgCelestial.js`
@@ -70,6 +75,7 @@
 - `web/src/core/visualizers/sonnet/sonnetTextViewBuilder.js`
 - `web/src/core/visualizers/sonnet/sonnetThemedShotMg.js`
 - `web/src/core/visualizers/sonnet/sonnetThemedShotMgPrimitives.js`
+- `web/src/core/visualizers/sonnet/sonnetTypography.js`
 - `web/src/core/visualizers/sonnet/sonnetTypographyLayout.js`
 - `web/src/core/visualizers/sonnet/sonnetTypographyRoles.js`
 - `web/src/core/visualizers/tempera/compositions/temperaApertureCompositions.js`
@@ -142,11 +148,42 @@
 > chthollyphile/folia-major** —— 本项目的两个 AGPL 上游彼此同源，这也解释了为什么隧道/诗镜
 > 两处的动效语汇相近。
 
+## 3. 852wa/JIZURA
+
+- 上游地址：<https://github.com/852wa/JIZURA>
+- 许可证：**MIT License**
+- 版权人：hakoniwa（`Copyright (c) 2026 hakoniwa`）
+- 引入方式：通过 `scripts/port-jizura.mjs` 将上游引擎（v0.10.1）按逐文件包裹形式搬运至
+  `web/src/vendor/jizura/engine/`（保留原始文本与各自文件头 MIT 署名行）；`bootstrap.js`
+  及 `web/src/core/visualizers/jizura/` 为本项目的装配与适配层。
+- 涉及文件：**39 个**（均位于 `web/src/vendor/jizura/engine/`）：
+
+  - `01_util.js`, `02_fonts.js`, `02b_lang.js`, `03_text.js`, `04_styles.js`,
+    `05_anim.js`, `05b_registry.js`, `06_layouts.js`, `07_decor.js`, `08_planner.js`,
+    `08b_omakase.js`, `09_render.js`, `10_audio.js`, `11_export.js`, `11p_bgcamB.js`,
+    `11p_decor.js`, `11p_decorB.js`, `11p_enter.js`, `11p_enterB.js`, `11p_exit.js`,
+    `11p_exitB.js`, `11p_fxB.js`, `11p_horror1.js`, `11p_horror2.js`, `11p_horror3.js`,
+    `11p_kinetic1.js`, `11p_kinetic2.js`, `11p_kinetic3.js`, `11p_layoutsA.js`,
+    `11p_layoutsB.js`, `11p_layoutsC.js`, `11p_layoutsD.js`, `11p_looks.js`,
+    `11p_styles.js`, `11p_treattrans.js`, `11p_typo1.js`, `11p_typo2.js`,
+    `11p_typo3.js`, `11q_sets.js`
+
+## 4. 其余前端与着色器依赖
+
+- **`bloc97/Anime4K` v4.0**（**MIT License**，`Copyright (c) 2019-2021 bloc97`）：
+  原始 `.glsl` 文件保存在 `scripts/anime4k/`（7 个着色器），由 `scripts/build_anime4k.mjs`
+  编译输出至 `web/src/services/mvUpscaleShaders.js`（用于 MV 实时超分）。
+- **`kuromoji.js` + `zlib.js`**（**Apache-2.0 / MIT**）：
+  `web/src/vendor/kuromoji/kuromoji.js`（日文歌词按需分词，含 MIT 协议的 `zlib.js`
+  解压实现，词典由 `scripts/vendor-kuromoji-dict.bat` 同步）。
+- **`segmentit`**（`web/src/vendor/segmentit/segmentit.js`）与 **`han-convert`**
+  （`web/src/services/vendor/han-convert/`，`chinese-simple2traditional` 浏览器构建）。
+
 ## 待办（需人工确认）
 
 - `web/src/app/160-text-normalize.js` 注释提到"借鉴 JiBA 机制"（iTunes 跨 storefront 查名 +
   ISRC 缓存），**上游项目与许可证未确认**，未列入上表；确认后必须登记，否则应改写为独立实现。
-- `scratch/folia-major/`、`scratch/folia-src/`、`scratch/jpv-kit/` 是本地比对用的上游副本，
+- `scratch/folia-major/`、`scratch/folia-src/`、`scratch/jpv-kit/`、`scratch/jizura/` 是本地比对用的上游副本，
   **不得进入发布物**。
 
 ## 变更记录
@@ -156,3 +193,6 @@
 - 2026-10-06：JPV 条目一度因"搜不到该项目"被当作误标，后经用户提供地址
   （<https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit>）核实**确为真实 AGPL-3.0 上游**，
   署名已恢复并补全（并新发现 `PVBackground.js`、`PVRendering.js` 两个漏署名文件）。
+- 2026-11-21：补齐 folia-major 后续新增与重移植的 6 个 `sonnet/` 文件（总计 90 → 96 个）；
+  新增 `852wa/JIZURA`（MIT，39 个引擎模块）及 `bloc97/Anime4K`、`kuromoji.js`、
+  `segmentit`、`han-convert` 等第三方组件说明。

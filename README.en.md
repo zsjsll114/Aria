@@ -10,6 +10,9 @@
 [![Download](https://img.shields.io/badge/download-portable%20zip-2ea44f)](https://github.com/zsjsll114/Aria/releases/latest)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/zsjsll114/Aria/ci.yml?branch=main&label=CI)](https://github.com/zsjsll114/Aria/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
+[![Node](https://img.shields.io/badge/node-20.19%2B%20or%2022.13%2B-green)]()
+[![Python](https://img.shields.io/badge/python-3.10%2B-green)]()
 
 **A multi-source online music player: QQ / KuGou / Netease / Kuwo search, 14 lyric visual modes, Visual Workshop, desktop lyrics overlay, phone remote, and AI mood analysis**
 
@@ -84,24 +87,24 @@ RTL lyrics (Arabic / Hebrew etc.) light up right-to-left automatically in every 
 
 ## What's New in v3.0
 
-- **Four New Flagship Visual Modes**: Native WebGL2 3D cathedral **Vitrail**, optical crystal-refraction **Prism**, Swiss editorial **Folio**, and redesigned 2.5D exhibition-wall **FocalCut**; plus refactored constellation **WordCloud** and redesigned mode preview cards across all visual styles.
+- **Four New Flagship Visual Modes**: Native WebGL2 3D cathedral **Vitrail**, optical crystal-refraction **Prism**, Swiss editorial **Folio**, and redesigned 2.5D exhibition-wall **FocalCut**; plus refactored constellation **WordCloud**, nocturnal De Stijl **Mondrian**, movable-type **Letterpress**, and redesigned mode preview cards across all 14 visual styles.
 - **Visual Workshop & Unified Frosted Glass**: Declarative Settings & Visual Workshop (4 families × 14 modes popover grid + 3-tier controls + live preview); eliminated nested Chromium Backdrop Roots so top bars, bottom bars, workshop popovers, and dropdown menus render true translucent Gaussian blur with automatic degradation on low-end / software GPUs.
-- **Frame-Pacing & Background Resume Overhaul**: Eliminated 60fps `:root` CSS variable full-DOM recalc, paused hidden 150% fullscreen blur layers behind opaque visualizers, removed out-of-phase `timeupdate` double-updates, moved desktop lyrics to non-blocking `BroadcastChannel`, and hardened foreground recovery (including Fly-In font scaling and responsive Letterpress matrix reflow).
-- **Listening Experience Upgrades**: Mode-aware lyric posters, listening stats reports, self-hosted API parameter customization (QQ / KuGou / Netease), non-destructive Focus/Zen bar collapse, and comprehensive Chinese / English i18n coverage.
+- **Frame-Pacing & Background Resume Overhaul**: Eliminated 60fps `:root` CSS variable full-DOM recalc, paused hidden fullscreen blur layers behind opaque visualizers, switched to single-rAF PLL frame pacing, restored smooth continuous camera tracking and zero-blur pass skipping in **Verse**, moved desktop lyrics to non-blocking `BroadcastChannel` sync, and hardened foreground recovery (including Fly-In font scaling and responsive Letterpress matrix reflow).
+- **Listening Experience Upgrades**: Mode-aware lyric posters, listening stats reports, dedicated Artist Page, MV backdrop with real-time Anime4K upscaling, self-hosted API parameter customization (QQ / KuGou / Netease), non-destructive Focus/Zen bar collapse, and comprehensive Chinese / English i18n coverage.
 
 ## Core Features
 
 | Module | Description |
 |---|---|
-| Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout; automatic alignment fallback when word timing is missing |
+| Word-by-word lyrics | YRC / KRC / QRC full-format word timelines, original / translation / romaji three-line layout; automatic alignment fallback and background line-level upgrade when word timing is missing |
 | Multi-source search | QQ Music / KuGou / Netease / Kuwo with local self-hosted priority and multi-tier public fallback; self-hosted services provide hi-fi audio, daily mixes, cloud playlists, and API parameter controls |
-| AI mood analysis | Gemini or OpenAI-compatible APIs: per-line emotion tagging + chorus detection, driving layout & palette changes in visual modes |
-| Desktop lyrics | Standalone transparent window, free drag, click-through, non-blocking `BroadcastChannel` sync, and local per-word interpolation |
+| AI mood analysis | Gemini (direct or proxy Worker) or OpenAI-compatible APIs: per-line emotion tagging + chorus detection, driving layout & palette changes in visual modes |
+| Desktop lyrics | Standalone transparent window, free drag, click-through, non-blocking `BroadcastChannel` + same-origin sync, and local per-word interpolation |
 | Phone remote | Scan or type the address on your phone (same LAN) to control playback / track / volume (requires `--lan`) |
-| Local music | Local library scan + Enhanced LRC word-timeline generation + song recognition (Shazam / Vosk) |
-| Playlists & stats | Favorites / playlists / public playlist import from Netease, QQ & KuGou / artist pages / listening reports |
-| Audio | 10-band equalizer (with AutoEQ PEQ import), spatial audio / virtual soundstage, native WASAPI output, speed control (pitch preserved), long-press 2× fast-forward, A-B loop, seamless crossfade, sleep timer |
-| Experience details | Mode-matched lyric posters, in-lyrics search, bilingual toggle, next-song preview, OSD hints, zen / focus mode, VFX recipes, theme palette, VFX intensity slider, toolbar customization |
+| Local music | Local library scan + Enhanced LRC word-timeline generation + song recognition (Shazam acoustic fingerprinting / Vosk) |
+| Playlists & stats | Favorites / playlists / public playlist import from Netease, QQ & KuGou / smart playlists / artist pages / listening reports |
+| Audio | 10-band equalizer (with AutoEQ PEQ import & share codes), spatial audio (HRTF) / virtual soundstage, native WASAPI output (desktop), Automix transitions, speed control (pitch preserved), long-press 2× fast-forward, A-B loop, sleep timer |
+| Experience details | Mode-matched lyric posters, MV backdrop & real-time Anime4K upscaling, in-lyrics search, bilingual toggle, next-song preview, OSD hints, zen / focus mode, VFX recipes, theme palette, VFX intensity slider, toolbar customization |
 
 ## Quick Start
 
@@ -189,14 +192,15 @@ Please report issues with the [ISSUE template](.github/ISSUE_TEMPLATE/bug_report
 ## Architecture
 
 ```
-Tauri 2 shell (Rust) ── loads http://localhost:8001, launches backend & native audio engine
+Tauri 2 shell (src-tauri, Rust) ── loads http://localhost:8001, launches backend, recognition & WASAPI native audio engine
         │
-Python backend (stdlib-only http.server, port 8001)
-  ├ serves web/ statically + /proxy + /api/* (incl. /api/remote/* phone-remote bus)
-  └ selfhost_service.py: three Node music-source services (3100/3200/3201, loopback-only)
+Python backend (server.py :8001, stdlib-only http.server)
+  ├ serves web/ statically + /proxy + /api/* (resolvers / local library / charts / remote bus / config persistence)
+  ├ selfhost_service.py: three Node music-source services (3100 KuGou / 3200 QQ / 3201 Netease, loopback-only)
+  └ scripts/shazam-server.mjs: Shazam acoustic recognition sidecar (18089)
 ```
 
-The frontend is a framework-free sharded module system (`web/src/app/*.js`, loaded by number), with declarative settings & Visual Workshop in `web/src/config/` and `web/src/ui/`, and visual engines in `web/src/core/` (pvEngine / tunnelEngine / visualizers). See [AGENTS.md](AGENTS.md) and [CODE_WIKI.md](CODE_WIKI.md) for details.
+The frontend is a framework-free sharded module system (`web/src/app/*.js`, 89 files loaded in numbered order), with declarative settings & Visual Workshop in `web/src/config/` and `web/src/ui/`, lyric / visual / audio / Automix engines in `web/src/core/` (`pvEngine` / `tunnelEngine` / `visualizers` / `automix`), and APIs & parsers in `web/src/services/` and `web/src/parsers/`. See [AGENTS.md](AGENTS.md) and [CODE_WIKI.md](CODE_WIKI.md) for details.
 
 ## Third-Party Sources and Disclaimer
 
@@ -210,12 +214,13 @@ On top of that:
 
 ## Acknowledgements
 
-- [folia-major](https://github.com/chthollyphile/folia-major) (AGPL-3.0) — **source of the code for the "Verse" (`sonnet/`) and "Tempera" (`tempera/`) visual engines** (faithful line-by-line port); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full file list
+- [folia-major](https://github.com/chthollyphile/folia-major) (AGPL-3.0) — **source of the code for the "Verse" (`sonnet/`) and "Tempera" (`tempera/`) visual engines** (faithful line-by-line port across 96 files); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full file list
 - [JPV Lyrics Motion Kit](https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit) (AGPL-3.0) — source of the tunnel mode's per-word entrance themes, the PV background shape field and the Cadenza per-word light sweep (adapted)
-- [JIZURA](https://github.com/852wa/JIZURA) (MIT) — inspiration & architecture for the "Jizura" Japanese text-PV engine
-- [KuGouMusicApi](https://github.com/makbkf/KuGouMusicApi) / [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) / [qq-music-api-node](https://github.com/jsososo/QQMusicApi) — music-source APIs
+- [JIZURA](https://github.com/852wa/JIZURA) (MIT) — source of the "Jizura" Japanese text-PV engine (`web/src/vendor/jizura/engine/`, 39 engine modules, MIT © 2026 hakoniwa)
+- [Anime4K](https://github.com/bloc97/Anime4K) (MIT) — source of the real-time MV upscaling shaders
+- [KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) / [NeteaseCloudMusicApiBackup](https://github.com/nooblong/NeteaseCloudMusicApiBackup) (based on Binaryify/NeteaseCloudMusicApi) / [qq-music-api](https://github.com/sansenjian/qq-music-api) (`qq-music-api-node`) — music-source APIs
 - [Tauri](https://tauri.app/) · [segmentit](https://github.com/nekobato/segmentit) · [kuromoji.js](https://github.com/takuyaa/kuromoji.js)
-- Fonts: Noto Sans SC / Noto Serif SC (Noto CJK, SIL OFL) · LXGW family · Fangzheng Pixel · Cubic 11
+- Fonts: Noto Sans SC / Noto Serif SC (Noto CJK, SIL OFL) · LXGW family · Ark Pixel · Cubic 11
 
 ## License
 
@@ -231,5 +236,7 @@ On top of that:
 
 - [AGENTS.md](AGENTS.md) — runtime architecture & hard constraints
 - [CODE_WIKI.md](CODE_WIKI.md) — module evolution history
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — third-party licenses & file inventory
 - [docs/打包分发方案.md](docs/打包分发方案.md) — portable packaging (Chinese)
 - [docs/歌词模式视觉规范.md](docs/歌词模式视觉规范.md) — per-mode layout & visual rules (Chinese)
+- [docs/screenshots/README.md](docs/screenshots/README.md) — screenshot catalog (Chinese)

@@ -5,32 +5,30 @@
 ## 项目概览
 
 自研桌面音乐播放器「Aria」（网页版 + Tauri 桌面壳），核心能力：  
-在线多源搜索/播放（QQ/酷狗/网易/酷我/汽水 + 自建服务）、逐字歌词高亮、情感词上色、多种视觉模式（词云/PV/全景/飞入）、桌面歌词窗口、本地音乐、歌单/收藏、AI 智能情绪分析、均衡器等。
+在线多源搜索/播放（QQ/酷狗/网易/酷我 + 自建服务）、逐字歌词高亮、情感词上色、14 种视觉模式（经典歌词/空间粒子/动态分镜/版画建筑）、视觉工坊、桌面歌词窗口、手机遥控器、本地音乐、歌单/收藏、歌手主页、声音手账、AI 智能情绪分析、均衡器/空间音频/WASAPI 独占输出等。
 
 ## 运行时架构（重要）
 
 ```
-┌─ Tauri 2 壳（src-tauri，Rust） ─ 窗口加载 http://127.0.0.1:8001/index.html ─┐
-│  启动时 spawn Python server(server.py 端口 8001) + Node shazam(18089)        │
+┌─ Tauri 2 壳（src-tauri，Rust） ─ 窗口加载 http://localhost:8001/index.html ─┐
+│  启动时 spawn Python server(server.py 端口 8001) + Node shazam(18089)；     │
+│  内置原生音频引擎 crate `aria-audio`（WASAPI 独占输出）                     │
 └──────────────────────────────────────────────────────────────────────────────┘
         │ 8001
 ┌───────▼────────────────────────────────────────────────────────────────────┐
 │ Python 后端（纯标准库: http.server/urllib；无第三方依赖）                  │
-│  ├ 静态服务 web/  + /proxy 通用代理 + /api/* 业务                          │
-│  └ 自建服务(selfhost_service.py)：管理四个 Node 副进程                     │
-│       ├ _eval/qq-music-api-node     端口 3200 (npx tsx src/app.ts)         │
+│  ├ 静态服务 web/ + /proxy 通用代理 + /api/* 业务（含 /api/remote/*）       │
+│  └ 自建服务(selfhost_service.py)：管理三个 Node 副进程                     │
 │       ├ _eval/KuGouMusicApi         端口 3100 (node app.js)                │
-│       ├ _eval/NeteaseCloudMusicApi  端口 3201 (node app.js)                │
-│       └ _eval/qishui-music-api      端口 3300 (scripts/qishui-server.mjs)  │
-│            ★ 汽水上游是 npm 库 ly-music-source，不能直接跑；              │
-│              适配层 scripts/qishui-server.mjs 受版本控制                   │
-│              （_eval/ 整个目录被 .gitignore 排除）                         │
+│       ├ _eval/qq-music-api-node     端口 3200 (node node_modules/tsx/...)  │
+│       └ _eval/NeteaseCloudMusicApi  端口 3201 (node app.js)                │
+│            （_eval/ 整个目录被 .gitignore 排除，首次 clone 跑 setup-vendors）│
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **关键约定**
 
-- 前端全部走 `http://127.0.0.1:8001`（含 API）。开发时直接 `python server.py`。
+- 前端 API 请求均发往本地服务 `http://127.0.0.1:8001`（开发时直接 `python server.py`）。
 - **页面 URL 必须用 `localhost`，不能用 `127.0.0.1`**：AI 走 Gemini 反代 Worker  
   （`docs/cf-gemini-auth-worker.js`），它按 `ALLOWED_ORIGINS` 校验浏览器 `Origin`，线上只放行了  
   `http://localhost:8001`；换成 127.0.0.1 会 403 `Forbidden: origin not allowed`，AI 全废  
@@ -38,7 +36,7 @@
   局域网/手机访问的 Origin 是 `http://<局域网IP>:8001`，需显式加进该白名单。  
   ★ 2026-10-09 起有门禁把这条钉死：`node scripts/audits/localhost-origin.mjs --check`  
   （扫 `tauri.conf.json` 的窗口 `url` 与 `lib.rs` 的 `Url::parse`，写成 127.0.0.1 即 CI 红）。  
-  ⚠ 第 33 行说的 `127.0.0.1:8001` 指**后端监听/请求地址**，与「页面 URL」是两回事，别混。
+  ⚠ 上条说的 `127.0.0.1:8001` 指**后端监听/请求地址**，与「页面 URL」是两回事，别混。
 - **监听地址默认只绑本机回环**（`server.py` 的 `BIND_HOST = '127.0.0.1'`）。加 `--lan` 才绑  
   `0.0.0.0` 开放局域网（手机/平板连接用，见「启动本地服务器-局域网.bat」）。
 - Python 侧只允许标准库；Node vendor 位于 `_eval/`，启动命令在 `selfhost_service.py _SERVICES`。
@@ -58,10 +56,11 @@
   - `200-settings-panel.js`：设置 + AI 分析（`triggerAiAnalysisIfNeeded` 必须查 `appSettings.ai.enabled`）
   - `245-playlist-manager.js`：右下角当前播放队列
   - `250-desktop-lyrics.js`、`258-rankings.js`(榜单/日推/最近/统计/批量操作)、`259-selfhost-favorites.js`(自建收藏+缓存)
-  - `297-artist-page.js`：歌手页（歌曲卡片的歌手名可点 → 全屏 overlay；数据在 `services/artistApi.js`，四源接口契约见该文件头注释）  
+  - `297-artist-page.js`：歌手页（歌曲卡片的歌手名可点 → 全屏 overlay；数据在 `services/artistApi.js`）  
     入口用 `Aria.openArtist()` 惰性调用而非静态 import（分片间已有 120↔130↔135↔150 的环，不再加边）。
-  - `selfhost-runtime.js`：/api/selfhost 客户端（日推、歌单、我喜欢、缓存键；汽水日推走字节推荐流 `/feed`、歌单走 `/playlists`+`/playlist`，见下方「汽水没有榜单」）
-  - `selfhost-settings.js`：设置页自建服务四平台分栏（酷狗/QQ/网易云/汽水；汽水无启用开关、无 Cookie 输入）
+  - `web/src/config/{settingsSchema,appearanceSchema,settingsNav}.js` & `web/src/ui/{settingsRenderer,settingsPrimitives}.js`：声明式设置页（13 个导航页）与「视觉工坊」（4 大家族 × 14 模式宫格 + 三层参数渲染）。
+  - `selfhost-runtime.js`：/api/selfhost 客户端（日推、歌单、我喜欢、缓存键，支持 QQ / 酷狗 / 网易云三平台）。
+  - `selfhost-settings.js`：设置页自建服务三平台分栏（酷狗 / QQ / 网易云，支持上游参数自定义与二维码/手机号登录）。
 - `lyrics.html`：桌面歌词窗口独立页（`#tEmc` 情感词开关、逐字 fill 进度、`--dtk-hl` 主题色）。
 - `src/styles/rankings.css`：榜单/收藏/批量 checkbox 等共享样式。
 
@@ -75,17 +74,7 @@
   - 取链：`selfhostQQPlayUrl` / `selfhostNeteasePlayUrl`（本就在链首）。  
     新增任何公网数据依赖前，先考虑同数据 vendor 接口；规范化返回需与原公网形状一致。
 - vendor 响应常见外套 `{response:{...}}`（QQ）/ `{data:{...}}`（酷狗/网易）——前端归一化须先解包。
-- **汽水（qishui）没有「榜单」，也没有公网源 —— 别再尝试接它的榜单。**  
-  vendor（`ly-music-source`）的公开能力只有：搜索/建议、逐字歌词、**推荐流 `getSongFeed`**、  
-  **我的歌单 `listUserPlaylists`**、歌单详情、专辑/歌手、播放、资料。全库无 `chart|toplist|ranking`  
-  端点，所以 `RANK_SRC_ORDER` 保持 `['qq','kugou','netease']` **不动是正确状态，不是漏接**。  
-  已接的位置（改汽水时四处要一起看）：`150-search-engine.js` 搜索源按钮、`175-track-index-online.js`  
-  歌词/取链分支、`258-rankings.js` 的 `dailySrcOrder`+`DAILY_SRC_LABEL`（日推第 4 个 tab）、  
-  `130-playlists.js` 的 `SELF_PLAT`/`SELF_PLAT_UI`/两处平台数组（歌单页第 4 个自建入口）、  
-  `selfhost-runtime.js`（`dayRecommend`/`selfhostPlaylists`/`selfhostPlaylistSongs`/`normQishui`）。  
-  **`selfhostEnabled('qishui')` 恒真**（汽水没有平台开关），删掉那条分支会让上述链路被静默过滤。  
-  「我的歌单」未登录时后端回 **200 + `{ok:false,code:'UNAUTHENTICATED'}`**，前端必须显式判  
-  `ok===false`，否则渲染成「该账号暂无歌单」，用户不会去登录。
+- **汽水（qishui）已于 v3.0 整体移除**：`_SERVICES` 中不再托管 3300 端口，适配层 `scripts/qishui-server.mjs` 及搜索 / 日推 / 歌单第四栏已全部清理。自建服务固定为三平台（`['kugou', 'qq', 'netease']`），榜单顺序 `RANK_SRC_ORDER` 为 `['qq', 'kugou', 'netease']`。
 - QQ c6.y.qq.com 对 node axios TLS 指纹风控(code:1000) → 用户资料类接口必须用 undici fetch。
 - 自建接口统一经 server.py `_handle_selfhost` → `selfhost_service.proxy_drop_in`；对应 vendor GET 需带 `_t` 毫秒时间戳绕过 apicache。
 - 播放链接池/HTTP:8001 服务的静态资源要 `Cache-Control: no-cache`。
@@ -113,7 +102,7 @@
 
 1. Python 后端纯标准库（为 PyInstaller 打包）。
 2. 前端只维护 `web/src/app/*.js` 分片；原单文件 `web/src/app.js` 已删除，勿恢复、勿按旧行号定位。
-3. 端口固定：8001(server) 3100/3200/3201/3300(vendors) 18089(shazam)。其中 **8001 默认只绑  
+3. 端口固定：8001(server) 3100/3200/3201(vendors) 18089(shazam)。其中 **8001 默认只绑  
    `127.0.0.1`**，`--lan` 才绑 `0.0.0.0`（见上方「关键约定」）。  
    ✅ 三个 vendor 的监听收口（2026-09-26 已修，别再写「未完成项」）：第三方代码自行  
    `app.listen(port)`，不传 host 也不读 `HOST`。**实测默认绑的是 `::`（IPv6 任意地址），  
@@ -166,7 +155,7 @@
       分片关注点的门面，还重复定义了 PLAY/PAUSE_ICON_PATH；接管=重写播放主链路，  
       而主链路活路径目前无测试覆盖，理由写在其文件头）。  
       门禁 A（`no-restricted-imports`）禁止存活模块 import 未解冻的那些。复扫：  
-      `node scripts/audits/module-reachability.mjs`（2026-10-11 实测 **306 模块 / 不可达 4**，即门禁 A 名单本身；同日已删除两个视觉器残件 `NeonVisualizer.js`、`sonnet/sonnetShotMg.js`）。  
+      `node scripts/audits/module-reachability.mjs`（2026-11-21 实测 **353 模块 / 不可达 4**，即门禁 A 名单本身；2026-10-11 已删除两个视觉器残件 `NeonVisualizer.js`、`sonnet/sonnetShotMg.js`）。  
       注意：它的 import 抽取曾把**副作用 import 整条吃掉**（`[\s\S]*?` 越界撞到下一条 `from`），  
       于是只被 `import 'x.js';` 引用的模块（实测 `utils/numberStepper.js`）被误报成影子模块，  
       不可达数 4→5。现已抽成 `scripts/audits/lib/import-scan.mjs` 并由  

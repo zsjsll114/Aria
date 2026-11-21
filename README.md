@@ -87,24 +87,24 @@
 
 ## v3.0 更新亮点
 
-- **四大全新旗舰视觉模式**：新增原生 WebGL2 3D 圣殿「琉璃龛 · Vitrail」、光学折射分镜「棱镜 · Prism」、瑞士天体海报「画册 · Folio」与重构后的 2.5D 建筑展墙摄影棚「镜幕 · FocalCut」；同步重绘「云涌 · WordCloud」星轨螺旋景深排版与全部 12 种模式封面预览卡。
+- **四大全新旗舰视觉模式**：新增原生 WebGL2 3D 圣殿「琉璃龛 · Vitrail」、光学折射分镜「棱镜 · Prism」、瑞士天体海报「画册 · Folio」与重构后的 2.5D 建筑展墙摄影棚「镜幕 · FocalCut」；同步重绘「云涌 · WordCloud」星轨螺旋景深排版、「格律 · Mondrian」夜间风格派色块、「活字 · Letterpress」字盘矩阵压印与全部 14 种模式预览卡。
 - **视觉工坊 & 全局真毛玻璃体系**：设置面板重构为声明式「视觉工坊」（4 大家族 × 14 模式宫格浮层 + 三层参数收纳 + 实时预览）；剥离 Chromium 嵌套 Backdrop Root，顶栏、底栏、设置浮层与下拉菜单全链路实现通透高斯模糊，低性能 / 软件渲染自动降级。
-- **后台恢复与帧率架构重构**：消除 60fps `:root` CSS 变量整页样式重算、全屏模式底层 150% 模糊空烧 GPU、`timeupdate` 异相双更新与桌面歌词同步刷盘卡顿；强化后台切回前台后的歌词索引、飞入字号与视觉器视口自愈（含活字字盘矩阵自适应缩放）。
-- **听歌体验补强**：新增跟随当前视觉模式的歌词海报生成、年度 / 近期听歌报告、自建服务上游参数自定义（QQ / 酷狗 / 网易云）、专注模式顶栏无损收缩与完整双语（中 / 英）界面覆盖。
+- **后台恢复与帧率架构重构**：消除 60fps `:root` CSS 变量整页样式重算、空闲隐藏全屏模糊层空烧 GPU、`timeupdate` 异相双更新与桌面歌词同步刷盘卡顿；采用单 rAF 时钟锁相驱动并恢复「诗镜 · Verse」连续跟拍运镜与零模糊空 pass 跳过，强化后台切回前台后的歌词索引、飞入字号与视觉器视口自愈。
+- **听歌体验补强**：新增跟随当前视觉模式的歌词海报生成、声音手账 / 听歌统计报告、歌手主页、MV 背景与 Anime4K 实时超分、自建服务上游参数自定义（QQ / 酷狗 / 网易云）、专注模式顶栏无损收缩与完整双语（中 / 英）界面覆盖。
 
 ## 核心能力
 
 | 模块 | 说明 |
 |---|---|
-| 逐字歌词 | YRC / KRC / QRC 全格式逐字时间轴，原词 / 翻译 / 罗马音三行布局；无逐字时自动对齐补全 |
+| 逐字歌词 | YRC / KRC / QRC 全格式逐字时间轴，原词 / 翻译 / 罗马音三行布局；无逐字时自动对齐补全，支持行级后台升级为真逐字 |
 | 多源搜索 | QQ 音乐 / 酷狗 / 网易云 / 酷我，本机自建服务第一优先、公网源池多梯队竞速兜底；自建服务支持高音质、每日推荐、云端歌单与接口参数自定义 |
-| AI 情绪分析 | Gemini 或 OpenAI 兼容接口：逐句情感标注、高潮段落识别，驱动视觉模式换构图与配色 |
-| 桌面歌词 | 独立透明窗口，自由拖动、点击穿透、BroadcastChannel 零阻塞同步与逐字本地插值 |
+| AI 情绪分析 | Gemini（直连或反代 Worker）及 OpenAI 兼容接口：逐句情感标注、高潮段落识别，驱动视觉模式换构图与配色 |
+| 桌面歌词 | 独立透明窗口，自由拖动、点击穿透、`BroadcastChannel` + 同源存储低开销同步与逐字本地插值 |
 | 手机遥控器 | 同一局域网扫码或输入地址，用手机控制播放 / 切歌 / 音量（需 `--lan` 启动） |
-| 本地音乐 | 本机扫描 + Enhanced LRC 逐字歌词生成 + 听歌识曲（Shazam / Vosk） |
-| 歌单与数据 | 收藏 / 歌单 / 网易云 QQ 酷狗公开歌单导入 / 歌手主页 / 播放统计与听歌报告 |
-| 音频处理 | 10 段均衡器（支持导入 AutoEQ PEQ）、空间音频 / 虚拟声场、WASAPI 原生输出、倍速（变速不变调）、长按 2× 快进、A-B 循环、无缝切歌淡入淡出、睡眠定时器 |
-| 体验细节 | 跟随模式的歌词海报、歌词内搜索、双语排版切换、下一首预告、OSD 提示、专注模式、视觉配方导入导出、主题色板、动效强度滑杆、工具栏自定义 |
+| 本地音乐 | 本机扫描 + Enhanced LRC 逐字歌词生成 + 听歌识曲（Shazam 声学指纹 + Vosk 转写反查） |
+| 歌单与数据 | 收藏 / 歌单 / 网易云 QQ 酷狗公开歌单导入 / 智能歌单 / 歌手主页 / 声音手账与听歌统计报告 |
+| 音频处理 | 10 段均衡器（支持导入 AutoEQ PEQ 与分享码）、空间音频（HRTF）/ 虚拟声场、WASAPI 独占输出（桌面版）、Automix 智能过渡、倍速（变速不变调）、A-B 循环、睡眠定时器 |
+| 体验细节 | 跟随模式的歌词海报、MV 背景与 Anime4K 实时超分、歌词内搜索、双语排版切换、下一首预告、OSD 提示、专注模式、视觉配方导入导出、主题色板、动效强度滑杆、工具栏自定义 |
 
 ## 快速开始
 
@@ -192,14 +192,15 @@ macOS / Linux 没有 bat，按脚本内容手动执行即可。
 ## 架构简述
 
 ```
-Tauri 2 壳（Rust）── 加载 http://localhost:8001，并拉起后端与原生音频引擎
+Tauri 2 壳（src-tauri，Rust）── 加载 http://localhost:8001，拉起后端、识曲与 WASAPI 原生音频引擎
         │
-Python 后端（纯标准库 http.server，端口 8001）
-  ├ 静态服务 web/ + /proxy + /api/*（含 /api/remote/* 手机遥控器总线）
-  └ selfhost_service.py：三个 Node 音源服务（3100/3200/3201，仅绑回环）
+Python 后端（server.py :8001，纯标准库）
+  ├ 静态服务 web/ + /proxy + /api/*（解析池 / 本地曲库 / 榜单 / 手机遥控 / 配置持久化）
+  ├ selfhost_service.py：三个 Node 音源服务（3100 酷狗 / 3200 QQ / 3201 网易，仅绑回环）
+  └ scripts/shazam-server.mjs：Shazam 声学识曲侧车（18089）
 ```
 
-前端为无框架分片模块（`web/src/app/*.js` 按编号加载），声明式设置与视觉工坊在 `web/src/config/` 与 `web/src/ui/`，视觉引擎在 `web/src/core/`（pvEngine / tunnelEngine / visualizers）。详细架构见 [AGENTS.md](AGENTS.md) 与 [CODE_WIKI.md](CODE_WIKI.md)。
+前端为无框架分片模块（`web/src/app/*.js` 共 89 个文件按编号顺序加载），声明式设置与视觉工坊在 `web/src/config/` 与 `web/src/ui/`，歌词 / 视觉 / 音频与 Automix 引擎在 `web/src/core/`（含 `pvEngine` / `tunnelEngine` / `visualizers` / `automix`），API 与歌词解析在 `web/src/services/` 与 `web/src/parsers/`。详细架构见 [AGENTS.md](AGENTS.md) 与 [CODE_WIKI.md](CODE_WIKI.md)。
 
 ## 第三方音源与免责声明
 
@@ -213,10 +214,11 @@ Python 后端（纯标准库 http.server，端口 8001）
 
 ## 致谢
 
-- [folia-major](https://github.com/chthollyphile/folia-major)（AGPL-3.0）—— **"诗镜 · Verse" 与 "版画 · Tempera" 两个视觉引擎的代码来源**（逐行保真移植），完整清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [folia-major](https://github.com/chthollyphile/folia-major)（AGPL-3.0）—— **"诗镜 · Verse" 与 "版画 · Tempera" 两个视觉引擎的代码来源**（逐行保真移植，共 96 个文件），完整清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 - [JPV Lyrics Motion Kit](https://github.com/donbeeshyvt-jpg/jpv-lyrics-motion-kit)（AGPL-3.0）—— 隧道模式逐字入场主题、PV 背景形状场与 Cadenza 逐字光束扫描的来源（改作）
-- [JIZURA](https://github.com/852wa/JIZURA)（MIT）—— 「字面 · Jizura」日系文字 PV 引擎灵感与架构来源
-- [KuGouMusicApi](https://github.com/makbkf/KuGouMusicApi) / [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) / [qq-music-api-node](https://github.com/jsososo/QQMusicApi) —— 音源接口
+- [JIZURA](https://github.com/852wa/JIZURA)（MIT）—— 「字面 · Jizura」日系文字 PV 引擎来源（`web/src/vendor/jizura/engine/` 39 个引擎模块，MIT © 2026 hakoniwa）
+- [Anime4K](https://github.com/bloc97/Anime4K)（MIT）—— MV 实时超分着色器来源
+- [KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) / [NeteaseCloudMusicApiBackup](https://github.com/nooblong/NeteaseCloudMusicApiBackup)（基于 Binaryify/NeteaseCloudMusicApi） / [qq-music-api](https://github.com/sansenjian/qq-music-api)（`qq-music-api-node`） —— 音源接口
 - [Tauri](https://tauri.app/) · [segmentit](https://github.com/nekobato/segmentit) · [kuromoji.js](https://github.com/takuyaa/kuromoji.js)
 - 字体：思源黑体 / 思源宋体（Noto CJK，SIL OFL）· 霞鹜系列 · 方舟像素 · Cubic 11
 
@@ -233,6 +235,8 @@ Python 后端（纯标准库 http.server，端口 8001）
 ## 相关文档
 
 - [AGENTS.md](AGENTS.md) —— 运行时架构与硬性约束速查
-- [CODE_WIKI.md](CODE_WIKI.md) —— 模块演进历史
+- [CODE_WIKI.md](CODE_WIKI.md) —— 系统结构与模块演进历史
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) —— 第三方代码许可与文件清单
 - [docs/打包分发方案.md](docs/打包分发方案.md) —— 绿色版打包
 - [docs/歌词模式视觉规范.md](docs/歌词模式视觉规范.md) —— 各歌词模式的排版与视觉规则
+- [docs/screenshots/README.md](docs/screenshots/README.md) —— 界面截图清单
